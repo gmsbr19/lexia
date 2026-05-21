@@ -1,38 +1,30 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import useDocumentStore, { DocType } from "@/lib/store"
-import { Scroll, Feather, Briefcase, Scale, ArrowRight } from 'lucide-react'
-import { tokens } from '@/styles/tokens.css'
+import { Scroll, Feather, Briefcase, Scale, ArrowRight } from "lucide-react"
+import { tokens } from "@/styles/tokens.css"
+import type { DocCategory } from "@/lib/documents/registry"
 
 interface Props {
-  name: DocType
+  name: DocCategory
   iconName: string
   count: number
   description: string
 }
 
+const ICON_MAP: Record<string, React.ElementType> = { Scroll, Feather, Briefcase, Scale }
+
 export default function DocTypeCard({ name, iconName, count, description }: Props) {
   const router = useRouter()
-  const setDocType = useDocumentStore((s) => s.setDocType)
 
   function handleClick() {
-    setDocType(name)
-    router.push('/documents/new')
+    router.push(`/documents?tab=modelos&filter=${encodeURIComponent(name)}`)
   }
 
-  const Icon = (() => {
-    switch (iconName) {
-      case 'Scroll': return Scroll
-      case 'Feather': return Feather
-      case 'Briefcase': return Briefcase
-      case 'Scale': return Scale
-      default: return Scroll
-    }
-  })()
+  const Icon = ICON_MAP[iconName] ?? Scroll
 
   return (
-    <div onClick={handleClick} style={{ textDecoration: 'none' }}>
+    <div onClick={handleClick} style={{ textDecoration: "none" }}>
       <div style={{
         background: tokens.color.surface, border: `1px solid ${tokens.color.border}`,
         borderRadius: 16, padding: "22px 22px 20px",
@@ -59,7 +51,7 @@ export default function DocTypeCard({ name, iconName, count, description }: Prop
           display: "flex", alignItems: "center", justifyContent: "space-between",
           paddingTop: 14, borderTop: `1px solid ${tokens.color.border}`, position: "relative",
         }}>
-          <span style={{ fontSize: "11.5px", color: tokens.color.textSubtle }}>{count} templates</span>
+          <span style={{ fontSize: "11.5px", color: tokens.color.textSubtle }}>{count} modelos</span>
           <div style={{
             width: 26, height: 26, borderRadius: "50%", background: tokens.color.bgSunken,
             display: "flex", alignItems: "center", justifyContent: "center", color: tokens.color.textMuted,
