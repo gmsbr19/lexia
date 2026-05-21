@@ -33,6 +33,7 @@ export const navItem = style({
     background: tokens.color.surfaceHover,
     color: tokens.color.text,
   },
+  textDecoration: "none"
 });
 
 export const navItemActive = style({

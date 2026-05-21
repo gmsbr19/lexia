@@ -44,7 +44,7 @@ createGlobalTheme(":root", tokens, {
     bgSunken: "#F2F1EC",
     bgSoft: "#F7F6F1",
     surface: "#FFFFFF",
-    surfaceHover: "#F7F6F1",
+    surfaceHover: "#F2F1EC",
     border: "rgba(2, 13, 37, 0.08)",
     borderStrong: "rgba(2, 13, 37, 0.14)",
     text: "#020D25",
