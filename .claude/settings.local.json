@@ -3,7 +3,16 @@
     "allow": [
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Skill(anthropic-skills:docx)",
+      "Skill(anthropic-skills:docx:*)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\thiag\\\\Dev\\\\lexia\" -Force)",
+      "Bash(Select-Object -Property Name, FullName)",
+      "Bash(Format-Table -AutoSize)",
+      "Bash(pandoc \"templates/Contrato de Honorários Advocatícios.docx\" -t markdown)",
+      "Read(//c/Users/thiag/AppData/Roaming/Claude/local-agent-mode-sessions/skills-plugin/9b699271-68f5-4ed9-b302-ef1800d4a6d4/d71891a5-45a3-4c9b-9414-e9571d8979d2/skills/docx/**)",
+      "Bash(python scripts/office/unpack.py \"C:\\\\Users\\\\thiag\\\\Dev\\\\lexia\\\\templates\\\\Contrato de Honorários Advocatícios.docx\" \"C:\\\\Users\\\\thiag\\\\Dev\\\\lexia\\\\templates\\\\unpacked\")",
+      "Bash(pip install *)"
     ]
   }
 }
