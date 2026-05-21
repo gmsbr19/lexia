@@ -19,19 +19,18 @@ const STORAGE_KEY = "lexia-theme";
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [dark, setDark] = useState(() => {
-    if (typeof window === "undefined") {
-      return false;
-    }
+  const [dark, setDark] = useState(false);
 
+  useEffect(() => {
     const storedTheme = window.localStorage.getItem(STORAGE_KEY);
 
     if (storedTheme === "dark" || storedTheme === "light") {
-      return storedTheme === "dark";
+      setDark(storedTheme === "dark");
+      return;
     }
 
-    return window.matchMedia("(prefers-color-scheme: dark)").matches;
-  });
+    setDark(window.matchMedia("(prefers-color-scheme: dark)").matches);
+  }, []);
 
   useEffect(() => {
     document.documentElement.classList.toggle(darkTheme, dark);
