@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { FileText, ChevronDown, ChevronRight, Check, Eye, ArrowRight, Plus, Trash2 } from "lucide-react";
+import { FileText, ChevronDown, ChevronRight, Check, Eye, ArrowRight, Plus, Trash2, FileDown, Printer } from "lucide-react";
 import { AppShell } from "@/components/shell/AppShell";
 import { ContratoHonorariosPreview } from "@/components/documents/ContratoHonorariosPreview";
 import { btn } from "@/styles/components.css";
@@ -766,6 +766,53 @@ export default function ManualFormPage() {
 
   const DEFAULT_ZOOM = 0.8;
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
+  const [downloading, setDownloading] = useState<"docx" | "pdf" | null>(null);
+
+  async function downloadDocx() {
+    setDownloading("docx");
+    try {
+      const res = await fetch("/api/documents/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "contrato-honorarios", format: "docx", data }),
+      });
+      if (!res.ok) throw new Error("Falha ao gerar documento");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "Contrato de Honorários Advocatícios.docx";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setDownloading(null);
+    }
+  }
+
+  async function downloadPdf() {
+    setDownloading("pdf");
+    try {
+      const res = await fetch("/api/documents/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "contrato-honorarios", format: "pdf", data }),
+      });
+      if (!res.ok) throw new Error("Falha ao gerar PDF");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "Contrato de Honorários Advocatícios.pdf";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setDownloading(null);
+    }
+  }
 
   const { total, filled } = countFields(data);
   const pending = total - filled;
@@ -917,6 +964,25 @@ export default function ManualFormPage() {
                   onClick={() => setZoom((z) => Math.min(2, +(z + 0.1).toFixed(1)))}
                   style={{ width: 28, height: 28, borderRadius: tokens.radius.sm, border: `1px solid ${tokens.color.border}`, background: tokens.color.surface, color: tokens.color.text, cursor: "pointer", fontSize: "15px", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: tokens.font.sans }}
                 >+</button>
+
+                <div style={{ width: 1, height: 18, background: tokens.color.border, margin: "0 4px" }} />
+
+                <button
+                  onClick={downloadDocx}
+                  disabled={downloading === "docx"}
+                  title="Baixar DOCX"
+                  style={{ width: 28, height: 28, borderRadius: tokens.radius.sm, border: `1px solid ${tokens.color.border}`, background: tokens.color.surface, color: tokens.color.text, cursor: downloading === "docx" ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", opacity: downloading === "docx" ? 0.5 : 1 }}
+                >
+                  <FileDown size={14} />
+                </button>
+                <button
+                  onClick={downloadPdf}
+                  disabled={downloading === "pdf"}
+                  title="Baixar PDF"
+                  style={{ width: 28, height: 28, borderRadius: tokens.radius.sm, border: `1px solid ${tokens.color.border}`, background: tokens.color.surface, color: tokens.color.text, cursor: downloading === "pdf" ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", opacity: downloading === "pdf" ? 0.5 : 1 }}
+                >
+                  <Printer size={14} />
+                </button>
               </div>
             </div>
           </div>
