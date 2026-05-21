@@ -3,7 +3,7 @@
 import Link from "next/link"
 import * as Tooltip from "@radix-ui/react-tooltip"
 import { ChevronRight, Search, Settings } from "lucide-react"
-import { NAV_ITEMS, LIB_ITEMS, type ShellNavItem } from "./shell-data"
+import { NAV_ITEMS, type ShellNavItem } from "./shell-data"
 import { navBadge, navItem, navItemActive, sidebar } from "./shell.css"
 import { tokens } from "@/styles/tokens.css"
 
@@ -257,39 +257,6 @@ export function ShellSidebar({ active, collapsed }: ShellSidebarProps) {
                     }}
                 >
                     {NAV_ITEMS.map((item) => (
-                        <NavItemLink
-                            key={item.id}
-                            {...item}
-                            active={active === item.id}
-                            collapsed={collapsed}
-                        />
-                    ))}
-                </div>
-
-                {!collapsed && (
-                    <div
-                        style={{
-                            marginTop: 16,
-                            padding: "0 8px",
-                            fontSize: "10.5px",
-                            fontWeight: 600,
-                            letterSpacing: "0.06em",
-                            color: tokens.color.textSubtle,
-                            textTransform: "uppercase",
-                        }}
-                    >
-                        Biblioteca
-                    </div>
-                )}
-                <div
-                    style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 2,
-                        marginTop: !collapsed ? 8 : 12,
-                    }}
-                >
-                    {LIB_ITEMS.map((item) => (
                         <NavItemLink
                             key={item.id}
                             {...item}

@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react"
-import { Briefcase, Calendar, FileText, Folder, Home, Sigma, Users } from "lucide-react"
+import { Briefcase, Calendar, FileText, Home, Users } from "lucide-react"
 
 export interface ShellNavItem {
     id: string
@@ -21,9 +21,4 @@ export const NAV_ITEMS: ShellNavItem[] = [
     { id: "casos", label: "Casos", icon: Briefcase, href: "#" },
     { id: "clientes", label: "Clientes", icon: Users, href: "#" },
     { id: "agenda", label: "Agenda", icon: Calendar, href: "#" },
-]
-
-export const LIB_ITEMS: ShellNavItem[] = [
-    { id: "templates", label: "Templates", icon: Folder, href: "#" },
-    { id: "clausulas", label: "Cláusulas", icon: Sigma, href: "#" },
 ]
