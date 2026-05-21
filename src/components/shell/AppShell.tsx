@@ -2,9 +2,9 @@
 
 import { useState } from "react"
 import { mainContent, appShell, mainArea } from "./shell.css"
-import { darkTheme } from "@/styles/theme.css"
 import { ShellSidebar } from "./ShellSidebar"
 import { ShellTopbar } from "./ShellTopbar"
+import { useTheme } from "@/components/theme/ThemeProvider"
 
 interface AppShellProps {
     children: React.ReactNode
@@ -19,11 +19,11 @@ export function AppShell({
     breadcrumb = [],
     actions,
 }: AppShellProps) {
+    const { dark, toggleDark } = useTheme()
     const [collapsed, setCollapsed] = useState(false)
-    const [dark, setDark] = useState(false)
 
     return (
-        <div className={appShell + (dark ? ` ${darkTheme}` : "")}>
+        <div className={appShell}>
             <ShellSidebar active={active} collapsed={collapsed} />
 
             <main className={mainArea}>
@@ -31,8 +31,8 @@ export function AppShell({
                     breadcrumb={breadcrumb}
                     actions={actions}
                     dark={dark}
-                    onToggleCollapsed={() => setCollapsed((value) => !value)}
-                    onToggleDark={() => setDark((value) => !value)}
+                    onToggleCollapsed={() => setCollapsed((value: boolean) => !value)}
+                    onToggleDark={toggleDark}
                 />
 
                 <div className={mainContent}>{children}</div>
