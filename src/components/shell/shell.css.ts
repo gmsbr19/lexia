@@ -57,10 +57,14 @@ export const topbar = style({
   display: "flex",
   alignItems: "center",
   gap: "16px",
+  height: "62px",
   padding: "14px 28px",
   borderBottom: `1px solid ${tokens.color.border}`,
   background: tokens.color.bg,
-  minHeight: "56px",
+  minHeight: "62px",
+  boxSizing: "border-box",
+  flexShrink: 0,
+  overflow: "hidden",
 });
 
 export const mainContent = style({
