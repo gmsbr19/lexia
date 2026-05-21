@@ -86,7 +86,7 @@ export function ShellTopbar({
                     gap: 8,
                 }}
             >
-                
+                {actions}
 
                 <button
                     onClick={onToggleDark}
