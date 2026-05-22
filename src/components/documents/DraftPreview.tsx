@@ -5,7 +5,7 @@ interface DraftPreviewProps {
   showPlaceholders?: boolean;
 }
 
-function Placeholder({ children, filled }: { children: string; filled?: boolean }) {
+function Placeholder({ children, filled }: { children: React.ReactNode; filled?: boolean }) {
   return (
     <span style={{
       background: filled ? "transparent" : "rgba(192,161,71,0.18)",
