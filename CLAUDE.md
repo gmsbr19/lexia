@@ -12,6 +12,7 @@ Lexia is a Next.js app for law-office document generation. Current feature: serv
 - Renderers: `docx.ts`, `html.ts`, `pdf.ts`.
 - API: `POST /api/documents/generate` (docx/pdf binaries).
 - UI: manual preview + download buttons.
+- UI: documents page tabs build again after restoring the shared `categoryIcon` style export.
 - Open issue: PDF letterhead doesn't cover sheet margins.
 
 4) Current focus (priority)
