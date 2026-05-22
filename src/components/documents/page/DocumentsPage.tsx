@@ -347,7 +347,7 @@ function DocumentsCreateTab({ onNavigateToModelos, onOpenDocuments }: { onNaviga
         </section>
 
         <section className={section}>
-          <DocumentsSectionHeader title="Atalhos do escritório" subtitle="Modelos mais usados no último mês" action="Ver biblioteca" onAction={onOpenDocuments} />
+          <DocumentsSectionHeader title="Atalhos do escritório" subtitle="Modelos mais usados no último mês" action="Ver biblioteca" onAction={() => onNavigateToModelos()} />
           <div className={featuredGrid}>
             {featuredTemplates.map((template) => (
               <Link key={template.id} href={templateEditorPath(template.id)} className={featuredCard}>
