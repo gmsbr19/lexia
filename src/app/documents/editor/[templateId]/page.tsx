@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, use } from "react"
 import { Eye, FileDown, Printer, Sparkles, ChevronRight } from "lucide-react"
 import { AppShell } from "@/components/shell/AppShell"
 import { ContratoHonorariosForm, countFields, newContratoData } from "@/components/documents/forms/ContratoHonorariosForm"
@@ -19,11 +19,11 @@ const CONTRATO_TEMPLATE_IDS = new Set(["contrato-honorarios", "contrato-prestaca
 const DEFAULT_ZOOM = 0.75
 
 interface Props {
-  params: { templateId: string }
+  params: Promise<{ templateId: string }>
 }
 
 export default function EditorPage({ params }: Props) {
-  const { templateId } = params
+  const { templateId } = use(params)
   const template = getTemplate(templateId)
 
   // Unknown or unavailable template → back to documents
@@ -69,7 +69,7 @@ export default function EditorPage({ params }: Props) {
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
-      a.download = `${template.name}.${format}`
+      a.download = `${template?.name ?? "documento"}.${format}`
       a.click()
       URL.revokeObjectURL(url)
     } catch (err) {
