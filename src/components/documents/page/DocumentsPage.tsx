@@ -3,6 +3,10 @@
 import { Suspense, useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
+import { DocumentsTabStrip } from "./tabs/TabStrip"
+import type { DocumentsTab } from "./tabs/TabStrip"
+import { DocumentsSectionHeader } from "./tabs/SectionHeader"
+import { sectionHeader, sectionTitle, sectionHint } from "./tabs/SectionHeader.css"
 import {
   ArrowRight,
   Briefcase,
@@ -104,13 +108,6 @@ import {
   searchInput,
   searchWrap,
   section,
-  sectionHeader,
-  sectionHeaderBody,
-  sectionSubtitle,
-  sectionAction,
-  sectionHint,
-  sectionTitle,
-  sectionTitleSpacer,
   segmentedButton,
   segmentedGroup,
   statCard,
@@ -119,9 +116,7 @@ import {
   statValue,
   statValueRow,
   statsGrid,
-  tabButton,
   tabPanel,
-  tabStrip,
   table,
   tableActions,
   tableCard,
@@ -173,8 +168,6 @@ import {
   DOCUMENT_TYPE_ABBR,
 } from "./documents-page.data"
 
-export type DocumentsTab = "criar" | "meus-documentos" | "modelos"
-
 const ICON_MAP: Record<string, React.ElementType> = {
   Scroll: FileText,
   Feather,
@@ -202,55 +195,6 @@ function statusTone(status: string) {
   if (status === "Assinado") return { background: "var(--accent-soft)", color: "var(--accent)" }
   if (status === "Rascunho") return { background: "var(--bg-sunken)", color: "var(--text-muted)" }
   return { background: "rgba(2,13,37,0.06)", color: "var(--text-muted)" }
-}
-
-function DocumentsSectionHeader({
-  title,
-  subtitle,
-  action,
-  onAction,
-}: {
-  title: string
-  subtitle?: string
-  action?: string
-  onAction?: () => void
-}) {
-  return (
-    <div className={sectionHeader}>
-      <div className={sectionHeaderBody}>
-        <h2 className={sectionTitle}>{title}</h2>
-        {subtitle && <div className={sectionSubtitle}>{subtitle}</div>}
-      </div>
-      {action && onAction && (
-        <button type="button" onClick={onAction} className={sectionAction}>
-          {action} →
-        </button>
-      )}
-    </div>
-  )
-}
-
-function DocumentsTabStrip({ activeTab, onChange }: { activeTab: DocumentsTab; onChange: (tab: DocumentsTab) => void }) {
-  const tabs: Array<{ id: DocumentsTab; label: string }> = [
-    { id: "criar", label: "Criar" },
-    { id: "meus-documentos", label: "Meus documentos (142)" },
-    { id: "modelos", label: "Modelos (32)" },
-  ]
-
-  return (
-    <div className={tabStrip}>
-      {tabs.map((tab) => (
-        <button
-          key={tab.id}
-          type="button"
-          onClick={() => onChange(tab.id)}
-          className={tabButton({ active: activeTab === tab.id })}
-        >
-          {tab.label}
-        </button>
-      ))}
-    </div>
-  )
 }
 
 function DocumentsCreateTab({ onNavigateToModelos, onOpenDocuments }: { onNavigateToModelos: (filter?: DocCategory) => void; onOpenDocuments: () => void }) {

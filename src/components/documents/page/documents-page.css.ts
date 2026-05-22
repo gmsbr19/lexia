@@ -28,41 +28,6 @@ export const pageFrameTemplates = style({
   padding: "28px 40px 48px",
 })
 
-export const tabStrip = style({
-  display: "flex",
-  gap: 0,
-  borderBottom: `1px solid ${tokens.color.border}`,
-  padding: "0 40px",
-  background: tokens.color.bg,
-  flexShrink: 0,
-})
-
-export const tabButton = recipe({
-  base: {
-    height: 44,
-    padding: "0 16px",
-    border: "none",
-    background: "transparent",
-    cursor: "pointer",
-    fontFamily: tokens.font.sans,
-    fontSize: "13.5px",
-    fontWeight: 400,
-    color: tokens.color.textMuted,
-    borderBottom: "2px solid transparent",
-    marginBottom: -1,
-    transition: "color 0.15s ease, border-color 0.15s ease",
-  },
-  variants: {
-    active: {
-      true: {
-        fontWeight: 600,
-        color: tokens.color.text,
-        borderBottomColor: tokens.color.accent,
-      },
-    },
-  },
-})
-
 export const tabPanel = style({
   flex: 1,
   minHeight: 0,
@@ -80,48 +45,6 @@ export const section = style({
   marginBottom: 36,
 })
 
-export const sectionHeader = style({
-  display: "flex",
-  alignItems: "flex-end",
-  justifyContent: "space-between",
-  gap: 16,
-  marginBottom: 14,
-})
-
-export const sectionHeaderBody = style({
-  minWidth: 0,
-})
-
-export const sectionSubtitle = style({
-  fontSize: "11.5px",
-  color: tokens.color.textSubtle,
-  marginTop: 2,
-})
-
-export const sectionAction = style({
-  fontSize: 12,
-  color: tokens.color.accent,
-  cursor: "pointer",
-  fontWeight: 500,
-  textDecoration: "none",
-  whiteSpace: "nowrap",
-  border: "none",
-  background: "transparent",
-  padding: 0,
-})
-
-export const sectionTitle = style({
-  margin: 0,
-  fontSize: 14.5,
-  fontWeight: 600,
-  letterSpacing: "-0.015em",
-  color: tokens.color.text,
-})
-
-export const sectionHint = style({
-  fontSize: "11.5px",
-  color: tokens.color.textSubtle,
-})
 
 export const heroTitle = style({
   margin: 0,
@@ -813,9 +736,6 @@ export const draftProgressWrap = style({
   marginTop: "auto",
 })
 
-export const sectionTitleSpacer = style({
-  marginBottom: 12,
-})
 
 export const libraryTitle = style({
   margin: 0,
