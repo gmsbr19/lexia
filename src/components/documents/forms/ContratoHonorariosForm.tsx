@@ -195,10 +195,7 @@ function ContratanteForm({ contratante, onChange, onRemove, index, canRemove }: 
       ) : (
         <>
           <FormField label="Razão social" value={contratante.razaoSocial} onChange={(v) => patchPJ({ razaoSocial: v.toUpperCase() })} placeholder="EMPRESA LTDA." />
-          <Grid cols={2}>
-            <FormField label="CNPJ" value={contratante.cnpj} onChange={(v) => patchPJ({ cnpj: v })} placeholder="00.000.000/0001-00" />
-            <FormField label="Inscrição estadual" value={contratante.inscricaoEstadual ?? ""} onChange={(v) => patchPJ({ inscricaoEstadual: v })} placeholder="000.000.000.000" />
-          </Grid>
+          <FormField label="CNPJ" value={contratante.cnpj} onChange={(v) => patchPJ({ cnpj: v })} placeholder="00.000.000/0001-00" />
           <FormField label="E-mail" value={contratante.email} onChange={(v) => patchPJ({ email: v })} placeholder="contato@empresa.com" type="email" />
           <AddressForm addr={addr} onChange={updateAddr} />
           <Divider label="Sócios representantes" />
