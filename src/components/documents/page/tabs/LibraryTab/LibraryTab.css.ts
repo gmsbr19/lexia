@@ -193,7 +193,7 @@ export const documentIcon = style({
   width: 28,
   height: 36,
   borderRadius: 4,
-  background: "#FFFFFF",
+  background: tokens.color.surface,
   border: `1px solid ${tokens.color.borderStrong}`,
   display: "flex",
   alignItems: "flex-end",

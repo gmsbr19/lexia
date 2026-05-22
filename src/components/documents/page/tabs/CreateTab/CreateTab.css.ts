@@ -299,7 +299,7 @@ export const quickTemplateCode = style({
   fontSize: 7.5,
   fontWeight: 700,
   letterSpacing: "0.04em",
-  color: "#020D25",
+  color: tokens.color.text,
   fontFamily: tokens.font.mono,
 })
 
