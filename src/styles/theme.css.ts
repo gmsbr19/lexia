@@ -128,6 +128,12 @@ globalStyle("body", {
   WebkitFontSmoothing: "antialiased",
   MozOsxFontSmoothing: "grayscale",
   letterSpacing: "-0.01em",
+  transition:
+    "background-color 180ms ease, color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, fill 180ms ease, stroke 180ms ease, outline-color 180ms ease",
+});
+globalStyle("body *, body *::before, body *::after", {
+  transition:
+    "background-color 180ms ease, color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, fill 180ms ease, stroke 180ms ease, outline-color 180ms ease",
 });
 globalStyle("#__next, main", { height: "100%" });
 globalStyle("::-webkit-scrollbar", { width: "10px", height: "10px" });
