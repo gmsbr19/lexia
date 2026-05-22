@@ -1,5 +1,6 @@
 import { style } from "@vanilla-extract/css"
 import { tokens } from "@/styles/tokens.css"
+import { interactiveSurface, pillBase } from "../../documents-page.css"
 
 export const pageFrameCreate = style({
     padding: "32px 40px 48px",
@@ -119,22 +120,20 @@ export const exampleLabel = style({
     color: tokens.color.textSubtle,
 })
 
-export const exampleChip = style({
-    height: 28,
-    padding: "0 12px",
-    borderRadius: 999,
-    border: `1px solid ${tokens.color.border}`,
-    background: tokens.color.surface,
-    color: tokens.color.textMuted,
-    fontSize: 12,
-    letterSpacing: "-0.005em",
-    cursor: "pointer",
-    textAlign: "left",
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    maxWidth: "100%",
-})
+export const exampleChip = style([
+    pillBase,
+    {
+        height: 28,
+        padding: "0 12px",
+        fontSize: 12,
+        letterSpacing: "-0.005em",
+        textAlign: "left",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        maxWidth: "100%",
+    },
+])
 
 export const exampleChipIcon = style({
     color: tokens.color.accent,
@@ -153,25 +152,18 @@ export const draftGrid = style({
     gap: 12,
 })
 
-export const draftLink = style({
-    position: "relative",
-    overflow: "hidden",
-    minHeight: 132,
-    padding: 16,
-    borderRadius: 16,
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
-    textDecoration: "none",
-    cursor: "pointer",
-    background: tokens.color.surface,
-    border: `1px solid ${tokens.color.borderStrong}`,
-    boxShadow: tokens.color.shadowMd,
-    transition: "border-color 0.15s ease, box-shadow 0.15s ease",
-    selectors: {
-        "&:hover": { borderColor: tokens.color.borderStrong },
+export const draftLink = style([
+    interactiveSurface,
+    {
+        minHeight: 132,
+        padding: 16,
+        borderRadius: 16,
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+        cursor: "pointer",
     },
-})
+])
 
 export const draftHeaderRow = style({
     display: "flex",
@@ -265,26 +257,16 @@ export const featuredGrid = style({
     gap: 10,
 })
 
-export const featuredCard = style({
-    padding: "14px 16px",
-    display: "flex",
-    alignItems: "center",
-    gap: 14,
-    cursor: "pointer",
-    background: tokens.color.surface,
-    border: `1px solid ${tokens.color.border}`,
-    borderRadius: 16,
-    boxShadow: tokens.color.shadowSm,
-    textDecoration: "none",
-    transition: "all 0.5s ease",
-    selectors: {
-        "&:hover": {
-            borderColor: tokens.color.borderStrong,
-            boxShadow: tokens.color.shadowMd,
-            scale: "1.005"
-        },
+export const featuredCard = style([
+    interactiveSurface,
+    {
+        padding: "14px 16px",
+        display: "flex",
+        alignItems: "center",
+        gap: 14,
+        cursor: "pointer",
     },
-})
+])
 
 export const quickTemplateIcon = style({
     width: 32,
@@ -358,24 +340,18 @@ export const categoryGrid = style({
     gap: 12,
 })
 
-export const categoryCard = style({
-    position: "relative",
-    overflow: "hidden",
-    background: tokens.color.surface,
-    border: `1px solid ${tokens.color.border}`,
-    borderRadius: 14,
-    padding: "18px 18px 16px",
-    display: "flex",
-    flexDirection: "column",
-    gap: 10,
-    cursor: "pointer",
-    textAlign: "left",
-    fontFamily: tokens.font.sans,
-    boxShadow: tokens.color.shadowSm,
-    selectors: {
-        "&:hover": { borderColor: tokens.color.borderStrong },
+export const categoryCard = style([
+    interactiveSurface,
+    {
+        padding: "18px 18px 16px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+        cursor: "pointer",
+        textAlign: "left",
+        fontFamily: tokens.font.sans,
     },
-})
+])
 
 export const categoryTitle = style({
     fontSize: 14,

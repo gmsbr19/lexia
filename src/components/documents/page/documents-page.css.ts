@@ -68,6 +68,38 @@ export const templateMuted = style({
   color: tokens.color.textSubtle,
 })
 
+export const interactiveSurface = style({
+  position: "relative",
+  overflow: "hidden",
+  background: tokens.color.surface,
+  border: `1px solid ${tokens.color.border}`,
+  borderRadius: 16,
+  boxShadow: tokens.color.shadowSm,
+  textDecoration: "none",
+  transition: "border-color 0.15s ease, box-shadow 0.15s ease, scale 0.5s ease",
+  selectors: {
+    "&:hover": {
+      borderColor: tokens.color.borderStrong,
+      boxShadow: tokens.color.shadowMd,
+      scale: "1.005",
+    },
+  },
+})
+
+export const pillBase = style([interactiveSurface, {
+  height: 30,
+  padding: "0 14px",
+  borderRadius: 999,
+  border: `1px solid ${tokens.color.border}`,
+  background: tokens.color.surface,
+  color: tokens.color.textMuted,
+  fontSize: "12.5px",
+  fontWeight: 400,
+  cursor: "pointer",
+  fontFamily: tokens.font.sans,
+  
+}])
+
 export const documentTypeText = style({
   fontSize: 7,
   fontWeight: 700,

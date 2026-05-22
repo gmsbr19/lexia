@@ -1,6 +1,7 @@
 import { style } from "@vanilla-extract/css"
 import { recipe } from "@vanilla-extract/recipes"
 import { tokens } from "@/styles/tokens.css"
+import { interactiveSurface, pillBase } from "../../documents-page.css"
 
 export const pageFrameTemplates = style({
   padding: "28px 40px 48px",
@@ -36,18 +37,7 @@ export const templateChipRow = style({
 })
 
 export const templateChip = recipe({
-  base: {
-    height: 30,
-    padding: "0 14px",
-    borderRadius: 999,
-    border: `1px solid ${tokens.color.border}`,
-    background: tokens.color.surface,
-    color: tokens.color.textMuted,
-    fontSize: "12.5px",
-    fontWeight: 400,
-    cursor: "pointer",
-    fontFamily: tokens.font.sans,
-  },
+  base: pillBase,
   variants: {
     active: {
       true: {
@@ -66,21 +56,14 @@ export const templatesGrid = style({
   gap: 14,
 })
 
-export const templateCard = style({
-  position: "relative",
-  overflow: "hidden",
-  background: tokens.color.surface,
-  border: `1px solid ${tokens.color.border}`,
-  borderRadius: 16,
-  padding: "20px 20px 16px",
-  textDecoration: "none",
-  display: "block",
-  boxShadow: tokens.color.shadowSm,
-  cursor: "pointer",
-  selectors: {
-    "&:hover": { borderColor: tokens.color.borderStrong },
+export const templateCard = style([
+  interactiveSurface,
+  {
+    padding: "20px 20px 16px",
+    display: "block",
+    cursor: "pointer",
   },
-})
+])
 
 export const templateCardDisabled = style({
   opacity: 0.55,
