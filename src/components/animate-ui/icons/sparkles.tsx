@@ -20,7 +20,7 @@ const animations = {
       },
       animate: {
         scale: [1, 0.9, 1.1, 1],
-        transition: { duration: 0.6, ease: 'easeInOut' },
+        transition: { duration: 1.5, ease: 'easeInOut' },
       },
     },
     path: {},

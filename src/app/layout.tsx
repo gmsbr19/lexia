@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
-import "../styles/globals.css";
 import "../styles/theme.css";
 import { unselectable } from "../styles/theme.css";
 

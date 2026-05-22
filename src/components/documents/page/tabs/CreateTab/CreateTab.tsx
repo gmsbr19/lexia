@@ -58,6 +58,7 @@ import {
   categoryTitle,
   categoryDescription,
 } from "./CreateTab.css"
+import { SparklesIcon } from "@/components/animate-ui/icons/sparkles"
 
 const ICON_MAP: Record<string, React.ElementType> = {
   Scroll: FileText,
@@ -87,7 +88,7 @@ export function DocumentsCreateTab({
             <div className={composerGlow} />
             <div className={composerInner}>
               <div className={composerLabel}>
-                <Sparkles size={11} strokeWidth={2} />
+                <SparklesIcon size={11} strokeWidth={2} animate loop />
                 Assistente LexIA
               </div>
 
