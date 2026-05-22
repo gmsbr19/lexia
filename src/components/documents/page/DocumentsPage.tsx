@@ -1,12 +1,13 @@
 "use client"
 
-import { Suspense, useEffect, useState } from "react"
+import { Suspense, useState } from "react"
 import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
 import { DocumentsTabStrip } from "./tabs/TabStrip"
-import type { DocumentsTab } from "./tabs/TabStrip"
 import { DocumentsSectionHeader } from "./tabs/SectionHeader"
 import { sectionHeader, sectionTitle, sectionHint } from "./tabs/SectionHeader.css"
+import { useTabRouting } from "./hooks/useTabRouting"
+import { useDocumentFilter } from "./hooks/useDocumentFilter"
+import { useTemplateFilter } from "./hooks/useTemplateFilter"
 import {
   ArrowRight,
   Briefcase,
@@ -175,21 +176,6 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Scale,
 }
 
-const LIBRARY_FILTER_TO_TYPE: Record<string, string | null> = {
-  Todos: null,
-  Contratos: "Contrato",
-  Procurações: "Procuração",
-  Propostas: "Proposta",
-  Pareceres: "Parecer Jurídico",
-}
-
-function normalizeTab(value: string | null): DocumentsTab {
-  if (value === "meus-documentos" || value === "modelos") {
-    return value
-  }
-  return "criar"
-}
-
 function statusTone(status: string) {
   if (status === "Finalizado") return { background: "rgba(46,160,67,0.12)", color: "#2ea043" }
   if (status === "Assinado") return { background: "var(--accent-soft)", color: "var(--accent)" }
@@ -346,19 +332,7 @@ function DocumentsCreateTab({ onNavigateToModelos, onOpenDocuments }: { onNaviga
 }
 
 function DocumentsLibraryTab() {
-  const [filterType, setFilterType] = useState<string>("Todos")
-  const [query, setQuery] = useState("")
-
-  const visibleDocuments = DOCUMENTS.filter((document) => {
-    const typeFilter = LIBRARY_FILTER_TO_TYPE[filterType]
-    const matchesType = typeFilter === null || document.type === typeFilter
-    const normalizedQuery = query.trim().toLowerCase()
-    const matchesQuery =
-      normalizedQuery.length === 0 ||
-      [document.name, document.client, document.author, document.type].join(" ").toLowerCase().includes(normalizedQuery)
-
-    return matchesType && matchesQuery
-  })
+  const { filterType, setFilterType, query, setQuery, visibleDocuments } = useDocumentFilter()
 
   return (
     <div className={scrollArea}>
@@ -512,15 +486,7 @@ function DocumentsLibraryTab() {
 }
 
 function DocumentsTemplatesTab({ initialFilter }: { initialFilter: string }) {
-  const [activeFilter, setActiveFilter] = useState<string>(initialFilter)
-
-  useEffect(() => {
-    setActiveFilter(initialFilter)
-  }, [initialFilter])
-
-  const visibleTemplates = activeFilter
-    ? DOCUMENT_TEMPLATES.filter((template) => template.category === activeFilter)
-    : DOCUMENT_TEMPLATES
+  const { activeFilter, setActiveFilter, visibleTemplates } = useTemplateFilter(initialFilter)
 
   return (
     <div className={scrollArea}>
@@ -603,44 +569,7 @@ function DocumentsPageFallback() {
 }
 
 function DocumentsContent() {
-  const params = useSearchParams()
-  const router = useRouter()
-
-  const initialTab = normalizeTab(params.get("tab"))
-  const initialFilter = params.get("filter") ?? ""
-
-  const [activeTab, setActiveTab] = useState<DocumentsTab>(initialTab)
-  const [modelosFilter, setModelosFilter] = useState(initialFilter)
-
-  useEffect(() => {
-    setActiveTab(initialTab)
-  }, [initialTab])
-
-  useEffect(() => {
-    setModelosFilter(initialFilter)
-  }, [initialFilter])
-
-  function handleTabChange(nextTab: DocumentsTab) {
-    setActiveTab(nextTab)
-    if (nextTab === "modelos" && modelosFilter) {
-      router.replace(`/documents?tab=modelos&filter=${encodeURIComponent(modelosFilter)}`, { scroll: false })
-      return
-    }
-
-    router.replace(`/documents?tab=${nextTab}`, { scroll: false })
-  }
-
-  function handleNavigateToModelos(filter?: DocCategory) {
-    const nextFilter = filter ?? ""
-    setModelosFilter(nextFilter)
-    setActiveTab("modelos")
-    router.replace(`/documents?tab=modelos${nextFilter ? `&filter=${encodeURIComponent(nextFilter)}` : ""}`, { scroll: false })
-  }
-
-  function handleOpenDocuments() {
-    setActiveTab("meus-documentos")
-    router.replace("/documents?tab=meus-documentos", { scroll: false })
-  }
+  const { activeTab, modelosFilter, handleTabChange, handleNavigateToModelos, handleOpenDocuments } = useTabRouting()
 
   const tabActions =
     activeTab === "meus-documentos" ? (
