@@ -59,6 +59,7 @@ import {
   categoryDescription,
 } from "./CreateTab.css"
 import { SparklesIcon } from "@/components/animate-ui/icons/sparkles"
+import { AnimateIcon } from "@/components/animate-ui/icons/icon"
 
 const ICON_MAP: Record<string, React.ElementType> = {
   Scroll: FileText,
@@ -84,47 +85,50 @@ export function DocumentsCreateTab({
           <h1 className={heroTitle}>O que vamos criar?</h1>
           <p className={heroLead}>Descreva o documento — a IA escolhe o modelo e preenche para você.</p>
 
-          <div className={composerCard}>
-            <div className={composerGlow} />
-            <div className={composerInner}>
-              <div className={composerLabel}>
-                <SparklesIcon size={11} strokeWidth={2} animate loop />
-                Assistente LexIA
-              </div>
+          <AnimateIcon animateOnHover loop>
+            <div className={composerCard}>
+              <div className={composerGlow} />
+              <div className={composerInner}>
+                <div className={composerLabel}>
+                  <SparklesIcon size={11} strokeWidth={2} />
+                  Assistente LexIA
+                </div>
 
-              <textarea
-                value={prompt}
-                onChange={(event) => setPrompt(event.target.value)}
-                placeholder="Descreva o documento que precisa criar. Ex: contrato de honorários para Helena Vargas, R$ 12.000 fixos + 20% sobre êxito, foro de São Paulo…"
-                className={composerTextarea}
-              />
+                <textarea
+                  value={prompt}
+                  onChange={(event) => setPrompt(event.target.value)}
+                  placeholder="Descreva o documento que precisa criar. Ex: contrato de honorários para Helena Vargas, R$ 12.000 fixos + 20% sobre êxito, foro de São Paulo…"
+                  className={composerTextarea}
+                />
 
-              <div className={composerFooter}>
-                <button type="button" className={`${btn({ variant: "ghost" })} ${compactButton}`}>
-                  <Paperclip size={12} />
-                  Anexar caso
-                </button>
-                <button type="button" className={`${btn({ variant: "ghost" })} ${compactButton}`}>
-                  <User size={12} />
-                  Vincular cliente
-                </button>
-                <div className={toolbarSpacer} />
-                <span className={composerHint}>A IA escolhe o modelo ideal</span>
-                <button type="button" className={`${btn({ variant: "gold" })} ${compactGoldButton}`}>
-                  <Sparkles size={12} strokeWidth={2} />
-                  Criar com IA
-                </button>
+                <div className={composerFooter}>
+                  <button type="button" className={`${btn({ variant: "ghost" })} ${compactButton}`}>
+                    <Paperclip size={12} />
+                    Anexar caso
+                  </button>
+                  <button type="button" className={`${btn({ variant: "ghost" })} ${compactButton}`}>
+                    <User size={12} />
+                    Vincular cliente
+                  </button>
+                  <div className={toolbarSpacer} />
+                  <span className={composerHint}>A IA escolhe o modelo ideal</span>
+                  <button type="button" className={`${btn({ variant: "gold" })} ${compactGoldButton}`}>
+                    <Sparkles size={12} strokeWidth={2} />
+                    Criar com IA
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-
+          </AnimateIcon>
           <div className={exampleRow}>
             <span className={exampleLabel}>Exemplos:</span>
             {DOCUMENT_EXAMPLES.map((example) => (
-              <button key={example} type="button" className={exampleChip} onClick={() => setPrompt(example)}>
-                <Sparkles size={10} strokeWidth={2} className={exampleChipIcon} />
-                <span className={exampleChipText}>{example}</span>
-              </button>
+              <AnimateIcon animateOnHover>
+                <button key={example} type="button" className={exampleChip} onClick={() => setPrompt(example)}>
+                  <SparklesIcon size={10} strokeWidth={2} className={exampleChipIcon} />
+                  <span className={exampleChipText}>{example}</span>
+                </button>
+              </AnimateIcon>
             ))}
           </div>
         </div>

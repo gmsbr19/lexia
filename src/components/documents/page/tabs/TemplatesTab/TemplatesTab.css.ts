@@ -67,6 +67,14 @@ export const templateCard = style([
 
 export const templateCardDisabled = style({
   opacity: 0.55,
+  cursor: "default",
+  selectors: {
+    "&:hover": {
+      borderColor: tokens.color.border,
+      boxShadow: tokens.color.shadowSm,
+      transform: "none",
+    },
+  },
 })
 
 export const templateDisabledHeader = style({
