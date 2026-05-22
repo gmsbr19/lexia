@@ -138,7 +138,6 @@ export function DocumentsCreateTab({
                   <div className={draftHeaderGroup}>
                     <div className={draftIcon}>
                       <span className={documentTypeText}>{DOCUMENT_TYPE_ABBR[draft.type] ?? "??"}</span>
-                      <span className={documentIconBar} />
                     </div>
                     <span className={draftTypeText}>{draft.type}</span>
                   </div>
