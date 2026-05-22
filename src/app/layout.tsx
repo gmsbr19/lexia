@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import "../styles/theme.css";
+import { unselectable } from "../styles/theme.css";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -21,7 +22,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="pt-BR" className={inter.variable} suppressHydrationWarning>
-      <body>
+      <body className={unselectable}>
         <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>

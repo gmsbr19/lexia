@@ -1,4 +1,4 @@
-import { createGlobalTheme, globalStyle } from "@vanilla-extract/css";
+import { createGlobalTheme, createTheme, globalStyle, style } from "@vanilla-extract/css";
 import { tokens } from "./tokens.css";
 
 const fontSans =
@@ -142,3 +142,11 @@ globalStyle("::-webkit-scrollbar-thumb", {
   background: tokens.color.borderStrong,
   borderRadius: "999px",
 });
+
+export const unselectable = style({
+  userSelect: "none",
+  WebkitUserSelect: "none",
+  MozUserSelect: "none",
+  msUserSelect: "none",
+});
+
