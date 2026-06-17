@@ -1,0 +1,350 @@
+/* LexIA · CRM (Clientes/Casos/Contratos/Agenda + workspace tabs) — plain global
+ * stylesheet, imported by the CRM route pages and the global shell overlays.
+ * The design prototype styled everything with CSS custom properties + a few
+ * utility classes (.btn, .card, .input, .pill) and a block of bespoke classes
+ * (fx-check, crm-tab, crm-split-*, animations). We define them here scoped to a
+ * `.crm-scope` wrapper so nothing leaks, with values mirroring the app's
+ * vanilla-extract tokens (navy/gold; light + dark; see src/styles/theme.css.ts —
+ * the single foundation). Dark mode is driven by the app's `.theme-dark`
+ * ancestor class. Mirrors components/comercial/cm-theme.css. */
+
+/* ── layout wrappers ── */
+.crm-root {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-sans);
+  letter-spacing: -0.01em;
+}
+.crm-inline { display: contents; }
+
+/* ── variable bridge · light ── */
+.crm-scope {
+  --bg: #FAFAF7;
+  --bg-elevated: #FFFFFF;
+  --bg-sunken: rgba(2, 13, 37, 0.05);
+  --bg-soft: #FFFFFF;
+  --surface: #FFFFFF;
+  --surface-hover: #F2F1EC;
+  --border: rgba(2, 13, 37, 0.08);
+  --border-strong: rgba(2, 13, 37, 0.16);
+  --border-gold: rgba(154, 127, 46, 0.45);
+  --text: #020D25;
+  --text-muted: rgba(2, 13, 37, 0.64);
+  --text-subtle: rgba(2, 13, 37, 0.44);
+  --accent: #8A6B22;
+  --accent-strong: #9A7F2E;
+  --accent-soft: rgba(192, 161, 71, 0.14);
+  --ok: #1F8A4C;       --ok-soft: rgba(31, 138, 76, 0.10);
+  --warn: #B47E12;     --warn-soft: rgba(180, 126, 18, 0.12);
+  --crit: #C0492F;     --crit-soft: rgba(192, 73, 47, 0.10);
+  --neutral-soft: rgba(2, 13, 37, 0.05);
+  --ai: #9A7F2E;       --ai-soft: rgba(192, 161, 71, 0.12);
+  --overlay: rgba(2, 13, 37, 0.45);
+  --shadow-sm: 0 1px 2px rgba(2, 13, 37, 0.05);
+  --shadow-md: 0 12px 30px rgba(2, 13, 37, 0.10), 0 2px 6px rgba(2, 13, 37, 0.05);
+  --shadow-lg: 0 12px 30px rgba(2, 13, 37, 0.10), 0 2px 6px rgba(2, 13, 37, 0.05);
+  --ring: rgba(192, 161, 71, 0.45);
+  --r-xs: 6px;
+  --r-sm: 8px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 14px;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --brand-navy: #020D25;
+  --brand-gold: #C0A147;
+  --brand-gold-soft: #D8BE7A;
+  --brand-gold-deep: #9A7F2E;
+  /* semantic finance + legacy crm accent (blue is retired: state codes via the
+     four semantics; "blue" roles render neutral) */
+  --fin-pos: var(--fin-pos, #1F8A4C);
+  --fin-neg: var(--fin-neg, #C0492F);
+  --crm-blue: var(--text-muted);
+}
+
+/* ── variable bridge · dark (app toggles .theme-dark on an ancestor) ── */
+.theme-dark .crm-scope {
+  --bg: #020D25;
+  --bg-elevated: #13234C;
+  --bg-sunken: rgba(255, 255, 255, 0.06);
+  --bg-soft: #0A1733;
+  --surface: #0A1733;
+  --surface-hover: #12214A;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --border-gold: rgba(192, 161, 71, 0.40);
+  --text: #F5F1E4;
+  --text-muted: rgba(245, 241, 228, 0.66);
+  --text-subtle: rgba(245, 241, 228, 0.44);
+  --accent: #D8BE7A;
+  --accent-strong: #C0A147;
+  --accent-soft: rgba(192, 161, 71, 0.12);
+  --ok: #4FC07D;       --ok-soft: rgba(79, 192, 125, 0.12);
+  --warn: #E0B257;     --warn-soft: rgba(224, 178, 87, 0.14);
+  --crit: #E07A60;     --crit-soft: rgba(224, 122, 96, 0.12);
+  --neutral-soft: rgba(255, 255, 255, 0.06);
+  --ai: #C0A147;       --ai-soft: rgba(192, 161, 71, 0.12);
+  --overlay: rgba(2, 13, 37, 0.70);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.40);
+  --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.44), 0 2px 6px rgba(0, 0, 0, 0.30);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.44), 0 2px 6px rgba(0, 0, 0, 0.30);
+  --ring: rgba(192, 161, 71, 0.55);
+}
+
+/* ── buttons — 40px standard / 32px compact, radius 8, weight 500 ── */
+.crm-scope .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: var(--r-sm);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition: background .15s ease-out, border-color .15s ease-out, filter .15s ease-out;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.crm-scope .btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
+.crm-scope .btn:disabled { cursor: not-allowed; opacity: 0.45; }
+.crm-scope .btn-sm { height: 32px; padding: 0 12px; }
+/* primário — o ÚNICO botão sólido dourado da tela */
+.crm-scope .btn-primary { background: var(--brand-gold); color: var(--brand-navy); }
+.crm-scope .btn-primary:hover { background: var(--brand-gold-soft); }
+.crm-scope .btn-primary:active { background: var(--brand-gold-deep); }
+/* secundário — borda 16%, fundo transparente */
+.crm-scope .btn-secondary { background: transparent; color: var(--text); border-color: var(--border-strong); }
+.crm-scope .btn-secondary:hover { background: rgba(2, 13, 37, 0.04); }
+.theme-dark .crm-scope .btn-secondary:hover { background: rgba(255, 255, 255, 0.06); }
+/* fantasma — sem borda, hover fill 6% */
+.crm-scope .btn-ghost { background: transparent; color: var(--text-muted); }
+.crm-scope .btn-ghost:hover { background: rgba(2, 13, 37, 0.04); color: var(--text); }
+.theme-dark .crm-scope .btn-ghost:hover { background: rgba(255, 255, 255, 0.06); }
+/* destrutivo — vermelho, mesmo sistema */
+.crm-scope .btn-danger { background: transparent; color: var(--crit); border-color: var(--crit-soft); }
+.crm-scope .btn-danger:hover { background: var(--crit-soft); }
+/* alias legado: btn-gold === primário */
+.crm-scope .btn-gold { background: var(--brand-gold); color: var(--brand-navy); font-weight: 500; }
+.crm-scope .btn-gold:hover { background: var(--brand-gold-soft); }
+
+/* ── card / pill ── */
+.crm-scope .card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+}
+.crm-scope .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--r-xs);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* ── inputs — 40px, raio 8, borda 8%, foco anel dourado ── */
+.crm-scope .input,
+.crm-scope .textarea {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--text);
+  outline: none;
+  transition: border-color .15s ease-out, box-shadow .15s ease-out;
+}
+.crm-scope .input:hover,
+.crm-scope .textarea:hover { border-color: var(--border-strong); }
+.crm-scope .input:focus,
+.crm-scope .textarea:focus { border-color: var(--border-gold); box-shadow: 0 0 0 3px var(--ring); }
+.crm-scope .input::placeholder,
+.crm-scope .textarea::placeholder { color: var(--text-subtle); }
+.crm-scope .input:disabled { opacity: 0.55; cursor: not-allowed; }
+.crm-scope select.input option { background: var(--surface); color: var(--text); }
+.crm-scope .label { display: block; font-size: 12px; font-weight: 500; color: var(--text-muted); margin-bottom: 8px; }
+
+/* ── row hover affordance ── */
+.crm-scope .crm-row { transition: background .12s; }
+.crm-scope .crm-row:hover { background: var(--surface-hover); }
+
+/* ── quiet "marcar recebido" button ── */
+.crm-scope .fx-baixa {
+  display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px;
+  border-radius: var(--r-xs); border: 1px solid var(--border-strong); background: transparent;
+  font-family: var(--font-sans); font-size: 12px; font-weight: 500; color: var(--text-muted);
+  cursor: pointer; white-space: nowrap; transition: color .12s, border-color .12s, background .12s;
+}
+.crm-scope .fx-baixa:hover { color: var(--ok); border-color: var(--ok); background: var(--ok-soft); }
+
+/* ── custom checkbox ── */
+.crm-scope .fx-check {
+  width: 16px; height: 16px; border-radius: 5px; padding: 0; flex-shrink: 0;
+  border: 1.5px solid var(--border-strong); background: var(--surface);
+  cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+  color: #F5F1E4; transition: border-color .12s, background .12s, box-shadow .12s;
+}
+.crm-scope .fx-check:hover { border-color: var(--accent); }
+.theme-light .crm-scope .fx-check.on, .crm-scope .fx-check.on { background: var(--brand-navy); border-color: var(--brand-navy); }
+.theme-dark .crm-scope .fx-check.on { background: var(--brand-gold); border-color: var(--brand-gold); color: var(--brand-navy); }
+
+/* ── menu item ── */
+.crm-scope .fx-menu-item {
+  display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+  padding: 8px 10px; border: none; background: transparent; border-radius: var(--r-sm);
+  font-size: 12px; font-weight: 500; color: var(--text); cursor: pointer; font-family: var(--font-sans);
+}
+.crm-scope .fx-menu-item:hover { background: var(--surface-hover); }
+
+/* ── suggestion chips + kbd hints ── */
+.crm-scope .crm-chip:hover { border-color: var(--accent) !important; background: var(--accent-soft) !important; }
+.crm-scope .crm-kbd {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px;
+  padding: 0 5px; border-radius: var(--r-xs); background: var(--bg-sunken); border: 1px solid var(--border);
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);
+}
+
+/* ── workspace tabs (Notion-style) ── */
+.crm-scope .crm-tabscroll { scrollbar-width: none; }
+.crm-scope .crm-tabscroll::-webkit-scrollbar { height: 0; width: 0; }
+.crm-scope .crm-tab {
+  display: flex; align-items: center; gap: 7px; height: 32px; flex: 0 1 auto;
+  min-width: 78px; max-width: 188px; padding: 0 5px 0 10px; border-radius: var(--r-sm);
+  border: 1px solid transparent; background: transparent; cursor: pointer; user-select: none;
+  font-family: var(--font-sans); font-size: 13px; font-weight: 500; color: var(--text-muted);
+  letter-spacing: -0.01em; transition: background .12s, color .12s, border-color .12s, box-shadow .12s;
+}
+.crm-scope .crm-tab:hover { background: var(--surface-hover); color: var(--text); }
+.crm-scope .crm-tab.active { background: var(--surface); color: var(--text); border-color: var(--border-strong); box-shadow: var(--shadow-sm); font-weight: 500; }
+.crm-scope .crm-tab-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crm-scope .crm-tab-x {
+  display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px;
+  border-radius: var(--r-xs); color: var(--text-subtle); flex-shrink: 0; opacity: 0;
+  transition: opacity .12s, background .12s, color .12s;
+}
+.crm-scope .crm-tab:hover .crm-tab-x, .crm-scope .crm-tab.active .crm-tab-x { opacity: 0.7; }
+.crm-scope .crm-tab-x:hover { background: var(--bg-sunken); color: var(--text); opacity: 1; }
+.crm-scope .crm-addtab {
+  flex-shrink: 0; width: 28px; height: 28px; border-radius: var(--r-sm); border: none; background: transparent;
+  color: var(--text-subtle); display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: background .12s, color .12s; margin-left: 2px;
+}
+.crm-scope .crm-addtab:hover { background: var(--surface-hover); color: var(--text); }
+.crm-scope .crm-split-grab {
+  flex: 0 0 10px; align-self: stretch; cursor: col-resize; position: relative;
+  display: flex; align-items: stretch; justify-content: center; background: transparent;
+}
+.crm-scope .crm-split-line { width: 1px; background: var(--border); transition: background .12s, width .12s; }
+.crm-scope .crm-split-grab:hover .crm-split-line, .crm-scope .crm-split-grab:active .crm-split-line { width: 2px; background: var(--accent); }
+
+/* ── animations (transform-only so content is never stuck invisible) ── */
+@keyframes crmPopIn { from { transform: scale(0.96) translateY(8px); } to { transform: scale(1) translateY(0); } }
+.crm-scope .crm-pop-in { animation: crmPopIn .18s cubic-bezier(.22,1,.36,1); }
+@keyframes crmLexiaIn { from { transform: translateY(18px) scale(0.94); } to { transform: translateY(0) scale(1); } }
+.crm-scope .crm-lexia-in { transform-origin: bottom right; animation: crmLexiaIn .26s cubic-bezier(.22,1,.36,1); }
+@keyframes crmOrbRing { 0% { transform: scale(1); opacity: 0.55; } 70% { transform: scale(1.7); opacity: 0; } 100% { transform: scale(1.7); opacity: 0; } }
+.crm-orb-ring { position: absolute; inset: 0; border-radius: 50%; border: 2px solid #C0A147; animation: crmOrbRing 2.6s ease-out infinite; }
+@keyframes crmFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+.crm-orb-float { animation: crmFloat 3.4s ease-in-out infinite; }
+@keyframes crmDot { 0%,80%,100% { transform: translateY(0); opacity: 0.4; } 40% { transform: translateY(-4px); opacity: 1; } }
+.crm-scope .crm-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); animation: crmDot 1.2s ease-in-out infinite; }
+@keyframes crmToastIn { from { transform: translateY(10px); } to { transform: translateY(0); } }
+.crm-scope .crm-toast { animation: crmToastIn .2s ease-out; }
+
+/* ── LexIA unified command bar (dock pill + acrylic command overlay) ──
+ * Elevation is subtle shadow + border 16% — NO gold aurora/glow (design rule).
+ * The animated conic orb is the brand mark and stays. */
+@keyframes lexSpin { to { transform: rotate(360deg); } }
+@keyframes lexFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes lexPulse { 0% { transform: scale(1); opacity: .65; } 70%,100% { transform: scale(1.9); opacity: 0; } }
+
+.crm-scope .lex-orb-grad { background: conic-gradient(from 0deg, #f1dda6, #C0A147, #9a7f2e, #e6cd86, #C0A147, #f1dda6); animation: lexSpin 9s linear infinite; }
+.crm-scope .lex-back { animation: lexFade .18s ease-out; }
+.crm-scope .lex-pulse-ring { animation: lexPulse 2.6s ease-out infinite; }
+.crm-scope .lex-pill { transition: transform .2s cubic-bezier(.22,1,.36,1), box-shadow .2s ease, border-color .2s ease; }
+.crm-scope .lex-pill:hover { transform: translateX(-50%) translateY(-2px); }
+/* dock surface: only the collapsed pill lifts on hover (open panel stays put) */
+.crm-scope .lex-dock[data-collapsed="true"]:hover {
+  transform: translateX(-50%) translateY(-2px) !important;
+  box-shadow: 0 14px 36px rgba(2,13,37,0.20), 0 1px 3px rgba(2,13,37,0.12), inset 0 1px 0 rgba(255,255,255,0.16) !important;
+}
+/* command-palette row: hover/focused = gold fill 8% + a clean 3px left bar
+ * (inset top/bottom, rounded only on the right — never the full rounded edge). */
+.crm-scope .lex-row { position: relative; transition: background .1s ease; }
+.crm-scope .lex-row:hover { background: var(--accent-soft); }
+.crm-scope .lex-row.active { background: var(--accent-soft); }
+.crm-scope .lex-row.active::before {
+  content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px;
+  border-radius: 0 3px 3px 0; background: var(--accent-strong);
+}
+
+/* theme-aware frosted glass (css.glass recipe) — very transparent white-tinted
+ * fill + ~16px blur + light edge + soft shadow. The blurred backdrop (and the
+ * document behind the docked panel) reads clearly through the glass. */
+.crm-scope {
+  --lex-glass-base: 255, 255, 255;
+  --lex-acrylic: rgba(var(--lex-glass-base), 0.75);
+  --lex-acrylic-pill: rgba(var(--lex-glass-base), 0.80);
+  --lex-acrylic-border: rgba(2, 13, 37, 0.08);
+  --lex-blur: blur(34px) saturate(1.7);
+  --lex-glass-shadow: 0 12px 40px rgba(2, 13, 37, 0.08);
+}
+.theme-dark .crm-scope {
+  --lex-glass-base: 18, 32, 62;
+  --lex-acrylic: rgba(var(--lex-glass-base), 0.35);
+  --lex-acrylic-pill: rgba(var(--lex-glass-base), 0.45);
+  --lex-acrylic-border: rgba(255, 255, 255, 0.16);
+  --lex-blur: blur(34px) saturate(1.7);
+  --lex-glass-shadow: 0 4px 30px rgba(0, 0, 0, 0.25);
+}
+
+/* right-dock (pinned-to-side) slide-in for the LexIA bar */
+@keyframes lexRightIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+.crm-scope .lex-rightdock-in { animation: lexRightIn .22s cubic-bezier(.22,1,.36,1); }
+
+/* LexIA aura edge — used on the launcher ORB only: a gold conic light that
+ * SWEEPS around the border: the gradient angle is animated via @property so it
+ * rotates in place (the element never moves), masked to a thin rim (padding +
+ * mask-composite). From the "Clientes, Casos & Agenda" design. */
+@property --lex-aura-angle { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+@keyframes lexAuraSpin { to { --lex-aura-angle: 360deg; } }
+.crm-scope .lex-aura-edge { position: relative; }
+.crm-scope .lex-aura-edge::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1.4px; pointer-events: none; z-index: 3;
+  background: conic-gradient(from var(--lex-aura-angle), rgba(241,221,166,0), #C0A147, #f1dda6, #9a7f2e, rgba(192,161,71,0), #C0A147, rgba(241,221,166,0));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  opacity: var(--lex-edge-opacity, .9); animation: lexAuraSpin var(--lex-edge-dur, 7s) linear infinite;
+}
+/* pulsing gold glow behind the orb's spark */
+@keyframes lexIconGlow { 0%,100% { opacity: .35; transform: scale(0.86); } 50% { opacity: .85; transform: scale(1.18); } }
+.crm-scope .lex-icon-glow { animation: lexIconGlow 3.2s ease-in-out infinite; }
+
+/* aurora blobs behind the open LexIA panel — the soft glow the popup grows into */
+@keyframes lexBlobA { 0%,100% { transform: translate(0,0); } 50% { transform: translate(7%,5%); } }
+@keyframes lexBlobB { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-6%,7%); } }
+.crm-scope .lex-blob-a { animation: lexBlobA 11s ease-in-out infinite; }
+.crm-scope .lex-blob-b { animation: lexBlobB 13s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .crm-scope .crm-pop-in, .crm-scope .crm-lexia-in, .crm-orb-ring,
+  .crm-orb-float, .crm-scope .crm-dot, .crm-scope .crm-toast,
+  .crm-scope .lex-orb-grad, .crm-scope .lex-pulse-ring, .crm-scope .lex-rightdock-in,
+  .crm-scope .lex-blob-a, .crm-scope .lex-blob-b,
+  .crm-scope .lex-aura-edge::before, .crm-scope .lex-icon-glow { animation: none !important; }
+}

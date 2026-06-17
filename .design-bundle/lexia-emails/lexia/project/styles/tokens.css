@@ -1,0 +1,393 @@
+/* ============================================================================
+   LexIA · DESIGN TOKENS
+   Fundação única do sistema. Minimalista, navy + dourado. Ref.: Linear/Arc/Raycast.
+   Organizado por categoria. Nomes preservados p/ cascata em toda a aplicação.
+   Regra de ouro: dourado é assinatura — usado com extrema parcimônia.
+   ============================================================================ */
+
+:root {
+  /* ---- MARCA -------------------------------------------------------------- */
+  --brand-navy: #020D25;       /* navy da marca (base de tudo) */
+  --brand-gold: #C0A147;       /* dourado da marca (assinatura) */
+  --brand-gold-soft: #D8BE7A;  /* dourado claro p/ hover de CTA */
+  --brand-gold-deep: #9A7F2E;  /* dourado profundo */
+
+  /* ---- TIPOGRAFIA --------------------------------------------------------- */
+  /* Um único par de famílias. Dois pesos APENAS. */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+  --font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* escala modular 1.25 — nenhum outro tamanho */
+  --t-12: 12px;   /* legenda, metadado, badge, coluna formato */
+  --t-14: 14px;   /* corpo, labels, valores, itens de lista */
+  --t-16: 16px;   /* subtítulo, título de card pequeno */
+  --t-20: 20px;   /* título de seção */
+  --t-25: 25px;   /* título de página */
+
+  /* dois pesos, nada além */
+  --fw-body: 400;     /* corpo */
+  --fw-medium: 500;   /* títulos, labels, valores */
+
+  --lh-body: 1.5;     /* corpo */
+  --lh-title: 1.2;    /* títulos */
+  --ls-label: 0.08em; /* labels caixa alta */
+
+  /* ---- ESPAÇAMENTO (grade de 4px) ---------------------------------------- */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-7: 32px;
+  --s-8: 40px;
+  --s-9: 56px;
+  --s-10: 72px;
+
+  --container: 1200px;   /* largura máx. de conteúdo */
+  --gutter: 32px;        /* padding lateral */
+  --modal-w: 640px;      /* modais e paletas de comando */
+
+  /* ---- RAIOS (concêntricos: 6 / 8 / 10 / 14) ----------------------------- */
+  --r-xs: 6px;   /* badges, chips, inputs pequenos, kbd, tooltips */
+  --r-sm: 8px;   /* containers de ícone, botões, inputs */
+  --r-md: 10px;  /* itens de lista, linhas destacadas */
+  --r-lg: 14px;  /* cards, modais, popovers */
+  /* aliases legados — fixados ao topo da escala p/ nada exceder 14px */
+  --r-xl: 14px;
+  --r-2xl: 14px;
+
+  /* ---- ALTURAS DE CONTROLE ----------------------------------------------- */
+  --h-control: 40px;   /* padrão: botão, input, item de sidebar+ */
+  --h-compact: 32px;   /* compacto: aba, botão-fantasma, pill grande */
+  --h-row: 64px;       /* linha de tabela */
+
+  /* ---- MOVIMENTO --------------------------------------------------------- */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur: 160ms;        /* 150–200ms ease-out */
+}
+
+/* ============================================================================
+   SUPERFÍCIES & COR — por tema
+   Exatamente 3 níveis de superfície navy. Bordas = branco com alpha (3 forças).
+   ============================================================================ */
+
+/* ---- TEMA ESCURO (casa do sistema) --------------------------------------- */
+.theme-dark {
+  /* superfícies navy — 3 níveis, nunca um quarto */
+  --bg: #020D25;            /* nível 1 · fundo da página */
+  --bg-soft: #0A1733;       /* nível 2 · card / sidebar / cabeçalho */
+  --surface: #0A1733;       /* nível 2 · (mesmo que bg-soft: separa por borda) */
+  --surface-hover: #12214A; /* hover/seleção sutil sobre nível 2 */
+  --bg-elevated: #13234C;   /* nível 3 · modal / popover / toast elevado */
+
+  /* preenchimento sutil (containers de ícone, kbd, badge neutro) — branco a ~6% */
+  --bg-sunken: rgba(255, 255, 255, 0.06);
+
+  /* bordas — uma cor, três forças */
+  --border: rgba(255, 255, 255, 0.08);          /* padrão */
+  --border-strong: rgba(255, 255, 255, 0.16);   /* hover */
+  --border-gold: rgba(192, 161, 71, 0.40);       /* foco / seleção */
+
+  /* texto — contraste WCAG ≥ 4.5:1 sobre o navy */
+  --text: #F5F1E4;                          /* primário */
+  --text-muted: rgba(245, 241, 228, 0.66);  /* secundário */
+  --text-subtle: rgba(245, 241, 228, 0.44); /* terciário / placeholders */
+
+  /* dourado — anel de foco, item ativo, CTA, marca. NADA além. */
+  --accent: #D8BE7A;                          /* dourado p/ texto/ícone sobre navy */
+  --accent-strong: #C0A147;                   /* dourado pleno (CTA, marca) */
+  --accent-soft: rgba(192, 161, 71, 0.12);    /* fill de seleção 10–12% */
+  --accent-line: #C0A147;                     /* barra de 3px do item focado */
+  --ring: rgba(192, 161, 71, 0.55);           /* anel de foco */
+
+  /* cores semânticas — máx. 4 + dourado p/ IA */
+  --ok: #4FC07D;       --ok-soft: rgba(79, 192, 125, 0.12);    /* finalizado/sucesso */
+  --warn: #E0B257;     --warn-soft: rgba(224, 178, 87, 0.14);  /* atenção/em revisão */
+  --crit: #E07A60;     --crit-soft: rgba(224, 122, 96, 0.12);  /* crítico/vencido */
+  --neutral: var(--text-muted); --neutral-soft: rgba(255, 255, 255, 0.06); /* rascunho/inativo */
+  --ai: #C0A147;       --ai-soft: rgba(192, 161, 71, 0.12);    /* IA / geração */
+
+  /* compat. legada — mapeada às semânticas (sem azul/violeta novos) */
+  --fin-pos: var(--ok);
+  --fin-neg: var(--crit);
+  --crm-blue: var(--text-muted);
+
+  /* elevação — 2 níveis no máximo, sem glow/cor */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.40);
+  --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.44), 0 2px 6px rgba(0, 0, 0, 0.30);
+  --shadow-lg: var(--shadow-md);
+
+  --overlay: rgba(2, 13, 37, 0.70);  /* escurecimento de modal ~70% */
+}
+
+/* ---- TEMA CLARO ---------------------------------------------------------- */
+.theme-light {
+  --bg: #FAFAF7;
+  --bg-soft: #FFFFFF;
+  --surface: #FFFFFF;
+  --surface-hover: #F2F1EC;
+  --bg-elevated: #FFFFFF;
+
+  --bg-sunken: rgba(2, 13, 37, 0.05);
+
+  --border: rgba(2, 13, 37, 0.08);
+  --border-strong: rgba(2, 13, 37, 0.16);
+  --border-gold: rgba(154, 127, 46, 0.45);
+
+  --text: #020D25;
+  --text-muted: rgba(2, 13, 37, 0.64);
+  --text-subtle: rgba(2, 13, 37, 0.44);
+
+  --accent: #8A6B22;                          /* dourado escuro p/ contraste em claro */
+  --accent-strong: #9A7F2E;
+  --accent-soft: rgba(192, 161, 71, 0.14);
+  --accent-line: #C0A147;
+  --ring: rgba(192, 161, 71, 0.45);
+
+  --ok: #1F8A4C;       --ok-soft: rgba(31, 138, 76, 0.10);
+  --warn: #B47E12;     --warn-soft: rgba(180, 126, 18, 0.12);
+  --crit: #C0492F;     --crit-soft: rgba(192, 73, 47, 0.10);
+  --neutral: var(--text-muted); --neutral-soft: rgba(2, 13, 37, 0.05);
+  --ai: #9A7F2E;       --ai-soft: rgba(192, 161, 71, 0.12);
+
+  --fin-pos: var(--ok);
+  --fin-neg: var(--crit);
+  --crm-blue: var(--text-muted);
+
+  --shadow-sm: 0 1px 2px rgba(2, 13, 37, 0.05);
+  --shadow-md: 0 12px 30px rgba(2, 13, 37, 0.10), 0 2px 6px rgba(2, 13, 37, 0.05);
+  --shadow-lg: var(--shadow-md);
+
+  --overlay: rgba(2, 13, 37, 0.45);
+}
+
+/* ============================================================================
+   BASE
+   ============================================================================ */
+.app-screen {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--t-14);
+  font-weight: var(--fw-body);
+  line-height: var(--lh-body);
+  font-feature-settings: 'cv11', 'ss01';
+  -webkit-font-smoothing: antialiased;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  letter-spacing: -0.01em;
+}
+.app-screen *,
+.app-screen *::before,
+.app-screen *::after { box-sizing: border-box; }
+
+/* rótulo de seção / cabeçalho de tabela */
+.eyebrow {
+  font-size: 11px;
+  font-weight: var(--fw-medium);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-label);
+  color: var(--text-subtle);
+}
+
+/* números tabulares */
+.tnum { font-variant-numeric: tabular-nums; }
+
+/* ============================================================================
+   BOTÕES — primário(dourado) / secundário / fantasma / destrutivo
+   Alturas: 40 padrão, 32 compacto. Peso 500. Raio 8.
+   ============================================================================ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  height: var(--h-control);
+  padding: 0 var(--s-4);
+  border-radius: var(--r-sm);
+  font-family: var(--font-sans);
+  font-size: var(--t-14);
+  font-weight: var(--fw-medium);
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition: background var(--dur) ease-out, border-color var(--dur) ease-out, filter var(--dur) ease-out;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-sm { height: var(--h-compact); padding: 0 var(--s-3); }
+
+/* primário — ÚNICO botão sólido dourado por tela */
+.btn-primary {
+  background: var(--brand-gold);
+  color: var(--brand-navy);
+  font-weight: var(--fw-medium);
+}
+.btn-primary:hover { background: var(--brand-gold-soft); }
+.btn-primary:active { background: var(--brand-gold-deep); }
+
+/* secundário — borda 16%, fundo transparente */
+.btn-secondary {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.btn-secondary:hover { background: rgba(255, 255, 255, 0.06); }
+.theme-light .btn-secondary:hover { background: rgba(2, 13, 37, 0.04); }
+.btn-secondary:active { background: rgba(255, 255, 255, 0.10); }
+.theme-light .btn-secondary:active { background: rgba(2, 13, 37, 0.07); }
+
+/* fantasma — sem borda, hover fill 6% */
+.btn-ghost {
+  background: transparent;
+  color: var(--text-muted);
+}
+.btn-ghost:hover { background: rgba(255, 255, 255, 0.06); color: var(--text); }
+.theme-light .btn-ghost:hover { background: rgba(2, 13, 37, 0.04); }
+
+/* destrutivo — vermelho, mesmo sistema */
+.btn-danger {
+  background: transparent;
+  color: var(--crit);
+  border-color: var(--crit-soft);
+}
+.btn-danger:hover { background: var(--crit-soft); }
+
+/* alias legado: btn-gold === primário */
+.btn-gold { background: var(--brand-gold); color: var(--brand-navy); font-weight: var(--fw-medium); }
+.btn-gold:hover { background: var(--brand-gold-soft); }
+
+/* ============================================================================
+   PILLS / BADGES — raio 6, peso 500, fill semântico 10–12% (sem borda)
+   ============================================================================ */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: 22px;
+  padding: 0 var(--s-2);
+  border-radius: var(--r-xs);
+  font-size: var(--t-12);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+/* ============================================================================
+   CARDS — raio 14, borda 8% (fill OU borda, nunca os dois decorativos)
+   ============================================================================ */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+}
+
+/* container de ícone — quadrado raio 8, fill 10–12%, sem borda */
+.icon-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-sm);
+  background: var(--bg-sunken);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* ============================================================================
+   FORMULÁRIOS — input 40, raio 8, borda 8%, foco anel dourado
+   ============================================================================ */
+.input,
+.textarea {
+  width: 100%;
+  height: var(--h-control);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 0 var(--s-3);
+  font-family: var(--font-sans);
+  font-size: var(--t-14);
+  font-weight: var(--fw-body);
+  color: var(--text);
+  outline: none;
+  transition: border-color var(--dur), box-shadow var(--dur);
+}
+.textarea { height: auto; padding: 10px var(--s-3); line-height: var(--lh-body); resize: vertical; }
+.input:hover,
+.textarea:hover { border-color: var(--border-strong); }
+.input:focus,
+.textarea:focus {
+  border-color: var(--border-gold);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+.input::placeholder,
+.textarea::placeholder { color: var(--text-subtle); }
+.input[aria-invalid="true"],
+.textarea[aria-invalid="true"] { border-color: var(--crit); }
+
+.label {
+  display: block;
+  font-size: var(--t-12);
+  font-weight: var(--fw-medium);
+  color: var(--text-muted);
+  margin-bottom: var(--s-2);
+}
+.field-error { font-size: var(--t-12); color: var(--crit); margin-top: var(--s-2); }
+
+/* ============================================================================
+   TECLAS / TOOLTIPS
+   ============================================================================ */
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--r-xs);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.tooltip {
+  font-size: var(--t-12);
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xs);
+  padding: 6px var(--s-2);
+  box-shadow: var(--shadow-md);
+}
+
+/* ============================================================================
+   UTILITÁRIOS
+   ============================================================================ */
+.divider { height: 1px; background: var(--border); }
+
+.app-screen ::-webkit-scrollbar { width: 10px; height: 10px; }
+.app-screen ::-webkit-scrollbar-track { background: transparent; }
+.app-screen ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; }
+
+/* skeleton — branco 6% pulsando, mesma geometria do conteúdo */
+@keyframes skel-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+.skeleton {
+  background: var(--bg-sunken);
+  border-radius: var(--r-xs);
+  animation: skel-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse-soft { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+.pulse { animation: pulse-soft 2s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton, .pulse { animation: none !important; }
+}

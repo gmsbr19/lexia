@@ -1,0 +1,23 @@
+# Lexia — Caddy reverse proxy. Install: sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
+# then: sudo systemctl reload caddy
+#
+# Caddy obtains/renews the TLS certificate automatically (the DNS A record must
+# already point at this VPS). Replace lexia.example.com.br with the real domain.
+
+lexia.example.com.br {
+	encode zstd gzip
+
+	header {
+		# HSTS lives here (where TLS terminates), not in next.config.ts.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		# Hide the proxy banner.
+		-Server
+	}
+
+	# Optional second wall: only serve the office/partner IPs. Uncomment and
+	# fill in to enable.
+	# @outside not remote_ip 200.0.113.10 198.51.100.22
+	# respond @outside "Acesso restrito" 403
+
+	reverse_proxy localhost:3000
+}

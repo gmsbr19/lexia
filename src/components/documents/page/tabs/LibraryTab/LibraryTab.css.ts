@@ -12,8 +12,8 @@ export const libraryHeader = style({
 
 export const libraryTitle = style({
   margin: 0,
-  fontSize: 24,
-  fontWeight: 600,
+  fontSize: 25,
+  fontWeight: 500,
   letterSpacing: "-0.025em",
   color: tokens.color.text,
 })
@@ -24,53 +24,12 @@ export const librarySubtitle = style({
   color: tokens.color.textMuted,
 })
 
+// Shared atom — reused by the financeiro KPI grids (ContasTab / CasosSemFeeTab).
 export const statsGrid = style({
   display: "grid",
   gridTemplateColumns: "repeat(4, 1fr)",
   gap: 12,
   marginBottom: 20,
-})
-
-export const statCard = style({
-  padding: "14px 16px",
-  background: tokens.color.surface,
-  border: `1px solid ${tokens.color.border}`,
-  borderRadius: 16,
-  boxShadow: tokens.color.shadowSm,
-})
-
-export const statLabel = style({
-  fontSize: "11.5px",
-  color: tokens.color.textMuted,
-})
-
-export const statValueRow = style({
-  display: "flex",
-  alignItems: "baseline",
-  gap: 8,
-  marginTop: 4,
-})
-
-export const statValue = style({
-  fontSize: 22,
-  fontWeight: 600,
-  color: tokens.color.text,
-  letterSpacing: "-0.02em",
-})
-
-export const statTrend = recipe({
-  base: {
-    fontSize: 11,
-    fontWeight: 500,
-  },
-  variants: {
-    positive: {
-      true: { color: "#2ea043" },
-    },
-    negative: {
-      true: { color: "#d97706" },
-    },
-  },
 })
 
 export const filterBar = style({
@@ -126,7 +85,7 @@ export const segmentedButton = recipe({
     border: "none",
     background: "transparent",
     color: tokens.color.textMuted,
-    fontSize: "11.5px",
+    fontSize: "12px",
     fontWeight: 500,
     cursor: "pointer",
     boxShadow: "none",
@@ -164,8 +123,8 @@ export const tableHeadRow = style({
 export const tableHeadCell = style({
   textAlign: "left",
   padding: "10px 16px",
-  fontSize: "10.5px",
-  fontWeight: 600,
+  fontSize: "11px",
+  fontWeight: 500,
   color: tokens.color.textSubtle,
   letterSpacing: "0.08em",
   textTransform: "uppercase",
@@ -230,13 +189,6 @@ export const documentSeparator = style({
   display: "inline-block",
 })
 
-export const documentAiTag = style({
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 3,
-  color: tokens.color.accent,
-})
-
 export const documentMetaTextWrap = style({
   display: "flex",
   alignItems: "center",
@@ -252,17 +204,17 @@ export const avatar = style({
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  fontSize: "9.5px",
-  fontWeight: 600,
+  fontSize: "10px",
+  fontWeight: 500,
 })
 
 export const documentClientText = style({
-  fontSize: 12.5,
+  fontSize: 12,
   color: tokens.color.textMuted,
 })
 
 export const documentDateText = style({
-  fontSize: 12.5,
+  fontSize: 12,
   color: tokens.color.textSubtle,
 })
 
@@ -270,15 +222,15 @@ export const documentStatusPill = style({
   display: "inline-flex",
   alignItems: "center",
   gap: 6,
-  fontSize: 11,
+  fontSize: 12,
   fontWeight: 500,
   padding: "3px 8px",
-  borderRadius: 999,
+  borderRadius: 6,
 })
 
 export const documentStatusDot = style({
-  width: 5,
-  height: 5,
+  width: 6,
+  height: 6,
   borderRadius: "50%",
   background: "currentColor",
   display: "inline-block",
@@ -306,11 +258,108 @@ export const footerBar = style({
   padding: "12px 16px",
   borderTop: `1px solid ${tokens.color.border}`,
   background: tokens.color.bgSoft,
-  fontSize: "11.5px",
+  fontSize: "12px",
   color: tokens.color.textMuted,
 })
 
-export const pager = style({
+export const formatoText = style({
+  fontSize: 11,
+  fontWeight: 500,
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
+  color: tokens.color.textSubtle,
+})
+
+// ── Row "..." menu ────────────────────────────────────────────────────────
+export const rowMenuWrap = style({
+  position: "relative",
+  display: "inline-flex",
+})
+
+export const rowMenu = style({
+  position: "absolute",
+  top: "calc(100% + 4px)",
+  right: 0,
+  zIndex: 20,
+  minWidth: 200,
+  padding: 4,
+  background: tokens.color.surface,
+  border: `1px solid ${tokens.color.border}`,
+  borderRadius: tokens.radius.md,
+  boxShadow: tokens.color.shadowMd,
   display: "flex",
-  gap: 4,
+  flexDirection: "column",
+  gap: 2,
+})
+
+export const rowMenuItem = style({
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  width: "100%",
+  height: 32,
+  padding: "0 10px",
+  borderRadius: tokens.radius.sm,
+  border: "none",
+  background: "transparent",
+  color: tokens.color.text,
+  fontSize: 13,
+  fontFamily: tokens.font.sans,
+  textAlign: "left",
+  cursor: "pointer",
+  selectors: {
+    "&:hover": { background: tokens.color.bgSoft },
+    "&:disabled": { opacity: 0.5, cursor: "default" },
+  },
+})
+
+export const rowMenuItemDanger = style({
+  color: "var(--crit)",
+  selectors: {
+    "&:hover": { background: "rgba(220, 38, 38, 0.08)" },
+  },
+})
+
+export const rowMenuDivider = style({
+  height: 1,
+  margin: "3px 4px",
+  background: tokens.color.border,
+})
+
+// ── Zero state ────────────────────────────────────────────────────────────
+export const emptyState = style({
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 6,
+  padding: "64px 24px",
+  textAlign: "center",
+})
+
+export const emptyIcon = style({
+  width: 56,
+  height: 56,
+  borderRadius: 14,
+  background: tokens.color.bgSunken,
+  color: tokens.color.textSubtle,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  marginBottom: 8,
+})
+
+export const emptyTitle = style({
+  fontSize: 16,
+  fontWeight: 500,
+  color: tokens.color.text,
+  letterSpacing: "-0.01em",
+})
+
+export const emptyDesc = style({
+  fontSize: 14,
+  color: tokens.color.textMuted,
+  maxWidth: 360,
+  lineHeight: 1.5,
+  marginBottom: 6,
 })

@@ -1,0 +1,30 @@
+# Lexia — Next.js app unit. Install: sudo cp deploy/lexia.service /etc/systemd/system/
+# then: sudo systemctl daemon-reload && sudo systemctl enable --now lexia
+#
+# ExecStartPre runs `prisma migrate deploy` so the app can never start against a
+# stale schema. Logs go to journald: journalctl -u lexia -f
+[Unit]
+Description=Lexia (Next.js)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=lexia
+Group=lexia
+WorkingDirectory=/srv/lexia
+# .env is the single source of env vars (DATABASE_URL must be an ABSOLUTE
+# file: path — a relative one breaks under the systemd cwd).
+EnvironmentFile=/srv/lexia/.env
+Environment=NODE_ENV=production
+Environment=PUPPETEER_SKIP_DOWNLOAD=1
+ExecStartPre=/usr/bin/npx prisma migrate deploy
+ExecStart=/usr/bin/npm run start
+Restart=always
+RestartSec=3
+# Puppeteer/Chromium needs headroom; keep the unit from eating the whole VPS.
+MemoryHigh=1536M
+MemoryMax=1792M
+
+[Install]
+WantedBy=multi-user.target

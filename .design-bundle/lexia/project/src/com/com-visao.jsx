@@ -1,0 +1,204 @@
+// LexIA · Comercial — Tab 1 · Visão geral (executive cockpit).
+
+// ---------- leads vs conversões trend (dual-series) ----------
+const CmTrendChart = ({ data }) => {
+  const W = 720, H = 210, padL = 10, padR = 10, padT = 16, padB = 30;
+  const iw = W - padL - padR, ih = H - padT - padB;
+  const max = Math.max(4, ...data.map((d) => d.leads));
+  const x = (i) => padL + (data.length === 1 ? iw / 2 : (i / (data.length - 1)) * iw);
+  const y = (v) => padT + ih - (v / max) * ih;
+  const line = (key) => data.map((d, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(d[key]).toFixed(1)}`).join(' ');
+  const leadPts = data.map((d, i) => [x(i), y(d.leads)]);
+  const area = `${line('leads')} L${x(data.length - 1).toFixed(1)} ${y(0).toFixed(1)} L${x(0).toFixed(1)} ${y(0).toFixed(1)} Z`;
+  const grid = [0, 0.5, 1].map((f) => max * f);
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
+      <defs>
+        <linearGradient id="cmTrendArea" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.16" />
+          <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.01" />
+        </linearGradient>
+      </defs>
+      {grid.map((g, i) => <line key={i} x1={padL} y1={y(g)} x2={W - padR} y2={y(g)} stroke="var(--border)" strokeWidth="1" />)}
+      <path d={area} fill="url(#cmTrendArea)" />
+      <path d={line('leads')} fill="none" stroke="var(--accent)" strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round" />
+      <path d={line('conv')} fill="none" stroke="var(--cm-pos,#2E9E5B)" strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round" />
+      {data.map((d, i) => (
+        <g key={i}>
+          <circle cx={x(i)} cy={y(d.leads)} r="3.4" fill="var(--accent)" stroke="var(--surface)" strokeWidth="1.6" />
+          <circle cx={x(i)} cy={y(d.conv)} r="3.4" fill="var(--cm-pos,#2E9E5B)" stroke="var(--surface)" strokeWidth="1.6" />
+          <text x={x(i)} y={H - 9} textAnchor="middle" fontSize="11" fill="var(--text-subtle)" style={{ fontFamily: 'var(--font-sans)' }}>{d.label}</text>
+        </g>
+      ))}
+    </svg>
+  );
+};
+
+const CmLegend = ({ items }) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+    {items.map((it) => (
+      <span key={it.label} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--text-muted)' }}>
+        <span style={{ width: 12, height: 3, borderRadius: 2, background: it.color }} />{it.label}
+      </span>
+    ))}
+  </div>
+);
+
+// ---------- channel mix ----------
+const CmChannelMix = ({ channels }) => {
+  const maxInvest = Math.max(1, ...channels.map((c) => c.investimento));
+  const totalLeads = channels.reduce((a, c) => a + c.leads, 0);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {channels.map((c) => {
+        const dot = c.key === 'Google Ads' ? '#3B7DDD' : c.key === 'Meta Ads' ? '#8B5CF6' : '#2E9E5B';
+        return (
+          <div key={c.key} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+              <span style={{ width: 9, height: 9, borderRadius: 3, background: dot, flexShrink: 0 }} />
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', flex: 1 }}>{c.label}</span>
+              <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>ROAS</span>
+              <CmNum size={12.5} color={c.roas == null ? 'var(--text-subtle)' : c.roas >= 1 ? 'var(--cm-pos,#2E9E5B)' : 'var(--cm-neg,#C0492F)'}>{cmRoas(c.roas)}</CmNum>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
+              {[['Leads', cmInt(c.leads)], ['Conversões', cmInt(c.conversoes)], ['Investimento', c.investimento ? cmCompact(c.investimento) : '—']].map(([l, v]) => (
+                <div key={l} style={{ background: 'var(--bg-soft)', border: '1px solid var(--border)', borderRadius: 9, padding: '8px 10px' }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>{l}</div>
+                  <CmNum size={14} weight={600}>{v}</CmNum>
+                </div>
+              ))}
+            </div>
+            <div style={{ height: 5, borderRadius: 4, background: 'var(--bg-sunken)', overflow: 'hidden' }}>
+              <div style={{ width: `${totalLeads ? (c.leads / totalLeads) * 100 : 0}%`, height: '100%', background: dot, opacity: 0.85, borderRadius: 4 }} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+// ---------- top campanhas mini-table ----------
+const CmTopCampanhas = ({ stats, onView }) => {
+  const rows = stats.filter((c) => c.investimento > 0).sort((a, b) => (b.roas || 0) - (a.roas || 0)).slice(0, 5);
+  if (rows.length === 0) return <CmEmpty icon="megaphone" title="Sem investimento no período" desc="Registre um gasto em uma campanha para acompanhar o ROAS por aqui." />;
+  return (
+    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <thead><tr><CmTh>Campanha</CmTh><CmTh align="right">Invest.</CmTh><CmTh align="right">Contratado</CmTh><CmTh align="right">ROAS</CmTh></tr></thead>
+      <tbody>
+        {rows.map((c) => (
+          <tr key={c.id} className="cm-rowlink" onClick={() => onView && onView(c.id)} style={{ borderTop: '1px solid var(--border)', cursor: onView ? 'pointer' : 'default' }}>
+            <td style={{ padding: '10px 14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ width: 14, height: 14, borderRadius: 4, background: c.plataforma === 'Google Ads' ? '#3B7DDD' : '#8B5CF6', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 800, flexShrink: 0 }}>{c.plataforma === 'Google Ads' ? 'G' : 'M'}</span>
+                <span style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200 }}>{c.nome}</span>
+              </div>
+            </td>
+            <td style={{ padding: '10px 14px', textAlign: 'right' }}><CmNum size={12} weight={500} color="var(--text-muted)">{cmCompact(c.investimento)}</CmNum></td>
+            <td style={{ padding: '10px 14px', textAlign: 'right' }}><CmNum size={12}>{cmCompact(c.valorContratado)}</CmNum></td>
+            <td style={{ padding: '10px 14px', textAlign: 'right' }}><CmNum size={13} color={c.roas >= 1 ? 'var(--cm-pos,#2E9E5B)' : 'var(--cm-neg,#C0492F)'}>{cmRoas(c.roas)}</CmNum></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+};
+
+// ---------- main ----------
+const CmVisao = ({ state, ref0, period, scopeLabel, onNew, onLead, onGoCampanhas, onGoLeads }) => {
+  const { useMemo } = React;
+  const { leads, gastos, campaigns } = state;
+  const k = useMemo(() => cmKpis(leads, gastos, ref0, period), [leads, gastos, ref0, period]);
+  const prev = useMemo(() => cmKpis(leads, gastos, cmShiftRef(ref0, period, -1), period), [leads, gastos, ref0, period]);
+  const trend = useMemo(() => cmTrend(leads, ref0, period), [leads, ref0, period]);
+  const channels = useMemo(() => cmChannels(leads, gastos, campaigns, ref0, period), [leads, gastos, campaigns, ref0, period]);
+  const stats = useMemo(() => cmCampaignStats(campaigns, leads, gastos, ref0, period), [campaigns, leads, gastos, ref0, period]);
+
+  const noLeads = k.leads === 0;
+  const noSpend = k.investimento === 0;
+
+  const KPI = [
+    { label: 'Leads', value: cmInt(k.leads), delta: cmDelta(k.leads, prev.leads), icon: 'userPlus', accent: 'gold' },
+    { label: 'Conversões', value: cmInt(k.conversoes), delta: cmDelta(k.conversoes, prev.conversoes), icon: 'handshake' },
+    { label: 'Taxa de conversão', value: cmPct(k.taxaConv), delta: cmDelta(k.taxaConv, prev.taxaConv), suffix: 'pp', icon: 'percent' },
+    { label: 'Investimento em anúncios', value: cmCompact(k.investimento), delta: cmDelta(k.investimento, prev.investimento), icon: 'coins' },
+    { label: 'Valor contratado', value: cmCompact(k.valorContratado), delta: cmDelta(k.valorContratado, prev.valorContratado), icon: 'banknote', tone: 'pos' },
+    { label: 'ROAS', value: cmRoas(k.roas), delta: cmDelta(k.roas, prev.roas), icon: 'target', accent: 'gold', tone: k.roas != null ? (k.roas >= 1 ? 'pos' : 'neg') : undefined },
+    { label: 'ROI', value: k.roi == null ? '—' : cmPct(k.roi, 0), delta: cmDelta(k.roi, prev.roi), suffix: 'pp', icon: 'trendingUp', tone: k.roi != null ? (k.roi >= 0 ? 'pos' : 'neg') : undefined },
+    { label: 'CAC', value: k.cac == null ? '—' : cmCompact(k.cac), delta: cmDelta(k.cac, prev.cac), deltaInvert: true, icon: 'user' },
+    { label: 'CPL', value: k.cpl == null ? '—' : cmCompact(k.cpl), delta: cmDelta(k.cpl, prev.cpl), deltaInvert: true, icon: 'mousePointerClick' },
+    { label: 'Ticket médio', value: k.ticket == null ? '—' : cmCompact(k.ticket), delta: cmDelta(k.ticket, prev.ticket), icon: 'receipt' },
+  ];
+
+  return (
+    <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+      <CmFrame>
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 20, gap: 16, flexWrap: 'wrap' }}>
+          <div>
+            <h1 style={{ margin: 0, fontSize: 23, fontWeight: 600, letterSpacing: '-0.025em', color: 'var(--text)' }}>Visão geral · {scopeLabel.title}</h1>
+            <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>{cmInt(k.leads)} leads · {cmInt(k.conversoes)} conversões · {scopeLabel.sub}</p>
+          </div>
+          <div style={{ display: 'flex', gap: 9 }}>
+            <button className="btn btn-secondary" onClick={onLead} style={{ height: 34, fontSize: 12.5 }}><Icon name="userPlus" size={14} />Lead</button>
+            <button className="btn btn-primary" onClick={onNew} style={{ height: 34, fontSize: 12.5 }}><Icon name="plus" size={14} />Nova campanha</button>
+          </div>
+        </div>
+
+        {noLeads ? (
+          <div className="card" style={{ padding: '20px' }}>
+            <CmEmpty icon="megaphone" title="Nenhum lead neste período" desc="Ainda não há leads registrados para o período selecionado. Cadastre um lead, crie uma campanha ou importe do Genions para começar a medir resultados."
+              action={<div style={{ display: 'flex', gap: 9, marginTop: 4 }}><button className="btn btn-secondary" onClick={onLead} style={{ height: 34, fontSize: 12.5 }}><Icon name="userPlus" size={14} />Novo lead</button><button className="btn btn-primary" onClick={onNew} style={{ height: 34, fontSize: 12.5 }}><Icon name="plus" size={14} />Nova campanha</button></div>} />
+          </div>
+        ) : (
+          <React.Fragment>
+            {/* verdict banner — "are we making money on ads?" */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 20px', borderRadius: 'var(--r-md)', marginBottom: 20,
+              background: noSpend ? 'var(--bg-sunken)' : k.roas >= 1 ? 'rgba(46,158,91,0.08)' : 'rgba(192,73,47,0.08)',
+              border: `1px solid ${noSpend ? 'var(--border)' : k.roas >= 1 ? 'rgba(46,158,91,0.28)' : 'rgba(192,73,47,0.28)'}` }}>
+              <div style={{ width: 38, height: 38, borderRadius: 10, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: noSpend ? 'var(--surface)' : k.roas >= 1 ? 'rgba(46,158,91,0.16)' : 'rgba(192,73,47,0.16)', color: noSpend ? 'var(--text-muted)' : k.roas >= 1 ? '#2E9E5B' : '#C0492F' }}>
+                <Icon name={noSpend ? 'coins' : k.roas >= 1 ? 'trendingUp' : 'alertTriangle'} size={19} strokeWidth={1.9} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.01em' }}>
+                  {noSpend ? 'Sem investimento em anúncios no período' : k.roas >= 1
+                    ? `Os anúncios estão dando retorno — ${cmRoas(k.roas)} de ROAS`
+                    : `Atenção: os anúncios estão no prejuízo — ${cmRoas(k.roas)} de ROAS`}
+                </div>
+                <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 2 }}>
+                  {noSpend ? 'Os leads do período vieram de canais orgânicos e indicações.'
+                    : `Cada R$ 1 investido retornou ${k.roas != null ? cmRoas(k.roas).replace('x', '') : '0'} em honorários contratados · ROI de ${k.roi == null ? '—' : cmPct(k.roi, 0)}.`}
+                </div>
+              </div>
+            </div>
+
+            {/* KPI grid */}
+            <div className="cm-kpigrid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 22 }}>
+              {KPI.map((p) => <CmKpi key={p.label} {...p} />)}
+            </div>
+
+            {/* trend */}
+            <div className="card" style={{ padding: '18px 22px', marginBottom: 20 }}>
+              <CmCardTitle title="Leads vs. conversões" sub={`Evolução ao longo de ${scopeLabel.title.toLowerCase()}`}
+                right={<CmLegend items={[{ label: 'Leads', color: 'var(--accent)' }, { label: 'Conversões', color: 'var(--cm-pos,#2E9E5B)' }]} />} />
+              <CmTrendChart data={trend} />
+            </div>
+
+            <div className="cm-2col" style={{ display: 'grid', gridTemplateColumns: '1.15fr 1fr', gap: 20, alignItems: 'start' }}>
+              <div className="card" style={{ padding: '18px 22px' }}>
+                <CmCardTitle title="Mix de canais" sub="Origem dos leads e retorno por canal" />
+                <CmChannelMix channels={channels} />
+              </div>
+              <div className="card" style={{ padding: '18px 22px 8px' }}>
+                <CmCardTitle title="Melhores campanhas" sub="Maior ROAS no período" right={<button className="btn btn-ghost" onClick={onGoCampanhas} style={{ height: 28, fontSize: 12, padding: '0 9px', color: 'var(--accent)' }}>Ver todas<Icon name="arrowRight" size={13} /></button>} />
+                <div style={{ margin: '0 -10px' }}><CmTopCampanhas stats={stats} onView={onGoCampanhas} /></div>
+              </div>
+            </div>
+          </React.Fragment>
+        )}
+      </CmFrame>
+    </div>
+  );
+};
+
+Object.assign(window, { CmVisao, CmTrendChart, CmChannelMix, CmTopCampanhas });

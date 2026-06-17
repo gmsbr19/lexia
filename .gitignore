@@ -32,6 +32,11 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+
+# Claude Code local settings (machine-specific)
+.claude/settings.local.json
+.claude/launch.json
 
 # vercel
 .vercel
@@ -40,3 +45,12 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 /templates
+
+# database (sqlite)
+/prisma/*.db
+/prisma/*.db-journal
+*.db-journal
+
+# cnj api recon samples (contêm PII real de intimações — nunca commitar; os
+# *.sample.json sintéticos usados pelos testes seguem versionados)
+src/lib/processos/cnj/__fixtures__/*.latest.json

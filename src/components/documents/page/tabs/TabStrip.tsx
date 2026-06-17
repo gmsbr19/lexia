@@ -4,8 +4,8 @@ export type DocumentsTab = "criar" | "meus-documentos" | "modelos"
 
 const TABS: Array<{ id: DocumentsTab; label: string }> = [
   { id: "criar", label: "Criar" },
-  { id: "meus-documentos", label: "Meus documentos (142)" },
-  { id: "modelos", label: "Modelos (32)" },
+  { id: "meus-documentos", label: "Meus documentos" },
+  { id: "modelos", label: "Modelos" },
 ]
 
 export function DocumentsTabStrip({

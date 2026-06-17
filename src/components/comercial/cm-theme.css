@@ -1,0 +1,197 @@
+/* LexIA · Comercial — plain global stylesheet (imported in app/comercial/page.tsx).
+ * The design prototype styled everything with CSS custom properties + a few
+ * utility classes (.btn, .card, .input, .pill). We define those here, scoped to
+ * a `.cm-scope` wrapper so nothing leaks to the rest of the app, with values that
+ * mirror the app's vanilla-extract tokens (navy/gold; light + dark; see
+ * src/styles/theme.css.ts — the single foundation). Dark mode is driven by the
+ * app's `.theme-dark` ancestor class. */
+
+/* ── layout wrappers ── */
+.cm-root {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-sans);
+  letter-spacing: -0.01em;
+}
+.cm-inline { display: contents; }
+
+/* ── variable bridge · light ── */
+.cm-scope {
+  --bg: #FAFAF7;
+  --bg-elevated: #FFFFFF;
+  --bg-sunken: rgba(2, 13, 37, 0.05);
+  --bg-soft: #FFFFFF;
+  --surface: #FFFFFF;
+  --surface-hover: #F2F1EC;
+  --border: rgba(2, 13, 37, 0.08);
+  --border-strong: rgba(2, 13, 37, 0.16);
+  --border-gold: rgba(154, 127, 46, 0.45);
+  --text: #020D25;
+  --text-muted: rgba(2, 13, 37, 0.64);
+  --text-subtle: rgba(2, 13, 37, 0.44);
+  --accent: #8A6B22;
+  --accent-strong: #9A7F2E;
+  --accent-soft: rgba(192, 161, 71, 0.14);
+  --ok: #1F8A4C;       --ok-soft: rgba(31, 138, 76, 0.10);
+  --warn: #B47E12;     --warn-soft: rgba(180, 126, 18, 0.12);
+  --crit: #C0492F;     --crit-soft: rgba(192, 73, 47, 0.10);
+  --neutral-soft: rgba(2, 13, 37, 0.05);
+  --ai: #9A7F2E;       --ai-soft: rgba(192, 161, 71, 0.12);
+  --overlay: rgba(2, 13, 37, 0.45);
+  --shadow-sm: 0 1px 2px rgba(2, 13, 37, 0.05);
+  --shadow-md: 0 12px 30px rgba(2, 13, 37, 0.10), 0 2px 6px rgba(2, 13, 37, 0.05);
+  --shadow-lg: 0 12px 30px rgba(2, 13, 37, 0.10), 0 2px 6px rgba(2, 13, 37, 0.05);
+  --ring: rgba(192, 161, 71, 0.45);
+  --r-xs: 6px;
+  --r-sm: 8px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 14px;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --brand-navy: #020D25;
+  --brand-gold: #C0A147;
+  --brand-gold-soft: #D8BE7A;
+  --brand-gold-deep: #9A7F2E;
+  --cm-pos: var(--fin-pos, #1F8A4C);
+  --cm-neg: var(--fin-neg, #C0492F);
+}
+
+/* ── variable bridge · dark (app toggles .theme-dark on an ancestor) ── */
+.theme-dark .cm-scope {
+  --bg: #020D25;
+  --bg-elevated: #13234C;
+  --bg-sunken: rgba(255, 255, 255, 0.06);
+  --bg-soft: #0A1733;
+  --surface: #0A1733;
+  --surface-hover: #12214A;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --border-gold: rgba(192, 161, 71, 0.40);
+  --text: #F5F1E4;
+  --text-muted: rgba(245, 241, 228, 0.66);
+  --text-subtle: rgba(245, 241, 228, 0.44);
+  --accent: #D8BE7A;
+  --accent-strong: #C0A147;
+  --accent-soft: rgba(192, 161, 71, 0.12);
+  --ok: #4FC07D;       --ok-soft: rgba(79, 192, 125, 0.12);
+  --warn: #E0B257;     --warn-soft: rgba(224, 178, 87, 0.14);
+  --crit: #E07A60;     --crit-soft: rgba(224, 122, 96, 0.12);
+  --neutral-soft: rgba(255, 255, 255, 0.06);
+  --ai: #C0A147;       --ai-soft: rgba(192, 161, 71, 0.12);
+  --overlay: rgba(2, 13, 37, 0.70);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.40);
+  --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.44), 0 2px 6px rgba(0, 0, 0, 0.30);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.44), 0 2px 6px rgba(0, 0, 0, 0.30);
+  --ring: rgba(192, 161, 71, 0.55);
+}
+
+/* ── buttons — 40px standard, radius 8, weight 500 ── */
+.cm-scope .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: var(--r-sm);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition: background .15s ease-out, border-color .15s ease-out, filter .15s ease-out;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.cm-scope .btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
+.cm-scope .btn:disabled { cursor: not-allowed; opacity: 0.45; }
+.cm-scope .btn-sm { height: 32px; padding: 0 12px; }
+.cm-scope .btn-primary { background: var(--brand-gold); color: var(--brand-navy); }
+.cm-scope .btn-primary:hover { background: var(--brand-gold-soft); }
+.cm-scope .btn-primary:active { background: var(--brand-gold-deep); }
+.cm-scope .btn-secondary { background: transparent; color: var(--text); border-color: var(--border-strong); }
+.cm-scope .btn-secondary:hover { background: rgba(2, 13, 37, 0.04); }
+.theme-dark .cm-scope .btn-secondary:hover { background: rgba(255, 255, 255, 0.06); }
+.cm-scope .btn-ghost { background: transparent; color: var(--text-muted); }
+.cm-scope .btn-ghost:hover { background: rgba(2, 13, 37, 0.04); color: var(--text); }
+.theme-dark .cm-scope .btn-ghost:hover { background: rgba(255, 255, 255, 0.06); }
+.cm-scope .btn-gold { background: var(--brand-gold); color: var(--brand-navy); font-weight: 500; }
+.cm-scope .btn-gold:hover { background: var(--brand-gold-soft); }
+
+/* ── card / pill ── */
+.cm-scope .card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+}
+.cm-scope .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--r-xs);
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* ── inputs — 40px, raio 8, borda 8%, foco anel dourado ── */
+.cm-scope .input,
+.cm-scope .textarea {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--text);
+  outline: none;
+  transition: border-color .15s ease-out, box-shadow .15s ease-out;
+}
+.cm-scope .input:hover,
+.cm-scope .textarea:hover { border-color: var(--border-strong); }
+.cm-scope .input:focus,
+.cm-scope .textarea:focus { border-color: var(--border-gold); box-shadow: 0 0 0 3px var(--ring); }
+.cm-scope .input::placeholder,
+.cm-scope .textarea::placeholder { color: var(--text-subtle); }
+.cm-scope .input:disabled { opacity: 0.55; cursor: not-allowed; }
+.cm-scope .label { display: block; font-size: 12px; font-weight: 500; color: var(--text-muted); margin-bottom: 8px; }
+
+/* ── menus / rows ── */
+.cm-scope .cm-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+.cm-scope .cm-menu-item:hover,
+.cm-scope .cm-row:hover,
+.cm-scope .cm-rowlink:hover,
+.cm-scope .cm-funnel-row:hover { background: var(--surface-hover); }
+
+/* ── animations ── */
+@keyframes cm-slidein {
+  from { transform: translateX(24px); opacity: 0.4; }
+  to { transform: translateX(0); opacity: 1; }
+}
+.cm-scope .cm-slidein { animation: cm-slidein .2s cubic-bezier(0.22, 1, 0.36, 1); }
+@keyframes cm-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+.cm-scope .pulse { animation: cm-pulse 2s ease-in-out infinite; }

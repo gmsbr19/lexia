@@ -12,6 +12,57 @@ import type {
   Parcela,
 } from "@/lib/types/contrato-honorarios";
 import { DocumentPaginator } from "./Paginator";
+import {
+  CLAUSULAS_GERAIS,
+  CLAUSULAS_COMPROMISSO,
+  resolveClausula,
+} from "@/lib/documents/generators/contrato-honorarios/clausulas";
+
+// ── change highlight ─────────────────────────────────────────────────────────
+
+/**
+ * Does any recently-changed key target this block? A block declares the field
+ * paths it renders (e.g. ["honorarios"]); a flashed key matches if it equals the
+ * path or is nested under it (objeto, honorarios.valorTotal, clausula.quinta…).
+ */
+function isFlashing(keys: string[], flash: Set<string>): boolean {
+  if (flash.size === 0) return false;
+  for (const f of flash) {
+    for (const k of keys) {
+      if (f === k || f.startsWith(`${k}.`) || k.startsWith(`${f}.`)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Wraps a document block so it briefly highlights (soft gold fill + left bar)
+ * when the AI / form just changed one of its `keys`. Uses background + inset
+ * box-shadow only, so toggling it never reflows the page (pagination is stable).
+ */
+function Hl({
+  keys,
+  flash,
+  children,
+}: {
+  keys: string[];
+  flash: Set<string>;
+  children: React.ReactNode;
+}) {
+  const on = isFlashing(keys, flash);
+  return (
+    <div
+      style={{
+        background: on ? "rgba(192,161,71,0.18)" : "transparent",
+        boxShadow: on ? "inset 3px 0 0 #C0A147" : "inset 0 0 0 transparent",
+        borderRadius: 3,
+        transition: "background 500ms ease-out, box-shadow 500ms ease-out",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -286,94 +337,20 @@ function ClausulaHonorarios({ h }: { h: Honorarios }) {
   );
 }
 
-// ── static clauses ─────────────────────────────────────────────────────────────
-
-const CLAUSULAS_ESTATICAS = [
-  {
-    titulo: "CLÁUSULA TERCEIRA",
-    texto:
-      "Este contrato enquadra-se no rol dos títulos executivos extrajudiciais, nos termos do artigo 784, Inciso XII, do Código de Processo Civil, combinado com o artigo 24 da Lei 8.906/94 (EOAB). Fica estabelecido que em caso de atraso serão cobrados juros de mora na razão de 1% (um por cento) ao mês.",
-  },
-  {
-    titulo: "CLÁUSULA QUARTA",
-    texto:
-      "Fica estabelecido que, iniciados os serviços especificados na cláusula 01, são devidos os honorários contratados na proporção dos serviços prestados, ainda que em caso de desistência por parte do CONTRATANTE, ou se for revogado o mandato do CONTRATADO sem sua culpa, ou, ainda, por acordo do CONTRATANTE com a parte contrária, sem a devida aquiescência do CONTRATADO, podendo este exigir os honorários de imediato.",
-  },
-  {
-    titulo: "CLÁUSULA QUINTA",
-    texto:
-      "Fica estabelecido que os honorários contratados abarcam os serviços prestados até a última instância superior, correndo todas as despesas processuais, custas e outros emolumentos por conta do CONTRATANTE.",
-  },
-  {
-    titulo: "CLÁUSULA SEXTA",
-    texto:
-      "Sendo o exercício profissional do CONTRATADO uma atividade de meio e não de resultado, fica estabelecido que os honorários avençados na Cláusula 02 serão sempre devidos, independentemente do resultado da ação. Os honorários devidos à sucumbência, se houver, pertencerão única e exclusivamente ao CONTRATADO, nos termos do art. 23 do EOAB, Lei 8.906/94, que poderá de imediato recebê-los em Juízo ou fora dele, ao final da ação, ou promover a competente execução em seu próprio nome, ou em nome do CONTRATANTE, nada tendo este a reclamar ou receber.",
-  },
-  {
-    titulo: "CLÁUSULA SÉTIMA",
-    texto:
-      "No caso de levantamento ou recebimento de valores pelo CONTRATADO, através de alvará, mandado de pagamento ou qualquer outro meio, poderá o CONTRATADO descontar e/ou compensar os honorários contratados que lhe são devidos, inclusive os da sucumbência, e outros valores devidos.",
-  },
-];
-
-const CLAUSULAS_COMPROMISSO = [
-  {
-    titulo: "CLÁUSULA OITAVA — DO COMPROMISSO",
-    texto:
-      "O CONTRATANTE se compromete a prestar todas, e fiéis, informações relacionadas ao fato constitutivo do seu direito, bem como subsidiar com instrumentos a evidenciá-lo, na medida do possível, e atender/responder ao CONTRATADO quando solicitado, através dos meios estipulados na Cláusula 09. Caso o CONTRATANTE oculte informação necessária da qual tenha ou deveria ter conhecimento, que possa de alguma forma prejudicar o andamento regular, bem como o êxito da demanda, o CONTRATADO não poderá ser responsabilizado, devendo, ainda, o CONTRATANTE pagar ao CONTRATADO todo prejuízo que, eventualmente, possa acarretar.",
-  },
-  {
-    titulo: "CLÁUSULA NONA — DA COMUNICAÇÃO",
-    texto:
-      "O CONTRATANTE se compromete a manter atualizados os meios de contato ora avençados para a boa comunicação das partes. Em caso de alteração de algum dos contatos, deverá ser informado imediata e inequivocamente ao CONTRATADO.",
-  },
-  {
-    titulo: "CLÁUSULA DÉCIMA",
-    texto:
-      "Se porventura o CONTRATADO depender do CONTRATANTE para promover algum ato extrajudicial ou judicial, e este não o corresponder tempestivamente, a responsabilidade recairá exclusivamente sobre o CONTRATANTE, não podendo arguí-la em seu favor posteriormente.",
-  },
-  {
-    titulo: "CLÁUSULA DÉCIMA PRIMEIRA — DAS DESPESAS",
-    texto:
-      "Todas as despesas efetuadas pelo CONTRATADO, desde que devidamente comprovadas, ligadas direta ou indiretamente com o objeto deste contrato, incluindo-se fotocópias, digitalizações, emolumentos, serviços dos correios, custas judiciais, custas de cartórios extrajudiciais, entre outras, ficarão a cargo do CONTRATANTE, sem qualquer prejuízo dos honorários contratados.",
-  },
-  {
-    titulo: "CLÁUSULA DÉCIMA SEGUNDA",
-    texto:
-      "Todas as despesas inerentes a transporte coletivo (ônibus, metrô etc.) municipal e intermunicipal necessárias para o cumprimento do contrato serão custeadas pelo CONTRATANTE, independentemente de prévio ajuste, através de reembolso e com a discriminação da diligência efetuada, sem qualquer prejuízo dos honorários contratados. Em caso de urgência, o CONTRATADO poderá utilizar-se de Uber/táxi para locomoção ao fórum para realização de diligências de audiência e/ou oitiva de testemunha, ou qualquer outro local para promoção de ato judicial, cabendo ao CONTRATANTE o devido reembolso.",
-  },
-  {
-    titulo: "CLÁUSULA DÉCIMA TERCEIRA",
-    texto:
-      "Todas as despesas necessárias para o caso de locomoção interestadual ou internacional, gastos de viagem como transporte terrestre e/ou aéreo, hospedagem em hotel e alimentação ficarão a cargo do CONTRATANTE, sem qualquer prejuízo dos honorários contratados. No caso das despesas de transporte interestadual ou internacional e hotelaria, as partes deverão ajustar previamente, até 05 (cinco) dias antes da diligência a ser cumprida. No que concerne a alimentação noutra Comarca, Estado ou País, dar-se-á através de reembolso do que fora devidamente comprovado.",
-  },
-  {
-    titulo: "CLÁUSULA DÉCIMA QUARTA",
-    texto:
-      "Em caso de reembolso a ser efetuado pelo CONTRATANTE em favor do CONTRATADO, este poderá compensá-lo quando do recebimento ou levantamento de valores, conforme cláusula 07.",
-  },
-  {
-    titulo: "CLÁUSULA DÉCIMA QUINTA — DA CONTRATAÇÃO DE TERCEIROS",
-    texto:
-      "Se no decurso do processo houver a necessidade da contratação de profissional(is) de outra(s) área(s), o CONTRATADO poderá indicar escritório ou profissional de sua confiança, cabendo ao CONTRATANTE aceitá-lo ou não, sendo certo que qualquer despesa, incluindo honorários do terceiro contratado, ficará a expensas do CONTRATANTE.",
-  },
-  {
-    titulo: "CLÁUSULA DÉCIMA SEXTA — DA RESCISÃO",
-    texto:
-      "A parte que descumprir qualquer das cláusulas deste contrato dará à outra o direito de rescindir o presente instrumento, sem qualquer interpelação, judicial ou extrajudicial, ficando desobrigada a parte inocente a dar continuidade a este contrato. Ademais, acordam as partes que, em caso de necessidade de ajuizamento de ações relativas a esse instrumento, a citação se dará por via postal, com aviso de recebimento (AR), cabendo ao vencedor honorário na razão de 20% (vinte por cento) sobre o do proveito econômico obtido, a título de verba sucumbencial.",
-  },
-];
-
 // ── main component ────────────────────────────────────────────────────────────
 
 export function ContratoHonorariosPreview({
   data,
   zoom = 1,
+  flashKeys,
 }: {
   data: ContratoHonorariosData;
   zoom?: number;
+  /** Field paths / clause ids that just changed — briefly highlighted in the A4. */
+  flashKeys?: string[];
 }) {
   const plural = data.contratantes.length > 1;
+  const flash = React.useMemo(() => new Set(flashKeys ?? []), [flashKeys]);
 
   return (
     <DocumentPaginator zoom={zoom} letterhead="/letterhead.png">
@@ -395,25 +372,27 @@ export function ContratoHonorariosPreview({
       {/* ── Capítulo I — Das Partes ── */}
       <ChapterTitle>Capítulo I — Das Partes</ChapterTitle>
 
-      <P indent>
-        Por este instrumento particular de contrato que entre si celebram: de um
-        lado,{" "}
-        {data.contratantes.map((c, i) => (
-          <span key={i}>
-            {i > 0 && "; "}
-              <Qual c={c} />
-            {!plural && `, ${denominado(c, false)}`}
-          </span>
-        ))}
-        {plural && `, ${denominado(data.contratantes[0], true)}`}; e de outro
-        lado,{" "}
-        <strong>LEONARDO DA COSTA ALMEIDA COLLARES MIGUEL</strong>, brasileiro,
-        casado, advogado regularmente inscrito nos quadros da Ordem dos
-        Advogados do Brasil – Seccional São Paulo, sob o nº 523.685, com
-        escritório profissional situado na Avenida Marquês de São Vicente, 1619,
-        Sala 505, Barra Funda, São Paulo – SP, CEP 01139-003, denominado{" "}
-        <strong>CONTRATADO</strong>.
-      </P>
+      <Hl keys={["contratante"]} flash={flash}>
+        <P indent>
+          Por este instrumento particular de contrato que entre si celebram: de um
+          lado,{" "}
+          {data.contratantes.map((c, i) => (
+            <span key={i}>
+              {i > 0 && "; "}
+                <Qual c={c} />
+              {!plural && `, ${denominado(c, false)}`}
+            </span>
+          ))}
+          {plural && `, ${denominado(data.contratantes[0], true)}`}; e de outro
+          lado,{" "}
+          <strong>LEONARDO DA COSTA ALMEIDA COLLARES MIGUEL</strong>, brasileiro,
+          casado, advogado regularmente inscrito nos quadros da Ordem dos
+          Advogados do Brasil – Seccional São Paulo, sob o nº 523.685, com
+          escritório profissional situado na Avenida Marquês de São Vicente, 1619,
+          Sala 505, Barra Funda, São Paulo – SP, CEP 01139-003, denominado{" "}
+          <strong>CONTRATADO</strong>.
+        </P>
+      </Hl>
 
       <P indent>
         Que doravante serão referidos no singular apenas como{" "}
@@ -425,45 +404,55 @@ export function ContratoHonorariosPreview({
       {/* ── Capítulo II — Do Objeto ── */}
       <ChapterTitle>Capítulo II — Do Objeto</ChapterTitle>
       <ClauseTitle>CLÁUSULA PRIMEIRA</ClauseTitle>
-      <P indent>
-        O CONTRATADO obriga-se, face ao mandato que lhe é outorgado, que faz
-        parte integrante deste contrato, a prestar os serviços advocatícios
-        concernentes a{" "}
-        <Field value={data.objeto} label="objeto dos serviços" />.
-      </P>
+      <Hl keys={["objeto"]} flash={flash}>
+        <P indent>
+          O CONTRATADO obriga-se, face ao mandato que lhe é outorgado, que faz
+          parte integrante deste contrato, a prestar os serviços advocatícios
+          concernentes a{" "}
+          <Field value={data.objeto} label="objeto dos serviços" />.
+        </P>
+      </Hl>
 
       {/* ── Capítulo III — Dos Honorários ── */}
       <ChapterTitle>Capítulo III — Dos Honorários</ChapterTitle>
       <ClauseTitle>CLÁUSULA SEGUNDA</ClauseTitle>
-      <ClausulaHonorarios h={data.honorarios} />
+      <Hl keys={["honorarios"]} flash={flash}>
+        <ClausulaHonorarios h={data.honorarios} />
+      </Hl>
 
       {/* ── Capítulo IV — Disposições Gerais ── */}
       <ChapterTitle>Capítulo IV — Das Disposições Gerais</ChapterTitle>
-      {CLAUSULAS_ESTATICAS.map(({ titulo, texto }) => (
-        <React.Fragment key={titulo}>
-          <ClauseTitle>{titulo}</ClauseTitle>
-          <P indent>{texto}</P>
+      {CLAUSULAS_GERAIS.map((def) => (
+        <React.Fragment key={def.id}>
+          <ClauseTitle>{def.titulo}</ClauseTitle>
+          <Hl keys={[`clausula.${def.id}`]} flash={flash}>
+            <P indent>{resolveClausula(data, def)}</P>
+          </Hl>
         </React.Fragment>
       ))}
 
       {/* ── Capítulo V — Compromisso e Despesas ── */}
       <ChapterTitle>Capítulo V — Do Compromisso e Das Despesas</ChapterTitle>
-      {CLAUSULAS_COMPROMISSO.map(({ titulo, texto }) => (
-        <React.Fragment key={titulo}>
-          <ClauseTitle>{titulo}</ClauseTitle>
-          <P indent>{texto}</P>
+      {CLAUSULAS_COMPROMISSO.map((def) => (
+        <React.Fragment key={def.id}>
+          <ClauseTitle>{def.titulo}</ClauseTitle>
+          <Hl keys={[`clausula.${def.id}`]} flash={flash}>
+            <P indent>{resolveClausula(data, def)}</P>
+          </Hl>
         </React.Fragment>
       ))}
 
       {/* ── Capítulo VI — Foro ── */}
       <ChapterTitle>Capítulo VI — Do Foro de Eleição</ChapterTitle>
       <ClauseTitle>CLÁUSULA DÉCIMA SÉTIMA</ClauseTitle>
-      <P indent>
-        Fica eleito o foro da Comarca de{" "}
-        <Field value={data.foro} label="cidade" /> para dirimir as dúvidas
-        oriundas deste contrato, renunciando as partes a qualquer outro por
-        mais privilegiado que seja.
-      </P>
+      <Hl keys={["foro"]} flash={flash}>
+        <P indent>
+          Fica eleito o foro da Comarca de{" "}
+          <Field value={data.foro} label="cidade" /> para dirimir as dúvidas
+          oriundas deste contrato, renunciando as partes a qualquer outro por
+          mais privilegiado que seja.
+        </P>
+      </Hl>
 
       <P indent>
         E, por estarem, assim, justos e contratados, firmam o presente
@@ -471,16 +460,18 @@ export function ContratoHonorariosPreview({
       </P>
 
       {/* ── Data + Assinaturas + Testemunhas ── */}
-      <div
-        style={{
-          textAlign: "right",
-          fontSize: "12pt",
-          margin: "10pt 0 12pt",
-        }}
-      >
-        <Field value={data.foro} label="cidade" />,{" "}
-        <Field value={data.data} label="data" />.
-      </div>
+      <Hl keys={["foro", "data"]} flash={flash}>
+        <div
+          style={{
+            textAlign: "right",
+            fontSize: "12pt",
+            margin: "10pt 0 12pt",
+          }}
+        >
+          <Field value={data.foro} label="cidade" />,{" "}
+          <Field value={data.data} label="data" />.
+        </div>
+      </Hl>
 
       <div
         style={{

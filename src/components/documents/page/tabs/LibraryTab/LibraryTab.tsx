@@ -1,7 +1,15 @@
 "use client"
 
-import { ChevronLeft, ChevronRight, Download, Filter, MoreHorizontal, Search, Sparkles } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { useRouter } from "next/navigation"
+import { Filter, FileText, MoreHorizontal, PenLine, Search, Trash2, CheckCircle2, FolderOpen } from "lucide-react"
 import { btn } from "@/styles/components.css"
+import { tokens } from "@/styles/tokens.css"
+import { apiSend, ApiError } from "@/lib/client/api"
+import { toast } from "@/lib/client/toast"
+import type { DocumentoRow, DocumentoStatus } from "@/lib/documentos/types"
+import { DOCUMENTO_STATUS_LABEL } from "@/lib/documentos/types"
+import { templateEditorPath } from "@/lib/documents/registry"
 import { useDocumentFilter } from "../../hooks/useDocumentFilter"
 import { scrollArea, pageFrame, toolbarSpacer, compactSecondaryButton, documentTypeText, documentIconBar } from "../../documents-page.css"
 import {
@@ -9,12 +17,6 @@ import {
   libraryHeader,
   libraryTitle,
   librarySubtitle,
-  statsGrid,
-  statCard,
-  statLabel,
-  statValueRow,
-  statValue,
-  statTrend,
   filterBar,
   searchWrap,
   searchIcon,
@@ -33,35 +35,152 @@ import {
   documentTitle,
   documentDetails,
   documentSeparator,
-  documentAiTag,
   documentMetaTextWrap,
   avatar,
   documentClientText,
   documentDateText,
   documentStatusPill,
   documentStatusDot,
+  formatoText,
   tableActions,
   documentActionsCell,
   compactIconButton,
   footerBar,
-  pager,
+  rowMenuWrap,
+  rowMenu,
+  rowMenuItem,
+  rowMenuItemDanger,
+  rowMenuDivider,
+  emptyState,
+  emptyIcon,
+  emptyTitle,
+  emptyDesc,
 } from "./LibraryTab.css"
-import {
-  DOCUMENT_LIBRARY_FILTERS,
-  DOCUMENTS,
-  DOCUMENT_STATS,
-  DOCUMENT_TYPE_ABBR,
-} from "../../documents-page.data"
+import { DOCUMENT_LIBRARY_FILTERS, abreviaturaDoTemplate, categoriaDoTemplate, dataRelativa } from "../../documents-page.data"
 
-function statusTone(status: string) {
-  if (status === "Finalizado") return { background: "rgba(46,160,67,0.12)", color: "#2ea043" }
-  if (status === "Assinado") return { background: "var(--accent-soft)", color: "var(--accent)" }
-  if (status === "Rascunho") return { background: "var(--bg-sunken)", color: "var(--text-muted)" }
-  return { background: "rgba(2,13,37,0.06)", color: "var(--text-muted)" }
+function statusTone(status: DocumentoStatus): { background: string; color: string } {
+  switch (status) {
+    case "finalizado":
+      return { background: tokens.color.okSoft, color: tokens.color.ok }
+    case "enviado":
+      return { background: tokens.color.warnSoft, color: tokens.color.warn }
+    case "fechado":
+      return { background: tokens.color.okSoft, color: tokens.color.ok }
+    case "rascunho":
+    default:
+      return { background: tokens.color.bgSunken, color: tokens.color.textMuted }
+  }
 }
 
-export function DocumentsLibraryTab() {
-  const { filterType, setFilterType, query, setQuery, visibleDocuments } = useDocumentFilter()
+function documentoHref(doc: DocumentoRow): string {
+  if (doc.status === "rascunho") return `${templateEditorPath(doc.template)}?documento=${doc.id}`
+  return `/documents/preview?documento=${doc.id}`
+}
+
+function RowMenu({ doc }: { doc: DocumentoRow }) {
+  const router = useRouter()
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const wrapRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onDown(event: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(event.target as Node)) setOpen(false)
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false)
+    }
+    document.addEventListener("mousedown", onDown)
+    document.addEventListener("keydown", onKey)
+    return () => {
+      document.removeEventListener("mousedown", onDown)
+      document.removeEventListener("keydown", onKey)
+    }
+  }, [open])
+
+  const isContrato = categoriaDoTemplate(doc.template) === "Contrato"
+  const canEnviar = doc.status === "finalizado"
+  const canFechar = (doc.status === "finalizado" || doc.status === "enviado") && isContrato
+
+  async function run(label: string, fn: () => Promise<unknown>) {
+    if (busy) return
+    setBusy(true)
+    try {
+      await fn()
+      toast(label)
+      setOpen(false)
+      router.refresh()
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "Não foi possível concluir a ação"
+      toast(message, { kind: "error" })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div ref={wrapRef} className={rowMenuWrap}>
+      <button
+        type="button"
+        aria-label="Mais ações"
+        className={`${btn({ variant: "ghost" })} ${compactIconButton}`}
+        onClick={(event) => {
+          event.stopPropagation()
+          setOpen((o) => !o)
+        }}
+      >
+        <MoreHorizontal size={14} />
+      </button>
+      {open && (
+        <div className={rowMenu} onClick={(event) => event.stopPropagation()}>
+          <button type="button" className={rowMenuItem} onClick={() => router.push(documentoHref(doc))}>
+            <FolderOpen size={14} />
+            Abrir
+          </button>
+          {canEnviar && (
+            <button
+              type="button"
+              className={rowMenuItem}
+              disabled={busy}
+              onClick={() => run("Documento enviado para assinatura", () => apiSend(`/api/documentos/${doc.id}/enviar`, "POST"))}
+            >
+              <PenLine size={14} />
+              Enviar para assinatura
+            </button>
+          )}
+          {canFechar && (
+            <button
+              type="button"
+              className={rowMenuItem}
+              disabled={busy}
+              onClick={() => run("Contrato fechado — honorários lançados", () => apiSend(`/api/documentos/${doc.id}/fechar`, "POST"))}
+            >
+              <CheckCircle2 size={14} />
+              Contrato fechado
+            </button>
+          )}
+          <div className={rowMenuDivider} />
+          <button
+            type="button"
+            className={`${rowMenuItem} ${rowMenuItemDanger}`}
+            disabled={busy}
+            onClick={() => run("Documento excluído", () => apiSend(`/api/documentos/${doc.id}`, "DELETE"))}
+          >
+            <Trash2 size={14} />
+            Excluir
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function DocumentsLibraryTab({ documentos }: { documentos: DocumentoRow[] }) {
+  const router = useRouter()
+  const { filterType, setFilterType, query, setQuery, visibleDocuments } = useDocumentFilter(documentos)
+
+  const hasDocuments = documentos.length > 0
 
   return (
     <div className={scrollArea}>
@@ -69,139 +188,145 @@ export function DocumentsLibraryTab() {
         <div className={libraryHeader}>
           <h1 className={libraryTitle}>Meus documentos</h1>
           <p className={librarySubtitle}>
-            {DOCUMENTS.length} documentos · 38 nos últimos 30 dias
+            {hasDocuments
+              ? `${documentos.length} ${documentos.length === 1 ? "documento" : "documentos"}`
+              : "Nenhum documento gerado ainda"}
           </p>
         </div>
 
-        <div className={statsGrid}>
-          {DOCUMENT_STATS.map((stat) => (
-            <div key={stat.label} className={statCard}>
-              <div className={statLabel}>{stat.label}</div>
-              <div className={statValueRow}>
-                <span className={statValue}>{stat.count}</span>
-                <span className={statTrend({ positive: stat.trend.startsWith("+"), negative: !stat.trend.startsWith("+") })}>{stat.trend}</span>
+        {!hasDocuments ? (
+          <div className={tableCard}>
+            <div className={emptyState}>
+              <div className={emptyIcon}>
+                <FileText size={32} strokeWidth={1.4} />
+              </div>
+              <div className={emptyTitle}>Você ainda não gerou documentos</div>
+              <p className={emptyDesc}>
+                Crie um contrato de honorários — a LexIA escolhe o modelo e preenche para você. Os documentos gerados aparecem aqui.
+              </p>
+              <button
+                type="button"
+                className={btn({ variant: "secondary" })}
+                style={{ height: 34 }}
+                onClick={() => router.push(templateEditorPath("contrato-honorarios"))}
+              >
+                Criar primeiro documento
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className={filterBar}>
+              <div className={searchWrap}>
+                <div className={searchIcon}>
+                  <Search size={14} />
+                </div>
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Buscar por nome, cliente, status..."
+                  className={searchInput}
+                />
+              </div>
+              <div className={segmentedGroup}>
+                {DOCUMENT_LIBRARY_FILTERS.map((label) => (
+                  <button key={label} type="button" onClick={() => setFilterType(label)} className={segmentedButton({ active: filterType === label })}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className={toolbarSpacer} />
+              <button type="button" className={`${btn({ variant: "secondary" })} ${compactSecondaryButton}`}>
+                <Filter size={13} />Filtros
+              </button>
+            </div>
+
+            <div className={tableCard}>
+              <table className={table}>
+                <thead>
+                  <tr className={tableHeadRow}>
+                    {["Documento", "Cliente", "Autor", "Atualizado", "Status", "Formato", ""].map((heading, index) => (
+                      <th key={heading || `col-${index}`} className={tableHeadCell}>
+                        {heading}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleDocuments.map((doc) => {
+                    const tone = statusTone(doc.status)
+                    const autor = doc.criadoPor ?? "—"
+                    const initials = autor
+                      .split(" ")
+                      .map((part) => part[0])
+                      .join("")
+                      .slice(0, 2)
+                      .toUpperCase()
+
+                    return (
+                      <tr
+                        key={doc.id}
+                        className={tableRow}
+                        style={{ cursor: "pointer" }}
+                        onClick={() => router.push(documentoHref(doc))}
+                      >
+                        <td className={documentCell}>
+                          <div className={documentMeta}>
+                            <div className={documentIcon}>
+                              <span className={documentTypeText}>{abreviaturaDoTemplate(doc.template)}</span>
+                              <span className={documentIconBar} />
+                            </div>
+                            <div className={draftMetaBody}>
+                              <div className={documentTitle}>{doc.nome}</div>
+                              <div className={documentDetails}>
+                                <span>{categoriaDoTemplate(doc.template)}</span>
+                                {doc.caso && (
+                                  <>
+                                    <span className={documentSeparator} />
+                                    <span>{doc.caso}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className={`${documentCell} ${documentClientText}`}>{doc.cliente ?? "—"}</td>
+                        <td className={`${documentCell} ${documentClientText}`}>
+                          <div className={documentMetaTextWrap}>
+                            <div className={avatar}>{initials || "—"}</div>
+                            {autor}
+                          </div>
+                        </td>
+                        <td className={`${documentCell} ${documentDateText}`}>{dataRelativa(doc.atualizadoEm)}</td>
+                        <td className={documentCell}>
+                          <span className={documentStatusPill} style={{ background: tone.background, color: tone.color }}>
+                            <span className={documentStatusDot} />
+                            {DOCUMENTO_STATUS_LABEL[doc.status]}
+                          </span>
+                        </td>
+                        <td className={documentCell}>
+                          <span className={formatoText}>{doc.formato ?? "—"}</span>
+                        </td>
+                        <td className={`${documentCell} ${documentActionsCell}`}>
+                          <div className={tableActions} onClick={(event) => event.stopPropagation()}>
+                            <RowMenu doc={doc} />
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+
+              <div className={footerBar}>
+                <span>
+                  Mostrando {visibleDocuments.length} de {documentos.length}{" "}
+                  {documentos.length === 1 ? "documento" : "documentos"}
+                </span>
               </div>
             </div>
-          ))}
-        </div>
-
-        <div className={filterBar}>
-          <div className={searchWrap}>
-            <div className={searchIcon}>
-              <Search size={14} />
-            </div>
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Buscar por nome, cliente, número..."
-              className={searchInput}
-            />
-          </div>
-          <div className={segmentedGroup}>
-            {DOCUMENT_LIBRARY_FILTERS.map((label) => (
-              <button key={label} type="button" onClick={() => setFilterType(label)} className={segmentedButton({ active: filterType === label })}>
-                {label}
-              </button>
-            ))}
-          </div>
-          <div className={toolbarSpacer} />
-          <button type="button" className={`${btn({ variant: "secondary" })} ${compactSecondaryButton}`}>
-            <Filter size={13} />Filtros
-          </button>
-          <button type="button" className={`${btn({ variant: "secondary" })} ${compactSecondaryButton}`}>
-            <Sparkles size={13} />Últimos 30 dias
-          </button>
-        </div>
-
-        <div className={tableCard}>
-          <table className={table}>
-            <thead>
-              <tr className={tableHeadRow}>
-                {["Documento", "Cliente", "Autor", "Atualizado", "Status", ""].map((heading) => (
-                  <th key={heading} className={tableHeadCell}>
-                    {heading}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {visibleDocuments.map((document) => {
-                const tone = statusTone(document.status)
-                const initials = document.author
-                  .split(" ")
-                  .map((part) => part[0])
-                  .join("")
-                  .slice(0, 2)
-
-                return (
-                  <tr key={document.name} className={tableRow}>
-                    <td className={documentCell}>
-                      <div className={documentMeta}>
-                        <div className={documentIcon}>
-                          <span className={documentTypeText}>
-                            {DOCUMENT_TYPE_ABBR[document.type] ?? "??"}
-                          </span>
-                          <span className={documentIconBar} />
-                        </div>
-                        <div className={draftMetaBody}>
-                          <div className={documentTitle}>{document.name}</div>
-                          <div className={documentDetails}>
-                            <span>{document.type}</span>
-                            <span className={documentSeparator} />
-                            <span>{document.size}</span>
-                            {document.source === "ai" && (
-                              <span className={documentAiTag}>
-                                <Sparkles size={9} strokeWidth={2} />IA
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className={`${documentCell} ${documentClientText}`}>{document.client}</td>
-                    <td className={`${documentCell} ${documentClientText}`}>
-                      <div className={documentMetaTextWrap}>
-                        <div className={avatar}>{initials}</div>
-                        {document.author}
-                      </div>
-                    </td>
-                    <td className={`${documentCell} ${documentDateText}`}>{document.date}</td>
-                    <td className={documentCell}>
-                      <span className={documentStatusPill} style={{ background: tone.background, color: tone.color }}>
-                        <span className={documentStatusDot} />
-                        {document.status}
-                      </span>
-                    </td>
-                    <td className={`${documentCell} ${documentActionsCell}`}>
-                      <div className={tableActions}>
-                        <button type="button" className={`${btn({ variant: "ghost" })} ${compactIconButton}`}>
-                          <Download size={14} />
-                        </button>
-                        <button type="button" className={`${btn({ variant: "ghost" })} ${compactIconButton}`}>
-                          <MoreHorizontal size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-
-          <div className={footerBar}>
-            <span>
-              Mostrando {visibleDocuments.length} de {DOCUMENTS.length} documentos
-            </span>
-            <div className={pager}>
-              <button type="button" className={`${btn({ variant: "ghost" })} ${compactIconButton}`}>
-                <ChevronLeft size={13} />
-              </button>
-              <button type="button" className={`${btn({ variant: "ghost" })} ${compactIconButton}`}>
-                <ChevronRight size={13} />
-              </button>
-            </div>
-          </div>
-        </div>
+          </>
+        )}
       </div>
     </div>
   )

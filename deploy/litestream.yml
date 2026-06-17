@@ -1,0 +1,22 @@
+# Litestream — continuous SQLite WAL replication to an S3-compatible bucket.
+# Install: sudo cp deploy/litestream.yml /etc/litestream.yml
+# Credentials come from /etc/litestream.env (see deploy/litestream.service):
+#   LITESTREAM_ACCESS_KEY_ID=...
+#   LITESTREAM_SECRET_ACCESS_KEY=...
+#
+# Bucket choice: TurboCloud object storage if S3-compatible (data stays in
+# Brazil); otherwise Backblaze B2 or Cloudflare R2. The bucket must be OFF this
+# VPS — a provider-level failure must not take both copies.
+
+dbs:
+  - path: /srv/lexia/prisma/prod.db
+    replicas:
+      - type: s3
+        bucket: lexia-backups
+        path: prod.db
+        # For B2/R2/other S3-compatible providers set the endpoint, e.g.:
+        # endpoint: https://s3.us-west-004.backblazeb2.com
+        # region: us-west-004
+        # force-path-style: true
+        retention: 720h # 30 days
+        sync-interval: 1s

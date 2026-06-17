@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LexIA · Design System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles/tokens.css" />
+  <link rel="stylesheet" href="styles/ds-page.css" />
+</head>
+<body class="ds-body theme-dark">
+
+  <!-- ÍCONES · um único set outline, stroke 1.5, grid 24 -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></symbol>
+    <symbol id="i-listChecks" viewBox="0 0 24 24"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></symbol>
+    <symbol id="i-fileText" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 2v5h5"/><path d="M9 13h6"/><path d="M9 17h6"/></symbol>
+    <symbol id="i-megaphone" viewBox="0 0 24 24"><path d="M3 11v2a1 1 0 0 0 1 1h2l9 4V6L6 10H4a1 1 0 0 0-1 1Z"/><path d="M19 9a3 3 0 0 1 0 6"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+    <symbol id="i-receipt" viewBox="0 0 24 24"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1Z"/><path d="M8 7h8"/><path d="M8 11h8"/><path d="M8 15h5"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+    <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M12 3l1.6 4.6L18 9.2l-4.4 1.6L12 15.4l-1.6-4.6L6 9.2l4.4-1.6Z"/><path d="M19 14l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7Z"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="i-checkCircle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8.5 12 2.5 2.5 4.5-4.5"/></symbol>
+    <symbol id="i-alertTriangle" viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+    <symbol id="i-arrowRight" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+    <symbol id="i-command" viewBox="0 0 24 24"><path d="M6 9a3 3 0 1 1 3-3v12a3 3 0 1 1-3-3h12a3 3 0 1 1-3 3V6a3 3 0 1 1 3 3Z"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.9 4.9 1.4 1.4"/><path d="m17.7 17.7 1.4 1.4"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m4.9 19.1 1.4-1.4"/><path d="m17.7 6.3 1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+    <symbol id="i-building" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="1.5"/><path d="M9 7h.01"/><path d="M14 7h.01"/><path d="M9 11h.01"/><path d="M14 11h.01"/><path d="M10 21v-4h4v4"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M5 21a7 7 0 0 1 14 0"/></symbol>
+    <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h13v3"/><rect x="3" y="7" width="18" height="12" rx="2"/><path d="M16 13h.01"/></symbol>
+    <symbol id="i-banknote" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01"/><path d="M18 12h.01"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></symbol>
+    <symbol id="i-briefcase" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+    <symbol id="i-flag" viewBox="0 0 24 24"><path d="M4 22V4"/><path d="M4 4h11l-1.5 4L15 12H4"/></symbol>
+    <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M4 13h4l1.5 3h5L16 13h4"/><path d="M4 13 6 5h12l2 8v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/></symbol>
+    <symbol id="i-message" viewBox="0 0 24 24"><path d="M21 14a2 2 0 0 1-2 2H8l-4 4V6a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"/></symbol>
+  </defs></svg>
+
+  <div class="ds-shell">
+    <!-- NAV -->
+    <aside class="ds-nav">
+      <div class="ds-brand">
+        <div class="ds-brand-mark">L</div>
+        <div><div class="ds-brand-name">LexIA</div><div class="ds-brand-sub">Design System v1.0</div></div>
+      </div>
+      <nav class="ds-navlist">
+        <div class="ds-navgroup">Fundação</div>
+        <a class="ds-navlink" href="#superficies"><svg class="ds-icon"><use href="#i-folder"/></svg>Superfícies</a>
+        <a class="ds-navlink" href="#cor"><svg class="ds-icon"><use href="#i-sparkles"/></svg>Cor & dourado</a>
+        <a class="ds-navlink" href="#tipografia"><svg class="ds-icon"><use href="#i-fileText"/></svg>Tipografia</a>
+        <a class="ds-navlink" href="#grade"><svg class="ds-icon"><use href="#i-settings"/></svg>Grade & raios</a>
+        <a class="ds-navlink" href="#icones"><svg class="ds-icon"><use href="#i-check"/></svg>Ícones & elevação</a>
+        <div class="ds-navgroup">Componentes</div>
+        <a class="ds-navlink" href="#botoes"><svg class="ds-icon"><use href="#i-command"/></svg>Botões</a>
+        <a class="ds-navlink" href="#formularios"><svg class="ds-icon"><use href="#i-listChecks"/></svg>Formulários</a>
+        <a class="ds-navlink" href="#feedback"><svg class="ds-icon"><use href="#i-bell"/></svg>Feedback & vazios</a>
+        <a class="ds-navlink" href="#navegacao"><svg class="ds-icon"><use href="#i-home"/></svg>Navegação</a>
+        <a class="ds-navlink" href="#listas"><svg class="ds-icon"><use href="#i-receipt"/></svg>Listas & tabela</a>
+        <a class="ds-navlink" href="#popups"><svg class="ds-icon"><use href="#i-sparkles"/></svg>Popups da LexIA</a>
+        <div class="ds-navgroup">Prova</div>
+        <a class="ds-navlink" href="#documentos"><svg class="ds-icon"><use href="#i-fileText"/></svg>Tela Documentos</a>
+        <a class="ds-navlink" href="#dourado"><svg class="ds-icon"><use href="#i-sparkles"/></svg>Guia do dourado</a>
+      </nav>
+    </aside>
+
+    <!-- MAIN -->
+    <main class="ds-main">
+      <div class="ds-topbar">
+        <span class="eyebrow">LexIA · Design System</span>
+        <span class="grow"></span>
+        <button class="ds-themetoggle" id="themeBtn"></button>
+      </div>
+
+      <!-- HERO -->
+      <header class="ds-hero">
+        <h1>Uma só linguagem<br>visual.</h1>
+        <p class="lede">O sistema de design do LexIA — SaaS jurídico com IA. Navy escuro, dourado de assinatura,
+          refinamento de produto. Os mesmos tokens, padrões e estados em todas as telas: Documentos, Casos,
+          Clientes, Contratos, Financeiro e Agenda.</p>
+        <div class="tagrow">
+          <span class="ds-tag"><span class="dot" style="background:var(--brand-gold)"></span>Navy + dourado</span>
+          <span class="ds-tag"><span class="dot" style="background:var(--ok)"></span>Grade de 4px</span>
+          <span class="ds-tag"><span class="dot" style="background:var(--text-muted)"></span>2 pesos · 5 tamanhos</span>
+          <span class="ds-tag"><span class="dot" style="background:var(--accent-strong)"></span>WCAG 4.5:1</span>
+        </div>
+      </header>
+
+      <!-- ============ FUNDAÇÃO ============ -->
+      <section class="ds-section" id="superficies">
+        <div class="ds-sec-head">
+          <div class="ds-kicker">Fundação</div>
+          <h2>Superfícies</h2>
+          <p class="desc">Exatamente três níveis de navy em toda a aplicação — nunca um quarto. Conteúdo separa-se
+            por borda de 8%, não por mais um tom. Cards sobre a sidebar dividem o mesmo nível 2 e se distinguem
+            apenas pela borda (regra "fill OU borda").</p>
+        </div>
+        <div class="ds-grid cols-3 ds-swatches" id="surfaceSwatches"></div>
+
+        <div class="ds-block">
+          <div class="ds-block-h">Bordas — uma cor, três forças</div>
+          <div class="ds-panel" id="borderRows"></div>
+        </div>
+      </section>
+
+      <section class="ds-section" id="cor">
+        <div class="ds-sec-head">
+          <div class="ds-kicker">Fundação</div>
+          <h2>Cor & uso do dourado</h2>
+          <p class="desc">O dourado é a assinatura da marca — reservado a quatro papéis: anel de foco, item
+            ativo/selecionado, CTA primário e a própria marca (mais IA/geração). Máximo de quatro ocorrências por
+            tela. As cores semânticas codificam estado; nunca decoram.</p>
+        </div>
+        <div class="ds-grid cols-3 ds-swatches" id="semanticSwatches"></div>
+        <div class="ds-panel" style="margin-top:16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+          <span class="gold-count"><svg class="ds-icon" style="font-size:14px"><use href="#i-sparkles"/></svg>Dourado: 4 / tela</span>
+          <span class="desc" style="margin:0">Fills semânticos a 10–12% de alpha, texto na mesma cor em tom claro.
+            Um único botão sólido dourado por tela. Detalhes no <a href="#dourado" style="color:var(--accent)">guia do dourado</a>.</span>
+        </div>
+      </section>
+
+      <section class="ds-section" id="tipografia">
+        <div class="ds-sec-head">
+          <div class="ds-kicker">Fundação</div>
+          <h2>Tipografia</h2>
+          <p class="desc">Inter, escala modular 1.25 (12 / 14 / 16 / 20 / 25) e dois pesos apenas: 400 corpo,
+            500 ênfase. Labels de seção em caixa alta, 11px, letter-spacing 0.08em. Números sempre tabulares.</p>
+        </div>
+        <div class="ds-panel" id="typeScale"></div>
+        <div class="ds-grid cols-2" style="margin-top:16px">
+          <div class="ds-panel"><div class="eyebrow" style="margin-bottom:10px">Tabulares</div>
+            <div class="tnum" style="font-size:25px;font-weight:500;letter-spacing:-0.02em">R$ 128.400,00</div>
+            <div class="tnum" style="font-size:14px;color:var(--text-muted);margin-top:6px">09/06/26 · há 2 dias · 1.247 palavras</div>
+          </div>
+          <div class="ds-panel"><div class="eyebrow" style="margin-bottom:10px">Pesos</div>
+            <div style="font-weight:400;font-size:16px">400 — corpo, descrições, parágrafos</div>
+            <div style="font-weight:500;font-size:16px;margin-top:6px">500 — títulos, labels, valores</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="ds-section" id="grade">
+        <div class="ds-sec-head">
+          <div class="ds-kicker">Fundação</div>
+          <h2>Grade & raios</h2>
+          <p class="desc">Tudo em múltiplos de 4px. Raios concêntricos 6 / 8 / 10 / 14 — o raio interno é sempre o
+            externo menos o padding entre eles.</p>
+        </div>
+        <div class="ds-grid cols-2">
+          <div class="ds-panel"><div class="ds-block-h" style="margin-bottom:14px">Espaçamento · grade 4px</div>
+            <div id="spaceScale"></div>
+          </div>
+          <div class="ds-panel"><div class="ds-block-h" style="margin-bottom:20px">Raios concêntricos</div>
+            <div class="ds-grid cols-2" style="gap:24px" id="radiusScale"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="ds-section" id="icones">
+        <div class="ds-sec-head">
+          <div class="ds-kicker">Fundação</div>
+          <h2>Ícones & elevação</h2>
+          <p class="desc">Um único set outline, stroke 1.5, grid 24px, renderizado a 16–18px. Containers de ícone:
+            quadrado raio 8, fill 10–12%, sem borda. Dois níveis de elevação no máximo; nada de glow ou sombra colorida.</p>
+        </div>
+        <div class="ds-grid cols-2">
+          <div class="ds-panel">
+            <div class="ds-block-h" style="margin-bottom:18px">Containers de ícone</div>
+            <div class="ds-stage" style="background:var(--surface)">
+              <span class="icon-box"><svg class="ds-icon" style="font-size:17px"><use href="#i-fileText"/></svg></span>
+              <span class="icon-box" style="background:var(--ai-soft);color:var(--ai)"><svg class="ds-icon" style="font-size:17px"><use href="#i-sparkles"/></svg></span>
+              <span class="icon-box" style="background:var(--ok-soft);color:var(--ok)"><svg class="ds-icon" style="font-size:17px"><use href="#i-check"/></svg></span>
+              <span class="icon-box" style="background:var(--warn-soft);color:var(--warn)"><svg class="ds-icon" style="font-size:17px"><use href="#i-alertTriangle"/></svg></span>
+              <span class="icon-box" style="background:var(--crit-soft);color:var(--crit)"><svg class="ds-icon" style="font-size:17px"><use href="#i-receipt"/></svg></span>
+            </div>
+            <p class="foot-note">Ícone neutro por padrão; cor só quando codifica significado.</p>
+          </div>
+          <div class="ds-panel">
+            <div class="ds-block-h" style="margin-bottom:18px">Elevação</div>
+            <div class="ds-stage" style="background:var(--bg);gap:28px">
+              <div style="width:120px;height:80px;border-radius:var(--r-lg);background:var(--surface);border:1px solid var(--border);box-shadow:var(--shadow-sm);display:grid;place-items:center;font-size:12px;color:var(--text-muted)">sm · card</div>
+              <div style="width:120px;height:80px;border-radius:var(--r-lg);background:var(--bg-elevated);border:1px solid var(--border);box-shadow:var(--shadow-md);display:grid;place-items:center;font-size:12px;color:var(--text-muted)">md · modal</div>
+            </div>
+            <p class="foot-note">Transições 150–200ms ease-out. Modais: fade + scale 0.98→1.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ COMPONENTES ============ -->
+      <section class="ds-section" id="botoes">
+        <div class="ds-sec-head">
+          <div class="ds-kicker">Componentes</div>
+          <h2>Botões</h2>
+          <p class="desc">Quatro variantes, um sistema. Altura padrão 40px (32px compacto), raio 8, peso 500. O
+            primário é o único botão sólido dourado e aparece uma vez por tela. Cada variante nos cinco estados.</p>
+        </div>
+        <div class="ds-panel" id="btnMatrix"></div>
+        <div class="ds-block">
+          <div class="ds-block-h">Compacto · 32px</div>
+          <div class="ds-stage" style="background:var(--surface)">
+            <button class="btn btn-primary btn-sm"><svg class="ds-icon" style="font-size:14px"><use href="#i-sparkles"/></svg>Gerar</button>
+            <button class="btn btn-secondary btn-sm">Editar</button>
+            <button class="btn btn-ghost btn-sm">Cancelar</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="ds-section" id="formularios">
+        <div class="ds-sec-head">
+          <div class="ds-kicker">Componentes</div>
+          <h2>Formulários</h2>
+          <p class="desc">Labels de 12px acima do campo. Inputs de 40px, raio 8, borda 8%. Foco sempre com anel
+            dourado. Erro em vermelho com mensagem de 12px abaixo do campo.</p>
+        </div>
+        <div class="ds-panel" id="inputMatrix"></div>
+      </section>
+
+      <section class="ds-section" id="feedback">
+        <div class="ds-sec-head">
+          <div class="ds-kicker">Componentes</div>
+          <h2>Feedback, estados vazios & skeleton</h2>
+          <p class="desc">Badges de status (raio 6, fill 10–12%, dot de 6px, sem borda). Toasts no nível 3 com
+            ícone semântico. Estados vazios contidos. Skeleton com a geometria do conteúdo final.</p>
+        </div>
+
+        <div class="ds-block">
+          <div class="ds-block-h">Badges de status</div>
+          <div class="ds-stage" style="background:var(--surface)">
+            <span class="badge ok"><span class="dot"></span>Finalizado</span>
+            <span class="badge warn"><span class="dot"></span>Em revisão</span>
+            <span class="badge neutral"><span class="dot"></span>Rascunho</span>
+            <span class="badge crit"><span class="dot"></span>Vencido</span>
+            <span class="badge ai"><svg class="ds-icon" style="font-size:12px"><use href="#i-sparkles"/></svg>Gerado pela LexIA</span>
+          </div>
+        </div>
+
+        <div class="ds-grid cols-2" style="margin-top:16px;align-items:stretch">
+          <div class="ds-panel">
+            <div class="ds-block-h" style="margin-bottom:18px">Toasts · canto inferior direito</div>
+            <div style="display:flex;flex-direction:column;gap:12px;align-items:flex-start">
+              <div class="dm-toast"><svg class="ds-icon" style="color:var(--ok)"><use href="#i-checkCircle"/></svg>Documento finalizado.</div>
+              <div class="dm-toast"><svg class="ds-icon" style="color:var(--warn)"><use href="#i-alertTriangle"/></svg>Parcela vence em 3 dias.</div>
+              <div class="dm-toast"><svg class="ds-icon" style="color:var(--accent)"><use href="#i-sparkles"/></svg>Minuta redigida pela LexIA.</div>
+            </div>
+            <div class="ds-block-h" style="margin:24px 0 14px">Tooltip · sem seta</div>
+            <span class="dm-tip-bubble">Atualizado há 2 dias</span>
+          </div>
+
+          <div class="ds-panel" style="display:flex;flex-direction:column">
+            <div class="ds-block-h" style="margin-bottom:0">Estado vazio</div>
+            <div class="dm-empty" style="flex:1;justify-content:center">
+              <span class="ic"><svg class="ds-icon"><use href="#i-inbox"/></svg></span>
+              <div class="ti">Nenhum documento ainda</div>
+              <div class="de">Gere a primeira minuta com a LexIA ou importe um modelo do escritório.</div>
+              <button class="btn btn-secondary btn-sm">Importar modelo</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="ds-block">
+          <div class="ds-block-h">Skeleton · mesma geometria do conteúdo</div>
+          <div class="dt" style="border-radius:var(--r-lg)">
+            <div class="dm-skel-row">
+              <div class="skeleton" style="width:32px;height:32px;border-radius:var(--r-sm)"></div>
+              <div style="flex:1"><div class="skeleton" style="width:42%;height:13px"></div>
+                <div class="skeleton" style="width:24%;height:11px;margin-top:8px"></div></div>
+              <div class="skeleton" style="width:88px;height:22px;border-radius:var(--r-xs)"></div>
+              <div class="skeleton" style="width:60px;height:13px"></div>
+            </div>
+            <div class="dm-skel-row">
+              <div class="skeleton" style="width:32px;height:32px;border-radius:var(--r-sm)"></div>
+              <div style="flex:1"><div class="skeleton" style="width:36%;height:13px"></div>
+                <div class="skeleton" style="width:20%;height:11px;margin-top:8px"></div></div>
+              <div class="skeleton" style="width:88px;height:22px;border-radius:var(--r-xs)"></div>
+              <div class="skeleton" style="width:60px;height:13px"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="ds-section" id="navegacao">
+        <div class="ds-sec-head">
+          <div class="ds-kicker">Componentes</div>
+          <h2>Navegação</h2>
+          <p class="desc">Sidebar de 240px (nível 2). Itens de 40px, ícone 18 + label 14. Ativo: fill dourado 8% +
+            texto dourado. Top bar de 56px com abas estilo navegador e segmented control para filtros.</p>
+        </div>
+        <div class="ds-grid" style="grid-template-columns:240px 1fr;gap:20px;align-items:start">
+          <!-- sidebar -->
+          <div class="dm-side">
+            <div class="dm-nav"><svg class="ds-icon"><use href="#i-home"/></svg><span class="grow">Início</span></div>
+            <div class="dm-nav"><svg class="ds-icon"><use href="#i-listChecks"/></svg><span class="grow">Tarefas</span><span class="dm-count alert">9</span></div>
+            <div class="dm-nav active"><svg class="ds-icon"><use href="#i-fileText"/></svg><span class="grow">Documentos</span><span class="dm-count">9</span></div>
+            <div class="dm-nav hover"><svg class="ds-icon"><use href="#i-banknote"/></svg><span class="grow">Financeiro</span></div>
+            <div class="dm-nav"><svg class="ds-icon"><use href="#i-folder"/></svg><span class="grow">Casos</span></div>
+            <div class="dm-nav"><svg class="ds-icon"><use href="#i-users"/></svg><span class="grow">Clientes</span></div>
+            <div class="dm-nav"><svg class="ds-icon"><use href="#i-receipt"/></svg><span class="grow">Contratos</span></div>
+            <div class="sep"></div>
+            <div class="dm-nav"><svg class="ds-icon"><use href="#i-settings"/></svg><span class="grow">Configurações</span></div>
+          </div>
+          <!-- topbar + filters -->
+          <div style="display:flex;flex-direction:column;gap:18px">
+            <div class="dm-top">
+              <div class="dm-tab active"><svg class="ds-icon"><use href="#i-fileText"/></svg>Documentos</div>
+              <div class="dm-tab"><svg class="ds-icon"><use href="#i-users"/></svg>Clientes</div>
+              <button class="dm-ghost"><svg class="ds-icon"><use href="#i-plus"/></svg></button>
+              <span style="flex:1"></span>
+              <button class="dm-ghost"><svg class="ds-icon"><use href="#i-bell"/></svg></button>
+              <div class="dm-avatar">TM</div>
+            </div>
+            <div class="ds-panel">
+              <div class="ds-block-h" style="margin-bottom:16px">Busca & segmented control</div>
+              <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+                <div class="dm-search" style="flex:1;min-width:220px">
+                  <svg class="ds-icon"><use href="#i-search"/></svg>
+                  <input class="input" placeholder="Buscar por nome, modelo, cliente…">
+                </div>
+                <div class="dm-seg">
+                  <span class="it active">Todos</span><span class="it">Rascunhos</span>
+                  <span class="it">Em revisão</span><span class="it">Finalizados</span>
+                </div>
+              </div>
+            </div>
+            <div class="ds-panel">
+              <div class="ds-block-h" style="margin-bottom:16px">Cards de início rápido · "Começar com a LexIA"</div>
+              <div class="ds-grid cols-4">
+                <div class="qs-card"><div class="qs-icon"><svg class="ds-icon"><use href="#i-receipt"/></svg></div>
+                  <div class="ti">Contrato</div><div class="de">Prestação de serviços e honorários</div></div>
+                <div class="qs-card hover"><span class="qs-spark"><svg class="ds-icon"><use href="#i-sparkles"/></svg></span>
+                  <div class="qs-icon"><svg class="ds-icon"><use href="#i-fileText"/></svg></div>
+                  <div class="ti">Procuração</div><div class="de">Ad judicia et extra</div></div>
+                <div class="qs-card"><div class="qs-icon"><svg class="ds-icon"><use href="#i-briefcase"/></svg></div>
+                  <div class="ti">Petição</div><div class="de">Inicial, contestação ou recurso</div></div>
+                <div class="qs-card"><div class="qs-icon"><svg class="ds-icon"><use href="#i-message"/></svg></div>
+                  <div class="ti">Parecer</div><div class="de">Opinião legal fundamentada</div></div>
+              </div>
+              <p class="foot-note">Hover = borda 16% + fill +2%; o sparkle aparece só como afford de ação no canto.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="ds-section" id="listas">
+        <div class="ds-sec-head">
+          <div class="ds-kicker">Componentes</div>
+          <h2>Tabela de documentos</h2>
+          <p class="desc">O padrão para TODAS as listas — casos, clientes, contratos, documentos. Cabeçalho em
+            caixa alta. Linhas de 64px, sem zebra, separadas por borda 8%, clicáveis inteiras. Célula principal:
+            container de ícone por tipo + título + metadado. Datas relativas até 7 dias, absolutas depois.</p>
+        </div>
+        <div class="dt">
+          <div class="dt-head"><div>Documento</div><div>Cliente</div><div>Status</div><div>Atualizado</div><div style="text-align:right">Formato</div></div>
+          <div class="dt-row hover">
+            <div class="dt-main"><span class="dt-ic" style="background:var(--crit-soft);color:var(--crit)"><svg class="ds-icon"><use href="#i-briefcase"/></svg></span>
+              <div style="min-width:0"><div class="dt-ti">Petição · recurso Editora Linhares</div><div class="dt-me">Petição · 1.820 palavras</div></div></div>
+            <div class="dt-sub">Linhares</div>
+            <div><span class="badge warn"><span class="dot"></span>Em revisão</span></div>
+            <div class="dt-date">há 3 dias</div>
+            <div class="dt-fmt" style="text-align:right">DOCX</div>
+          </div>
+          <div class="dt-row">
+            <div class="dt-main"><span class="dt-ic" style="background:var(--ai-soft);color:var(--ai)"><svg class="ds-icon"><use href="#i-receipt"/></svg></span>
+              <div style="min-width:0"><div class="dt-ti">Contrato de Honorários — Helena Vargas</div><div class="dt-me">Contrato · 1.247 palavras</div></div></div>
+            <div class="dt-sub">Helena</div>
+            <div><span class="badge warn"><span class="dot"></span>Em revisão</span></div>
+            <div class="dt-date">há 5 dias</div>
+            <div class="dt-fmt" style="text-align:right">DOCX</div>
+          </div>
+          <div class="dt-row">
+            <div class="dt-main"><span class="dt-ic" style="background:var(--neutral-soft);color:var(--text-muted)"><svg class="ds-icon"><use href="#i-message"/></svg></span>
+              <div style="min-width:0"><div class="dt-ti">Parecer tributário — Atlântico Logística</div><div class="dt-me">Parecer · 3.900 palavras</div></div></div>
+            <div class="dt-sub">Atlântico</div>
+            <div><span class="badge neutral"><span class="dot"></span>Rascunho</span></div>
+            <div class="dt-date">05/06/26</div>
+            <div class="dt-fmt" style="text-align:right">DOCX</div>
+          </div>
+          <div class="dt-row">
+            <div class="dt-main"><span class="dt-ic" style="background:var(--ai-soft);color:var(--ai)"><svg class="ds-icon"><use href="#i-receipt"/></svg></span>
+              <div style="min-width:0"><div class="dt-ti">Contrato de Honorários — Construtora Aurora</div><div class="dt-me">Contrato · 1.480 palavras</div></div></div>
+            <div class="dt-sub">Aurora</div>
+            <div><span class="badge ok"><span class="dot"></span>Finalizado</span></div>
+            <div class="dt-date">28/05/26</div>
+            <div class="dt-fmt" style="text-align:right">PDF</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ POPUPS DA LEXIA (prioridade) ============ -->
+      <section class="ds-section" id="popups">
+        <div class="ds-sec-head">
+          <div class="ds-kicker">Componentes · prioridade</div>
+          <h2>Popups da LexIA</h2>
+          <p class="desc">A única superfície de IA do app, em dois modos com a mesma anatomia. A barra flutuante
+            usa elevação por sombra sutil + borda 16% — <strong>sem glow dourado</strong>. A paleta de comandos
+            traz chips de modo, seções com label, e o item focado ganha fill dourado 8% + barra de 3px à esquerda.</p>
+        </div>
+
+        <div class="ds-block">
+          <div class="ds-block-h">Barra flutuante de IA · dock (⌘K)</div>
+          <div class="lexia-stage" style="display:flex;justify-content:center;align-items:center">
+            <div class="lex-pill">
+              <span class="lex-mark" style="width:30px;height:30px"><span class="orb"></span><span class="glass"></span><svg class="ds-icon" style="font-size:15px;color:#F5E9C6"><use href="#i-sparkles"/></svg></span>
+              <span class="ph">Descreva o documento e a LexIA redige…</span>
+              <span class="alert-dot" title="pendência que exige ação"></span>
+              <span class="kbd" style="height:20px;min-width:30px">⌘K</span>
+            </div>
+          </div>
+          <p class="foot-note">Placeholder contextual (muda por página). O ponto dourado só aparece quando há
+            pendência que exige ação.</p>
+        </div>
+
+        <div class="ds-block">
+          <div class="ds-block-h">Paleta de comandos · ⌘K</div>
+          <div class="lexia-stage">
+            <div class="cmd">
+              <div class="cmd-input">
+                <svg class="ds-icon"><use href="#i-sparkles"/></svg>
+                <input value="cobrar aurora" readonly>
+                <span class="kbd">esc</span>
+              </div>
+              <div class="cmd-modes">
+                <span class="cmd-chip active">Tudo</span>
+                <span class="cmd-chip"><svg class="ds-icon"><use href="#i-search"/></svg>Buscar</span>
+                <span class="cmd-chip"><svg class="ds-icon"><use href="#i-message"/></svg>Perguntar</span>
+                <span class="cmd-chip"><svg class="ds-icon"><use href="#i-sparkles"/></svg>Gerar</span>
+              </div>
+              <div class="cmd-list">
+                <div class="cmd-grouplbl">LexIA</div>
+                <div class="cmd-item active">
+                  <span class="cmd-ic gen"><span class="lex-mark" style="width:32px;height:32px"><span class="orb"></span><span class="glass"></span><svg class="ds-icon" style="font-size:15px;color:#F5E9C6"><use href="#i-sparkles"/></svg></span></span>
+                  <div class="cmd-tx"><div class="cmd-ti">Perguntar à LexIA</div><div class="cmd-su">"cobrar aurora"</div></div>
+                  <span class="kbd">↵</span>
+                </div>
+                <div class="cmd-item">
+                  <span class="cmd-ic" style="background:var(--ai-soft);color:var(--ai)"><svg class="ds-icon"><use href="#i-wallet"/></svg></span>
+                  <div class="cmd-tx"><div class="cmd-ti">Cobrar Construtora Aurora</div><div class="cmd-su">Abrir o financeiro do cliente</div></div>
+                </div>
+                <div class="cmd-grouplbl">Sugestões da LexIA</div>
+                <div class="cmd-item">
+                  <span class="cmd-ic warn"><svg class="ds-icon"><use href="#i-alertTriangle"/></svg></span>
+                  <div class="cmd-tx"><div class="cmd-ti">2 honorários vencidos · R$ 38.500,00</div><div class="cmd-su">Pedir um plano de cobrança</div></div>
+                  <span class="badge warn" style="height:20px"><span class="dot"></span>Atenção</span>
+                </div>
+                <div class="cmd-grouplbl">Ações rápidas</div>
+                <div class="cmd-item">
+                  <span class="cmd-ic"><svg class="ds-icon"><use href="#i-fileText"/></svg></span>
+                  <div class="cmd-tx"><div class="cmd-ti">Gerar documento</div><div class="cmd-su">Descreva e a LexIA redige a minuta</div></div>
+                </div>
+              </div>
+              <div class="cmd-foot">
+                <span class="sp"><span class="kbd">↑</span><span class="kbd">↓</span> navegar</span>
+                <span class="sp"><span class="kbd">↵</span> abrir</span>
+                <span class="sp"><span class="kbd">⌘</span><span class="kbd">↵</span> perguntar</span>
+                <span class="brand"><b>LexIA</b> · busca, ações e IA num só lugar</span>
+              </div>
+            </div>
+          </div>
+          <p class="foot-note">Ícones por tipo: âmbar = alerta · orb dourado = geração com IA · balão = pergunta ·
+            neutro = ação comum. Itens compactos (padding 8–10px), 6–7 visíveis sem scroll.</p>
+        </div>
+      </section>
+
+      <!-- ============ PROVA ============ -->
+      <section class="ds-section" id="documentos">
+        <div class="ds-sec-head">
+          <div class="ds-kicker">Prova do sistema</div>
+          <h2>Tela de Documentos — montada só com o sistema</h2>
+          <p class="desc">Sidebar, top bar, cabeçalho de página, cards de início rápido, busca, segmented control,
+            tabela e CTA — todos os componentes acima, sem nenhuma variação local. Um único botão sólido dourado.</p>
+        </div>
+
+        <div class="ds-panel tight">
+          <div class="app-screen theme-inherit" style="height:640px;display:flex;background:var(--bg)">
+            <!-- sidebar -->
+            <aside style="width:240px;flex-shrink:0;background:var(--bg-soft);border-right:1px solid var(--border);padding:14px 12px;display:flex;flex-direction:column;gap:2px">
+              <div style="display:flex;align-items:center;gap:10px;padding:6px 10px 16px">
+                <div class="ds-brand-mark" style="width:30px;height:30px;font-size:15px">L</div>
+                <span style="font-weight:500;letter-spacing:-0.02em">LexIA</span>
+              </div>
+              <div class="dm-nav"><svg class="ds-icon"><use href="#i-home"/></svg><span class="grow">Início</span></div>
+              <div class="dm-nav"><svg class="ds-icon"><use href="#i-listChecks"/></svg><span class="grow">Tarefas</span><span class="dm-count alert">9</span></div>
+              <div class="dm-nav active"><svg class="ds-icon"><use href="#i-fileText"/></svg><span class="grow">Documentos</span><span class="dm-count">9</span></div>
+              <div class="dm-nav"><svg class="ds-icon"><use href="#i-banknote"/></svg><span class="grow">Financeiro</span></div>
+              <div class="dm-nav"><svg class="ds-icon"><use href="#i-folder"/></svg><span class="grow">Casos</span></div>
+              <div class="dm-nav"><svg class="ds-icon"><use href="#i-users"/></svg><span class="grow">Clientes</span></div>
+              <div class="dm-nav"><svg class="ds-icon"><use href="#i-receipt"/></svg><span class="grow">Contratos</span></div>
+              <div style="flex:1"></div>
+              <div class="sep"></div>
+              <div class="dm-nav"><svg class="ds-icon"><use href="#i-settings"/></svg><span class="grow">Configurações</span></div>
+            </aside>
+            <!-- main -->
+            <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+              <div style="height:56px;flex-shrink:0;display:flex;align-items:center;gap:8px;padding:0 24px;border-bottom:1px solid var(--border)">
+                <div class="dm-tab active"><svg class="ds-icon"><use href="#i-fileText"/></svg>Documentos</div>
+                <span style="flex:1"></span>
+                <button class="dm-ghost"><svg class="ds-icon"><use href="#i-bell"/></svg></button>
+                <div class="dm-avatar">TM</div>
+              </div>
+              <div style="flex:1;overflow:hidden;padding:28px 24px;display:flex;flex-direction:column;gap:20px">
+                <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px">
+                  <div>
+                    <h1 style="margin:0;font-size:25px;font-weight:500;letter-spacing:-0.025em">Documentos</h1>
+                    <div style="font-size:14px;color:var(--text-muted);margin-top:4px">9 documentos · redigidos e revisados com a LexIA</div>
+                  </div>
+                  <button class="btn btn-primary"><svg class="ds-icon" style="font-size:16px"><use href="#i-sparkles"/></svg>Gerar com a LexIA</button>
+                </div>
+                <div style="display:flex;align-items:center;gap:14px">
+                  <div class="dm-search" style="flex:1"><svg class="ds-icon"><use href="#i-search"/></svg>
+                    <input class="input" placeholder="Buscar por nome, modelo, cliente…"></div>
+                  <div class="dm-seg"><span class="it active">Todos</span><span class="it">Rascunhos</span><span class="it">Em revisão</span><span class="it">Finalizados</span></div>
+                </div>
+                <div class="dt" style="flex:1;overflow:hidden">
+                  <div class="dt-head"><div>Documento</div><div>Cliente</div><div>Status</div><div>Atualizado</div><div style="text-align:right">Formato</div></div>
+                  <div class="dt-row hover">
+                    <div class="dt-main"><span class="dt-ic" style="background:var(--crit-soft);color:var(--crit)"><svg class="ds-icon"><use href="#i-briefcase"/></svg></span>
+                      <div style="min-width:0"><div class="dt-ti">Petição · recurso Editora Linhares</div><div class="dt-me">Petição · 1.820 palavras</div></div></div>
+                    <div class="dt-sub">Linhares</div><div><span class="badge warn"><span class="dot"></span>Em revisão</span></div>
+                    <div class="dt-date">há 3 dias</div><div class="dt-fmt" style="text-align:right">DOCX</div>
+                  </div>
+                  <div class="dt-row">
+                    <div class="dt-main"><span class="dt-ic" style="background:var(--ai-soft);color:var(--ai)"><svg class="ds-icon"><use href="#i-receipt"/></svg></span>
+                      <div style="min-width:0"><div class="dt-ti">Contrato de Honorários — Helena Vargas</div><div class="dt-me">Contrato · 1.247 palavras</div></div></div>
+                    <div class="dt-sub">Helena</div><div><span class="badge neutral"><span class="dot"></span>Rascunho</span></div>
+                    <div class="dt-date">há 5 dias</div><div class="dt-fmt" style="text-align:right">DOCX</div>
+                  </div>
+                  <div class="dt-row">
+                    <div class="dt-main"><span class="dt-ic" style="background:var(--ai-soft);color:var(--ai)"><svg class="ds-icon"><use href="#i-receipt"/></svg></span>
+                      <div style="min-width:0"><div class="dt-ti">Contrato de Honorários — Construtora Aurora</div><div class="dt-me">Contrato · 1.480 palavras</div></div></div>
+                    <div class="dt-sub">Aurora</div><div><span class="badge ok"><span class="dot"></span>Finalizado</span></div>
+                    <div class="dt-date">28/05/26</div><div class="dt-fmt" style="text-align:right">PDF</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ GUIA DO DOURADO ============ -->
+      <section class="ds-section" id="dourado" style="border-bottom:0">
+        <div class="ds-sec-head">
+          <div class="ds-kicker">Guia</div>
+          <h2>O dourado — certo & errado</h2>
+          <p class="desc">A assinatura só funciona se for rara. Cinco usos corretos, cinco enganos comuns.</p>
+        </div>
+        <div class="guide-cols">
+          <div class="guide-col do">
+            <h3><span class="tagico"><svg class="ds-icon"><use href="#i-check"/></svg></span>Faça</h3>
+            <div class="guide-item"><span class="mk"><svg class="ds-icon"><use href="#i-check"/></svg></span><div class="gx"><div class="gt">No anel de foco</div><div class="gd">Todo campo ou botão focado recebe o anel dourado — identificável a 2 metros.</div></div></div>
+            <div class="guide-item"><span class="mk"><svg class="ds-icon"><use href="#i-check"/></svg></span><div class="gx"><div class="gt">No item ativo da navegação</div><div class="gd">Fill dourado 8% + texto dourado marcam onde você está.</div></div></div>
+            <div class="guide-item"><span class="mk"><svg class="ds-icon"><use href="#i-check"/></svg></span><div class="gx"><div class="gt">No único CTA primário</div><div class="gd">Um botão sólido dourado por tela — "Gerar com a LexIA".</div></div></div>
+            <div class="guide-item"><span class="mk"><svg class="ds-icon"><use href="#i-check"/></svg></span><div class="gx"><div class="gt">Na marca e na IA</div><div class="gd">O orb da LexIA e badges de "gerado por IA" carregam o dourado.</div></div></div>
+            <div class="guide-item"><span class="mk"><svg class="ds-icon"><use href="#i-check"/></svg></span><div class="gx"><div class="gt">No item focado da paleta</div><div class="gd">Fill 8% + barra de 3px à esquerda guiam o teclado.</div></div></div>
+          </div>
+          <div class="guide-col dont">
+            <h3><span class="tagico"><svg class="ds-icon"><use href="#i-x"/></svg></span>Evite</h3>
+            <div class="guide-item"><span class="mk"><svg class="ds-icon"><use href="#i-x"/></svg></span><div class="gx"><div class="gt">Dois botões dourados na tela</div><div class="gd">O segundo vira ruído. Secundários usam borda 16%, fundo transparente.</div></div></div>
+            <div class="guide-item"><span class="mk"><svg class="ds-icon"><use href="#i-x"/></svg></span><div class="gx"><div class="gt">Glow dourado na barra de IA</div><div class="gd">Elevação é sombra sutil + borda 16%, nunca halo luminoso.</div></div></div>
+            <div class="guide-item"><span class="mk"><svg class="ds-icon"><use href="#i-x"/></svg></span><div class="gx"><div class="gt">Dourado para status de sucesso</div><div class="gd">Finalizado é verde. Dourado não codifica estado semântico.</div></div></div>
+            <div class="guide-item"><span class="mk"><svg class="ds-icon"><use href="#i-x"/></svg></span><div class="gx"><div class="gt">Texto de corpo em dourado</div><div class="gd">Reduz contraste e dilui a assinatura. Corpo é sempre neutro.</div></div></div>
+            <div class="guide-item"><span class="mk"><svg class="ds-icon"><use href="#i-x"/></svg></span><div class="gx"><div class="gt">Borda dourada decorativa em cards</div><div class="gd">Dourado na borda só significa foco/seleção — nunca enfeite.</div></div></div>
+          </div>
+        </div>
+        <div class="ds-panel" style="margin-top:28px">
+          <div class="ds-block-h" style="margin-bottom:16px">Critérios de aceitação</div>
+          <div class="ds-grid cols-2" style="gap:10px 28px">
+            <div class="guide-item" style="padding:8px 0;border:0"><span class="mk" style="background:var(--ok-soft);color:var(--ok)"><svg class="ds-icon"><use href="#i-check"/></svg></span><div class="gx"><div class="gt" style="font-weight:400;font-size:14px;color:var(--text-muted)">Nenhum valor fora dos tokens.</div></div></div>
+            <div class="guide-item" style="padding:8px 0;border:0"><span class="mk" style="background:var(--ok-soft);color:var(--ok)"><svg class="ds-icon"><use href="#i-check"/></svg></span><div class="gx"><div class="gt" style="font-weight:400;font-size:14px;color:var(--text-muted)">Dourado em no máximo 4 lugares por tela.</div></div></div>
+            <div class="guide-item" style="padding:8px 0;border:0"><span class="mk" style="background:var(--ok-soft);color:var(--ok)"><svg class="ds-icon"><use href="#i-check"/></svg></span><div class="gx"><div class="gt" style="font-weight:400;font-size:14px;color:var(--text-muted)">Nunca fill + borda decorativa juntos.</div></div></div>
+            <div class="guide-item" style="padding:8px 0;border:0"><span class="mk" style="background:var(--ok-soft);color:var(--ok)"><svg class="ds-icon"><use href="#i-check"/></svg></span><div class="gx"><div class="gt" style="font-weight:400;font-size:14px;color:var(--text-muted)">Foco identificável a 2 metros.</div></div></div>
+            <div class="guide-item" style="padding:8px 0;border:0"><span class="mk" style="background:var(--ok-soft);color:var(--ok)"><svg class="ds-icon"><use href="#i-check"/></svg></span><div class="gx"><div class="gt" style="font-weight:400;font-size:14px;color:var(--text-muted)">Mesmos padrões em todas as seções.</div></div></div>
+            <div class="guide-item" style="padding:8px 0;border:0"><span class="mk" style="background:var(--ok-soft);color:var(--ok)"><svg class="ds-icon"><use href="#i-check"/></svg></span><div class="gx"><div class="gt" style="font-weight:400;font-size:14px;color:var(--text-muted)">Apenas 3 níveis de superfície navy.</div></div></div>
+          </div>
+        </div>
+        <p class="foot-note" style="margin-top:28px">LexIA Design System · fundação em <code style="font-family:var(--font-mono);color:var(--text-muted)">styles/tokens.css</code> — cascateia para CRM, Comercial, Financeiro e Tarefas.</p>
+      </section>
+    </main>
+  </div>
+
+  <template id="__bundler_thumbnail" data-bg-color="#020D25">
+    <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+      <rect width="1200" height="800" fill="#020D25"/>
+      <rect x="420" y="300" width="360" height="200" rx="18" fill="#0A1733" stroke="#C0A147" stroke-opacity="0.4"/>
+      <circle cx="600" cy="370" r="34" fill="#C0A147"/>
+      <text x="600" y="384" text-anchor="middle" font-family="Inter, sans-serif" font-size="36" font-weight="500" fill="#020D25">L</text>
+      <rect x="500" y="430" width="200" height="10" rx="5" fill="#F5F1E4" opacity="0.5"/>
+    </svg>
+  </template>
+
+  <script src="styles/ds-page.js"></script>
+</body>
+</html>

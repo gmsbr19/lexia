@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
+import { Toaster } from "@/components/ui/Toaster";
+import { UnifiedShell } from "@/components/shell/UnifiedShell";
 import "../styles/theme.css";
+import "@/components/crm/crm-theme.css";
 import { unselectable } from "../styles/theme.css";
 
 const inter = Inter({
@@ -23,7 +26,10 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" className={inter.variable} suppressHydrationWarning>
       <body className={unselectable}>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <UnifiedShell>{children}</UnifiedShell>
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   );

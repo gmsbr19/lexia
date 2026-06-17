@@ -104,6 +104,13 @@ export interface ContratoHonorariosData {
   honorarios: Honorarios
   foro: string
   data: string
+  /**
+   * Per-document overrides for the standard prose clauses, keyed by clause id
+   * (see lib/documents/generators/contrato-honorarios/clausulas.ts). Absent /
+   * empty entries fall back to the canonical clause text. Edited by hand in the
+   * form or rewritten by LexIA.
+   */
+  clausulas?: Record<string, string>
 }
 
 export function newContratantePF(): ContratantePF {

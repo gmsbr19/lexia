@@ -1,0 +1,233 @@
+// AppShell: sidebar + topbar wrapper used by every screen
+const { useState } = React;
+
+const Logo = ({ collapsed }) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 4px', minHeight: 36 }}>
+    <div style={{
+      width: 28, height: 28, borderRadius: 8,
+      background: 'linear-gradient(135deg, #C0A147 0%, #9a7f2e 100%)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.25)',
+      flexShrink: 0,
+    }}>
+      <span style={{
+        fontFamily: 'Georgia, serif', fontWeight: 700, fontSize: 14,
+        color: '#020D25', letterSpacing: '-0.02em',
+      }}>L</span>
+    </div>
+    {!collapsed && (
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 0 }}>
+        <span style={{ fontWeight: 600, fontSize: 15, letterSpacing: '-0.02em', color: 'var(--text)' }}>Lex</span>
+        <span style={{ fontWeight: 600, fontSize: 15, letterSpacing: '-0.02em', color: 'var(--accent)' }}>IA</span>
+      </div>
+    )}
+  </div>
+);
+
+const NavItem = ({ icon, label, active, badge, collapsed }) => (
+  <div style={{
+    display: 'flex', alignItems: 'center', gap: 10,
+    padding: collapsed ? '8px' : '7px 10px',
+    borderRadius: 8,
+    cursor: 'pointer',
+    background: active ? 'var(--accent-soft)' : 'transparent',
+    color: active ? 'var(--accent)' : 'var(--text-muted)',
+    fontSize: 13.5,
+    fontWeight: active ? 600 : 500,
+    letterSpacing: '-0.01em',
+    justifyContent: collapsed ? 'center' : 'flex-start',
+    position: 'relative',
+  }}>
+    <Icon name={icon} size={17} strokeWidth={active ? 2 : 1.75} />
+    {!collapsed && <span>{label}</span>}
+    {!collapsed && badge && (
+      <span style={{
+        marginLeft: 'auto', fontSize: 11, fontWeight: 500,
+        background: 'var(--bg-sunken)', color: 'var(--text-muted)',
+        padding: '1px 7px', borderRadius: 999,
+      }}>{badge}</span>
+    )}
+  </div>
+);
+
+const Sidebar = ({ active = 'documentos', collapsed = false }) => (
+  <aside style={{
+    width: collapsed ? 64 : 232,
+    background: 'var(--bg-soft)',
+    borderRight: '1px solid var(--border)',
+    padding: '14px 12px 16px',
+    display: 'flex', flexDirection: 'column', gap: 4,
+    flexShrink: 0,
+    transition: 'width 0.2s ease',
+  }}>
+    <div style={{ padding: '4px 4px 14px' }}>
+      <Logo collapsed={collapsed} />
+    </div>
+
+    {!collapsed && (
+      <div style={{ position: 'relative', marginBottom: 8 }}>
+        <div style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-subtle)' }}>
+          <Icon name="search" size={14} />
+        </div>
+        <input className="input" placeholder="Buscar..." style={{
+          paddingLeft: 32, height: 32, fontSize: 12.5,
+          background: 'var(--surface)',
+        }} />
+        <span style={{
+          position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+          fontSize: 10.5, color: 'var(--text-subtle)',
+          background: 'var(--bg-sunken)', padding: '2px 5px', borderRadius: 4,
+          fontFamily: 'var(--font-mono)',
+        }}>⌘K</span>
+      </div>
+    )}
+
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <NavItem icon="home" label="Início" active={active === 'inicio'} collapsed={collapsed} />
+      <NavItem icon="listChecks" label="Tarefas" badge="9" active={active === 'tarefas'} collapsed={collapsed} />
+      <NavItem icon="fileText" label="Documentos" badge="12" active={active === 'documentos'} collapsed={collapsed} />
+      <NavItem icon="wallet" label="Financeiro" active={active === 'financeiro'} collapsed={collapsed} />
+      <NavItem icon="megaphone" label="Comercial" active={active === 'comercial'} collapsed={collapsed} />
+      <NavItem icon="briefcase" label="Casos" active={active === 'casos'} collapsed={collapsed} />
+      <NavItem icon="users" label="Clientes" active={active === 'clientes'} collapsed={collapsed} />
+      <NavItem icon="receipt" label="Contratos" active={active === 'contratos'} collapsed={collapsed} />
+      <NavItem icon="calendar" label="Agenda" active={active === 'agenda'} collapsed={collapsed} />
+    </div>
+
+    <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <NavItem icon="settings" label="Configurações" collapsed={collapsed} />
+      {!collapsed && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '8px 10px', borderRadius: 8,
+          marginTop: 6, background: 'var(--surface)',
+          border: '1px solid var(--border)',
+        }}>
+          <div style={{
+            width: 28, height: 28, borderRadius: '50%',
+            background: 'linear-gradient(135deg, #020D25, #1a2c5a)',
+            color: '#C0A147', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 11, fontWeight: 600, flexShrink: 0,
+          }}>RM</div>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--text)', letterSpacing: '-0.01em' }}>Rafael Moraes</div>
+            <div style={{ fontSize: 11, color: 'var(--text-subtle)' }}>Sócio</div>
+          </div>
+          <Icon name="chevronRight" size={14} style={{ color: 'var(--text-subtle)' }} />
+        </div>
+      )}
+    </div>
+  </aside>
+);
+
+const Breadcrumb = ({ items }) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--text-muted)', letterSpacing: '-0.01em' }}>
+    {items.map((item, i) => (
+      <React.Fragment key={i}>
+        {i > 0 && <Icon name="chevronRight" size={12} style={{ color: 'var(--text-subtle)' }} />}
+        <span style={{
+          color: i === items.length - 1 ? 'var(--text)' : 'var(--text-muted)',
+          fontWeight: i === items.length - 1 ? 500 : 400,
+        }}>{item}</span>
+      </React.Fragment>
+    ))}
+  </div>
+);
+
+const TopBar = ({ breadcrumb, actions }) => (
+  <header style={{
+    display: 'flex', alignItems: 'center', gap: 16,
+    padding: '14px 28px',
+    borderBottom: '1px solid var(--border)',
+    background: 'var(--bg)',
+    minHeight: 56,
+  }}>
+    <button style={{
+      width: 28, height: 28, borderRadius: 6, border: 'none',
+      background: 'transparent', color: 'var(--text-muted)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      cursor: 'pointer',
+    }}>
+      <Icon name="sidebar" size={16} />
+    </button>
+    <Breadcrumb items={breadcrumb} />
+    <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+      {actions}
+      <button style={{
+        width: 32, height: 32, borderRadius: 8, border: 'none',
+        background: 'transparent', color: 'var(--text-muted)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        cursor: 'pointer', position: 'relative',
+      }}>
+        <Icon name="bell" size={16} />
+        <span style={{
+          position: 'absolute', top: 7, right: 8,
+          width: 6, height: 6, borderRadius: '50%',
+          background: 'var(--brand-gold)',
+        }} />
+      </button>
+    </div>
+  </header>
+);
+
+// DocTabs — sub-navigation for the Documentos area
+const DocTabs = ({ active }) => {
+  const tabs = [
+    { id: 'criar',     label: 'Criar' },
+    { id: 'meus',      label: 'Meus documentos', count: 142 },
+    { id: 'templates', label: 'Modelos',         count: 32 },
+  ];
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'stretch', gap: 0,
+      padding: '0 28px',
+      borderBottom: '1px solid var(--border)',
+      background: 'var(--bg)',
+      minHeight: 42,
+    }}>
+      {tabs.map(t => {
+        const isActive = active === t.id;
+        return (
+          <div key={t.id} style={{
+            display: 'flex', alignItems: 'center', gap: 7,
+            padding: '0 16px',
+            fontSize: 13,
+            fontWeight: isActive ? 600 : 500,
+            color: isActive ? 'var(--text)' : 'var(--text-muted)',
+            letterSpacing: '-0.005em',
+            cursor: 'pointer',
+            position: 'relative',
+            borderBottom: isActive ? '2px solid var(--accent)' : '2px solid transparent',
+            marginBottom: -1,
+          }}>
+            <span>{t.label}</span>
+            {t.count !== undefined && (
+              <span style={{
+                fontSize: 10.5, fontWeight: 500,
+                background: isActive ? 'var(--accent-soft)' : 'var(--bg-sunken)',
+                color: isActive ? 'var(--accent)' : 'var(--text-subtle)',
+                padding: '1px 6px', borderRadius: 999,
+                fontFeatureSettings: '"tnum"',
+              }}>{t.count}</span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+const AppShell = ({ active, breadcrumb, actions, tabs, children, sidebarCollapsed = false }) => (
+  <>
+    <Sidebar active={active} collapsed={sidebarCollapsed} />
+    <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+      <TopBar breadcrumb={breadcrumb} actions={actions} />
+      {tabs}
+      <div style={{ flex: 1, overflow: 'auto', background: 'var(--bg)' }}>
+        {children}
+      </div>
+    </main>
+  </>
+);
+
+Object.assign(window, { AppShell, Sidebar, TopBar, Breadcrumb, Logo, NavItem, DocTabs });

@@ -93,11 +93,7 @@ export function DocumentsTemplatesTab({ initialFilter }: { initialFilter: string
                 <div className={templateTitle}>{template.name}</div>
                 <div className={templateDescription}>{template.description}</div>
                 <div className={templateFooter}>
-                  <div className={templateMuted}>
-                    {template.clauseCount ? `${template.clauseCount} cláusulas` : ""}
-                    {template.clauseCount && template.lastRevision ? " · " : ""}
-                    {template.lastRevision ? `Rev. ${template.lastRevision}` : ""}
-                  </div>
+                  <div className={templateMuted}>Abrir no editor</div>
                   <ArrowRight size={13} color="var(--accent)" />
                 </div>
               </Link>

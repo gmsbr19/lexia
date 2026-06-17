@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LexIA · Logotipo</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Spectral:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="styles/tokens.css" />
+
+  <style>
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      background: #f0eee9; overflow: hidden;
+    }
+    #root { width: 100%; height: 100%; }
+  </style>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="design-canvas.jsx"></script>
+  <script type="text/babel" src="src/logo.jsx"></script>
+</head>
+<body>
+  <template id="__bundler_thumbnail" data-bg-color="#020D25">
+    <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+      <rect width="1200" height="800" fill="#020D25"/>
+      <text x="600" y="445" text-anchor="middle" font-family="Georgia, serif" font-weight="500" font-size="150" letter-spacing="-6">
+        <tspan fill="#F5F1E4">Lex</tspan><tspan fill="#C0A147">IA</tspan>
+      </text>
+    </svg>
+  </template>
+
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="env,react">
+    const App = () => (
+      <DesignCanvas>
+        <DCSection
+          id="direcoes"
+          title="Logotipo — direções"
+          subtitle="Conceito: a tipografia conta a marca. 'Lex' em serifa refinada (Spectral) = tradição e direito; 'IA' como assinatura dourada = a tecnologia. Dourado usado como assinatura, conforme o sistema.">
+          <DCArtboard id="bicolor" label="A · Bicolor serifa — recomendado" width={560} height={300}>
+            <LexStage><WMBicolor size={76} /></LexStage>
+          </DCArtboard>
+          <DCArtboard id="serifmono" label="B · Serifa + monoespaçada" width={560} height={300}>
+            <LexStage><WMSerifMono size={76} /></LexStage>
+          </DCArtboard>
+          <DCArtboard id="spark" label="C · Com fagulha (assinatura IA)" width={560} height={300}>
+            <LexStage><WMSpark size={76} /></LexStage>
+          </DCArtboard>
+          <DCArtboard id="dot" label="D · Lex · IA — fagulha separadora" width={560} height={300}>
+            <LexStage><WMDot size={66} /></LexStage>
+          </DCArtboard>
+          <DCArtboard id="tagline" label="E · Com tagline" width={560} height={300}>
+            <LexStage><WMTagline size={62} /></LexStage>
+          </DCArtboard>
+          <DCArtboard id="lockup" label="F · Lockup completo (símbolo + texto)" width={560} height={300}>
+            <LexStage><LexLockup markSize={68} wordSize={56} variant="fill" /></LexStage>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection
+          id="claro"
+          title="Em fundo claro"
+          subtitle="O mesmo logotipo no tema claro do sistema — 'Lex' em tinta navy, 'IA' em dourado profundo p/ contraste WCAG.">
+          <DCArtboard id="bicolor-light" label="Bicolor — claro" width={560} height={300}>
+            <LexStage bg="#FAFAF7"><WMBicolor size={76} cream="#020D25" gold="#9A7F2E" /></LexStage>
+          </DCArtboard>
+          <DCArtboard id="lockup-light" label="Lockup — claro" width={560} height={300}>
+            <LexStage bg="#FAFAF7"><LexLockup markSize={68} wordSize={56} variant="fill" cream="#020D25" gold="#9A7F2E" /></LexStage>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection
+          id="simbolo"
+          title="Símbolo & favicon"
+          subtitle="Monograma 'L' em serifa — para favicon, avatar e usos compactos onde o wordmark não cabe.">
+          <DCArtboard id="mark-variants" label="Variações do símbolo" width={620} height={300}>
+            <MarkVariants />
+          </DCArtboard>
+          <DCArtboard id="favicon" label="Escala de favicon" width={620} height={300}>
+            <FaviconScale />
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection
+          id="aplicacao"
+          title="Aplicação"
+          subtitle="Como a marca vive dentro do produto.">
+          <DCArtboard id="sidebar-dark" label="Sidebar — escuro" width={300} height={440}>
+            <SidebarApp theme="dark" />
+          </DCArtboard>
+          <DCArtboard id="sidebar-light" label="Sidebar — claro" width={300} height={440}>
+            <SidebarApp theme="light" />
+          </DCArtboard>
+          <DCArtboard id="splash" label="Splash / login" width={560} height={440}>
+            <SplashApp />
+          </DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+    );
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

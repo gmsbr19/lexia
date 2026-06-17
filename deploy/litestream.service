@@ -1,0 +1,18 @@
+# Litestream replication unit. Install:
+#   sudo cp deploy/litestream.service /etc/systemd/system/
+#   sudo install -m 600 /dev/null /etc/litestream.env   # then fill in the keys
+#   sudo systemctl daemon-reload && sudo systemctl enable --now litestream
+[Unit]
+Description=Litestream (SQLite replication)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Holds LITESTREAM_ACCESS_KEY_ID / LITESTREAM_SECRET_ACCESS_KEY (root-only file).
+EnvironmentFile=/etc/litestream.env
+ExecStart=/usr/local/bin/litestream replicate -config /etc/litestream.yml
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

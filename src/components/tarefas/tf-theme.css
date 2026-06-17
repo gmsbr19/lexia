@@ -1,0 +1,185 @@
+/* LexIA · Tarefas — plain global stylesheet (imported in app/tarefas/page.tsx).
+ * The design prototype styled everything with CSS custom properties + a few
+ * utility classes (.btn, .card, .input, .pill). We define those here, scoped to
+ * a `.tf-scope` wrapper so nothing leaks to the rest of the app, with values that
+ * mirror the app's vanilla-extract tokens (navy/gold; light + dark; see
+ * src/styles/theme.css.ts — the single foundation). Dark mode is driven by the
+ * app's `.theme-dark` ancestor class. Mirrors cm-theme.css. */
+
+/* ── layout wrappers ── */
+.tf-root {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-sans);
+  letter-spacing: -0.01em;
+}
+.tf-inline { display: contents; }
+
+/* ── variable bridge · light ── */
+.tf-scope {
+  --bg: #FAFAF7;
+  --bg-elevated: #FFFFFF;
+  --bg-sunken: rgba(2, 13, 37, 0.05);
+  --bg-soft: #FFFFFF;
+  --surface: #FFFFFF;
+  --surface-hover: #F2F1EC;
+  --border: rgba(2, 13, 37, 0.08);
+  --border-strong: rgba(2, 13, 37, 0.16);
+  --border-gold: rgba(154, 127, 46, 0.45);
+  --text: #020D25;
+  --text-muted: rgba(2, 13, 37, 0.64);
+  --text-subtle: rgba(2, 13, 37, 0.44);
+  --accent: #8A6B22;
+  --accent-strong: #9A7F2E;
+  --accent-soft: rgba(192, 161, 71, 0.14);
+  --ok: #1F8A4C;       --ok-soft: rgba(31, 138, 76, 0.10);
+  --warn: #B47E12;     --warn-soft: rgba(180, 126, 18, 0.12);
+  --crit: #C0492F;     --crit-soft: rgba(192, 73, 47, 0.10);
+  --neutral-soft: rgba(2, 13, 37, 0.05);
+  --ai: #9A7F2E;       --ai-soft: rgba(192, 161, 71, 0.12);
+  --overlay: rgba(2, 13, 37, 0.45);
+  --shadow-sm: 0 1px 2px rgba(2, 13, 37, 0.05);
+  --shadow-md: 0 12px 30px rgba(2, 13, 37, 0.10), 0 2px 6px rgba(2, 13, 37, 0.05);
+  --shadow-lg: 0 12px 30px rgba(2, 13, 37, 0.10), 0 2px 6px rgba(2, 13, 37, 0.05);
+  --ring: rgba(192, 161, 71, 0.45);
+  --r-xs: 6px;
+  --r-sm: 8px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 14px;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --brand-navy: #020D25;
+  --brand-gold: #C0A147;
+  --brand-gold-soft: #D8BE7A;
+  --brand-gold-deep: #9A7F2E;
+}
+
+/* ── variable bridge · dark (app toggles .theme-dark on an ancestor) ── */
+.theme-dark .tf-scope {
+  --bg: #020D25;
+  --bg-elevated: #13234C;
+  --bg-sunken: rgba(255, 255, 255, 0.06);
+  --bg-soft: #0A1733;
+  --surface: #0A1733;
+  --surface-hover: #12214A;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --border-gold: rgba(192, 161, 71, 0.40);
+  --text: #F5F1E4;
+  --text-muted: rgba(245, 241, 228, 0.66);
+  --text-subtle: rgba(245, 241, 228, 0.44);
+  --accent: #D8BE7A;
+  --accent-strong: #C0A147;
+  --accent-soft: rgba(192, 161, 71, 0.12);
+  --ok: #4FC07D;       --ok-soft: rgba(79, 192, 125, 0.12);
+  --warn: #E0B257;     --warn-soft: rgba(224, 178, 87, 0.14);
+  --crit: #E07A60;     --crit-soft: rgba(224, 122, 96, 0.12);
+  --neutral-soft: rgba(255, 255, 255, 0.06);
+  --ai: #C0A147;       --ai-soft: rgba(192, 161, 71, 0.12);
+  --overlay: rgba(2, 13, 37, 0.70);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.40);
+  --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.44), 0 2px 6px rgba(0, 0, 0, 0.30);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.44), 0 2px 6px rgba(0, 0, 0, 0.30);
+  --ring: rgba(192, 161, 71, 0.55);
+}
+
+/* ── buttons — 40px standard, radius 8, weight 500 ── */
+.tf-scope .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: var(--r-sm);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition: background .15s ease-out, border-color .15s ease-out, filter .15s ease-out;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.tf-scope .btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
+.tf-scope .btn:disabled { cursor: not-allowed; opacity: 0.45; }
+.tf-scope .btn-sm { height: 32px; padding: 0 12px; }
+.tf-scope .btn-primary { background: var(--brand-gold); color: var(--brand-navy); }
+.tf-scope .btn-primary:hover { background: var(--brand-gold-soft); }
+.tf-scope .btn-primary:active { background: var(--brand-gold-deep); }
+.tf-scope .btn-secondary { background: transparent; color: var(--text); border-color: var(--border-strong); }
+.tf-scope .btn-secondary:hover { background: rgba(2, 13, 37, 0.04); }
+.theme-dark .tf-scope .btn-secondary:hover { background: rgba(255, 255, 255, 0.06); }
+.tf-scope .btn-ghost { background: transparent; color: var(--text-muted); }
+.tf-scope .btn-ghost:hover { background: rgba(2, 13, 37, 0.04); color: var(--text); }
+.theme-dark .tf-scope .btn-ghost:hover { background: rgba(255, 255, 255, 0.06); }
+.tf-scope .btn-gold { background: var(--brand-gold); color: var(--brand-navy); font-weight: 500; }
+.tf-scope .btn-gold:hover { background: var(--brand-gold-soft); }
+
+/* ── card / pill ── */
+.tf-scope .card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+}
+.tf-scope .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--r-xs);
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* ── inputs — 40px, raio 8, borda 8%, foco anel dourado ── */
+.tf-scope .input,
+.tf-scope .textarea {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--text);
+  outline: none;
+  transition: border-color .15s ease-out, box-shadow .15s ease-out;
+}
+.tf-scope .input:hover,
+.tf-scope .textarea:hover { border-color: var(--border-strong); }
+.tf-scope .input:focus,
+.tf-scope .textarea:focus { border-color: var(--border-gold); box-shadow: 0 0 0 3px var(--ring); }
+.tf-scope .input::placeholder,
+.tf-scope .textarea::placeholder { color: var(--text-subtle); }
+.tf-scope .label { display: block; font-size: 12px; font-weight: 500; color: var(--text-muted); margin-bottom: 8px; }
+
+/* ── task-specific hover affordances (from the design's <style> block) ── */
+.tf-scope .task-row { transition: background .12s; }
+.tf-scope .task-row:hover { background: var(--surface-hover); }
+.tf-scope .crit-row:hover .crit-x { opacity: 1 !important; }
+.tf-scope .picker-btn:hover { background: var(--surface-hover); }
+.tf-scope .kanban-card:hover,
+.tf-scope .pool-card:hover { box-shadow: var(--shadow-md); border-color: var(--border-strong) !important; }
+.tf-scope .task-check:hover { box-shadow: 0 0 0 3px var(--accent-soft); }
+
+/* ── native date/time inputs ── */
+.tf-scope .dt-input {
+  height: 30px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  padding: 0 8px;
+  outline: none;
+}
+.tf-scope .dt-input:focus { border-color: var(--border-gold); box-shadow: 0 0 0 3px var(--ring); }

@@ -1,0 +1,48 @@
+{
+  "_fonte": "GET https://comunicaapi.pje.jus.br/api/v1/comunicacao?numeroOab=100000&ufOab=SP&dataDisponibilizacaoInicio=2026-06-01&dataDisponibilizacaoFim=2026-06-12&itensPorPagina=1000&pagina=1",
+  "_capturadoEm": "2026-06-13",
+  "_nota": "Formato REAL do Comunica/DJEN com dados SINTÉTICOS (anonimizado p/ LGPD — não commitar PII). Regenere com: npm run cnj:sample",
+  "status": "success",
+  "message": "Sucesso",
+  "count": 1,
+  "items": [
+    {
+      "id": 633576346,
+      "hash": "DVMlJ3No6G7sjlqTVTp57Ak6LzE4gO",
+      "numeroComunicacao": 39556,
+      "numero_processo": "00000000020248260000",
+      "numeroprocessocommascara": "0000000-00.2024.8.26.0000",
+      "data_disponibilizacao": "2026-06-09",
+      "datadisponibilizacao": "09/06/2026",
+      "siglaTribunal": "TJSP",
+      "nomeOrgao": "Foro Central - 1ª Vara Cível",
+      "idOrgao": 92081,
+      "tipoComunicacao": "Intimação",
+      "tipoDocumento": "Intimação",
+      "meio": "D",
+      "meiocompleto": "Diário de Justiça Eletrônico Nacional",
+      "texto": "Processo 0000000-00.2024.8.26.0000 - Procedimento Comum - Intime-se o(a) advogado(a) Exemplo (OAB/SP: 100.000) para, no prazo legal, manifestar-se nos autos.",
+      "link": "https://www.dje.tjsp.jus.br",
+      "nomeClasse": "PROCEDIMENTO COMUM CÍVEL",
+      "codigoClasse": "7",
+      "ativo": true,
+      "status": "P",
+      "motivo_cancelamento": null,
+      "data_cancelamento": null,
+      "destinatarios": [
+        { "comunicacao_id": 633576346, "nome": "FULANO DE TAL", "polo": "A" },
+        { "comunicacao_id": 633576346, "nome": "BELTRANO DE TAL", "polo": "P" }
+      ],
+      "destinatarioadvogados": [
+        {
+          "id": 1166383901,
+          "comunicacao_id": 633576346,
+          "advogado_id": 486934,
+          "created_at": "2026-06-08T11:14:06",
+          "updated_at": "2026-06-08T11:14:06",
+          "advogado": { "id": 486934, "nome": "ADVOGADO EXEMPLO", "numero_oab": "100000", "uf_oab": "SP" }
+        }
+      ]
+    }
+  ]
+}

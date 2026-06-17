@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LexIA · Financeiro</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="styles/tokens.css" />
+
+  <style>
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      background: #f0eee9; overflow: hidden;
+    }
+    #root { width: 100%; height: 100%; }
+    .lex-artboard { width: 100%; height: 100%; display: flex; overflow: hidden; }
+    /* box-sizing reset reaches the modal subtree (rendered outside .app-screen) */
+    .lex-artboard *, .lex-artboard *::before, .lex-artboard *::after { box-sizing: border-box; }
+
+    /* Financeiro semantic colors (green/red) per theme */
+    .theme-light { --fin-pos: #2E9E5B; --fin-neg: #C0492F; }
+    .theme-dark  { --fin-pos: #4FC07D; --fin-neg: #E07A60; }
+
+    /* hover affordances for the lançamentos table */
+    .fx-row .fx-hover-show { opacity: 0; transition: opacity .12s; }
+    .fx-row:hover .fx-hover-show { opacity: 1; }
+    .fx-row:hover { background: var(--surface-hover); }
+    .fx-menu-item {
+      display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+      padding: 8px 10px; border: none; background: transparent; border-radius: 7px;
+      font-size: 12.5px; font-weight: 500; color: var(--text); cursor: pointer;
+      font-family: var(--font-sans);
+    }
+    .fx-menu-item:hover { background: var(--surface-hover); }
+    .fx-pay { transition: filter .12s, box-shadow .12s; }
+    .fx-pay:hover { box-shadow: 0 0 0 2px var(--ring); filter: brightness(0.97); }
+    .fx-serie:hover { filter: brightness(0.94); }
+    .fx-deb:hover { background: var(--surface-hover); }
+    select.input option { background: var(--surface); color: var(--text); }
+
+    /* custom checkbox (FxCheck) */
+    .fx-check {
+      width: 16px; height: 16px; border-radius: 5px; padding: 0; flex-shrink: 0;
+      border: 1.5px solid var(--border-strong); background: var(--surface);
+      cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+      color: #F5F1E4; transition: border-color .12s, background .12s, box-shadow .12s;
+    }
+    .fx-check:hover { border-color: var(--accent); }
+    .fx-check:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
+    .theme-light .fx-check.on { background: var(--brand-navy); border-color: var(--brand-navy); }
+    .theme-dark .fx-check.on { background: var(--brand-gold); border-color: var(--brand-gold); color: var(--brand-navy); }
+
+    /* quiet "dar baixa" button — neutral at rest, green on hover */
+    .fx-baixa {
+      display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px;
+      border-radius: 7px; border: 1px solid var(--border-strong); background: transparent;
+      font-family: var(--font-sans); font-size: 11.5px; font-weight: 500; color: var(--text-muted);
+      cursor: pointer; white-space: nowrap; transition: color .12s, border-color .12s, background .12s;
+    }
+    .fx-baixa:hover {
+      color: var(--fin-pos, #2E9E5B); border-color: var(--fin-pos, #2E9E5B);
+      background: rgba(46,158,91,0.08);
+    }
+  </style>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="src/icons.jsx"></script>
+  <script type="text/babel" src="src/shell.jsx"></script>
+
+  <script type="text/babel" src="src/finx/fin-store.jsx"></script>
+  <script type="text/babel" src="src/finx/fin-ui.jsx"></script>
+  <script type="text/babel" src="src/finx/fin-novo.jsx"></script>
+  <script type="text/babel" src="src/finx/fin-lancamentos.jsx"></script>
+  <script type="text/babel" src="src/finx/fin-fluxo.jsx"></script>
+  <script type="text/babel" src="src/finx/fin-visao.jsx"></script>
+  <script type="text/babel" src="src/finx/fin-app.jsx"></script>
+</head>
+<body>
+  <template id="__bundler_thumbnail" data-bg-color="#020D25">
+    <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+      <rect width="1200" height="800" fill="#020D25"/>
+      <rect x="360" y="250" width="120" height="300" rx="8" fill="#1F3A6E"/>
+      <rect x="500" y="190" width="120" height="360" rx="8" fill="#C0A147"/>
+      <rect x="640" y="320" width="120" height="230" rx="8" fill="#2E9E5B"/>
+      <text x="600" y="640" text-anchor="middle" font-family="Georgia, serif" font-size="44" font-weight="700" fill="#F5F1E4">LexIA · Financeiro</text>
+    </svg>
+  </template>
+
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="env,react">
+    ReactDOM.createRoot(document.getElementById('root')).render(<FinApp />);
+  </script>
+</body>
+</html>

@@ -15,14 +15,14 @@ export const sectionHeaderBody = style({
 
 export const sectionTitle = style({
   margin: 0,
-  fontSize: 14.5,
-  fontWeight: 600,
+  fontSize: 14,
+  fontWeight: 500,
   letterSpacing: "-0.015em",
   color: tokens.color.text,
 })
 
 export const sectionSubtitle = style({
-  fontSize: "11.5px",
+  fontSize: "12px",
   color: tokens.color.textSubtle,
   marginTop: 2,
 })
@@ -40,7 +40,7 @@ export const sectionAction = style({
 })
 
 export const sectionHint = style({
-  fontSize: "11.5px",
+  fontSize: "12px",
   color: tokens.color.textSubtle,
 })
 

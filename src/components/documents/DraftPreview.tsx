@@ -40,8 +40,8 @@ export function DraftPreview({ pulse, showPlaceholders }: DraftPreviewProps) {
         <ContractParagraph indent>
           Pelo presente instrumento particular, de um lado{" "}
           {showPlaceholders
-            ? <><Placeholder filled><strong>HELENA MARIA VARGAS</strong></Placeholder>, brasileira, empresária, portadora do RG <Placeholder filled>28.451.227-8 SSP/SP</Placeholder> e CPF <Placeholder filled>312.984.760-15</Placeholder>, residente e domiciliada na <Placeholder>{"{{ENDERECO_CONTRATANTE}}"}</Placeholder></>
-            : <><strong>HELENA MARIA VARGAS</strong>, brasileira, empresária, portadora do RG 28.451.227-8 SSP/SP e CPF 312.984.760-15, residente e domiciliada na Rua Oscar Freire, 1.205, ap. 92, São Paulo/SP</>
+            ? <><Placeholder filled><strong>CLIENTE EXEMPLO</strong></Placeholder>, brasileira, empresária, portadora do RG <Placeholder filled>00.000.000-0 SSP/SP</Placeholder> e CPF <Placeholder filled>000.000.000-00</Placeholder>, residente e domiciliada na <Placeholder>{"{{ENDERECO_CONTRATANTE}}"}</Placeholder></>
+            : <><strong>CLIENTE EXEMPLO</strong>, brasileira, empresária, portadora do RG 00.000.000-0 SSP/SP e CPF 000.000.000-00, residente e domiciliada na Rua Exemplo, 100, São Paulo/SP</>
           }, doravante denominada simplesmente <strong>CONTRATANTE</strong>;
         </ContractParagraph>
 
@@ -86,7 +86,7 @@ export function DraftPreview({ pulse, showPlaceholders }: DraftPreviewProps) {
         </ContractParagraph>
 
         {pulse && (
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: "7.5px", color: "#9a7f2e", marginTop: 4 }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: "8px", color: "#9a7f2e", marginTop: 4 }}>
             <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#C0A147", display: "inline-block" }} />
             IA escrevendo cláusula 3...
           </div>
@@ -111,7 +111,7 @@ export function FullDocumentPreview() {
         }}>CONTRATO DE PRESTAÇÃO DE SERVIÇOS ADVOCATÍCIOS</div>
 
         <ContractParagraph indent>
-          Pelo presente instrumento particular, de um lado <strong>HELENA MARIA VARGAS</strong>, brasileira, empresária, portadora do RG 28.451.227-8 SSP/SP e CPF 312.984.760-15, residente e domiciliada na Rua Oscar Freire, 1.205, ap. 92, São Paulo/SP, doravante denominada simplesmente <strong>CONTRATANTE</strong>;
+          Pelo presente instrumento particular, de um lado <strong>CLIENTE EXEMPLO</strong>, brasileira, empresária, portadora do RG 00.000.000-0 SSP/SP e CPF 000.000.000-00, residente e domiciliada na Rua Exemplo, 100, São Paulo/SP, doravante denominada simplesmente <strong>CONTRATANTE</strong>;
         </ContractParagraph>
         <ContractParagraph indent>
           E, de outro lado, <strong>MORAES &amp; ASSOCIADOS SOCIEDADE DE ADVOGADOS</strong>, inscrita na OAB/SP sob o nº 12.348, com sede na Av. Paulista, 1.842, 14º andar, São Paulo/SP, neste ato representada por seu sócio Rafael Moraes, doravante denominada <strong>CONTRATADA</strong>;

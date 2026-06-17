@@ -1,25 +1,4 @@
-export const DOCUMENT_DRAFTS = [
-  { name: "Contrato de Honorários — Helena Vargas", type: "Contrato", client: "Helena Vargas", modified: "há 2 horas", progress: 72, templateId: "contrato-honorarios", source: "ai" },
-  { name: "Procuração ad judicia — Construtora Aurora", type: "Procuração", client: "Aurora S/A", modified: "ontem", progress: 40, templateId: "contrato-honorarios", source: "manual" },
-  { name: "Parecer — Cláusula 4.2 (Mendonça)", type: "Parecer Jurídico", client: "Mendonça & Filhos", modified: "3 mar", progress: 88, templateId: "contrato-honorarios", source: "ai" },
-]
-
-export const DOCUMENTS = [
-  { name: "Contrato de Honorários — Helena Vargas", type: "Contrato", client: "Helena Vargas", author: "Rafael Moraes", date: "há 4 min", status: "Finalizado", size: "324 KB", source: "ai" },
-  { name: "Procuração ad judicia — Construtora Aurora S/A", type: "Procuração", client: "Aurora S/A", author: "Camila Reis", date: "ontem · 17:42", status: "Assinado", size: "118 KB", source: "manual" },
-  { name: "Parecer — Cláusula 4.2 do contrato Mendonça", type: "Parecer Jurídico", client: "Mendonça & Filhos", author: "Rafael Moraes", date: "3 mar 2026", status: "Finalizado", size: "446 KB", source: "ai" },
-  { name: "Proposta de honorários — Tech Holding LTDA", type: "Proposta", client: "Tech Holding", author: "Camila Reis", date: "2 mar 2026", status: "Rascunho", size: "86 KB", source: "manual" },
-  { name: "Contrato de cessão — Editora Linhares", type: "Contrato", client: "Editora Linhares", author: "Rafael Moraes", date: "28 fev 2026", status: "Assinado", size: "512 KB", source: "ai" },
-  { name: "Procuração específica — Imóvel Vila Madalena", type: "Procuração", client: "Família Soares", author: "Diego Tomé", date: "26 fev 2026", status: "Finalizado", size: "94 KB", source: "manual" },
-  { name: "Parecer — Impacto LGPD em sistema CRM", type: "Parecer Jurídico", client: "HelpFlow Brasil", author: "Camila Reis", date: "22 fev 2026", status: "Em revisão", size: "612 KB", source: "ai" },
-]
-
-export const DOCUMENT_STATS = [
-  { label: "Contratos", count: 76, trend: "+12%" },
-  { label: "Procurações", count: 38, trend: "+4%" },
-  { label: "Pareceres", count: 19, trend: "−2%" },
-  { label: "Propostas", count: 9, trend: "+22%" },
-]
+import { getTemplate, type DocCategory } from "@/lib/documents/registry"
 
 export const DOCUMENT_TYPE_ABBR: Record<string, string> = {
   Contrato: "CT",
@@ -36,3 +15,29 @@ export const DOCUMENT_EXAMPLES = [
 ]
 
 export const DOCUMENT_LIBRARY_FILTERS = ["Todos", "Contratos", "Procurações", "Propostas", "Pareceres"] as const
+
+/** Resolve a documento's category (via the template registry) so the row can
+ *  show the right type label / abbreviation. Falls back to "Contrato". */
+export function categoriaDoTemplate(template: string): DocCategory {
+  return getTemplate(template)?.category ?? "Contrato"
+}
+
+export function abreviaturaDoTemplate(template: string): string {
+  return DOCUMENT_TYPE_ABBR[categoriaDoTemplate(template)] ?? "DOC"
+}
+
+/** Relative pt-BR date from an ISO string, e.g. "há 4 min", "ontem", "3 mar". */
+export function dataRelativa(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return ""
+  const diffMs = Date.now() - date.getTime()
+  const diffMin = Math.round(diffMs / 60000)
+  if (diffMin < 1) return "agora"
+  if (diffMin < 60) return `há ${diffMin} min`
+  const diffHours = Math.round(diffMin / 60)
+  if (diffHours < 24) return `há ${diffHours}h`
+  const diffDays = Math.round(diffHours / 24)
+  if (diffDays === 1) return "ontem"
+  if (diffDays < 7) return `há ${diffDays} dias`
+  return date.toLocaleDateString("pt-BR", { day: "numeric", month: "short" })
+}

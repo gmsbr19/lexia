@@ -17,8 +17,8 @@ export const templatesHeader = style({
 
 export const templatesTitle = style({
   margin: 0,
-  fontSize: 24,
-  fontWeight: 600,
+  fontSize: 25,
+  fontWeight: 500,
   letterSpacing: "-0.025em",
   color: tokens.color.text,
 })
@@ -44,7 +44,7 @@ export const templateChip = recipe({
         borderColor: tokens.color.accent,
         background: tokens.color.accentSoft,
         color: tokens.color.accent,
-        fontWeight: 600,
+        fontWeight: 500,
       },
     },
   },
@@ -97,8 +97,8 @@ export const templateBadge = style({
   gap: 4,
   borderRadius: 999,
   padding: "2px 8px",
-  fontSize: "10.5px",
-  fontWeight: 600,
+  fontSize: "11px",
+  fontWeight: 500,
   background: tokens.color.accentSoft,
   color: tokens.color.accent,
 })
@@ -109,8 +109,8 @@ export const templateBadgeMuted = style({
 })
 
 export const templateTitle = style({
-  fontSize: 13.5,
-  fontWeight: 600,
+  fontSize: 14,
+  fontWeight: 500,
   color: tokens.color.text,
   marginBottom: 6,
   lineHeight: 1.3,

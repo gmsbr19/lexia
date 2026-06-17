@@ -1,16 +1,24 @@
 "use client"
 
 import { useState, useCallback } from "react"
-import { Plus, Trash2, FileText } from "lucide-react"
+import { Plus, Trash2, Check, ChevronDown, RotateCcw } from "lucide-react"
 import { tokens } from "@/styles/tokens.css"
-import { btn } from "@/styles/components.css"
 import {
-  FormField, SelectField, TextAreaField, TogglePill,
-  Grid, FormSection, Divider, AddressForm,
+  CLAUSULAS_GERAIS, CLAUSULAS_COMPROMISSO, CLAUSULAS_EDITAVEIS,
+  resolveClausula, isClausulaOverridden, setClausulaOverride, clearClausulaOverride,
+} from "@/lib/documents/generators/contrato-honorarios/clausulas"
+import * as styles from "./ContratoHonorariosForm.css"
+import {
+  FormField, SelectField, TextAreaField,
+  Grid, Divider, AddressForm,
   inputStyle, labelStyle,
   ESTADOS_CIVIS, emptyAddr, composeEndereco, todayISO, isoToExtensa,
   type AddrState,
 } from "./shared"
+import * as Accordion from "@radix-ui/react-accordion"
+import * as accStyles from "./Accordion.css"
+import * as fieldStyles from "./Fields.css"
+import { ClientePicker } from "./ClientePicker"
 import type {
   ContratoHonorariosData, Contratante, ContratantePF, ContratantePJ,
   SocioPJ, TipoHonorarios, Parcela,
@@ -48,6 +56,67 @@ export function countFields(data: ContratoHonorariosData): { total: number; fill
 
 // ── sub-components ─────────────────────────────────────────────────────────────
 
+// Small presentational primitives ported from the design prototype
+function AddButtonComp({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) {
+  return (
+    <button type="button" onClick={onClick} style={styles.addButton}>
+      {children}
+    </button>
+  )
+}
+
+function ContratanteStrip({ items, active = 0, onAdd, addLabel, onSelect }: { items: string[]; active?: number; onAdd?: () => void; addLabel?: string; onSelect?: (i: number) => void }) {
+  return (
+    <div style={styles.contratanteStrip}>
+      {items.map((it, i) => {
+        const isActive = i === active
+        return (
+          <div key={i} onClick={() => onSelect?.(i)} style={{ ...(styles.contratanteChip as React.CSSProperties), ...(isActive ? styles.contratanteChipActive : {}) }}>
+            <div style={{ width: 18, height: 18, borderRadius: "50%", background: isActive ? tokens.color.accentStrong : tokens.color.surface, color: isActive ? "#fff" : tokens.color.textSubtle, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 500, fontFeatureSettings: '"tnum"' }}>{i + 1}</div>
+            <div>{it}</div>
+          </div>
+        )
+      })}
+      <button type="button" onClick={onAdd} style={styles.contratanteAddButton}>
+        <Plus size={12} /> {addLabel ?? "Adicionar contratante"}
+      </button>
+    </div>
+  )
+}
+
+function MicroSeg({ options, value, onChange }: { options: { value: string; label: string }[]; value: string; onChange: (v: string) => void }) {
+  return (
+    <div style={styles.microSegContainer}>
+      {options.map((opt) => {
+        const active = opt.value === value
+        return (
+          <div key={opt.value} onClick={() => onChange(opt.value)} style={active ? styles.microSegOptionActive : styles.microSegOptionInactive}>
+            {opt.label}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+
+function RepeaterItemComp({ index, title, onRemove, removable = true, children }: { index: number; title: string; onRemove?: () => void; removable?: boolean; children: React.ReactNode }) {
+  return (
+    <div style={{ paddingBottom: 16, marginBottom: 16, borderBottom: `1px solid ${tokens.color.border}` }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 22, height: 22, borderRadius: "50%", background: tokens.color.accentSoft, color: tokens.color.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 500, fontFeatureSettings: '"tnum"' }}>{index}</div>
+          <div style={{ fontSize: 12, fontWeight: 500, color: tokens.color.text, letterSpacing: "-0.005em" }}>{title}</div>
+        </div>
+        {removable && (
+          <button type="button" onClick={onRemove} style={styles.removeButton}><Trash2 size={11} /> Remover</button>
+        )}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>{children}</div>
+    </div>
+  )
+}
+
 const ASSINATURA_VALUE = "na data de assinatura do contrato"
 
 function DateOrAssinaturaField({ label, value, onChange, placeholder }: {
@@ -56,29 +125,31 @@ function DateOrAssinaturaField({ label, value, onChange, placeholder }: {
   const isAssinatura = value === ASSINATURA_VALUE
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
-        <label style={{ ...labelStyle, marginBottom: 0 }}>{label}</label>
+      <label className={fieldStyles.label} style={{ marginBottom: 6 }}>{label}</label>
+      <div style={styles.dateFieldRow}>
+        {isAssinatura ? (
+          <div style={styles.dateDisplayActive}>
+            <Check size={12} />
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              No ato da assinatura
+            </span>
+          </div>
+        ) : (
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder}
+            className={fieldStyles.input}
+            style={{ flex: 1, width: "auto" }}
+          />
+        )}
         <button
+          type="button"
           onClick={() => onChange(isAssinatura ? "" : ASSINATURA_VALUE)}
-          style={{
-            fontSize: "10px", fontWeight: 500,
-            color: isAssinatura ? tokens.color.accent : tokens.color.textSubtle,
-            background: isAssinatura ? tokens.color.accentSoft : "transparent",
-            border: `1px solid ${isAssinatura ? "rgba(192,161,71,0.35)" : tokens.color.border}`,
-            borderRadius: 4, cursor: "pointer", padding: "1px 7px",
-            fontFamily: tokens.font.sans, lineHeight: "1.6",
-          }}
+          style={isAssinatura ? styles.dateToggleActive : styles.dateToggleInactive}
         >Na assinatura</button>
       </div>
-      {isAssinatura ? (
-        <div style={{
-          height: 34, display: "flex", alignItems: "center", paddingLeft: 10,
-          background: tokens.color.accentSoft, border: "1px solid rgba(192,161,71,0.25)",
-          borderRadius: tokens.radius.sm, fontSize: "12px", color: tokens.color.accent, fontStyle: "italic",
-        }}>na data de assinatura do contrato</div>
-      ) : (
-        <input type="text" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} style={inputStyle} />
-      )}
     </div>
   )
 }
@@ -87,13 +158,13 @@ function DateSignatureField({ onChange }: { onChange: (v: string) => void }) {
   const [iso, setIso] = useState<string>(todayISO)
   return (
     <div>
-      <label style={labelStyle}>Data de assinatura</label>
+      <label className={fieldStyles.label}>Data de assinatura</label>
       <input
         type="date" value={iso}
         onChange={(e) => { setIso(e.target.value); onChange(isoToExtensa(e.target.value)) }}
-        style={{ ...inputStyle, colorScheme: "light" } as React.CSSProperties}
+        style={styles.dateInput as React.CSSProperties}
       />
-      {iso && <div style={{ fontSize: 11, color: tokens.color.textSubtle, marginTop: 4 }}>{isoToExtensa(iso)}</div>}
+      {iso && <div style={styles.dateIsoText}>{isoToExtensa(iso)}</div>}
     </div>
   )
 }
@@ -103,20 +174,23 @@ function SocioForm({ socio, onChange, onRemove, index, canRemove }: {
   onRemove: () => void; index: number; canRemove: boolean
 }) {
   return (
-    <div style={{ border: `1px solid ${tokens.color.border}`, borderRadius: 8, padding: "12px 12px 10px", display: "grid", gap: 10 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: "11.5px", fontWeight: 600, color: tokens.color.textMuted }}>Sócio {index + 1}</span>
+    <div style={styles.smallCard}>
+      <div style={styles.repeaterHeader}>
+        <div style={styles.repeaterHeaderLeft}>
+          <div style={styles.repeaterBadge}>{index + 1}</div>
+          <span style={styles.repeaterTitle}>Sócio {index + 1}</span>
+        </div>
         {canRemove && (
-          <button onClick={onRemove} style={{ background: "none", border: "none", cursor: "pointer", color: tokens.color.textSubtle, padding: 2 }}>
-            <Trash2 size={13} />
+          <button type="button" onClick={onRemove} style={styles.removeButton}>
+            <Trash2 size={11} /> Remover
           </button>
         )}
       </div>
       <FormField label="Nome completo" value={socio.nome} onChange={(v) => onChange({ nome: v.toUpperCase() })} placeholder="NOME DO SÓCIO" />
       <div>
-        <div style={{ fontSize: 12, fontWeight: 500, color: tokens.color.textMuted, marginBottom: 5 }}>Gênero</div>
-        <TogglePill
-          options={[{ value: "masculino", label: "Masculino" }, { value: "feminino", label: "Feminino" }]}
+        <div style={styles.subLabel}>Gênero</div>
+        <MicroSeg
+          options={[{ value: "masculino", label: "M" }, { value: "feminino", label: "F" }]}
           value={socio.genero} onChange={(v) => onChange({ genero: v as "masculino" | "feminino" })}
         />
       </div>
@@ -152,34 +226,43 @@ function ContratanteForm({ contratante, onChange, onRemove, index, canRemove }: 
   }
 
   return (
-    <div style={{ border: `1px solid ${tokens.color.border}`, borderRadius: 10, padding: "14px 12px 12px", display: "grid", gap: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: "12px", fontWeight: 600, color: tokens.color.textMuted }}>
+    <div style={styles.card}>
+      <div style={styles.rowBetween}>
+        <span style={styles.contratanteTitle}>
           {index === 0 ? "Contratante" : `Contratante ${index + 1}`}
         </span>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <TogglePill
-            options={[{ value: "pf", label: "Pessoa física" }, { value: "pj", label: "Pessoa jurídica" }]}
+        {canRemove && (
+          <button type="button" onClick={onRemove} style={styles.iconButton}>
+            <Trash2 size={13} />
+          </button>
+        )}
+      </div>
+
+      {/* Identity row: Pessoa (F/J) + Gênero (M/F) for PF */}
+      <div style={{ display: "flex", gap: 12, alignItems: "flex-end" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={styles.subLabel}>Pessoa</div>
+          <MicroSeg
+            options={[{ value: "pf", label: "F" }, { value: "pj", label: "J" }]}
             value={contratante.tipo}
             onChange={(v) => { if (v !== contratante.tipo) onChange(v === "pf" ? newContratantePF() : newContratantePJ()) }}
           />
-          {canRemove && (
-            <button onClick={onRemove} style={{ background: "none", border: "none", cursor: "pointer", color: tokens.color.textSubtle, padding: 2 }}>
-              <Trash2 size={13} />
-            </button>
-          )}
         </div>
+        {contratante.tipo === "pf" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={styles.subLabel}>Gênero</div>
+            <MicroSeg
+              options={[{ value: "masculino", label: "M" }, { value: "feminino", label: "F" }]}
+              value={(contratante as ContratantePF).genero}
+              onChange={(v) => patchPF({ genero: v as "masculino" | "feminino" })}
+            />
+          </div>
+        )}
       </div>
+
       {contratante.tipo === "pf" ? (
         <>
           <FormField label="Nome completo" value={contratante.nome} onChange={(v) => patchPF({ nome: v.toUpperCase() })} placeholder="NOME DO CONTRATANTE" />
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 500, color: tokens.color.textMuted, marginBottom: 5 }}>Gênero</div>
-            <TogglePill
-              options={[{ value: "masculino", label: "Masculino" }, { value: "feminino", label: "Feminino" }]}
-              value={contratante.genero} onChange={(v) => patchPF({ genero: v as "masculino" | "feminino" })}
-            />
-          </div>
           <Grid cols={2}>
             <FormField label="Nacionalidade" value={contratante.nacionalidade} onChange={(v) => patchPF({ nacionalidade: v })} placeholder="brasileiro(a)" />
             <SelectField label="Estado civil" value={contratante.estadoCivil} onChange={(v) => patchPF({ estadoCivil: v })} options={ESTADOS_CIVIS[contratante.genero]} />
@@ -206,10 +289,9 @@ function ContratanteForm({ contratante, onChange, onRemove, index, canRemove }: 
               onRemove={() => patchPJ({ socios: contratante.socios.filter((_, xi) => xi !== si) })}
             />
           ))}
-          <button
-            onClick={() => patchPJ({ socios: [...contratante.socios, newSocioPJ()] })}
-            style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "12px", color: tokens.color.accent, background: "none", border: "none", cursor: "pointer", padding: "2px 0", fontFamily: tokens.font.sans }}
-          ><Plus size={13} /> Adicionar sócio</button>
+          <AddButtonComp onClick={() => patchPJ({ socios: [...contratante.socios, newSocioPJ()] })}>
+            <Plus size={13} /> Adicionar sócio
+          </AddButtonComp>
         </>
       )}
     </div>
@@ -237,38 +319,38 @@ function HonorariosForm({ data, onChange }: { data: ContratoHonorariosData; onCh
   const parceladoFields = (valorTotal: string, qtParcelas: string, valorParcelas: string, dataPrimeiraParcela: string) => (
     <>
       <FormField label="Valor total dos honorários" value={valorTotal} onChange={(v) => patch({ valorTotal: v })} placeholder="R$ 0,00" />
-      <Grid cols={3}>
-        <FormField label="Nº de parcelas" value={qtParcelas} onChange={(v) => patch({ qtParcelas: v })} placeholder="3" />
+      <Grid cols={2}>
+        <FormField label="Número de parcelas" value={qtParcelas} onChange={(v) => patch({ qtParcelas: v })} placeholder="3" />
         <FormField label="Valor por parcela" value={valorParcelas} onChange={(v) => patch({ valorParcelas: v })} placeholder="R$ 0,00" />
-        <DateOrAssinaturaField label="Data da 1ª parcela" value={dataPrimeiraParcela} onChange={(v) => patch({ dataPrimeiraParcela: v })} placeholder="01/01/2026" />
       </Grid>
+      <DateOrAssinaturaField label="Data da primeira parcela" value={dataPrimeiraParcela} onChange={(v) => patch({ dataPrimeiraParcela: v })} placeholder="01/01/2026" />
     </>
   )
   const exitoFields = (percentualExito: string, baseCalculoExito: string) => (
     <>
-      <Divider label="Honorários de êxito" />
+      <Divider label="Êxito" />
       <Grid cols={2}>
-        <FormField label="Percentual de êxito" value={percentualExito} onChange={(v) => patch({ percentualExito: v })} placeholder="20" suffix="%" />
+        <FormField label="Percentual" value={percentualExito} onChange={(v) => patch({ percentualExito: v })} placeholder="20" suffix="%" />
         <FormField label="Base de cálculo" value={baseCalculoExito} onChange={(v) => patch({ baseCalculoExito: v })} placeholder="valor da condenação" />
       </Grid>
     </>
   )
 
   return (
-    <div style={{ display: "grid", gap: 12 }}>
+    <div style={{ ...styles.card, gap: 16 }}>
       <div>
-        <div style={{ fontSize: 12, fontWeight: 500, color: tokens.color.textMuted, marginBottom: 7 }}>Tipo de honorários</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {TIPO_LABELS.map(({ value, label }) => (
-            <button key={value} onClick={() => changeType(value)} style={{
-              padding: "5px 12px", borderRadius: 999,
-              border: `1px solid ${h.tipo === value ? tokens.color.accent : tokens.color.border}`,
-              background: h.tipo === value ? tokens.color.accentSoft : "transparent",
-              color: h.tipo === value ? tokens.color.accent : tokens.color.textMuted,
-              fontSize: "12px", fontWeight: h.tipo === value ? 600 : 400,
-              cursor: "pointer", fontFamily: tokens.font.sans, transition: "all 0.1s",
-            }}>{label}</button>
-          ))}
+        <label className={fieldStyles.label}>Tipo de honorários</label>
+        <div style={{ position: "relative" }}>
+          <select
+            value={h.tipo}
+            onChange={(e) => changeType(e.target.value as TipoHonorarios)}
+            className={fieldStyles.input}
+            style={{ paddingRight: 28 }}
+          >
+            {TIPO_LABELS.map(({ value, label }) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
         </div>
       </div>
       {h.tipo === "avista" && (
@@ -281,25 +363,21 @@ function HonorariosForm({ data, onChange }: { data: ContratoHonorariosData; onCh
       {h.tipo === "parcelas_diferentes" && (
         <>
           {h.parcelas.map((p: Parcela, i: number) => (
-            <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
-              <div style={{ flex: 1 }}>
-                <FormField label={`Parcela ${i + 1} — valor`} value={p.valor}
-                  onChange={(v) => patch({ parcelas: h.parcelas.map((x, xi) => xi === i ? { ...x, valor: v } : x) })} placeholder="R$ 0,00" />
+            <RepeaterItemComp key={i} index={i + 1} title={`Parcela ${i + 1}`} onRemove={h.parcelas.length > 1 ? () => patch({ parcelas: h.parcelas.filter((_: Parcela, xi: number) => xi !== i) }) : undefined} removable={h.parcelas.length > 1}>
+              <div style={styles.parcelRow}>
+                <div style={styles.parcelFlex}>
+                  <FormField label={`Parcela ${i + 1} — valor`} value={p.valor}
+                    onChange={(v) => patch({ parcelas: h.parcelas.map((x, xi) => xi === i ? { ...x, valor: v } : x) })} placeholder="R$ 0,00" />
+                </div>
+                <div style={styles.parcelFlex}>
+                  <FormField label="Vencimento" value={p.vencimento}
+                    onChange={(v) => patch({ parcelas: h.parcelas.map((x, xi) => xi === i ? { ...x, vencimento: v } : x) })} placeholder="01/01/2026" />
+                </div>
               </div>
-              <div style={{ flex: 1 }}>
-                <FormField label="Vencimento" value={p.vencimento}
-                  onChange={(v) => patch({ parcelas: h.parcelas.map((x, xi) => xi === i ? { ...x, vencimento: v } : x) })} placeholder="01/01/2026" />
-              </div>
-              {h.parcelas.length > 1 && (
-                <button onClick={() => patch({ parcelas: h.parcelas.filter((_: Parcela, xi: number) => xi !== i) })}
-                  style={{ background: "none", border: "none", cursor: "pointer", color: tokens.color.textSubtle, paddingBottom: 8 }}>
-                  <Trash2 size={13} />
-                </button>
-              )}
-            </div>
+            </RepeaterItemComp>
           ))}
-          <button onClick={() => patch({ parcelas: [...h.parcelas, { valor: "", vencimento: "" }] })}
-            style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "12px", color: tokens.color.accent, background: "none", border: "none", cursor: "pointer", padding: "2px 0", fontFamily: tokens.font.sans }}>
+          <button type="button" onClick={() => patch({ parcelas: [...h.parcelas, { valor: "", vencimento: "" }] })}
+            style={styles.addButton}>
             <Plus size={13} /> Adicionar parcela
           </button>
         </>
@@ -329,6 +407,52 @@ function HonorariosForm({ data, onChange }: { data: ContratoHonorariosData; onCh
   )
 }
 
+// ── clauses (free-text override of the standard prose clauses) ──────────────────
+
+function ClausulasSection({ data, onChange }: { data: ContratoHonorariosData; onChange: (data: ContratoHonorariosData) => void }) {
+  const groups = [
+    { label: "Disposições gerais", defs: CLAUSULAS_GERAIS },
+    { label: "Compromisso e despesas", defs: CLAUSULAS_COMPROMISSO },
+  ]
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ fontSize: 11, color: tokens.color.textSubtle, lineHeight: 1.5 }}>
+        Texto padrão do escritório. Edite para ajustar este contrato — a LexIA também pode reescrever as cláusulas.
+      </div>
+      {groups.map((g) => (
+        <div key={g.label} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <Divider label={g.label} />
+          {g.defs.map((def) => {
+            const overridden = isClausulaOverridden(data, def.id)
+            return (
+              <div key={def.id}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
+                  <label className={fieldStyles.label}>{def.titulo}</label>
+                  {overridden && (
+                    <button
+                      type="button"
+                      onClick={() => onChange(clearClausulaOverride(data, def.id))}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, fontWeight: 500, color: tokens.color.accent, background: "transparent", border: "none", cursor: "pointer", padding: 0 }}
+                    >
+                      <RotateCcw size={11} /> Restaurar padrão
+                    </button>
+                  )}
+                </div>
+                <textarea
+                  className={fieldStyles.textarea}
+                  value={resolveClausula(data, def)}
+                  onChange={(e) => onChange(setClausulaOverride(data, def.id, e.target.value))}
+                  rows={4}
+                />
+              </div>
+            )
+          })}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ── main form component ────────────────────────────────────────────────────────
 
 export interface ContratoHonorariosFormProps {
@@ -336,103 +460,230 @@ export interface ContratoHonorariosFormProps {
   onChange: (data: ContratoHonorariosData) => void
   templateName?: string
   onChangeTemplate?: () => void
+  /** Linked cliente id (from the picker), surfaced up to the editor for generate/fechar. */
+  clienteId?: number | null
+  onClienteChange?: (id: number | null, nome?: string) => void
 }
 
-export function ContratoHonorariosForm({ data, onChange, templateName, onChangeTemplate }: ContratoHonorariosFormProps) {
+export function ContratoHonorariosForm({ data, onChange, templateName, onChangeTemplate, clienteId = null, onClienteChange }: ContratoHonorariosFormProps) {
   const { total, filled } = countFields(data)
   const pending = total - filled
   const progress = Math.round((filled / total) * 100)
 
-  const partesOk = data.contratantes.every((c) => {
-    if (c.tipo === "pf") return c.nome && c.cpf
-    return c.razaoSocial && c.cnpj && c.socios[0]?.nome
-  })
-  const objetoOk = !!data.objeto
-  const honorariosOk = (() => {
+  const [activeContratante, setActiveContratante] = useState(0)
+
+  function sec(vals: string[]) {
+    const f = vals.filter(Boolean).length
+    return { complete: f === vals.length, completion: `${f} / ${vals.length}` }
+  }
+
+  const partesVals: string[] = data.contratantes.flatMap((c) =>
+    c.tipo === "pf"
+      ? [c.nome, c.nacionalidade, c.estadoCivil, c.profissao, c.rg, c.cpf, c.endereco, c.email]
+      : [c.razaoSocial, c.cnpj, c.endereco, c.email, ...c.socios.flatMap((s) => [s.nome, s.nacionalidade, s.estadoCivil, s.profissao, s.rg, s.cpf])]
+  )
+  const partesSec = sec(partesVals)
+
+  const objetoSec = sec([data.objeto])
+
+  const hVals = (() => {
     const h = data.honorarios
-    if (h.tipo === "avista") return !!(h.valorTotal && h.dataPagamento)
-    if (h.tipo === "parcelado") return !!(h.valorTotal && h.qtParcelas)
-    if (h.tipo === "parcelas_diferentes") return h.parcelas.every((p: Parcela) => p.valor && p.vencimento)
-    if (h.tipo === "exito") return !!(h.percentual && h.baseCalculo)
-    if (h.tipo === "avista_exito") return !!(h.valorTotal && h.percentualExito)
-    if (h.tipo === "parcelado_exito") return !!(h.valorTotal && h.qtParcelas && h.percentualExito)
-    return false
+    if (h.tipo === "avista") return [h.valorTotal, h.dataPagamento]
+    if (h.tipo === "parcelado") return [h.valorTotal, h.qtParcelas, h.valorParcelas, h.dataPrimeiraParcela]
+    if (h.tipo === "parcelas_diferentes") return h.parcelas.flatMap((p: Parcela) => [p.valor, p.vencimento])
+    if (h.tipo === "exito") return [h.percentual, h.baseCalculo]
+    if (h.tipo === "avista_exito") return [h.valorTotal, h.dataPagamento, h.percentualExito, h.baseCalculoExito]
+    if (h.tipo === "parcelado_exito") return [h.valorTotal, h.qtParcelas, h.valorParcelas, h.dataPrimeiraParcela, h.percentualExito, h.baseCalculoExito]
+    return []
   })()
-  const foroOk = !!(data.foro && data.data)
+  const honorariosSec = sec(hVals)
+
+  const foroSec = sec([data.foro, data.data])
+
+  const clausulasEditadas = CLAUSULAS_EDITAVEIS.filter((c) => isClausulaOverridden(data, c.id)).length
 
   const updateContratante = useCallback((idx: number, c: Contratante) => {
     onChange({ ...data, contratantes: data.contratantes.map((x, i) => i === idx ? c : x) })
   }, [data, onChange])
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      {/* Model header */}
-      <div style={{ padding: "14px 14px 12px", borderBottom: `1px solid ${tokens.color.border}`, flexShrink: 0 }}>
-        <div style={{ fontSize: "10.5px", fontWeight: 500, letterSpacing: "0.06em", color: tokens.color.textSubtle, textTransform: "uppercase", marginBottom: 7 }}>
-          Modelo em uso
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, background: tokens.color.accentSoft, border: "1px solid rgba(192,161,71,0.25)" }}>
-          <FileText size={15} color={tokens.color.accent} />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: "12.5px", fontWeight: 600, color: tokens.color.text }}>
-              {templateName ?? "Contrato de Honorários Advocatícios"}
-            </div>
-            <div style={{ fontSize: "11px", color: tokens.color.textMuted }}>17 cláusulas · Última revisão mai/2026</div>
+    <div style={styles.containerRoot}>
+      {/* Scrollable area: header + accordion */}
+      <div style={styles.formBody}>
+        {/* Model header (inside scroll) */}
+        <div style={styles.header}>
+          <div>
+            <div style={styles.modelSubtitle}>Modelo ativo</div>
+            <div style={styles.modelTitle}>{templateName ?? "Honorários — Padrão"}</div>
           </div>
           {onChangeTemplate && (
-            <button onClick={onChangeTemplate} className={btn({ variant: "ghost" })} style={{ height: 26, fontSize: 11, padding: "0 8px" }}>
-              Trocar
+            <button type="button" onClick={onChangeTemplate} style={styles.changeModelButton}>
+              Trocar modelo
             </button>
           )}
         </div>
+        <div style={styles.headerHairline} />
+
+        {/* Form sections as Radix accordion */}
+        <Accordion.Root className={accStyles.root} type="single" defaultValue="cliente" collapsible>
+          <Accordion.Item className={accStyles.item} value="cliente">
+            <Accordion.Trigger className={accStyles.trigger}>
+              <div className={accStyles.headerLeft}>
+                <div className={accStyles.title}>Cliente</div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {partesSec.completion && (
+                  <div className={accStyles.badge} style={partesSec.complete ? { background: tokens.brand.gold, color: tokens.brand.navy, border: `1px solid ${tokens.brand.gold}` } : {}}>
+                    {partesSec.complete && <Check size={9} strokeWidth={3} />}
+                    {partesSec.completion}
+                  </div>
+                )}
+                <ChevronDown size={14} className={accStyles.chevron} />
+              </div>
+            </Accordion.Trigger>
+            <Accordion.Content className={accStyles.content}>
+              <div className={accStyles.contentInner}>
+                <ClientePicker
+                  data={data}
+                  onChange={onChange}
+                  clienteId={clienteId}
+                  onClienteChange={(id, nome) => onClienteChange?.(id, nome)}
+                />
+                <ContratanteStrip
+                  items={data.contratantes.map((c, i) => c.tipo === "pf" ? (c.nome || `Contratante ${i + 1}`) : (c.razaoSocial || `Contratante ${i + 1}`))}
+                  active={activeContratante}
+                  onSelect={(i) => {
+                    const idx = Math.min(Math.max(0, i), data.contratantes.length - 1)
+                    setActiveContratante(idx)
+                    const el = document.getElementById(`contratante-${idx}`)
+                    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" })
+                  }}
+                  onAdd={() => onChange({ ...data, contratantes: [...data.contratantes, newContratantePF()] })}
+                  addLabel="Adicionar contratante"
+                />
+
+                {data.contratantes.length > 0 && (() => {
+                  const idx = Math.min(Math.max(0, activeContratante), data.contratantes.length - 1)
+                  const c = data.contratantes[idx]
+                  return (
+                    <div id={`contratante-${idx}`} key={idx}>
+                      <ContratanteForm
+                        index={idx} contratante={c}
+                        canRemove={data.contratantes.length > 1}
+                        onChange={(updated) => updateContratante(idx, updated)}
+                        onRemove={() => {
+                          const next = data.contratantes.filter((_, fi) => fi !== idx)
+                          onChange({ ...data, contratantes: next })
+                          setActiveContratante(Math.max(0, Math.min(idx, next.length - 1)))
+                        }}
+                      />
+                    </div>
+                  )
+                })()}
+                <AddButtonComp onClick={() => onChange({ ...data, contratantes: [...data.contratantes, newContratantePF()] })}>
+                  <Plus size={13} /> Adicionar contratante
+                </AddButtonComp>
+              </div>
+            </Accordion.Content>
+          </Accordion.Item>
+
+          <Accordion.Item className={accStyles.item} value="objeto">
+            <Accordion.Trigger className={accStyles.trigger}>
+              <div className={accStyles.headerLeft}><div className={accStyles.title}>Objeto e prazo</div></div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {objetoSec.completion && (
+                  <div className={accStyles.badge} style={objetoSec.complete ? { background: tokens.brand.gold, color: tokens.brand.navy, border: `1px solid ${tokens.brand.gold}` } : {}}>
+                    {objetoSec.complete && <Check size={9} strokeWidth={3} />}
+                    {objetoSec.completion}
+                  </div>
+                )}
+                <ChevronDown size={14} className={accStyles.chevron} />
+              </div>
+            </Accordion.Trigger>
+            <Accordion.Content className={accStyles.content}>
+              <div className={accStyles.contentInner}>
+                <TextAreaField
+                  label="Objeto" value={data.objeto}
+                  onChange={(v) => onChange({ ...data, objeto: v })}
+                  placeholder="Ex: defesa em ação trabalhista nº 0001234-56.2026.5.02.0001, bem como em todos os recursos e incidentes dela decorrentes"
+                  hint="Texto inserido diretamente na Cláusula Primeira"
+                />
+              </div>
+            </Accordion.Content>
+          </Accordion.Item>
+
+          <Accordion.Item className={accStyles.item} value="honorarios">
+            <Accordion.Trigger className={accStyles.trigger}>
+              <div className={accStyles.headerLeft}><div className={accStyles.title}>Honorários</div></div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {honorariosSec.completion && (
+                  <div className={accStyles.badge} style={honorariosSec.complete ? { background: tokens.brand.gold, color: tokens.brand.navy, border: `1px solid ${tokens.brand.gold}` } : {}}>
+                    {honorariosSec.complete && <Check size={9} strokeWidth={3} />}
+                    {honorariosSec.completion}
+                  </div>
+                )}
+                <ChevronDown size={14} className={accStyles.chevron} />
+              </div>
+            </Accordion.Trigger>
+            <Accordion.Content className={accStyles.content}>
+              <div className={accStyles.contentInner}>
+                <HonorariosForm data={data} onChange={onChange} />
+              </div>
+            </Accordion.Content>
+          </Accordion.Item>
+
+          <Accordion.Item className={accStyles.item} value="foro">
+            <Accordion.Trigger className={accStyles.trigger}>
+              <div className={accStyles.headerLeft}><div className={accStyles.title}>Foro e data</div></div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {foroSec.completion && (
+                  <div className={accStyles.badge} style={foroSec.complete ? { background: tokens.brand.gold, color: tokens.brand.navy, border: `1px solid ${tokens.brand.gold}` } : {}}>
+                    {foroSec.complete && <Check size={9} strokeWidth={3} />}
+                    {foroSec.completion}
+                  </div>
+                )}
+                <ChevronDown size={14} className={accStyles.chevron} />
+              </div>
+            </Accordion.Trigger>
+            <Accordion.Content className={accStyles.content}>
+              <div className={accStyles.contentInner}>
+                <Grid cols={2}>
+                  <FormField label="Cidade (foro)" value={data.foro} onChange={(v) => onChange({ ...data, foro: v })} placeholder="São Paulo" />
+                  <DateSignatureField onChange={(v) => onChange({ ...data, data: v })} />
+                </Grid>
+              </div>
+            </Accordion.Content>
+          </Accordion.Item>
+
+          <Accordion.Item className={accStyles.item} value="clausulas">
+            <Accordion.Trigger className={accStyles.trigger}>
+              <div className={accStyles.headerLeft}><div className={accStyles.title}>Cláusulas</div></div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {clausulasEditadas > 0 && (
+                  <div className={accStyles.badge} style={{ background: tokens.color.accentSoft, color: tokens.color.accent }}>
+                    {clausulasEditadas} editada{clausulasEditadas > 1 ? "s" : ""}
+                  </div>
+                )}
+                <ChevronDown size={14} className={accStyles.chevron} />
+              </div>
+            </Accordion.Trigger>
+            <Accordion.Content className={accStyles.content}>
+              <div className={accStyles.contentInner}>
+                <ClausulasSection data={data} onChange={onChange} />
+              </div>
+            </Accordion.Content>
+          </Accordion.Item>
+        </Accordion.Root>
       </div>
 
-      {/* Form sections */}
-      <div style={{ padding: 14, flex: 1, overflow: "auto" }}>
-        <FormSection title="Partes do contrato" number={1} complete={partesOk} open>
-          {data.contratantes.map((c, i) => (
-            <ContratanteForm
-              key={i} index={i} contratante={c}
-              canRemove={data.contratantes.length > 1}
-              onChange={(updated) => updateContratante(i, updated)}
-              onRemove={() => onChange({ ...data, contratantes: data.contratantes.filter((_, fi) => fi !== i) })}
-            />
-          ))}
-          <button
-            onClick={() => onChange({ ...data, contratantes: [...data.contratantes, newContratantePF()] })}
-            style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "12px", color: tokens.color.accent, background: "none", border: "none", cursor: "pointer", padding: "2px 0", fontFamily: tokens.font.sans }}
-          ><Plus size={13} /> Adicionar contratante</button>
-        </FormSection>
-
-        <FormSection title="Objeto dos serviços" number={2} complete={objetoOk}>
-          <TextAreaField
-            label="Descrição dos serviços" value={data.objeto}
-            onChange={(v) => onChange({ ...data, objeto: v })}
-            placeholder="Ex: defesa em ação trabalhista nº 0001234-56.2026.5.02.0001, bem como em todos os recursos e incidentes dela decorrentes"
-            hint="Texto inserido diretamente na Cláusula Primeira"
-          />
-        </FormSection>
-
-        <FormSection title="Honorários" number={3} complete={honorariosOk}>
-          <HonorariosForm data={data} onChange={onChange} />
-        </FormSection>
-
-        <FormSection title="Foro e data" number={4} complete={foroOk}>
-          <Grid cols={2}>
-            <FormField label="Cidade (foro)" value={data.foro} onChange={(v) => onChange({ ...data, foro: v })} placeholder="São Paulo" />
-            <DateSignatureField onChange={(v) => onChange({ ...data, data: v })} />
-          </Grid>
-        </FormSection>
-      </div>
-
-      {/* Progress bar */}
-      <div style={{ padding: "12px 14px 16px", borderTop: `1px solid ${tokens.color.border}`, background: tokens.color.bgSoft, flexShrink: 0 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11.5px", color: tokens.color.textMuted, marginBottom: 5 }}>
+      {/* Progress footer (sticky at bottom, outside scroll) */}
+      <div style={styles.progressContainer}>
+        <div style={styles.progressTextRow}>
           <span>Progresso</span>
           <span>{pending > 0 ? `${pending} campo${pending !== 1 ? "s" : ""} pendente${pending !== 1 ? "s" : ""}` : "Pronto para gerar"}</span>
         </div>
-        <div style={{ height: 4, borderRadius: 999, background: tokens.color.borderStrong, overflow: "hidden" }}>
-          <div style={{ width: `${progress}%`, height: "100%", background: "linear-gradient(90deg, #C0A147, #9a7f2e)", borderRadius: 999, transition: "width 0.3s" }} />
+        <div style={styles.progressBarOuter}>
+          <div style={{ ...styles.progressBarInner, width: `${progress}%` }} />
         </div>
       </div>
     </div>

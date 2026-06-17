@@ -9,6 +9,7 @@ export const tabStrip = style({
   padding: "0 40px",
   background: tokens.color.bg,
   flexShrink: 0,
+  height:"fit-content"
 })
 
 export const tabButton = recipe({
@@ -19,7 +20,7 @@ export const tabButton = recipe({
     background: "transparent",
     cursor: "pointer",
     fontFamily: tokens.font.sans,
-    fontSize: "13.5px",
+    fontSize: "14px",
     fontWeight: 400,
     color: tokens.color.textMuted,
     borderBottom: "2px solid transparent",
@@ -29,7 +30,7 @@ export const tabButton = recipe({
   variants: {
     active: {
       true: {
-        fontWeight: 600,
+        fontWeight: 500,
         color: tokens.color.text,
         borderBottomColor: tokens.color.accent,
       },

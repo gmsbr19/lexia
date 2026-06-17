@@ -20,7 +20,7 @@ export const navItem = style({
   padding: "7px 10px",
   borderRadius: "8px",
   cursor: "pointer",
-  fontSize: "13.5px",
+  fontSize: "14px",
   fontWeight: 500,
   letterSpacing: "-0.01em",
   color: tokens.color.textMuted,
@@ -39,7 +39,7 @@ export const navItem = style({
 export const navItemActive = style({
   background: tokens.color.accentSoft,
   color: tokens.color.accent,
-  fontWeight: 600,
+  fontWeight: 500,
   ":hover": { background: tokens.color.accentSoft, color: tokens.color.accent },
 });
 

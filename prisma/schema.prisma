@@ -1,0 +1,917 @@
+// Lexia — financial data layer.
+// SQLite for now (file-based, zero infra); the schema is written to migrate
+// cleanly to Postgres later. Money is stored as integer centavos everywhere.
+// Enums are plain strings + TS unions (SQLite has no native enums) — see
+// src/lib/finance/types.ts for the canonical unions.
+// Every model imported from Astrea keeps `astreaId` (the Astrea "Código") so
+// re-importing the backup is idempotent (upsert by astreaId).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ── Auth (operator accounts; NOT in the Astrea backup) ───────────────────────
+// Per-user login for the office (2 sócios + possible staff). Credentials-only
+// (bcrypt hash); accounts are created via `scripts/create-user.ts` — no public
+// signup. `role` gates admin-ish operations once staff accounts exist.
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  nome         String
+  // Nullable: a user created via the invite flow is born without a password
+  // (passwordHash = null) and can't sign in until they set one through their
+  // access link. The login `authorize` rejects null-hash accounts.
+  passwordHash String?
+  role         String   @default("socio") // 'admin' | 'socio' | 'advogado' | 'estagiario' | 'financeiro'
+  ativo        Boolean  @default(true)
+  // Preferências de notificação (JSON): { app:{modulo:bool}, email:{modulo:bool},
+  // navegador:bool, emailMinPrioridade?:'normal'|'alta'|'critica' }. null = app tudo
+  // ligado, e-mail desligado (opt-in). Ver src/lib/notificacoes/preferencias.ts.
+  notifPrefs   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  tarefas      Tarefa[] // tasks delegated to this user
+  tarefasCriadas Tarefa[] @relation("TarefaCriadoPor") // tasks this user created/delegated
+  eventos      Evento[] // agenda events this user is responsible for
+  casosResp    Caso[]     @relation("CasoResponsavelUser") // casos where this user is the lead lawyer
+  processos    Processo[] @relation("ProcessoResponsavel")
+  prazos       Prazo[]    @relation("PrazoResponsavel")
+  convites     ConviteAcesso[] // one-time access links (set/reset the own password)
+}
+
+// One-time access link issued when an admin creates a user (or resends the
+// invite). The raw token is e-mailed; only its sha256 hash is persisted. The
+// invitee uses it once on /definir-senha/[token] to set their own password.
+// Single active invite per user (re-issuing deletes the prior one).
+model ConviteAcesso {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique // sha256 hex do token bruto; o bruto NUNCA é persistido
+  expiraEm  DateTime
+  usadoEm   DateTime?
+  criadoEm  DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// Append-only audit trail: who did what, when, to which row. Written by
+// `runMutation()` on every successful write (and by the LGPD anonymization as
+// deletion evidence). Never updated or deleted from app code.
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  ts         DateTime @default(now())
+  actorEmail String
+  action     String // e.g. 'lancamento.criar'
+  entity     String? // model name, e.g. 'Lancamento'
+  entityId   String?
+  payload    String? // JSON snapshot of the request payload
+
+  @@index([ts])
+  @@index([entity, entityId])
+}
+
+model Categoria {
+  id          Int          @id @default(autoincrement())
+  astreaId    String       @unique
+  nome        String
+  cor         String? // hex from Astrea, used for chart swatches
+  bloqueado   Boolean      @default(false)
+  ativo       Boolean      @default(true)
+  lancamentos Lancamento[]
+}
+
+model Conta {
+  id                    Int             @id @default(autoincrement())
+  astreaId              String?         @unique // null for operator-created accounts (Leandro/Leonardo)
+  nome                  String
+  tipo                  String?
+  origem                String          @default("astrea") // 'astrea' | 'manual'
+  kind                  String          @default("banco") // 'socio' | 'banco' | 'caixa'
+  titular               String? // partner name for 'socio' accounts
+  ordem                 Int             @default(0) // display order
+  valorInicialCents     Int             @default(0)
+  dataInicio            DateTime?
+  agencia               String?
+  numero                String?
+  ativo                 Boolean         @default(true)
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @default(now()) @updatedAt
+  lancamentos           Lancamento[]
+  honorarios            Honorario[]
+  custosFixos           CustoFixo[]
+  transferenciasOrigem  Transferencia[]   @relation("TransfOrigem")
+  transferenciasDestino Transferencia[]   @relation("TransfDestino")
+  casosResponsavel      CasoResponsavel[]
+}
+
+model CentroCusto {
+  id          Int          @id @default(autoincrement())
+  astreaId    String       @unique
+  nome        String
+  ativo       Boolean      @default(true)
+  lancamentos Lancamento[]
+}
+
+model Cliente {
+  id              Int          @id @default(autoincrement())
+  astreaId        String       @unique
+  nome            String
+  apelido         String?
+  tipo            String // 'pf' | 'pj'
+  classificacao   String // 'cliente' | 'lead'
+  cpfCnpj         String?
+  simplesNacional Boolean      @default(false)
+  logradouro      String?
+  numero          String?
+  complemento     String?
+  bairro          String?
+  cidade          String?
+  uf              String?
+  cep             String?
+  emails          String? // ';'-joined
+  telefones       String? // ';'-joined
+  casos           Caso[]
+  honorarios      Honorario[]
+  lancamentos     Lancamento[]
+  leads           Lead[]
+  tarefas         Tarefa[]
+  eventos         Evento[]
+  documentos      Documento[]
+  partes          Parte[] // process parties that are this registered cliente
+  anotacoes       ClienteAnotacao[]
+
+  @@index([tipo])
+  @@index([classificacao])
+}
+
+// Memória de contexto por cliente — anotações livres que a IA lê + diretivas de
+// COBRANÇA estruturadas. Uma linha = uma nota datada. `tipo='nota'` é contexto
+// puro; `tipo='cobranca'` carrega uma diretiva (`acao` = pausar/suspender/retomar)
+// que o plano de ação respeita: pausar(+`ate`) silencia a cobrança até a data,
+// suspender ("não cobrar mais") indefinidamente, retomar reativa. A diretiva mais
+// recente vence (estado derivado na leitura, nunca armazenado). SERVER ONLY.
+model ClienteAnotacao {
+  id         Int       @id @default(autoincrement())
+  clienteId  Int
+  cliente    Cliente   @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  autor      String
+  conteudo   String
+  tipo       String    @default("nota") // 'nota' | 'cobranca'
+  acao       String? // when tipo='cobranca': 'pausar' | 'suspender' | 'retomar'
+  ate        DateTime? // for acao='pausar': active until this date (local noon)
+  fixado     Boolean   @default(false)
+  excluidoEm DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([clienteId])
+}
+
+model Caso {
+  id                 Int          @id @default(autoincrement())
+  astreaId           String       @unique
+  titulo             String
+  tipo               String // 'consultivo' | 'litigio'
+  area               String? // área do direito (cível, trabalhista, tributário, …)
+  status             String?
+  responsavel        String? // free-text operational label (legacy; kept intact)
+  responsavelUserId  Int? // structured lead lawyer (User) — drives 'advogado vê o seu'
+  responsavelUser    User?        @relation("CasoResponsavelUser", fields: [responsavelUserId], references: [id])
+  clientePrincipalId Int?
+  clientePrincipal   Cliente?     @relation(fields: [clientePrincipalId], references: [id])
+  valorCausaCents    Int?
+  instancia          String?
+  tipoAcao           String?
+  tribunal           String?
+  numeroProcesso     String?
+  vara               String?
+  dataDistribuicao   DateTime?
+  dataCriacao        DateTime?
+  ultimaMovimentacao DateTime?
+  excluidoEm         DateTime? // soft-delete marker (legal data is never physically removed)
+  honorarios         Honorario[]
+  lancamentos        Lancamento[]
+  responsaveis       CasoResponsavel[]
+  leads              Lead[]
+  tarefas            Tarefa[]
+  eventos            Evento[]
+  documentos         Documento[]
+  processos          Processo[]
+  anotacoes          Anotacao[]
+
+  @@index([status])
+  @@index([tipo])
+  @@index([responsavelUserId])
+}
+
+// Operator-entered (NOT in the Astrea backup). Per-caso profit split between the
+// sócio Contas (Leandro/Leonardo). `percentual` is 0..100 and sums to 100 across
+// a caso's responsáveis. Drives the entitlement-vs-cash "acerto entre sócios".
+model CasoResponsavel {
+  id         Int   @id @default(autoincrement())
+  casoId     Int
+  caso       Caso  @relation(fields: [casoId], references: [id], onDelete: Cascade)
+  contaId    Int // a sócio Conta
+  conta      Conta    @relation(fields: [contaId], references: [id])
+  percentual Int      @default(50)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  @@unique([casoId, contaId])
+  @@index([casoId])
+}
+
+model Honorario {
+  id                Int         @id @default(autoincrement())
+  astreaId          String      @unique
+  descricao         String
+  dataVencimento    DateTime?
+  valorCents        Int         @default(0)
+  valorLiquidoCents Int         @default(0)
+  status            String? // 'lancado' | 'recebido'
+  tipo              String? // composição bucket: 'recorrente' | 'parcelado' | 'exito' | 'avista'
+  pagamento         String?
+  responsavel       String?
+  processoTitulo    String? // raw Astrea "Processo" string (title, not an id) — kept as legacy/fallback
+  processoId        Int? // structured link to a Processo (additive; resolves "Bradesco x Marcelo Lopes")
+  processo          Processo?   @relation(fields: [processoId], references: [id])
+  entradaAstreaId   String? // Astrea id linking to a Lancamento
+  casoId            Int?
+  caso              Caso?       @relation(fields: [casoId], references: [id])
+  clienteId         Int?
+  cliente           Cliente?    @relation(fields: [clienteId], references: [id])
+  lancamentoId      Int? // many honorários may map to one Astrea "Entrada"
+  lancamento        Lancamento? @relation(fields: [lancamentoId], references: [id])
+  dataPagamento     DateTime? // operator-set: when this honorário was actually paid
+  contaId           Int? // which account received the payment
+  conta             Conta?      @relation(fields: [contaId], references: [id])
+  leads             Lead[]
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @default(now()) @updatedAt
+
+  @@index([status])
+  @@index([tipo])
+  @@index([contaId])
+  @@index([processoId])
+}
+
+model Lancamento {
+  id                      Int          @id @default(autoincrement())
+  astreaId                String       @unique
+  tipo                    String // 'entrada' | 'saida'
+  status                  String // 'feito' | 'aberto'
+  subTipo                 String? // 'honorario' | 'avulsa' | 'valor_inicial' | 'transferencia'
+  descricao               String?
+  valorCents              Int          @default(0)
+  valorOriginalCents      Int          @default(0) // used for anomaly detection
+  pagoPara                String?
+  responsavel             String?
+  dataLancamento          DateTime?
+  dataVencimento          DateTime?
+  dataPagamento           DateTime?
+  vencimentoFatura        DateTime?
+  entradaOriginalAstreaId String? // Astrea self-ref for recurring entries
+  recorrenteParentId      Int?
+  recorrenteParent        Lancamento?  @relation("Recorrencia", fields: [recorrenteParentId], references: [id])
+  recorrenteFilhos        Lancamento[] @relation("Recorrencia")
+  isAnomalia              Boolean      @default(false) // e.g. "Compensação Sistema" / balance artifacts
+  geradoPorApp            Boolean      @default(false) // app-generated parcela (not from Astrea)
+  origem                  String       @default("astrea") // 'astrea' | 'manual'
+  contaId                 Int?
+  conta                   Conta?       @relation(fields: [contaId], references: [id])
+  categoriaId             Int?
+  categoria               Categoria?   @relation(fields: [categoriaId], references: [id])
+  centroCustoId           Int?
+  centroCusto             CentroCusto? @relation(fields: [centroCustoId], references: [id])
+  clienteId               Int?
+  cliente                 Cliente?     @relation(fields: [clienteId], references: [id])
+  casoId                  Int?
+  caso                    Caso?        @relation(fields: [casoId], references: [id])
+  processoId              Int? // per-processo financials (Processos module)
+  processo                Processo?    @relation(fields: [processoId], references: [id])
+  naturezaLegal           String? // 'honorario_contratual'|'honorario_exito'|'sucumbencia'|'custa'|'despesa_reembolsavel' (metadata; finance KPIs ignore it)
+  campanhaId              Int? // ad-spend attribution (Comercial module)
+  campanha                Campanha?    @relation(fields: [campanhaId], references: [id])
+  honorarios              Honorario[]
+  transferenciaSaida      Transferencia? @relation("TransfSaida")
+  transferenciaEntrada    Transferencia? @relation("TransfEntrada")
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @default(now()) @updatedAt
+
+  @@index([tipo, status])
+  @@index([dataVencimento])
+  @@index([dataPagamento])
+  @@index([processoId])
+}
+
+// Operator-entered (NOT in the Astrea backup). Powers the DRE pró-labore
+// separation and the break-even point.
+model CustoFixo {
+  id            Int     @id @default(autoincrement())
+  nome          String
+  valorCents    Int     @default(0)
+  categoria     String // 'pro_labore' | 'operacional'
+  diaVencimento Int?
+  ativo         Boolean  @default(true)
+  origem        String   @default("manual")
+  contaId       Int? // account this fixed cost debits when materialized
+  conta         Conta?   @relation(fields: [contaId], references: [id])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt
+}
+
+// Operator-entered (NOT in the Astrea backup). A money movement between two
+// Contas (e.g. Leandro <-> Leonardo). Its cash effect is materialized as two
+// paired Lancamento rows (subTipo 'transferencia', isAnomalia=true) so it stays
+// out of revenue/DRE but is re-included by the per-account balance query.
+model Transferencia {
+  id             Int         @id @default(autoincrement())
+  valorCents     Int         @default(0)
+  dataMovimento  DateTime
+  descricao      String?
+  origem         String      @default("manual")
+  contaOrigemId  Int
+  contaOrigem    Conta       @relation("TransfOrigem", fields: [contaOrigemId], references: [id])
+  contaDestinoId Int
+  contaDestino   Conta       @relation("TransfDestino", fields: [contaDestinoId], references: [id])
+  lancSaidaId    Int?        @unique
+  lancSaida      Lancamento? @relation("TransfSaida", fields: [lancSaidaId], references: [id])
+  lancEntradaId  Int?        @unique
+  lancEntrada    Lancamento? @relation("TransfEntrada", fields: [lancEntradaId], references: [id])
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @default(now()) @updatedAt
+
+  @@index([dataMovimento])
+  @@index([contaOrigemId])
+  @@index([contaDestinoId])
+}
+
+// ── Comercial / Marketing (operator-entered + Genions CSV import) ─────────────
+// A paid-acquisition campaign (Google Ads / Meta Ads / outro). Its ad spend is
+// recorded as ordinary saída Lancamento rows (categoria "Marketing") carrying
+// `campanhaId`, so marketing cost flows into the Financeiro ledger with no
+// double-count. Leads attribute to a campaign for per-campaign ROAS/CPL/CAC.
+model Campanha {
+  id         Int          @id @default(autoincrement())
+  plataforma String // 'google_ads' | 'meta_ads' | 'outro'
+  nome       String
+  externalId String? // platform campaign id (optional)
+  objetivo   String?
+  status     String       @default("ativa") // 'ativa' | 'pausada' | 'encerrada'
+  dataInicio DateTime?
+  dataFim    DateTime?
+  ativo      Boolean      @default(true)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  gastos     Lancamento[]
+  leads      Lead[]
+
+  @@unique([plataforma, nome]) // import idempotency
+}
+
+// A sales lead, sourced from the Genions CRM via idempotent CSV import (upsert by
+// `genionsId`) or entered manually. Moves through the funnel via `etapa`; on win
+// it links to the Cliente / Caso / Honorário it converted into (the Honorário
+// carries the contracted value used by ROAS / ticket médio).
+model Lead {
+  id                 Int        @id @default(autoincrement())
+  genionsId          String?    @unique // idempotent import key from Genions
+  nome               String
+  email              String?
+  telefone           String?
+  origem             String     @default("outro") // 'google_ads' | 'meta_ads' | 'indicacao' | 'organico' | 'outro'
+  campanhaId         Int?
+  campanha           Campanha?  @relation(fields: [campanhaId], references: [id])
+  etapa              String     @default("novo") // 'novo' | 'contato' | 'qualificado' | 'proposta' | 'ganho' | 'perdido'
+  valorEstimadoCents Int?
+  dataEntrada        DateTime // when the lead arrived (drives period scoping)
+  dataConversao      DateTime? // set when etapa → 'ganho'
+  motivoPerda        String? // set when etapa → 'perdido'
+  clienteId          Int?
+  cliente            Cliente?   @relation(fields: [clienteId], references: [id])
+  casoId             Int?
+  caso               Caso?      @relation(fields: [casoId], references: [id])
+  honorarioId        Int?
+  honorario          Honorario? @relation(fields: [honorarioId], references: [id])
+  observacoes        String?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  @@index([etapa])
+  @@index([origem])
+  @@index([campanhaId])
+  @@index([dataEntrada])
+}
+
+// ── Tarefas (operator-entered task manager) ──────────────────────────────────
+// A task carries TWO distinct dates kept visually separate everywhere:
+//   data  = quando fazer (scheduled day) + optional `hora` (HH:MM block)
+//   prazo = limite máximo (deadline) — drives the urgency color.
+// `projeto` is a static practice-area key (see src/lib/tarefas/types.ts PROJECTS,
+// NOT a Caso). `responsavel` is a sócio Conta; the vínculo links to a real Caso
+// OR Cliente (mutually exclusive). subtasks / dor / dod are JSON arrays stored as
+// TEXT (parsed in the query layer) — no Json scalar, consistent with the schema.
+model Tarefa {
+  id            Int       @id @default(autoincrement())
+  astreaId      String?   @unique // "app-tarefa-<uuid>"; Tarefa is never imported from Astrea
+  titulo        String
+  status        String    @default("todo") // 'todo' | 'doing' | 'review' | 'done'
+  done          Boolean   @default(false) // synced mirror of status === 'done'
+  prio          Int       @default(4) // 1=Urgente .. 4=Normal
+  projeto       String    @default("inbox") // static PROJECTS key
+  data          DateTime? // scheduled day (date-only, stored at local noon)
+  hora          String? // "HH:MM" when a time was set on `data`
+  prazo         DateTime? // deadline (date-only, stored at local noon)
+  notes         String? // descrição (free text)
+  reminder      String? // label only (REMINDER_OPTS)
+  recur         String? // label only (RECUR_OPTS) — NOT an auto-generated series
+  ai            Boolean   @default(false) // suggested/generated by LexIA (Phase B)
+  subtasks      String    @default("[]") // JSON: [{ id, title, done }]
+  dor           String    @default("[]") // JSON: [{ text, done }]  Definition of Ready
+  dod           String    @default("[]") // JSON: [{ text, done }]  Definition of Done
+  origem        String    @default("manual")
+  geradoPorApp  Boolean   @default(true)
+  ordem         Int       @default(0)
+  responsavelId Int? // a registered User (active users are the delegation pool)
+  responsavel   User?     @relation(fields: [responsavelId], references: [id])
+  criadoPorId   Int? // quem criou/delegou a tarefa (notificado na conclusão); null em tarefas antigas
+  criadoPor     User?     @relation("TarefaCriadoPor", fields: [criadoPorId], references: [id])
+  casoId        Int?
+  caso          Caso?     @relation(fields: [casoId], references: [id])
+  processoId    Int?
+  processo      Processo? @relation(fields: [processoId], references: [id])
+  clienteId     Int?
+  cliente       Cliente?  @relation(fields: [clienteId], references: [id])
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([status])
+  @@index([responsavelId])
+  @@index([criadoPorId])
+  @@index([prazo])
+  @@index([data])
+  @@index([processoId])
+}
+
+// ── Agenda (operator-entered office calendar; NOT in the Astrea backup) ──────
+// The Agenda page aggregates Evento rows + Tarefa rows that carry `data` (and
+// optional `hora`). Audiência/prazo are the legally critical tipos.
+model Evento {
+  id            Int       @id @default(autoincrement())
+  titulo        String
+  tipo          String    @default("reuniao") // 'audiencia' | 'pericia' | 'prazo' | 'reuniao' | 'outro'
+  dataInicio    DateTime
+  dataFim       DateTime?
+  diaInteiro    Boolean   @default(false)
+  local         String? // physical place OR video-call link
+  descricao     String?
+  status        String    @default("confirmado") // 'confirmado' | 'cancelado'
+  responsavelId Int? // a registered User (active users are the delegation pool)
+  responsavel   User?     @relation(fields: [responsavelId], references: [id])
+  clienteId     Int?
+  cliente       Cliente?  @relation(fields: [clienteId], references: [id])
+  casoId        Int?
+  caso          Caso?     @relation(fields: [casoId], references: [id])
+  processoId    Int?
+  processo      Processo? @relation(fields: [processoId], references: [id])
+  origem        String    @default("manual")
+  geradoPorApp  Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([dataInicio])
+  @@index([clienteId])
+  @@index([casoId])
+  @@index([responsavelId])
+  @@index([processoId])
+}
+
+// Generated-document metadata. The binary stays an ephemeral download; `payload`
+// keeps the editor form data so a documento can be re-opened / regenerated and
+// listed on the Cliente "Documentos" tab.
+model Documento {
+  id        Int      @id @default(autoincrement())
+  nome      String
+  template  String // generator key, e.g. 'contrato-honorarios'
+  tipo      String? // 'peticao' | 'contrato' | 'procuracao' | 'prova' | 'outro'
+  formato   String? // 'docx' | 'pdf' — last generated format (null while rascunho)
+  status    String   @default("rascunho") // 'rascunho' | 'finalizado' | 'enviado' | 'fechado'
+  payload   String? // JSON form data (ContratoHonorariosData etc.)
+  clienteId Int?
+  cliente   Cliente? @relation(fields: [clienteId], references: [id])
+  casoId    Int?
+  caso      Caso?    @relation(fields: [casoId], references: [id])
+  processoId Int?
+  processo  Processo? @relation(fields: [processoId], references: [id])
+  criadoPor String? // actor e-mail
+  versoes   DocumentoVersao[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clienteId])
+  @@index([casoId])
+  @@index([status])
+  @@index([processoId])
+}
+
+// Key-value app settings (JSON values), e.g. key 'escritorio' = office data used
+// by generated documents. Edited via the admin Configurações modal.
+model AppSetting {
+  key       String   @id
+  value     String // JSON
+  updatedAt DateTime @updatedAt
+}
+
+// ── API usage ledger — one row per Anthropic call across ALL surfaces (chat +
+// background features). Raw token counts only; USD is computed on read from the
+// local price table (lib/consumo/pricing) so a price change reprices history.
+// Powers the real-time "Consumo (IA)" panel + the monthly budget guard.
+model LexiaUso {
+  id               Int      @id @default(autoincrement())
+  criadoEm         DateTime @default(now())
+  userEmail        String? // who triggered it (null for cron/system)
+  recurso          String // 'chat'|'briefing'|'triagem'|'resumo'|'vinculo'|'criterios'|'doc-suggest'
+  modelo           String // model id (claude-opus-4-8, claude-sonnet-4-6, claude-haiku-4-5)
+  inputTokens      Int      @default(0) // uncached input
+  cacheWriteTokens Int      @default(0)
+  cacheReadTokens  Int      @default(0)
+  outputTokens     Int      @default(0)
+
+  @@index([criadoEm])
+  @@index([recurso])
+  @@index([modelo])
+}
+
+// ── LexIA chat (persistence base; the LLM wiring lands with the popup UI) ────
+model LexiaConversa {
+  id        Int                 @id @default(autoincrement())
+  titulo    String?
+  userEmail String // owner — conversations are per-user
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+  mensagens LexiaMensagem[]
+  acoes     LexiaAcaoPendente[]
+
+  @@index([userEmail, updatedAt])
+}
+
+model LexiaMensagem {
+  id         Int           @id @default(autoincrement())
+  conversaId Int
+  conversa   LexiaConversa @relation(fields: [conversaId], references: [id], onDelete: Cascade)
+  role       String // 'user' | 'assistant'
+  content    String // plain-text fallback (always present; old rows render from this)
+  blocks     String? // JSON UI-block array: [{ type:'text'|'tool'|'confirm'|'notice', ... }]
+  model      String? // model id used for the assistant turn
+  inputTokens  Int?
+  outputTokens Int?
+  createdAt  DateTime      @default(now())
+  anexos     LexiaAnexo[]
+
+  @@index([conversaId])
+}
+
+// Anexo de uma mensagem (imagem/PDF que o usuário encaminhou para a LexIA). Os
+// bytes vivem atrás de uma abstração de storage (src/lib/lexia/anexos/storage):
+// `db` guarda o base64 em `data`; `onedrive` (futuro) guarda o ponteiro em `ref`.
+model LexiaAnexo {
+  id         Int           @id @default(autoincrement())
+  mensagemId Int
+  mensagem   LexiaMensagem @relation(fields: [mensagemId], references: [id], onDelete: Cascade)
+  nome       String // nome original do arquivo
+  mimeType   String // image/png | image/jpeg | image/webp | image/gif | application/pdf
+  tamanho    Int // bytes decodificados
+  storage    String        @default("db") // "db" | "onedrive"
+  data       String? // base64 (quando storage = "db")
+  ref        String? // ponteiro externo/URL (quando storage = "onedrive")
+  createdAt  DateTime      @default(now())
+
+  @@index([mensagemId])
+}
+
+// A mutation the agent proposed but did not execute. Created when the agent loop
+// hits a confirmation-gated tool; resolved by POST /api/lexia/acoes/[id]. The
+// `contexto` snapshot is the Anthropic messages array at the pause point so the
+// loop can resume with the tool_result once the user decides.
+model LexiaAcaoPendente {
+  id         Int           @id @default(autoincrement())
+  conversaId Int
+  conversa   LexiaConversa @relation(fields: [conversaId], references: [id], onDelete: Cascade)
+  userEmail  String
+  toolName   String
+  toolUseId  String // Anthropic tool_use block id
+  payload    String // JSON tool input (re-validated against the tool schema on confirm)
+  resumo     String // PT-BR one-line summary shown on the confirmation card
+  status     String   @default("pendente") // pendente | confirmada | recusada | expirada
+  contexto   String // JSON snapshot of the API messages array at the pause point
+  resultJson String? // JSON result of the executed mutation
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+
+  @@index([conversaId, status])
+}
+
+// ── Processos & Casos (judicial/consultative case management) ────────────────
+// A Caso is the matéria (judicial → has one or more Processos; consultivo → none).
+// Processo holds the CNJ-numbered court case; Parte/Andamento/Publicacao/Prazo
+// hang off it. Legal-domain entities use `excluidoEm` as a soft-delete marker —
+// processo data is never physically removed. Writes funnel through runMutation,
+// so AuditLog + createdAt/updatedAt are the audit trail.
+model Processo {
+  id                Int       @id @default(autoincrement())
+  casoId            Int
+  caso              Caso      @relation(fields: [casoId], references: [id], onDelete: Cascade)
+  numeroCnj         String?   @unique // validated CNJ (Res. 65/2008); unique → re-sync is an upsert
+  classe            String?
+  assunto           String?
+  valorCausaCents   Int       @default(0)
+  faseAtual         String? // 'conhecimento' | 'recursal' | 'execucao' | 'cumprimento' | …
+  instancia         String? // '1' | '2' | 'STJ' | 'STF' | …
+  status            String    @default("ativo") // 'ativo' | 'suspenso' | 'arquivado' | 'baixado'
+  vara              String?
+  comarca           String?
+  tribunal          String? // sigla, e.g. TJSP / TRF3 / TRT2
+  uf                String?
+  sistema           String? // 'pje' | 'esaj' | 'projudi' | 'eproc' | 'outro'
+  segredoJustica    Boolean   @default(false)
+  dataDistribuicao  DateTime?
+  responsavelUserId Int?
+  responsavelUser   User?     @relation("ProcessoResponsavel", fields: [responsavelUserId], references: [id])
+  excluidoEm        DateTime?
+  partes            ParteProcesso[]
+  andamentos        Andamento[]
+  publicacoes       Publicacao[]
+  prazos            Prazo[]
+  documentos        Documento[]
+  eventos           Evento[]
+  tarefas           Tarefa[]
+  lancamentos       Lancamento[]
+  honorarios        Honorario[]
+  anotacoes         Anotacao[]
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([casoId])
+  @@index([status])
+  @@index([responsavelUserId])
+}
+
+// A person/entity that can appear as a party in one or more processos.
+model Parte {
+  id         Int             @id @default(autoincrement())
+  nome       String
+  tipo       String // 'pf' | 'pj'
+  documento  String? // CPF/CNPJ (validated)
+  clienteId  Int? // set when this parte is a registered Cliente
+  cliente    Cliente?        @relation(fields: [clienteId], references: [id])
+  excluidoEm DateTime?
+  processos  ParteProcesso[]
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  @@index([clienteId])
+  @@index([documento])
+}
+
+// Join: a Parte's role within a specific Processo (polo + papel + é-o-cliente).
+model ParteProcesso {
+  id         Int      @id @default(autoincrement())
+  processoId Int
+  processo   Processo @relation(fields: [processoId], references: [id], onDelete: Cascade)
+  parteId    Int
+  parte      Parte    @relation(fields: [parteId], references: [id], onDelete: Cascade)
+  papel      String // 'autor' | 'reu' | 'terceiro' | 'assistente' | 'mp' | …
+  polo       String // 'ativo' | 'passivo' | 'outro'
+  ehCliente  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([processoId, parteId, papel])
+  @@index([processoId])
+  @@index([parteId])
+}
+
+// Movement/timeline entry on a processo. `relevante` marks an intimação that
+// generates a prazo; `externalId` makes court-feed ingestion idempotent.
+model Andamento {
+  id         Int       @id @default(autoincrement())
+  processoId Int
+  processo   Processo  @relation(fields: [processoId], references: [id], onDelete: Cascade)
+  data       DateTime
+  tipo       String?
+  descricao  String
+  fonte      String    @default("manual") // 'pje' | 'dje' | 'esaj' | 'projudi' | 'manual'
+  relevante  Boolean   @default(false) // intimação que gera prazo
+  statusRevisao String @default("novo") // 'novo' | 'revisado' — fila de triagem por processo (captura)
+  revisadoEm DateTime?
+  externalId String?   @unique // court-system id → ingest idempotency
+  prazoId    Int? // the prazo generated from this andamento (if any)
+  prazo      Prazo?    @relation("AndamentoGerouPrazo", fields: [prazoId], references: [id])
+  excluidoEm DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([processoId])
+  @@index([data])
+  @@index([relevante])
+  @@index([statusRevisao])
+}
+
+// DJe / court publication awaiting triagem. May arrive unmatched (processoId null)
+// and be linked later by CNJ/OAB.
+model Publicacao {
+  id                   Int       @id @default(autoincrement())
+  processoId           Int?
+  processo             Processo? @relation(fields: [processoId], references: [id])
+  dataDisponibilizacao DateTime?
+  dataPublicacao       DateTime?
+  diario               String? // diário/órgão
+  conteudo             String
+  numeroProcessoBruto  String? // raw CNJ from the feed before matching
+  oabBruto             String? // raw OAB used to match
+  statusTriagem        String    @default("pendente") // 'pendente' | 'triada' | 'descartada'
+  prazoId              Int?
+  prazo                Prazo?    @relation("PublicacaoGerouPrazo", fields: [prazoId], references: [id])
+  externalId           String?   @unique // feed protocol id → ingest idempotency
+  excluidoEm           DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([processoId])
+  @@index([statusTriagem])
+  @@index([dataPublicacao])
+}
+
+// The deadline. dataFatal / dataInterna are CALCULATED (src/lib/processos/prazo.ts)
+// and stored; the urgency "semáforo" is NEVER stored — derived on read.
+model Prazo {
+  id                Int       @id @default(autoincrement())
+  processoId        Int
+  processo          Processo  @relation(fields: [processoId], references: [id], onDelete: Cascade)
+  descricao         String // e.g. 'Contestação'
+  tipo              String?
+  origem            String    @default("manual") // 'intimacao' | 'andamento' | 'manual'
+  dataPublicacao    DateTime? // intimação/publicação date
+  dataInicio        DateTime // início da contagem
+  quantidadeDias    Int
+  tipoContagem      String    @default("uteis") // 'uteis' | 'corridos'
+  jurisdicao        String? // tribunal/UF key selecting the holiday set
+  dataFatal         DateTime // CALCULATED
+  diasMargem        Int       @default(0)
+  dataInterna       DateTime? // CALCULATED (margem de segurança)
+  status            String    @default("pendente") // 'pendente' | 'cumprido' | 'perdido' | 'cancelado'
+  responsavelUserId Int?
+  responsavelUser   User?     @relation("PrazoResponsavel", fields: [responsavelUserId], references: [id])
+  cumpridoEm        DateTime?
+  eventoId          Int? // optional mirror onto the agenda (Evento tipo='prazo')
+  excluidoEm        DateTime?
+  andamentosGerados Andamento[]  @relation("AndamentoGerouPrazo")
+  publicacoesGeradas Publicacao[] @relation("PublicacaoGerouPrazo")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([processoId])
+  @@index([status])
+  @@index([dataFatal])
+  @@index([responsavelUserId])
+}
+
+// Configurable holiday calendar feeding the prazo engine. National fixed/movable
+// holidays are computed in code; estadual/forense/municipal dates live here.
+model Feriado {
+  id          Int      @id @default(autoincrement())
+  data        DateTime
+  descricao   String
+  abrangencia String   @default("nacional") // 'nacional' | 'estadual' | 'forense' | 'municipal'
+  uf          String?
+  tribunal    String?
+  createdAt   DateTime @default(now())
+
+  @@unique([data, abrangencia, uf, tribunal])
+  @@index([data])
+}
+
+// Configurable suspension period (CPC art. 220: 20/12–20/1; recesso forense).
+model SuspensaoPrazo {
+  id         Int      @id @default(autoincrement())
+  de         DateTime
+  ate        DateTime
+  descricao  String
+  jurisdicao String?
+  createdAt  DateTime @default(now())
+
+  @@index([de])
+}
+
+// In-app + real-time notification. Per-user (by email), like LexiaConversa.
+// Two write paths share this row via src/lib/notificacoes/service.ts:
+//   • cron (gerarNotificacoes) passes a deterministic `dedupeKey` → idempotent upsert;
+//   • event-driven triggers pass `dedupeKey: null` → always create (multiple NULLs do
+//     not collide under SQLite's unique index).
+// Every create/upsert is also published to the in-process bus → SSE → live toast.
+model Notificacao {
+  id         Int      @id @default(autoincrement())
+  userEmail  String
+  tipo       String // 'prazo' | 'compromisso' | 'publicacao' | 'tarefa' | …
+  refTipo    String? // 'prazo' | 'evento' | 'publicacao' | 'tarefa' | 'lead' | 'documento'
+  refId      Int?
+  mensagem   String
+  lida       Boolean  @default(false)
+  dedupeKey  String?  @unique // cron: '{tipo}-{refTipo}-{refId}-{janela}'; eventos: null
+  modulo     String? // 'tarefas'|'agenda'|'processos'|'comercial'|'documentos'|'ia'|'sistema'
+  prioridade String?  @default("normal") // 'baixa'|'normal'|'alta'|'critica'
+  link       String? // deep-link pré-resolvido (senão derivado de refTipo/refId)
+  actorEmail String? // quem disparou o evento (ex.: "Fulano concluiu a tarefa")
+  grupoKey   String? // anti-spam: coalesce de eventos repetidos numa só linha
+  contador   Int      @default(1) // nº de eventos agregados nesta linha
+  createdAt  DateTime @default(now())
+
+  @@index([userEmail, lida])
+  @@index([createdAt])
+  @@index([userEmail, modulo])
+  @@index([userEmail, grupoKey])
+}
+
+// Version history for a Documento. Bytes live behind the AnexoStore abstraction
+// (src/lib/lexia/anexos/storage): `db` keeps base64 in `data`, external keeps `ref`.
+model DocumentoVersao {
+  id          Int       @id @default(autoincrement())
+  documentoId Int
+  documento   Documento @relation(fields: [documentoId], references: [id], onDelete: Cascade)
+  versao      Int
+  nome        String?
+  formato     String? // 'docx' | 'pdf' | original mime
+  payload     String? // form snapshot JSON
+  storage     String    @default("db") // 'db' | 'onedrive'
+  data        String? // base64 (when storage = 'db')
+  ref         String? // external pointer/URL (when storage != 'db')
+  tamanho     Int?
+  mimeType    String?
+  criadoPor   String?
+  createdAt   DateTime  @default(now())
+
+  @@unique([documentoId, versao])
+  @@index([documentoId])
+}
+
+// Free-text note attached to a Caso and/or Processo (author + timestamp + interno).
+model Anotacao {
+  id         Int       @id @default(autoincrement())
+  casoId     Int?
+  caso       Caso?     @relation(fields: [casoId], references: [id], onDelete: Cascade)
+  processoId Int?
+  processo   Processo? @relation(fields: [processoId], references: [id], onDelete: Cascade)
+  autor      String
+  conteudo   String
+  interno    Boolean   @default(true)
+  excluidoEm DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([casoId])
+  @@index([processoId])
+}
+
+// ── Captura CNJ (fontes públicas gratuitas: Comunica/DJEN + DataJud) ──────────
+// OAB do escritório a monitorar no Comunica/DJEN (intimações → Publicacao). Dado
+// operacional (editável na tela), não em env. `ativo=false` pausa a varredura.
+model OabMonitorada {
+  id           Int      @id @default(autoincrement())
+  numero       String // só dígitos
+  uf           String // 2 letras (ex.: SP)
+  advogadoNome String?
+  ativo        Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([numero, uf])
+}
+
+// Log de cada rodada de captura (uma linha por OAB ou por tribunal). É a
+// superfície de "falha de captura" exigida pelo prompt: status 'erro' aparece
+// como alerta no app. `erro` guarda só a mensagem mascarada (sem PII).
+model ExecucaoCaptura {
+  id           Int       @id @default(autoincrement())
+  fonte        String // 'comunica' | 'datajud'
+  escopo       String // OAB "123456/SP" ou alias do tribunal "tjsp"
+  status       String // 'ok' | 'parcial' | 'erro' | 'dry-run'
+  iniciadoEm   DateTime  @default(now())
+  finalizadoEm DateTime?
+  janelaDe     DateTime?
+  janelaAte    DateTime?
+  encontrados  Int       @default(0)
+  criados      Int       @default(0)
+  ignorados    Int       @default(0)
+  semVinculo   Int       @default(0)
+  erro         String? // mensagem mascarada (sem dados pessoais)
+  createdAt    DateTime  @default(now())
+
+  @@index([fonte, createdAt])
+  @@index([status])
+}

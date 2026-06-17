@@ -12,15 +12,15 @@ export const section = style({
 
 export const heroTitle = style({
     margin: 0,
-    fontSize: 28,
-    fontWeight: 600,
+    fontSize: 25,
+    fontWeight: 500,
     letterSpacing: "-0.025em",
     color: tokens.color.text,
 })
 
 export const heroLead = style({
     margin: "6px 0 20px",
-    fontSize: 13.5,
+    fontSize: 14,
     color: tokens.color.textMuted,
     letterSpacing: "-0.005em",
 })
@@ -30,7 +30,7 @@ export const composerCard = style({
     overflow: "hidden",
     background: tokens.color.surface,
     border: `1px solid ${tokens.color.borderStrong}`,
-    borderRadius: 16,
+    borderRadius: 14,
     boxShadow: tokens.color.shadowMd,
     padding: "14px 16px 12px",
 })
@@ -55,7 +55,7 @@ export const composerLabel = style({
     fontSize: 11,
     fontWeight: 500,
     color: tokens.color.accent,
-    letterSpacing: "0.04em",
+    letterSpacing: "0.08em",
     textTransform: "uppercase",
 })
 
@@ -96,13 +96,13 @@ export const composerHint = style({
 
 export const compactButton = style({
     height: 28,
-    fontSize: 11.5,
+    fontSize: 12,
     padding: "0 8px",
 })
 
 export const compactGoldButton = style({
     height: 30,
-    fontSize: 12.5,
+    fontSize: 12,
     padding: "0 14px",
 })
 
@@ -157,7 +157,7 @@ export const draftLink = style([
     {
         minHeight: 132,
         padding: 16,
-        borderRadius: 16,
+        borderRadius: 14,
         display: "flex",
         flexDirection: "column",
         gap: 12,
@@ -181,8 +181,8 @@ export const draftHeaderGroup = style({
 
 export const draftTypeText = style({
     fontSize: 10,
-    fontWeight: 600,
-    letterSpacing: "0.06em",
+    fontWeight: 500,
+    letterSpacing: "0.08em",
     textTransform: "uppercase",
     color: tokens.color.textSubtle,
 })
@@ -201,7 +201,7 @@ export const draftBody = style({
 })
 
 export const draftClientLine = style({
-    fontSize: 11.5,
+    fontSize: 12,
     color: tokens.color.textMuted,
     marginTop: 4,
 })
@@ -209,7 +209,7 @@ export const draftClientLine = style({
 export const draftProgressBlock = style({})
 
 export const draftProgressLabel = style({
-    fontSize: 10.5,
+    fontSize: 11,
     color: tokens.color.textSubtle,
     marginTop: 5,
 })
@@ -227,8 +227,8 @@ export const draftIcon = style({
 })
 
 export const draftTitle = style({
-    fontSize: 13.5,
-    fontWeight: 600,
+    fontSize: 14,
+    fontWeight: 500,
     color: tokens.color.text,
     letterSpacing: "-0.015em",
     lineHeight: 1.3,
@@ -248,7 +248,7 @@ export const draftProgressTrack = style({
 export const draftProgressFill = style({
     height: "100%",
     borderRadius: 999,
-    background: "linear-gradient(90deg, #C0A147, #9a7f2e)",
+    background: tokens.brand.gold,
 })
 
 export const featuredGrid = style({
@@ -271,7 +271,7 @@ export const featuredCard = style([
 export const quickTemplateIcon = style({
     width: 32,
     height: 40,
-    borderRadius: 5,
+    borderRadius: 6,
     background: tokens.color.surface,
     border: `1px solid ${tokens.color.borderStrong}`,
     display: "flex",
@@ -283,8 +283,8 @@ export const quickTemplateIcon = style({
 })
 
 export const quickTemplateCode = style({
-    fontSize: 7.5,
-    fontWeight: 700,
+    fontSize: 8,
+    fontWeight: 500,
     letterSpacing: "0.04em",
     color: tokens.color.text,
     fontFamily: tokens.font.mono,
@@ -296,8 +296,8 @@ export const quickTemplateBar = style({
     left: 0,
     right: 0,
     height: 3.5,
-    background: "#C0A147",
-    borderRadius: "5px 5px 0 0",
+    background: tokens.brand.gold,
+    borderRadius: "6px 6px 0 0",
 })
 
 export const quickTemplateBody = style({
@@ -307,7 +307,7 @@ export const quickTemplateBody = style({
 
 export const quickTemplateTitle = style({
     fontSize: 13,
-    fontWeight: 600,
+    fontWeight: 500,
     color: tokens.color.text,
     letterSpacing: "-0.01em",
     whiteSpace: "nowrap",
@@ -355,7 +355,7 @@ export const categoryCard = style([
 
 export const categoryTitle = style({
     fontSize: 14,
-    fontWeight: 600,
+    fontWeight: 500,
     color: tokens.color.text,
     letterSpacing: "-0.015em",
     marginBottom: 4,

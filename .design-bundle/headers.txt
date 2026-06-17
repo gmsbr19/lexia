@@ -1,0 +1,17 @@
+HTTP/1.1 200 OK
+Date: Thu, 11 Jun 2026 15:49:43 GMT
+Content-Type: application/gzip
+Transfer-Encoding: chunked
+Connection: keep-alive
+Cache-Control: no-store
+content-disposition: attachment; filename="lexia-handoff.tar.gz"
+request-id: req_011CbwjhvYbGNsPQmJz8CNaW
+X-Robots-Tag: none
+x-version: 269a1dfcc06806738bf930402bca55744a56bf16
+Server: cloudflare
+server-timing: x-originResponse;dur=2060
+cf-cache-status: DYNAMIC
+set-cookie: _cfuvid=vzNKAwJPPGq3k_RsJQW6eqkahcmMno7rOBrBwdV6isM-1781192981.466827-1.0.1.1-UwasDYezlbH5V.WNVVhakvx7fBiApXLgTivPQtJr8dc; HttpOnly; SameSite=None; Secure; Path=/; Domain=api.anthropic.com
+Content-Security-Policy: default-src 'none'; frame-ancestors 'none'
+CF-RAY: a0a1c4662927f1b4-GRU
+

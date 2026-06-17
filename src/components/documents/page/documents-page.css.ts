@@ -34,7 +34,7 @@ export const toolbarSpacer = style({
 
 export const compactSecondaryButton = style({
   height: 32,
-  fontSize: 12.5,
+  fontSize: 12,
   display: "flex",
   alignItems: "center",
   gap: 6,
@@ -73,7 +73,7 @@ export const interactiveSurface = style({
   overflow: "hidden",
   background: tokens.color.surface,
   border: `1px solid ${tokens.color.border}`,
-  borderRadius: 16,
+  borderRadius: 14,
   boxShadow: tokens.color.shadowSm,
   textDecoration: "none",
   transition: "border-color 0.15s ease, box-shadow 0.15s ease, scale 0.5s ease",
@@ -93,16 +93,16 @@ export const pillBase = style([interactiveSurface, {
   border: `1px solid ${tokens.color.border}`,
   background: tokens.color.surface,
   color: tokens.color.textMuted,
-  fontSize: "12.5px",
+  fontSize: "12px",
   fontWeight: 400,
   cursor: "pointer",
   fontFamily: tokens.font.sans,
-  
+
 }])
 
 export const documentTypeText = style({
   fontSize: 7,
-  fontWeight: 700,
+  fontWeight: 500,
   letterSpacing: "0.04em",
   color: tokens.color.text,
   fontFamily: tokens.font.mono,
@@ -114,7 +114,7 @@ export const documentIconBar = style({
   left: 0,
   right: 0,
   height: 3,
-  background: "#C0A147",
+  background: tokens.brand.gold,
   borderRadius: "4px 4px 0 0",
 })
 

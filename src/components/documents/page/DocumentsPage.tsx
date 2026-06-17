@@ -3,9 +3,9 @@
 import { Suspense } from "react"
 import Link from "next/link"
 import { Plus } from "lucide-react"
-import { AppShell } from "@/components/shell/AppShell"
 import { btn } from "@/styles/components.css"
 import { templateEditorPath } from "@/lib/documents/registry"
+import type { DocumentoRow } from "@/lib/documentos/types"
 import { DocumentsTabStrip } from "./tabs/TabStrip"
 import { useTabRouting } from "./hooks/useTabRouting"
 import { DocumentsCreateTab } from "./tabs/CreateTab/CreateTab"
@@ -17,8 +17,10 @@ function DocumentsPageFallback() {
   return <div className={loadingState}>Carregando documentos...</div>
 }
 
-function DocumentsContent() {
+function DocumentsContent({ documentos }: { documentos: DocumentoRow[] }) {
   const { activeTab, modelosFilter, handleTabChange, handleNavigateToModelos, handleOpenDocuments } = useTabRouting()
+
+  const rascunhos = documentos.filter((doc) => doc.status === "rascunho")
 
   const tabActions =
     activeTab === "meus-documentos" ? (
@@ -28,23 +30,34 @@ function DocumentsContent() {
     ) : undefined
 
   return (
-    <AppShell active="documentos" breadcrumb={["Documentos"]} actions={tabActions}>
+    <>
       <div className={pageShell}>
-        <DocumentsTabStrip activeTab={activeTab} onChange={handleTabChange} />
+        <div style={{ display: "flex", alignItems: "stretch" }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <DocumentsTabStrip activeTab={activeTab} onChange={handleTabChange} />
+          </div>
+          {tabActions && (
+            <div style={{ display: "flex", alignItems: "center", paddingRight: 40, borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+              {tabActions}
+            </div>
+          )}
+        </div>
         <div className={tabPanel}>
-          {activeTab === "criar" && <DocumentsCreateTab onNavigateToModelos={handleNavigateToModelos} onOpenDocuments={handleOpenDocuments} />}
-          {activeTab === "meus-documentos" && <DocumentsLibraryTab />}
+          {activeTab === "criar" && (
+            <DocumentsCreateTab rascunhos={rascunhos} onNavigateToModelos={handleNavigateToModelos} onOpenDocuments={handleOpenDocuments} />
+          )}
+          {activeTab === "meus-documentos" && <DocumentsLibraryTab documentos={documentos} />}
           {activeTab === "modelos" && <DocumentsTemplatesTab initialFilter={modelosFilter} />}
         </div>
       </div>
-    </AppShell>
+    </>
   )
 }
 
-export function DocumentsPage() {
+export function DocumentsPage({ documentos }: { documentos: DocumentoRow[] }) {
   return (
     <Suspense fallback={<DocumentsPageFallback />}>
-      <DocumentsContent />
+      <DocumentsContent documentos={documentos} />
     </Suspense>
   )
 }

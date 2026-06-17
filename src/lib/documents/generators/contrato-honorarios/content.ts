@@ -9,6 +9,7 @@ import type {
   Genero,
   Parcela,
 } from '@/lib/types/contrato-honorarios'
+import { CLAUSULAS_GERAIS, CLAUSULAS_COMPROMISSO, resolveClausula } from './clausulas'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -78,7 +79,11 @@ function denominado(c: Contratante, plural: boolean): string {
 
 // ── honorários clauses ────────────────────────────────────────────────────────
 
-const BANK_INFO = 'depositados no banco Itaú, agência nº 4088 e conta nº 15.991-0 ou no pix (11) 91014-4241'
+// The firm's own payment details (ships in every contract). Overridable via env
+// so the repo doesn't have to change when the account does.
+const BANK_INFO =
+  process.env.CONTRATO_BANK_INFO ||
+  'depositados no banco Itaú, agência nº 4088 e conta nº 15.991-0 ou no pix (11) 91014-4241'
 
 const FIXED_P1 =
   'Quaisquer outras medidas judiciais necessárias, incidentais ou não, diretas ou indiretas, decorrentes do objeto do contrato, deverão ter novos honorários estimados entre as partes.'
@@ -139,68 +144,9 @@ function honorariosBlocks(h: Honorarios): ContentBlock[] {
 }
 
 // ── static clauses ────────────────────────────────────────────────────────────
-
-const CLAUSULAS_GERAIS = [
-  {
-    titulo: 'CLÁUSULA TERCEIRA',
-    texto: 'Este contrato enquadra-se no rol dos títulos executivos extrajudiciais, nos termos do artigo 784, Inciso XII, do Código de Processo Civil, combinado com o artigo 24 da Lei 8.906/94 (EOAB). Fica estabelecido que em caso de atraso serão cobrados juros de mora na razão de 1% (um por cento) ao mês.',
-  },
-  {
-    titulo: 'CLÁUSULA QUARTA',
-    texto: 'Fica estabelecido que, iniciados os serviços especificados na cláusula 01, são devidos os honorários contratados na proporção dos serviços prestados, ainda que em caso de desistência por parte do CONTRATANTE, ou se for revogado o mandato do CONTRATADO sem sua culpa, ou, ainda, por acordo do CONTRATANTE com a parte contrária, sem a devida aquiescência do CONTRATADO, podendo este exigir os honorários de imediato.',
-  },
-  {
-    titulo: 'CLÁUSULA QUINTA',
-    texto: 'Fica estabelecido que os honorários contratados abarcam os serviços prestados até a última instância superior, correndo todas as despesas processuais, custas e outros emolumentos por conta do CONTRATANTE.',
-  },
-  {
-    titulo: 'CLÁUSULA SEXTA',
-    texto: 'Sendo o exercício profissional do CONTRATADO uma atividade de meio e não de resultado, fica estabelecido que os honorários avençados na Cláusula 02 serão sempre devidos, independentemente do resultado da ação. Os honorários devidos à sucumbência, se houver, pertencerão única e exclusivamente ao CONTRATADO, nos termos do art. 23 do EOAB, Lei 8.906/94, que poderá de imediato recebê-los em Juízo ou fora dele, ao final da ação, ou promover a competente execução em seu próprio nome, ou em nome do CONTRATANTE, nada tendo este a reclamar ou receber.',
-  },
-  {
-    titulo: 'CLÁUSULA SÉTIMA',
-    texto: 'No caso de levantamento ou recebimento de valores pelo CONTRATADO, através de alvará, mandado de pagamento ou qualquer outro meio, poderá o CONTRATADO descontar e/ou compensar os honorários contratados que lhe são devidos, inclusive os da sucumbência, e outros valores devidos.',
-  },
-]
-
-const CLAUSULAS_COMPROMISSO = [
-  {
-    titulo: 'CLÁUSULA OITAVA — DO COMPROMISSO',
-    texto: 'O CONTRATANTE se compromete a prestar todas, e fiéis, informações relacionadas ao fato constitutivo do seu direito, bem como subsidiar com instrumentos a evidenciá-lo, na medida do possível, e atender/responder ao CONTRATADO quando solicitado, através dos meios estipulados na Cláusula 09. Caso o CONTRATANTE oculte informação necessária da qual tenha ou deveria ter conhecimento, que possa de alguma forma prejudicar o andamento regular, bem como o êxito da demanda, o CONTRATADO não poderá ser responsabilizado, devendo, ainda, o CONTRATANTE pagar ao CONTRATADO todo prejuízo que, eventualmente, possa acarretar.',
-  },
-  {
-    titulo: 'CLÁUSULA NONA — DA COMUNICAÇÃO',
-    texto: 'O CONTRATANTE se compromete a manter atualizados os meios de contato ora avençados para a boa comunicação das partes. Em caso de alteração de algum dos contatos, deverá ser informado imediata e inequivocamente ao CONTRATADO.',
-  },
-  {
-    titulo: 'CLÁUSULA DÉCIMA',
-    texto: 'Se porventura o CONTRATADO depender do CONTRATANTE para promover algum ato extrajudicial ou judicial, e este não o corresponder tempestivamente, a responsabilidade recairá exclusivamente sobre o CONTRATANTE, não podendo arguí-la em seu favor posteriormente.',
-  },
-  {
-    titulo: 'CLÁUSULA DÉCIMA PRIMEIRA — DAS DESPESAS',
-    texto: 'Todas as despesas efetuadas pelo CONTRATADO, desde que devidamente comprovadas, ligadas direta ou indiretamente com o objeto deste contrato, incluindo-se fotocópias, digitalizações, emolumentos, serviços dos correios, custas judiciais, custas de cartórios extrajudiciais, entre outras, ficarão a cargo do CONTRATANTE, sem qualquer prejuízo dos honorários contratados.',
-  },
-  {
-    titulo: 'CLÁUSULA DÉCIMA SEGUNDA',
-    texto: 'Todas as despesas inerentes a transporte coletivo (ônibus, metrô etc.) municipal e intermunicipal necessárias para o cumprimento do contrato serão custeadas pelo CONTRATANTE, independentemente de prévio ajuste, através de reembolso e com a discriminação da diligência efetuada, sem qualquer prejuízo dos honorários contratados. Em caso de urgência, o CONTRATADO poderá utilizar-se de Uber/táxi para locomoção ao fórum para realização de diligências de audiência e/ou oitiva de testemunha, ou qualquer outro local para promoção de ato judicial, cabendo ao CONTRATANTE o devido reembolso.',
-  },
-  {
-    titulo: 'CLÁUSULA DÉCIMA TERCEIRA',
-    texto: 'Todas as despesas necessárias para o caso de locomoção interestadual ou internacional, gastos de viagem como transporte terrestre e/ou aéreo, hospedagem em hotel e alimentação ficarão a cargo do CONTRATANTE, sem qualquer prejuízo dos honorários contratados. No caso das despesas de transporte interestadual ou internacional e hotelaria, as partes deverão ajustar previamente, até 05 (cinco) dias antes da diligência a ser cumprida. No que concerne a alimentação noutra Comarca, Estado ou País, dar-se-á através de reembolso do que fora devidamente comprovado.',
-  },
-  {
-    titulo: 'CLÁUSULA DÉCIMA QUARTA',
-    texto: 'Em caso de reembolso a ser efetuado pelo CONTRATANTE em favor do CONTRATADO, este poderá compensá-lo quando do recebimento ou levantamento de valores, conforme cláusula 07.',
-  },
-  {
-    titulo: 'CLÁUSULA DÉCIMA QUINTA — DA CONTRATAÇÃO DE TERCEIROS',
-    texto: 'Se no decurso do processo houver a necessidade da contratação de profissional(is) de outra(s) área(s), o CONTRATADO poderá indicar escritório ou profissional de sua confiança, cabendo ao CONTRATANTE aceitá-lo ou não, sendo certo que qualquer despesa, incluindo honorários do terceiro contratado, ficará a expensas do CONTRATANTE.',
-  },
-  {
-    titulo: 'CLÁUSULA DÉCIMA SEXTA — DA RESCISÃO',
-    texto: 'A parte que descumprir qualquer das cláusulas deste contrato dará à outra o direito de rescindir o presente instrumento, sem qualquer interpelação, judicial ou extrajudicial, ficando desobrigada a parte inocente a dar continuidade a este contrato. Ademais, acordam as partes que, em caso de necessidade de ajuizamento de ações relativas a esse instrumento, a citação se dará por via postal, com aviso de recebimento (AR), cabendo ao vencedor honorário na razão de 20% (vinte por cento) sobre o do proveito econômico obtido, a título de verba sucumbencial.',
-  },
-]
+// The prose clauses (chapters IV/V) live in ./clausulas as the single source of
+// truth shared with the live preview. Their text is resolved per-document so any
+// per-instance override (hand-edited or rewritten by LexIA) is honoured here.
 
 // ── main builder ──────────────────────────────────────────────────────────────
 
@@ -254,16 +200,16 @@ export function buildContratoHonorarios(data: ContratoHonorariosData): ContentBl
 
   // Chapter IV — Disposições Gerais
   blocks.push(chapter('Capítulo IV — Das Disposições Gerais'))
-  for (const { titulo, texto } of CLAUSULAS_GERAIS) {
-    blocks.push(clause(titulo))
-    blocks.push(p([t(texto)], { indent: true }))
+  for (const def of CLAUSULAS_GERAIS) {
+    blocks.push(clause(def.titulo))
+    blocks.push(p([t(resolveClausula(data, def))], { indent: true }))
   }
 
   // Chapter V — Compromisso e Despesas
   blocks.push(chapter('Capítulo V — Do Compromisso e Das Despesas'))
-  for (const { titulo, texto } of CLAUSULAS_COMPROMISSO) {
-    blocks.push(clause(titulo))
-    blocks.push(p([t(texto)], { indent: true }))
+  for (const def of CLAUSULAS_COMPROMISSO) {
+    blocks.push(clause(def.titulo))
+    blocks.push(p([t(resolveClausula(data, def))], { indent: true }))
   }
 
   // Chapter VI — Foro
