@@ -14,6 +14,20 @@ export const ROLE_LABEL: Record<Role, string> = {
   staff: "Equipe",
 }
 
+/**
+ * Pode ver informações financeiras? Apenas Sócio, Administrador e o papel
+ * Financeiro. Todos os demais ("Equipe": advogado, estagiário, staff) NÃO veem
+ * nada do financeiro em nenhum lugar do app (exceto honorários pago/pendente na
+ * página do cliente). Helper puro — use no client e no server. NÃO confundir com
+ * `podeVerFinanceiro` de lib/processos/rbac.ts (escopo de processo, outra semântica).
+ */
+export function verFinanceiro(role: string): boolean {
+  return role === "admin" || role === "socio" || role === "financeiro"
+}
+
+/** Papéis aceitos em gates de mutation financeira (admin passa implícito no assertRole). */
+export const ROLES_FINANCEIRO: Role[] = ["socio", "financeiro"]
+
 /** An active, registered user offered as a task/event assignee. */
 export interface UsuarioAtivo {
   id: number
