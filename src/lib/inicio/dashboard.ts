@@ -60,12 +60,17 @@ export interface DashboardData {
   escritorio: { clientesTotal: number; casosAtivos: number; casosSemFee: number; potencialCents: number }
 }
 
-export async function getDashboard(): Promise<DashboardData> {
+/**
+ * Compose the Início dashboard. `verFin` (Sócio/Admin/Financeiro) controla os
+ * números financeiros: quando false (Equipe), eles NÃO são consultados nem
+ * enviados ao cliente — ficam zerados/vazios e o componente os esconde.
+ */
+export async function getDashboard(verFin = true): Promise<DashboardData> {
   const hoje = hojeISO()
   const [kpis, briefing, devedores, eventos, tarefasDs, comercial, clientesTotal, casosAtivos] = await Promise.all([
-    getKpis(),
+    verFin ? getKpis() : null,
     getBriefing(),
-    getDevedoresDashboard(5),
+    verFin ? getDevedoresDashboard(5) : null,
     listEventos({ de: hoje, ate: addDiasISO(hoje, 7) }),
     getTarefasDataset(),
     getComercialKpis(),
@@ -105,16 +110,16 @@ export async function getDashboard(): Promise<DashboardData> {
   return {
     hoje,
     financeiro: {
-      recebidoMesCents: kpis.recebidoMesCents,
-      recebidoDeltaPct: kpis.recebidoDeltaPct,
-      aReceberCents: kpis.aReceberCents,
-      aReceberCount: kpis.aReceberCount,
-      vencidoCents: kpis.vencidoCents,
-      vencidoClientes: kpis.vencidoClientes,
-      margemPct: kpis.margemPct,
-      saidasMesCents: kpis.saidasMesCents,
-      devedores: devedores.ativos,
-      emEsperaCount: devedores.emEspera.length,
+      recebidoMesCents: kpis?.recebidoMesCents ?? 0,
+      recebidoDeltaPct: kpis?.recebidoDeltaPct ?? null,
+      aReceberCents: kpis?.aReceberCents ?? 0,
+      aReceberCount: kpis?.aReceberCount ?? 0,
+      vencidoCents: kpis?.vencidoCents ?? 0,
+      vencidoClientes: kpis?.vencidoClientes ?? 0,
+      margemPct: kpis?.margemPct ?? null,
+      saidasMesCents: kpis?.saidasMesCents ?? 0,
+      devedores: devedores?.ativos ?? [],
+      emEsperaCount: devedores?.emEspera.length ?? 0,
     },
     prazos: {
       vencidos: briefing.prazosVencidos,
@@ -129,15 +134,15 @@ export async function getDashboard(): Promise<DashboardData> {
       leadsDeltaPct: comercial.leadsDeltaPct,
       conversoes: comercial.conversoes,
       taxaConversaoPct: comercial.taxaConversaoPct,
-      roas: comercial.roas,
-      investimentoCents: comercial.investimentoCents,
-      valorContratadoCents: comercial.valorContratadoCents,
+      roas: verFin ? comercial.roas : null,
+      investimentoCents: verFin ? comercial.investimentoCents : 0,
+      valorContratadoCents: verFin ? comercial.valorContratadoCents : 0,
     },
     escritorio: {
       clientesTotal,
       casosAtivos,
-      casosSemFee: briefing.casosSemFee,
-      potencialCents: briefing.potencialCents,
+      casosSemFee: verFin ? briefing.casosSemFee : 0,
+      potencialCents: verFin ? briefing.potencialCents : 0,
     },
   }
 }

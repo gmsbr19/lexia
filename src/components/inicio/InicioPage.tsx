@@ -3,6 +3,8 @@ import { Plus } from "lucide-react"
 import { pageShell, tabPanel, scrollArea, pageFrame } from "@/components/documents/page/documents-page.css"
 import { btn } from "@/styles/components.css"
 import { auth } from "@/lib/auth"
+import type { Role } from "@/lib/auth/session"
+import { verFinanceiro } from "@/lib/users/types"
 import { getBriefingDiario } from "@/lib/finance/briefing-ai"
 import { getDashboard } from "@/lib/inicio/dashboard"
 import { BriefingCard } from "./BriefingCard"
@@ -20,7 +22,9 @@ function greetingParts(now = new Date()) {
 }
 
 export async function InicioPage() {
-  const [session, briefing, dashboard] = await Promise.all([auth(), getBriefingDiario(), getDashboard()])
+  const session = await auth()
+  const verFin = verFinanceiro((session?.user?.role as Role) ?? "socio")
+  const [briefing, dashboard] = await Promise.all([getBriefingDiario(verFin), getDashboard(verFin)])
 
   const firstName = session?.user?.name?.split(" ")[0]
   const { saudacao, data } = greetingParts()
@@ -45,9 +49,9 @@ export async function InicioPage() {
                 </Link>
               </div>
 
-              <BriefingCard data={briefing} />
+              <BriefingCard data={briefing} verFin={verFin} />
 
-              <OfficeDashboard data={dashboard} />
+              <OfficeDashboard data={dashboard} verFin={verFin} />
             </div>
           </div>
         </div>

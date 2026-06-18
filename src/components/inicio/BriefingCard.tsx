@@ -36,7 +36,7 @@ function geradoLabel(iso: string): string {
   }
 }
 
-export function BriefingCard({ data }: { data: BriefingDiario }) {
+export function BriefingCard({ data, verFin }: { data: BriefingDiario; verFin: boolean }) {
   const router = useRouter()
   const [pending, setPending] = useState(false)
 
@@ -93,10 +93,13 @@ export function BriefingCard({ data }: { data: BriefingDiario }) {
           )}
 
           <div className={s.briefingFooter}>
-            <Link href="/plano-acao" className={`${btn({ variant: "gold" })} ${s.briefingBtn}`}>
-              <ArrowRightCircle size={13} strokeWidth={2} />
-              Ver plano de ação
-            </Link>
+            {/* O plano de ação é financeiro (cobrança/receita) — só para quem vê o financeiro. */}
+            {verFin && (
+              <Link href="/plano-acao" className={`${btn({ variant: "gold" })} ${s.briefingBtn}`}>
+                <ArrowRightCircle size={13} strokeWidth={2} />
+                Ver plano de ação
+              </Link>
+            )}
             <button type="button" onClick={regenerar} disabled={pending} className={`${btn({ variant: "ghost" })} ${s.regenBtn}`}>
               <RefreshCw size={12} strokeWidth={2} className={pending ? s.spinning : undefined} />
               {pending ? "Gerando…" : "Regenerar"}

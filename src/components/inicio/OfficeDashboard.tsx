@@ -90,7 +90,7 @@ function Kpi({
   )
 }
 
-export function OfficeDashboard({ data }: { data: DashboardData }) {
+export function OfficeDashboard({ data, verFin }: { data: DashboardData; verFin: boolean }) {
   const { financeiro: f, prazos, agenda, tarefas, comercial: cm, escritorio: e } = data
   const delta = f.recebidoDeltaPct
 
@@ -98,36 +98,40 @@ export function OfficeDashboard({ data }: { data: DashboardData }) {
     <div>
       {/* KPI strip */}
       <div className={s.kpiGrid}>
-        <Kpi
-          label="Recebido no mês"
-          icon={Banknote}
-          value={formatBRL(f.recebidoMesCents)}
-          sub={
-            delta == null ? (
-              "sem comparação"
-            ) : (
-              <>
-                {delta >= 0 ? <TrendingUp size={12} strokeWidth={2} /> : <TrendingDown size={12} strokeWidth={2} />}
-                {`${pct(delta)} vs. mês anterior`}
-              </>
-            )
-          }
-          subTone={delta != null && delta < 0 ? "crit" : "sub"}
-        />
-        <Kpi
-          label="A receber"
-          icon={Clock}
-          value={formatBRL(f.aReceberCents)}
-          sub={`${f.aReceberCount} título${f.aReceberCount === 1 ? "" : "s"} em aberto`}
-        />
-        <Kpi
-          label="Vencido"
-          icon={AlertTriangle}
-          value={formatBRL(f.vencidoCents)}
-          valTone={f.vencidoCents > 0 ? "crit" : "plain"}
-          sub={`${f.vencidoClientes} cliente${f.vencidoClientes === 1 ? "" : "s"}`}
-          subTone={f.vencidoCents > 0 ? "crit" : "sub"}
-        />
+        {verFin && (
+          <>
+            <Kpi
+              label="Recebido no mês"
+              icon={Banknote}
+              value={formatBRL(f.recebidoMesCents)}
+              sub={
+                delta == null ? (
+                  "sem comparação"
+                ) : (
+                  <>
+                    {delta >= 0 ? <TrendingUp size={12} strokeWidth={2} /> : <TrendingDown size={12} strokeWidth={2} />}
+                    {`${pct(delta)} vs. mês anterior`}
+                  </>
+                )
+              }
+              subTone={delta != null && delta < 0 ? "crit" : "sub"}
+            />
+            <Kpi
+              label="A receber"
+              icon={Clock}
+              value={formatBRL(f.aReceberCents)}
+              sub={`${f.aReceberCount} título${f.aReceberCount === 1 ? "" : "s"} em aberto`}
+            />
+            <Kpi
+              label="Vencido"
+              icon={AlertTriangle}
+              value={formatBRL(f.vencidoCents)}
+              valTone={f.vencidoCents > 0 ? "crit" : "plain"}
+              sub={`${f.vencidoClientes} cliente${f.vencidoClientes === 1 ? "" : "s"}`}
+              subTone={f.vencidoCents > 0 ? "crit" : "sub"}
+            />
+          </>
+        )}
         <Kpi
           label="Prazos · 7 dias"
           icon={Gavel}
@@ -199,29 +203,34 @@ export function OfficeDashboard({ data }: { data: DashboardData }) {
           {/* Comercial */}
           <div className={s.panel}>
             <PanelHead icon={Megaphone} title="Comercial · mês" href="/comercial" link="Ver comercial" />
-            <div className={s.statRow} style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
+            <div className={s.statRow} style={{ gridTemplateColumns: `repeat(${verFin ? 4 : 3}, 1fr)` }}>
               <Stat label="Leads" value={cm.leads} />
               <Stat label="Conversões" value={cm.conversoes} />
               <Stat label="Taxa" value={cm.taxaConversaoPct == null ? "—" : `${cm.taxaConversaoPct.toFixed(0)}%`} />
-              <Stat label="ROAS" value={cm.roas == null ? "—" : `${cm.roas.toFixed(1)}×`} />
+              {verFin && <Stat label="ROAS" value={cm.roas == null ? "—" : `${cm.roas.toFixed(1)}×`} />}
             </div>
-            <div className={s.panelDivider} />
-            <div className={s.kvRow}>
-              <span>Investimento</span>
-              <span style={{ fontVariantNumeric: "tabular-nums" }}>{formatBRL(cm.investimentoCents)}</span>
-            </div>
-            <div className={s.kvRow}>
-              <span>Valor contratado</span>
-              <span style={{ fontVariantNumeric: "tabular-nums", color: "var(--text)", fontWeight: 500 }}>
-                {formatBRL(cm.valorContratadoCents)}
-              </span>
-            </div>
+            {verFin && (
+              <>
+                <div className={s.panelDivider} />
+                <div className={s.kvRow}>
+                  <span>Investimento</span>
+                  <span style={{ fontVariantNumeric: "tabular-nums" }}>{formatBRL(cm.investimentoCents)}</span>
+                </div>
+                <div className={s.kvRow}>
+                  <span>Valor contratado</span>
+                  <span style={{ fontVariantNumeric: "tabular-nums", color: "var(--text)", fontWeight: 500 }}>
+                    {formatBRL(cm.valorContratadoCents)}
+                  </span>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
         {/* right column */}
         <div className={s.panelCol}>
-          {/* Financeiro */}
+          {/* Financeiro — oculto para a "Equipe" (sem acesso ao financeiro) */}
+          {verFin && (
           <div className={s.panel}>
             <PanelHead icon={Wallet} title="Financeiro" href="/financeiro" link="Ver financeiro" />
             <div className={s.statRow} style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
@@ -251,6 +260,7 @@ export function OfficeDashboard({ data }: { data: DashboardData }) {
               </>
             )}
           </div>
+          )}
 
           {/* Tarefas */}
           <div className={s.panel}>
@@ -285,20 +295,25 @@ export function OfficeDashboard({ data }: { data: DashboardData }) {
               <Stat label="Casos ativos" value={e.casosAtivos} />
               <Stat label="Clientes" value={e.clientesTotal} />
             </div>
-            <div className={s.panelDivider} />
-            {e.casosSemFee > 0 ? (
-              <Link href="/financeiro?tab=casos-sem-honorario" className={s.highlightRow}>
-                <span className={s.dot({ tom: "gold" })} style={{ marginTop: 5 }} />
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <span className={s.highlightTitle}>
-                    {e.casosSemFee} caso{e.casosSemFee === 1 ? "" : "s"} sem honorário
-                  </span>
-                  <span className={s.highlightSub}>Potencial estimado de {formatBRLCompact(e.potencialCents)}</span>
-                </span>
-                <ArrowUpRight size={15} style={{ color: "var(--text-subtle)", flexShrink: 0, marginTop: 3 }} />
-              </Link>
-            ) : (
-              <div className={s.emptyNote}>Todos os casos ativos têm honorário lançado.</div>
+            {/* "Casos sem honorário" expõe receita potencial — só para quem vê o financeiro. */}
+            {verFin && (
+              <>
+                <div className={s.panelDivider} />
+                {e.casosSemFee > 0 ? (
+                  <Link href="/financeiro?tab=casos-sem-honorario" className={s.highlightRow}>
+                    <span className={s.dot({ tom: "gold" })} style={{ marginTop: 5 }} />
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span className={s.highlightTitle}>
+                        {e.casosSemFee} caso{e.casosSemFee === 1 ? "" : "s"} sem honorário
+                      </span>
+                      <span className={s.highlightSub}>Potencial estimado de {formatBRLCompact(e.potencialCents)}</span>
+                    </span>
+                    <ArrowUpRight size={15} style={{ color: "var(--text-subtle)", flexShrink: 0, marginTop: 3 }} />
+                  </Link>
+                ) : (
+                  <div className={s.emptyNote}>Todos os casos ativos têm honorário lançado.</div>
+                )}
+              </>
             )}
           </div>
         </div>

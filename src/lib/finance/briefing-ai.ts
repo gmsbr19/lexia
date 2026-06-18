@@ -18,6 +18,9 @@ import { formatBRL, formatBRLCompact } from "./money"
 import type { BriefingData, BriefingDestaque, BriefingDiario } from "./types"
 
 const CACHE_KEY = "briefing-diario"
+const CACHE_KEY_EQUIPE = "briefing-diario-equipe"
+/** Chave de cache por variante: a "Equipe" recebe um briefing SEM financeiro. */
+const cacheKey = (incluirFinanceiro: boolean) => (incluirFinanceiro ? CACHE_KEY : CACHE_KEY_EQUIPE)
 
 const AREA = ["prazos", "inadimplencia", "casos-sem-fee", "agenda", "tarefas", "caixa", "comercial", "none"] as const
 const TOM = ["pos", "neg", "neutro", "gold"] as const
@@ -46,8 +49,19 @@ Regras:
 - COBRANÇA — RESPEITE A MEMÓRIA DO ESCRITÓRIO: NÃO sugira cobrar nenhum cliente listado em "financeiro.naoCobrar" (pausados, marcados como "não cobrar" ou que pagaram recentemente). "financeiro.maioresDevedores" já traz só quem ainda pode ser cobrado — use essa lista ao falar de inadimplência.
 - Não encha de itens irrelevantes. Se o dia está tranquilo, seja breve e honesto (ex.: caixa estável, sem pendências críticas).`
 
+// Variante "Equipe": SEM nada financeiro (esse público não tem acesso ao Financeiro).
+const SYSTEM_EQUIPE = `Você é a LexIA, assistente de um escritório de advocacia. Escreva o BRIEFING DIÁRIO OPERACIONAL para um membro da equipe, com base EXCLUSIVAMENTE nos dados fornecidos.
+
+Regras:
+- Português do Brasil, tom profissional e direto. NÃO inclua saudação ("bom dia") nem markdown.
+- NÃO mencione NADA financeiro: nada de valores, receita, faturamento, honorários, inadimplência, cobrança ou caixa. O contexto fornecido já não traz esses dados — não os invente.
+- PRAZOS PROCESSUAIS SÃO A PRIORIDADE MÁXIMA: um prazo fatal perdido é irreversível. Se houver prazos vencidos ou vencendo hoje, eles DEVEM abrir o "foco" e ter um destaque.
+- "foco": 1–2 frases com o ponto mais importante do dia. Priorize: prazos fatais (vencidos ou de hoje) > compromissos de hoje > tarefas atrasadas.
+- "destaques": até 4 itens curtos e acionáveis. Cada item tem uma "area" (prazos, agenda, tarefas ou none) e um "tom" (pos, neg, neutro, gold). NÃO use as áreas inadimplencia, casos-sem-fee, caixa ou comercial. Quando citar um prazo, mencione o responsável se houver.
+- Não encha de itens irrelevantes. Se o dia está tranquilo, seja breve e honesto (ex.: sem pendências críticas).`
+
 /** Assemble a compact, bounded JSON of today's operational context for the model. */
-async function coletarContexto(): Promise<{ dados: BriefingData; contexto: unknown }> {
+async function coletarContexto(incluirFinanceiro: boolean): Promise<{ dados: BriefingData; contexto: unknown }> {
   const hoje = hojeISO()
   const [dados, devedores, tarefasDs, eventos, cobranca] = await Promise.all([
     getBriefing(),
@@ -75,23 +89,28 @@ async function coletarContexto(): Promise<{ dados: BriefingData; contexto: unkno
         vencido: p.vencido,
       })),
     },
-    financeiro: {
-      recebidoMesCents: dados.recebidoMesCents,
-      variacaoMesPct: dados.recebidoDeltaPct,
-      totalVencidoCents: dados.vencidoCents,
-      vencidoMais60Cents: dados.vencido60Cents,
-      clientesComVencidos: dados.vencido60Clientes,
-      // Apenas devedores AINDA cobráveis (exclui pausados/suspensos/que pagaram).
-      maioresDevedores: devedores.ativos.map((o) => ({ cliente: o.nome, valorCents: o.valorCents })),
-      casosSemHonorario: dados.casosSemFee,
-      potencialNaoFaturadoCents: dados.potencialCents,
-      // NÃO sugerir cobrança destes — cobrança pausada/suspensa ou pagamento recente.
-      naoCobrar: {
-        pausados: cobranca.pausados.map((c) => ({ cliente: c.nome, ate: c.ate, motivo: c.motivo })),
-        suspensos: cobranca.suspensos.map((c) => ({ cliente: c.nome, motivo: c.motivo })),
-        pagaramRecentemente: devedores.emEspera.filter((e) => e.razao === "pagou").map((e) => e.nome),
-      },
-    },
+    // O bloco financeiro só entra para quem pode ver o Financeiro (Sócio/Admin/Financeiro).
+    ...(incluirFinanceiro
+      ? {
+          financeiro: {
+            recebidoMesCents: dados.recebidoMesCents,
+            variacaoMesPct: dados.recebidoDeltaPct,
+            totalVencidoCents: dados.vencidoCents,
+            vencidoMais60Cents: dados.vencido60Cents,
+            clientesComVencidos: dados.vencido60Clientes,
+            // Apenas devedores AINDA cobráveis (exclui pausados/suspensos/que pagaram).
+            maioresDevedores: devedores.ativos.map((o) => ({ cliente: o.nome, valorCents: o.valorCents })),
+            casosSemHonorario: dados.casosSemFee,
+            potencialNaoFaturadoCents: dados.potencialCents,
+            // NÃO sugerir cobrança destes — cobrança pausada/suspensa ou pagamento recente.
+            naoCobrar: {
+              pausados: cobranca.pausados.map((c) => ({ cliente: c.nome, ate: c.ate, motivo: c.motivo })),
+              suspensos: cobranca.suspensos.map((c) => ({ cliente: c.nome, motivo: c.motivo })),
+              pagaramRecentemente: devedores.emEspera.filter((e) => e.razao === "pagou").map((e) => e.nome),
+            },
+          },
+        }
+      : {}),
     agenda: {
       proximos7Dias: eventos.length,
       eventos: eventos
@@ -107,12 +126,12 @@ async function coletarContexto(): Promise<{ dados: BriefingData; contexto: unkno
   return { dados, contexto }
 }
 
-async function gerarIA(contexto: unknown): Promise<{ foco: string; destaques: BriefingDestaque[] }> {
+async function gerarIA(contexto: unknown, incluirFinanceiro: boolean): Promise<{ foco: string; destaques: BriefingDestaque[] }> {
   const client = getAnthropic()
   const msg = await client.messages.parse({
     model: "claude-sonnet-4-6",
     max_tokens: 1200,
-    system: SYSTEM,
+    system: incluirFinanceiro ? SYSTEM : SYSTEM_EQUIPE,
     messages: [
       {
         role: "user",
@@ -127,7 +146,7 @@ async function gerarIA(contexto: unknown): Promise<{ foco: string; destaques: Br
 }
 
 /** Deterministic stand-in mirroring the AI shape, so the card renders identically. */
-function fallback(dados: BriefingData): { foco: string; destaques: BriefingDestaque[] } {
+function fallback(dados: BriefingData, incluirFinanceiro: boolean): { foco: string; destaques: BriefingDestaque[] } {
   const destaques: BriefingDestaque[] = []
 
   // Prazos lead the focus — a missed legal deadline is irreversible.
@@ -148,6 +167,13 @@ function fallback(dados: BriefingData): { foco: string; destaques: BriefingDesta
       tom: "neutro",
       area: "prazos",
     })
+  }
+
+  // Variante "Equipe" (sem financeiro): foco operacional, sem valores nem cobrança.
+  if (!incluirFinanceiro) {
+    if (!foco) foco = "Sem prazos críticos hoje."
+    if (destaques.length === 0) foco += " Sem pendências relevantes no momento."
+    return { foco, destaques }
   }
 
   foco += `Recebido do mês em ${formatBRL(dados.recebidoMesCents)}`
@@ -176,41 +202,66 @@ function fallback(dados: BriefingData): { foco: string; destaques: BriefingDesta
   return { foco, destaques }
 }
 
+/** Zera os campos financeiros de `dados` (a variante "Equipe" não pode levá-los nem no payload). */
+function semFinanceiroDados(d: BriefingData): BriefingData {
+  return {
+    ...d,
+    recebidoMesCents: 0,
+    recebidoDeltaPct: null,
+    vencido60Cents: 0,
+    vencido60Clientes: 0,
+    vencidoCents: 0,
+    casosSemFee: 0,
+    potencialCents: 0,
+  }
+}
+
 function montar(
   gen: { foco: string; destaques: BriefingDestaque[] },
   dados: BriefingData,
   fonte: BriefingDiario["fonte"],
+  incluirFinanceiro: boolean,
 ): BriefingDiario {
-  return { fonte, foco: gen.foco, destaques: gen.destaques.slice(0, 4), geradoEm: new Date().toISOString(), data: hojeISO(), dados }
+  return {
+    fonte,
+    foco: gen.foco,
+    destaques: gen.destaques.slice(0, 4),
+    geradoEm: new Date().toISOString(),
+    data: hojeISO(),
+    dados: incluirFinanceiro ? dados : semFinanceiroDados(dados),
+  }
 }
 
-async function gerarEArmazenar(): Promise<BriefingDiario> {
-  const { dados, contexto } = await coletarContexto()
+async function gerarEArmazenar(incluirFinanceiro: boolean): Promise<BriefingDiario> {
+  const { dados, contexto } = await coletarContexto(incluirFinanceiro)
   let resultado: BriefingDiario
   try {
-    resultado = montar(await gerarIA(contexto), dados, "ia")
+    resultado = montar(await gerarIA(contexto, incluirFinanceiro), dados, "ia", incluirFinanceiro)
   } catch (e) {
     log.warn({ err: e instanceof Error ? e.message : String(e) }, "briefing IA indisponível — usando fallback determinístico")
-    resultado = montar(fallback(dados), dados, "deterministico")
+    resultado = montar(fallback(dados, incluirFinanceiro), dados, "deterministico", incluirFinanceiro)
   }
-  await setSetting(CACHE_KEY, resultado).catch(() => {})
+  await setSetting(cacheKey(incluirFinanceiro), resultado).catch(() => {})
   return resultado
 }
 
-/** Today's cached briefing (generates once per day, per office). Never throws. */
-export async function getBriefingDiario(): Promise<BriefingDiario> {
+/**
+ * Today's cached briefing (generates once per day, per office). Never throws.
+ * `incluirFinanceiro` = false gera a variante "Equipe", sem nenhum dado financeiro.
+ */
+export async function getBriefingDiario(incluirFinanceiro = true): Promise<BriefingDiario> {
   try {
-    const cached = await getSetting<BriefingDiario>(CACHE_KEY)
+    const cached = await getSetting<BriefingDiario>(cacheKey(incluirFinanceiro))
     if (cached && cached.data === hojeISO()) return cached
-    return await gerarEArmazenar()
+    return await gerarEArmazenar(incluirFinanceiro)
   } catch (e) {
     log.error({ err: e instanceof Error ? e.message : String(e) }, "briefing diário falhou")
     const dados = await getBriefing()
-    return montar(fallback(dados), dados, "deterministico")
+    return montar(fallback(dados, incluirFinanceiro), dados, "deterministico", incluirFinanceiro)
   }
 }
 
 /** Force a fresh briefing (overwrites today's cache) — backs the "Regenerar" button. */
-export async function regenerarBriefingDiario(): Promise<BriefingDiario> {
-  return gerarEArmazenar()
+export async function regenerarBriefingDiario(incluirFinanceiro = true): Promise<BriefingDiario> {
+  return gerarEArmazenar(incluirFinanceiro)
 }
