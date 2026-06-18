@@ -1,5 +1,6 @@
 import { reabrirLancamento } from "@/lib/finance/mutations"
 import { parseId, runMutation, type RouteCtx } from "@/lib/finance/api"
+import { ROLES_FINANCEIRO } from "@/lib/users/types"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -10,5 +11,6 @@ export async function POST(_req: Request, ctx: RouteCtx) {
     action: "lancamento.reabrir",
     entity: "Lancamento",
     entityId: id,
+    roles: ROLES_FINANCEIRO,
   })
 }

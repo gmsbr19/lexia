@@ -40,6 +40,7 @@ import {
   setCobranca,
 } from "../crm-api"
 import { crmDate, crmDateLong } from "../crm-fmt"
+import { verFinanceiro } from "@/lib/users/types"
 import { CrmDocumentoModal, CrmEventoModal, CrmLancamentoModal, CrmTarefaModal } from "./CrmClienteModals"
 import type {
   ClienteDetail,
@@ -143,10 +144,13 @@ function CrmProcessoSubRow({ p, hoje, onClick }: { p: ProcessoMini; hoje: string
 function CrmLancRow({
   l,
   onToggle,
+  canBaixa,
   last,
 }: {
   l: LancamentoRow
   onToggle: (l: LancamentoRow) => void
+  /** "Equipe" não pode dar baixa: vê só o status (Recebido/Pago/Pendente) como texto. */
+  canBaixa: boolean
   last: boolean
 }) {
   return (
@@ -169,14 +173,23 @@ function CrmLancRow({
       <div style={{ textAlign: "right" }}><FxMoney cents={l.valorCents} dir={l.dir} /></div>
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
         {l.pago ? (
-          <button onClick={() => onToggle(l)} className="btn btn-ghost" style={{ height: 26, fontSize: 12, padding: "0 9px", color: "var(--fin-pos,#2E9E5B)" }}>
-            <Icon name="checkCircle" size={13} />
-            {l.dir === "in" ? "Recebido" : "Pago"}
-          </button>
-        ) : (
+          canBaixa ? (
+            <button onClick={() => onToggle(l)} className="btn btn-ghost" style={{ height: 26, fontSize: 12, padding: "0 9px", color: "var(--fin-pos,#2E9E5B)" }}>
+              <Icon name="checkCircle" size={13} />
+              {l.dir === "in" ? "Recebido" : "Pago"}
+            </button>
+          ) : (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 26, fontSize: 12, padding: "0 9px", color: "var(--fin-pos,#2E9E5B)" }}>
+              <Icon name="checkCircle" size={13} />
+              {l.dir === "in" ? "Recebido" : "Pago"}
+            </span>
+          )
+        ) : canBaixa ? (
           <button onClick={() => onToggle(l)} className="fx-baixa">
             {l.dir === "in" ? "Marcar recebido" : "Marcar pago"}
           </button>
+        ) : (
+          <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>Pendente</span>
         )}
       </div>
     </div>
@@ -185,6 +198,9 @@ function CrmLancRow({
 
 export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, onAnonimizar, onRefresh }: Props) {
   const { toast } = useCrmToast()
+  // "Equipe" (não Sócio/Admin/Financeiro) não dá baixa nem cria lançamentos —
+  // continua vendo honorários/lançamentos e seus status (pago/pendente).
+  const verFin = verFinanceiro(role)
   const [detail, setDetail] = useState<ClienteDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [edit, setEdit] = useState(false)
@@ -456,15 +472,17 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
               title="Lançamentos do cliente"
               sub={`${detail.lancamentos.length} lançamentos vinculados`}
               right={
-                <button className="btn btn-secondary" onClick={() => setModal({ type: "lancamento" })} style={{ height: 32 }}>
-                  <Icon name="plus" size={14} />Novo lançamento
-                </button>
+                verFin ? (
+                  <button className="btn btn-secondary" onClick={() => setModal({ type: "lancamento" })} style={{ height: 32 }}>
+                    <Icon name="plus" size={14} />Novo lançamento
+                  </button>
+                ) : null
               }
             />
             {lancSorted.length === 0
               ? sectionCard(<CrmEmpty icon="wallet" title="Sem lançamentos" sub="Crie um lançamento vinculado a este cliente." />)
               : sectionCard(lancSorted.map((l, i, arr) => (
-                <CrmLancRow key={l.id} l={l} onToggle={onToggleLanc} last={i === arr.length - 1} />
+                <CrmLancRow key={l.id} l={l} onToggle={onToggleLanc} canBaixa={verFin} last={i === arr.length - 1} />
               )))}
           </>
         )}

@@ -2,6 +2,7 @@ import { pagarLancamento } from "@/lib/finance/mutations"
 import { pagarLancamentoSchema } from "@/lib/finance/schemas"
 import { parseId, readJson, runMutation, type RouteCtx } from "@/lib/finance/api"
 import { parseBody } from "@/lib/validation"
+import { ROLES_FINANCEIRO } from "@/lib/users/types"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -11,6 +12,6 @@ export async function POST(req: Request, ctx: RouteCtx) {
   const body = await readJson(req)
   return runMutation(
     () => pagarLancamento(parseId(id), parseBody(pagarLancamentoSchema, body).dataPagamento ?? null),
-    { action: "lancamento.pagar", entity: "Lancamento", entityId: id, payload: body },
+    { action: "lancamento.pagar", entity: "Lancamento", entityId: id, payload: body, roles: ROLES_FINANCEIRO },
   )
 }
