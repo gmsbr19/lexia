@@ -8,7 +8,7 @@ export interface SidebarItem {
   icon: CrmIconName
   href: string
   badge?: number
-  socioPlus?: boolean // hidden from the 'staff' role
+  socioPlus?: boolean // financeiro: visível só p/ Sócio/Admin/Financeiro (ver verFinanceiro)
 }
 
 export const SIDEBAR: SidebarItem[] = [

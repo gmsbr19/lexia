@@ -22,6 +22,7 @@ import { NotificacoesBell } from "./NotificacoesBell"
 import { NotificacoesStream } from "./NotificacoesStream"
 import { NotificacoesToasts } from "./NotificacoesToasts"
 import { CrmAnonimizar } from "@/components/crm/pages/CrmQuickModals"
+import { verFinanceiro } from "@/lib/users/types"
 import type { ClienteRow } from "@/lib/finance/types"
 import type { CrmDataset, CrmNav, CrmPage, Role } from "@/components/crm/crm-types"
 import { useTabs } from "./tabs-store"
@@ -85,7 +86,7 @@ function Sidebar({
       )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        {SIDEBAR.filter((n) => !(n.socioPlus && role === "staff")).map((n) => {
+        {SIDEBAR.filter((n) => !(n.socioPlus && !verFinanceiro(role))).map((n) => {
           const active = activeId === n.id
           return (
             <button
