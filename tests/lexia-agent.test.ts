@@ -84,13 +84,32 @@ describe("registry — deterministic, valid tool schemas", () => {
     for (const t of TOOLS) if (t.kind === "mutation") expect(typeof t.resumo).toBe("function")
   })
 
-  it("generates object-typed JSON schemas for every tool", () => {
-    const api = toApiTools()
+  it("generates object-typed JSON schemas for every tool (admin sees all)", () => {
+    const api = toApiTools("admin")
     expect(api.length).toBe(TOOLS.length)
     for (const t of api) {
       expect(t.input_schema.type).toBe("object")
       expect((t.description ?? "").length).toBeGreaterThan(0)
     }
+  })
+
+  it("hides financial tools from the 'Equipe' (non-finance roles), keeps them for sócio/financeiro", () => {
+    const FIN = ["financeiro_resumo", "listar_lancamentos", "inadimplencia", "dre", "listar_honorarios", "detalhe_honorario", "criar_lancamento", "pagar_lancamento"]
+    const nomes = (role: string) => new Set(toApiTools(role).map((t) => t.name))
+
+    const equipe = nomes("staff")
+    for (const n of FIN) expect(equipe.has(n)).toBe(false)
+    // ferramentas não-financeiras seguem disponíveis para a Equipe
+    expect(equipe.has("buscar")).toBe(true)
+    expect(equipe.has("detalhe_cliente")).toBe(true)
+
+    for (const role of ["socio", "financeiro", "admin"]) {
+      const vis = nomes(role)
+      for (const n of FIN) expect(vis.has(n)).toBe(true)
+    }
+    // 'acerto_socios'/'excluir_lancamento' continuam só para sócio (não financeiro)
+    expect(nomes("financeiro").has("acerto_socios")).toBe(false)
+    expect(nomes("socio").has("acerto_socios")).toBe(true)
   })
 })
 
