@@ -8,9 +8,26 @@ import { clienteCreateSchema, clientePatchSchema } from "@/lib/clientes/schemas"
 import { anonimizarCliente } from "@/lib/finance/mutations"
 import { getClientes } from "@/lib/finance/queries"
 import { idReq } from "@/lib/validation"
+import { verFinanceiro } from "@/lib/users/types"
+import type { ClienteDetail } from "@/lib/clientes/types"
 import { nomeCliente } from "../confirmar"
 import { defineTool } from "../types"
 import { cap, limite } from "./shared"
+
+/** Remove os blocos financeiros do detalhe de cliente para quem é "Equipe". */
+function semFinanceiroCliente(d: ClienteDetail) {
+  return {
+    header: d.header,
+    resumo: { casosAtivos: d.resumo.casosAtivos, casosTotal: d.resumo.casosTotal },
+    casos: d.casos.map((c) => ({ id: c.id, titulo: c.titulo, tipo: c.tipo, status: c.status, responsavel: c.responsavel, honorariosCount: c.honorariosCount, processos: c.processos })),
+    tarefas: d.tarefas,
+    eventos: d.eventos,
+    documentos: d.documentos,
+    anotacoes: d.anotacoes,
+    cobranca: d.cobranca,
+    financeiroOculto: true,
+  }
+}
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "data deve ser YYYY-MM-DD")
 const dataBR = (iso?: string | null) => {
@@ -34,7 +51,11 @@ export const clientesTools = [
       "Detalhe completo de um cliente por id: dados, casos, honorários, lançamentos, tarefas, eventos e documentos. " +
       "Obtenha o id via buscar. Use para 'resuma a situação do cliente X', 'há valores vencidos do cliente Y?'.",
     schema: z.object({ id: idReq.describe("Id do cliente") }),
-    run: async (_ctx, { id }) => (await getClienteDetail(id)) ?? { erro: "Cliente não encontrado" },
+    run: async (ctx, { id }) => {
+      const d = await getClienteDetail(id)
+      if (!d) return { erro: "Cliente não encontrado" }
+      return verFinanceiro(ctx.user.role) ? d : semFinanceiroCliente(d)
+    },
   }),
   defineTool({
     name: "criar_cliente",

@@ -26,6 +26,7 @@ import {
 import { listMovimentosInbox, listPrazos, listProcessos, listPublicacoes, getProcessoDetail } from "@/lib/processos/queries"
 import { podeAcessarProcesso } from "@/lib/processos/rbac"
 import { idOpt, idReq } from "@/lib/validation"
+import { verFinanceiro } from "@/lib/users/types"
 import { brl, dataBr, nomeCaso, nomeCliente, nomeUsuario, rotuloProcesso } from "../confirmar"
 import { defineTool, type AgentCtx } from "../types"
 import { limite } from "./shared"
@@ -64,7 +65,12 @@ export const processosTools = [
       "Detalhe completo de um processo por id: partes, andamentos (timeline), prazos (com urgência), publicações, anotações e " +
       "financeiro. Obtenha o id via buscar ou listar_processos.",
     schema: z.object({ id: idReq.describe("Id do processo") }),
-    run: async (ctx, { id }) => (await getProcessoDetail(id, ctx.user)) ?? { erro: "Processo não encontrado ou sem acesso" },
+    run: async (ctx, { id }) => {
+      const d = await getProcessoDetail(id, ctx.user)
+      if (!d) return { erro: "Processo não encontrado ou sem acesso" }
+      if (verFinanceiro(ctx.user.role)) return d
+      return { ...d, financeiro: null, valorCausaCents: 0, financeiroOculto: true }
+    },
   }),
   defineTool({
     name: "listar_prazos",

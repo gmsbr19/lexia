@@ -39,7 +39,7 @@ export async function runAgentTurn(
   emit: Emit,
 ): Promise<TurnResult> {
   const anthropic = getAnthropic()
-  const tools = decision.useTools ? toApiTools() : undefined
+  const tools = decision.useTools ? toApiTools(ctx.user.role) : undefined
   const system = systemPrompt()
 
   const blocks: UiBlock[] = []

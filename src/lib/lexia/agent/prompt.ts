@@ -3,6 +3,7 @@
 // volatile context rides inside the latest user message instead. SERVER ONLY.
 import type Anthropic from "@anthropic-ai/sdk"
 import type { SessionUser } from "@/lib/auth/session"
+import { verFinanceiro } from "@/lib/users/types"
 import { dataExtenso, hojeISO } from "./datas"
 
 const CORE = `Você é a LexIA, a assistente do sistema de gestão de um escritório de advocacia (módulos: Financeiro, Clientes, Casos, Contratos/Honorários, Processos & Prazos (contencioso), Tarefas, Agenda, Comercial/Marketing e geração de documentos).
@@ -44,5 +45,11 @@ export function systemPrompt(): Anthropic.TextBlockParam[] {
 export function contextoLinha(user: SessionUser, page?: string): string {
   const papel = user.role === "admin" ? "administrador" : user.role === "socio" ? "sócio" : "equipe"
   const onde = page ? ` Página atual: ${page}.` : ""
-  return `<contexto>Hoje é ${dataExtenso()} (${hojeISO()}, America/Sao_Paulo). Usuário: ${user.nome} (${papel}).${onde}</contexto>`
+  // A "Equipe" não tem acesso ao financeiro: o modelo nem recebe as ferramentas
+  // financeiras (ver toApiTools), mas reforçamos a recusa para dados financeiros
+  // que apareçam por outras vias (detalhe de cliente/caso/processo já vêm sem $).
+  const semFinanceiro = verFinanceiro(user.role)
+    ? ""
+    : " Este usuário NÃO tem acesso a informações financeiras: nunca revele valores, receita, faturamento, honorários, inadimplência, rateio ou qualquer dado do Financeiro; se for perguntado, diga que ele não tem acesso a essa informação."
+  return `<contexto>Hoje é ${dataExtenso()} (${hojeISO()}, America/Sao_Paulo). Usuário: ${user.nome} (${papel}).${onde}${semFinanceiro}</contexto>`
 }

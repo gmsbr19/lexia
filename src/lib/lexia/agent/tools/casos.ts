@@ -4,9 +4,16 @@ import { createCaso, deleteCaso, updateCaso } from "@/lib/casos/mutations"
 import { getCasoDetail } from "@/lib/casos/queries"
 import { getCasos } from "@/lib/finance/queries"
 import { idOpt, idReq } from "@/lib/validation"
+import { verFinanceiro } from "@/lib/users/types"
+import type { CasoDetail } from "@/lib/casos/types"
 import { nomeCaso, nomeCliente, nomeUsuario } from "../confirmar"
 import { defineTool } from "../types"
 import { cap, limite } from "./shared"
+
+/** Remove o financeiro/rateio/valor da causa do detalhe de caso para a "Equipe". */
+function semFinanceiroCaso(d: CasoDetail) {
+  return { ...d, financeiro: undefined, responsaveis: [], valorCausaCents: null, financeiroOculto: true }
+}
 
 export const casosTools = [
   defineTool({
@@ -24,7 +31,11 @@ export const casosTools = [
     description:
       "Detalhe completo de um caso por id: processo, financeiro, rateio entre sócios, tarefas e eventos. Obtenha o id via buscar.",
     schema: z.object({ id: idReq.describe("Id do caso") }),
-    run: async (_ctx, { id }) => (await getCasoDetail(id)) ?? { erro: "Caso não encontrado" },
+    run: async (ctx, { id }) => {
+      const d = await getCasoDetail(id)
+      if (!d) return { erro: "Caso não encontrado" }
+      return verFinanceiro(ctx.user.role) ? d : semFinanceiroCaso(d)
+    },
   }),
   defineTool({
     name: "criar_caso",

@@ -16,6 +16,7 @@ import { criarLancamentos, deleteLancamento, pagarLancamento } from "@/lib/finan
 import { novoLancamentoSchema, pagarLancamentoSchema } from "@/lib/finance/schemas"
 import { prisma } from "@/lib/db"
 import { idReq } from "@/lib/validation"
+import { ROLES_FINANCEIRO } from "@/lib/users/types"
 import { dataBr } from "../confirmar"
 import { defineTool } from "../types"
 import { brl, cap, limite } from "./shared"
@@ -31,6 +32,7 @@ export const financeiroTools = [
   defineTool({
     name: "financeiro_resumo",
     kind: "readonly",
+    roles: ROLES_FINANCEIRO,
     description:
       "Resumo financeiro do mês: KPIs (recebido, a receber, vencido, margens) e o fechamento mensal " +
       "(entradas, saídas, saldo). Use para perguntas como 'como está o caixa?', 'quanto recebi este mês?'.",
@@ -40,6 +42,7 @@ export const financeiroTools = [
   defineTool({
     name: "listar_lancamentos",
     kind: "readonly",
+    roles: ROLES_FINANCEIRO,
     description:
       "Lista lançamentos do ledger (entradas a receber e saídas a pagar) no período. " +
       "Use para 'o que tenho a pagar?', 'lançamentos de maio', extratos. Valores em centavos.",
@@ -49,6 +52,7 @@ export const financeiroTools = [
   defineTool({
     name: "inadimplencia",
     kind: "readonly",
+    roles: ROLES_FINANCEIRO,
     description:
       "Recebíveis vencidos e o aging (faixas de atraso). Use para 'quem está devendo?', 'vencidos há mais de 60 dias'.",
     schema: z.object({ limite }),
@@ -57,6 +61,7 @@ export const financeiroTools = [
   defineTool({
     name: "dre",
     kind: "readonly",
+    roles: ROLES_FINANCEIRO,
     description: "DRE do período (receita, custos por categoria, pró-labore, resultado). Use para análise de resultado.",
     schema: z.object({ mes: mesArg, periodo: periodoArg }),
     run: async (_ctx, { mes, periodo }) => getDre(mes, periodo ?? "mes"),
@@ -64,6 +69,7 @@ export const financeiroTools = [
   defineTool({
     name: "listar_honorarios",
     kind: "readonly",
+    roles: ROLES_FINANCEIRO,
     description: "Lista os honorários (contratos) e os totais pago/pendente. Use para 'contratos', 'honorários a receber'.",
     schema: z.object({ limite }),
     run: async (_ctx, { limite: l }) => ({ totais: await getHonorarioTotals(), itens: cap(await getHonorarios(), l) }),
@@ -71,6 +77,7 @@ export const financeiroTools = [
   defineTool({
     name: "detalhe_honorario",
     kind: "readonly",
+    roles: ROLES_FINANCEIRO,
     description: "Detalhe de um honorário por id (incluindo a série de parcelas). Obtenha o id via buscar ou listar_honorarios.",
     schema: z.object({ id: idReq.describe("Id do honorário") }),
     run: async (_ctx, { id }) => (await getHonorarioDetail(id)) ?? { erro: "Honorário não encontrado" },
@@ -88,6 +95,7 @@ export const financeiroTools = [
   defineTool({
     name: "criar_lancamento",
     kind: "mutation",
+    roles: ROLES_FINANCEIRO,
     description:
       "Cria um lançamento financeiro (entrada a receber ou saída a pagar), com recorrência opcional (única/mensal/parcelado). " +
       "Chame APENAS quando o usuário pedir explicitamente para lançar/registrar um valor — nunca para consultar. Valores em centavos.",
@@ -116,6 +124,7 @@ export const financeiroTools = [
   defineTool({
     name: "pagar_lancamento",
     kind: "mutation",
+    roles: ROLES_FINANCEIRO,
     description:
       "Dá baixa (marca como pago) em um lançamento existente, pelo id. Obtenha o id via listar_lancamentos. " +
       "Chame apenas quando o usuário pedir para marcar algo como pago/recebido.",
