@@ -45,7 +45,7 @@ type Modal =
   | { type: "importarMeta" }
   | null
 
-export function ComercialApp({ dataset }: { dataset: CmDataset }) {
+export function ComercialApp({ dataset, verFin }: { dataset: CmDataset; verFin: boolean }) {
   const router = useRouter()
   const [ref0, setRef] = useState<CmRef>(() => cmRefToday())
   const [period, setPeriod] = useState<Periodo>("mes")
@@ -122,7 +122,7 @@ export function ComercialApp({ dataset }: { dataset: CmDataset }) {
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
           {tab === "visao" && <CmVisao dataset={dataset} ref0={ref0} period={period} scope={scope} onNew={() => setModal({ type: "campanha", edit: null })} onLead={() => setModal({ type: "lead", edit: null })} onGoCampanhas={() => setTab("campanhas")} />}
           {tab === "funil" && <CmFunil dataset={dataset} ref0={ref0} period={period} scope={scope} onStage={goLeadsStage} onLead={() => setModal({ type: "lead", edit: null })} />}
-          {tab === "campanhas" && <CmCampanhas dataset={dataset} ref0={ref0} period={period} scope={scope} onNew={() => setModal({ type: "campanha", edit: null })} onGasto={(c) => setModal({ type: "gasto", campanha: c })} onEdit={(c) => setModal({ type: "campanha", edit: c })} onLeads={goLeadsCampaign} onImport={() => setModal({ type: "importarMeta" })} />}
+          {tab === "campanhas" && <CmCampanhas dataset={dataset} ref0={ref0} period={period} scope={scope} verFin={verFin} onNew={() => setModal({ type: "campanha", edit: null })} onGasto={(c) => setModal({ type: "gasto", campanha: c })} onEdit={(c) => setModal({ type: "campanha", edit: c })} onLeads={goLeadsCampaign} onImport={() => setModal({ type: "importarMeta" })} />}
           {tab === "leads" && <CmLeads dataset={dataset} injectFilter={leadInject} lastImport={lastImport} onNew={() => setModal({ type: "lead", edit: null })} onMove={moveStage} onConvert={(l) => setModal({ type: "converter", lead: l })} onLose={(l) => setModal({ type: "perdido", lead: l })} onEdit={(l) => setModal({ type: "lead", edit: l })} onReopen={reopenLead} onBulkMove={bulkMove} onImport={() => setModal({ type: "importar" })} />}
           {tab === "exportar" && <CmExportar dataset={dataset} ref0={ref0} period={period} scope={scope} />}
         </div>

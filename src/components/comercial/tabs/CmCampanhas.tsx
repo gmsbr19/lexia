@@ -7,7 +7,7 @@ import { CmCardTitle, CmEmpty, CmFrame, CmNum, CmSegmented, CmStatusChip, CmTh }
 import { cmCampaignStats, cmCompact, cmInt, cmRoas, type CampaignStat, type CmRef, type CmScope, type Periodo } from "../cm-meta"
 import type { CampanhaStatus, CmDataset, CmDatasetCampaign, Plataforma } from "@/lib/comercial/types"
 
-function CampRow({ c, onGasto, onLeads, onEdit }: { c: CampaignStat; onGasto: (c: CmDatasetCampaign) => void; onLeads: (c: CmDatasetCampaign) => void; onEdit: (c: CmDatasetCampaign) => void }) {
+function CampRow({ c, verFin, onGasto, onLeads, onEdit }: { c: CampaignStat; verFin: boolean; onGasto: (c: CmDatasetCampaign) => void; onLeads: (c: CmDatasetCampaign) => void; onEdit: (c: CmDatasetCampaign) => void }) {
   const [menu, setMenu] = useState(false)
   const roiColor = c.roi == null ? "var(--text-subtle)" : c.roi >= 0 ? "var(--cm-pos,#2E9E5B)" : "var(--cm-neg,#C0492F)"
   const roasColor = c.roas == null ? "var(--text-subtle)" : c.roas >= 1 ? "var(--cm-pos,#2E9E5B)" : "var(--cm-neg,#C0492F)"
@@ -23,14 +23,18 @@ function CampRow({ c, onGasto, onLeads, onEdit }: { c: CampaignStat; onGasto: (c
         </div>
       </td>
       <td style={{ padding: "12px 14px" }}><CmStatusChip status={c.status} /></td>
-      <td style={{ padding: "12px 14px", textAlign: "right" }}><CmNum size={12} weight={500} color="var(--text-muted)">{c.investimento ? cmCompact(c.investimento) : "—"}</CmNum></td>
+      {verFin && <td style={{ padding: "12px 14px", textAlign: "right" }}><CmNum size={12} weight={500} color="var(--text-muted)">{c.investimento ? cmCompact(c.investimento) : "—"}</CmNum></td>}
       <td style={{ padding: "12px 14px", textAlign: "right" }}><CmNum size={12}>{cmInt(c.leads)}</CmNum></td>
       <td style={{ padding: "12px 14px", textAlign: "right" }}><CmNum size={12}>{cmInt(c.conversoes)}</CmNum></td>
-      <td style={{ padding: "12px 14px", textAlign: "right" }}><CmNum size={12} color="var(--cm-pos,#2E9E5B)">{c.valorContratado ? cmCompact(c.valorContratado) : "—"}</CmNum></td>
-      <td style={{ padding: "12px 14px", textAlign: "right" }}><CmNum size={12} weight={500} color="var(--text-muted)">{c.cpl == null ? "—" : cmCompact(c.cpl)}</CmNum></td>
-      <td style={{ padding: "12px 14px", textAlign: "right" }}><CmNum size={12} weight={500} color="var(--text-muted)">{c.cac == null ? "—" : cmCompact(c.cac)}</CmNum></td>
-      <td style={{ padding: "12px 14px", textAlign: "right" }}><CmNum size={13} color={roasColor}>{cmRoas(c.roas)}</CmNum></td>
-      <td style={{ padding: "12px 14px", textAlign: "right" }}><CmNum size={12} color={roiColor}>{c.roi == null ? "—" : `${c.roi >= 0 ? "+" : "−"}${Math.abs(c.roi).toFixed(0)}%`}</CmNum></td>
+      {verFin && (
+        <>
+          <td style={{ padding: "12px 14px", textAlign: "right" }}><CmNum size={12} color="var(--cm-pos,#2E9E5B)">{c.valorContratado ? cmCompact(c.valorContratado) : "—"}</CmNum></td>
+          <td style={{ padding: "12px 14px", textAlign: "right" }}><CmNum size={12} weight={500} color="var(--text-muted)">{c.cpl == null ? "—" : cmCompact(c.cpl)}</CmNum></td>
+          <td style={{ padding: "12px 14px", textAlign: "right" }}><CmNum size={12} weight={500} color="var(--text-muted)">{c.cac == null ? "—" : cmCompact(c.cac)}</CmNum></td>
+          <td style={{ padding: "12px 14px", textAlign: "right" }}><CmNum size={13} color={roasColor}>{cmRoas(c.roas)}</CmNum></td>
+          <td style={{ padding: "12px 14px", textAlign: "right" }}><CmNum size={12} color={roiColor}>{c.roi == null ? "—" : `${c.roi >= 0 ? "+" : "−"}${Math.abs(c.roi).toFixed(0)}%`}</CmNum></td>
+        </>
+      )}
       <td style={{ padding: "12px 16px 12px 8px", textAlign: "right" }}>
         <div style={{ position: "relative", display: "inline-block" }}>
           <button className="btn btn-ghost" onClick={() => setMenu((m) => !m)} style={{ width: 28, height: 28, padding: 0 }}><Icon name="moreHorizontal" size={15} /></button>
@@ -50,7 +54,7 @@ function CampRow({ c, onGasto, onLeads, onEdit }: { c: CampaignStat; onGasto: (c
   )
 }
 
-export function CmCampanhas({ dataset, ref0, period, scope, onNew, onGasto, onEdit, onLeads, onImport }: { dataset: CmDataset; ref0: CmRef; period: Periodo; scope: CmScope; onNew: () => void; onGasto: (c: CmDatasetCampaign) => void; onEdit: (c: CmDatasetCampaign) => void; onLeads: (c: CmDatasetCampaign) => void; onImport: () => void }) {
+export function CmCampanhas({ dataset, ref0, period, scope, verFin, onNew, onGasto, onEdit, onLeads, onImport }: { dataset: CmDataset; ref0: CmRef; period: Periodo; scope: CmScope; verFin: boolean; onNew: () => void; onGasto: (c: CmDatasetCampaign) => void; onEdit: (c: CmDatasetCampaign) => void; onLeads: (c: CmDatasetCampaign) => void; onImport: () => void }) {
   const [fStatus, setFStatus] = useState("todas")
   const [fPlat, setFPlat] = useState("todas")
   const stats = useMemo(() => cmCampaignStats(dataset, ref0, period), [dataset, ref0, period])
@@ -64,7 +68,7 @@ export function CmCampanhas({ dataset, ref0, period, scope, onNew, onGasto, onEd
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, marginBottom: 16, flexWrap: "wrap" }}>
           <div>
             <h1 style={{ margin: 0, fontSize: 25, fontWeight: 500, letterSpacing: "-0.025em", color: "var(--text)" }}>Campanhas · {scope.title}</h1>
-            <p style={{ margin: "4px 0 0", fontSize: 14, color: "var(--text-muted)" }}>{rows.length} campanhas · {cmCompact(tot.inv)} investidos · ROAS médio {cmRoas(totRoas)}</p>
+            <p style={{ margin: "4px 0 0", fontSize: 14, color: "var(--text-muted)" }}>{rows.length} campanhas{verFin ? ` · ${cmCompact(tot.inv)} investidos · ROAS médio ${cmRoas(totRoas)}` : ""}</p>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
             <button className="btn btn-secondary" onClick={onImport} style={{ height: 34, fontSize: 12 }}><Icon name="upload" size={13} />Importar Meta</button>
@@ -83,27 +87,39 @@ export function CmCampanhas({ dataset, ref0, period, scope, onNew, onGasto, onEd
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 980 }}>
               <thead>
                 <tr style={{ background: "var(--bg-soft)", position: "sticky", top: 0, zIndex: 2 }}>
-                  <CmTh>Campanha</CmTh><CmTh>Status</CmTh><CmTh align="right">Investido</CmTh><CmTh align="right">Leads</CmTh>
-                  <CmTh align="right">Conv.</CmTh><CmTh align="right">Contratado</CmTh><CmTh align="right">CPL</CmTh><CmTh align="right">CAC</CmTh>
-                  <CmTh align="right">ROAS</CmTh><CmTh align="right">ROI</CmTh><CmTh align="right" />
+                  <CmTh>Campanha</CmTh><CmTh>Status</CmTh>
+                  {verFin && <CmTh align="right">Investido</CmTh>}
+                  <CmTh align="right">Leads</CmTh><CmTh align="right">Conv.</CmTh>
+                  {verFin && (
+                    <>
+                      <CmTh align="right">Contratado</CmTh><CmTh align="right">CPL</CmTh><CmTh align="right">CAC</CmTh>
+                      <CmTh align="right">ROAS</CmTh><CmTh align="right">ROI</CmTh>
+                    </>
+                  )}
+                  <CmTh align="right" />
                 </tr>
               </thead>
               <tbody>
-                {rows.map((c) => <CampRow key={c.id} c={c} onGasto={onGasto} onLeads={onLeads} onEdit={onEdit} />)}
-                {rows.length === 0 && <tr><td colSpan={11} style={{ padding: "48px 16px" }}><CmEmpty icon="megaphone" title="Nenhuma campanha" desc="Nenhuma campanha corresponde aos filtros selecionados." /></td></tr>}
+                {rows.map((c) => <CampRow key={c.id} c={c} verFin={verFin} onGasto={onGasto} onLeads={onLeads} onEdit={onEdit} />)}
+                {rows.length === 0 && <tr><td colSpan={verFin ? 11 : 5} style={{ padding: "48px 16px" }}><CmEmpty icon="megaphone" title="Nenhuma campanha" desc="Nenhuma campanha corresponde aos filtros selecionados." /></td></tr>}
               </tbody>
               {rows.length > 0 && (
                 <tfoot>
                   <tr style={{ borderTop: "2px solid var(--border-strong)", background: "var(--bg-soft)" }}>
                     <td style={{ padding: "12px 16px", fontSize: 12, fontWeight: 500, color: "var(--text)" }}>Total · {rows.length}</td>
                     <td />
-                    <td style={{ padding: "12px 14px", textAlign: "right" }}><CmNum size={12} weight={500}>{cmCompact(tot.inv)}</CmNum></td>
+                    {verFin && <td style={{ padding: "12px 14px", textAlign: "right" }}><CmNum size={12} weight={500}>{cmCompact(tot.inv)}</CmNum></td>}
                     <td style={{ padding: "12px 14px", textAlign: "right" }}><CmNum size={12} weight={500}>{cmInt(tot.leads)}</CmNum></td>
                     <td style={{ padding: "12px 14px", textAlign: "right" }}><CmNum size={12} weight={500}>{cmInt(tot.conv)}</CmNum></td>
-                    <td style={{ padding: "12px 14px", textAlign: "right" }}><CmNum size={12} weight={500} color="var(--cm-pos,#2E9E5B)">{cmCompact(tot.val)}</CmNum></td>
-                    <td /><td />
-                    <td style={{ padding: "12px 14px", textAlign: "right" }}><CmNum size={13} weight={500} color={(totRoas ?? 0) >= 1 ? "var(--cm-pos,#2E9E5B)" : "var(--cm-neg,#C0492F)"}>{cmRoas(totRoas)}</CmNum></td>
-                    <td /><td />
+                    {verFin && (
+                      <>
+                        <td style={{ padding: "12px 14px", textAlign: "right" }}><CmNum size={12} weight={500} color="var(--cm-pos,#2E9E5B)">{cmCompact(tot.val)}</CmNum></td>
+                        <td /><td />
+                        <td style={{ padding: "12px 14px", textAlign: "right" }}><CmNum size={13} weight={500} color={(totRoas ?? 0) >= 1 ? "var(--cm-pos,#2E9E5B)" : "var(--cm-neg,#C0492F)"}>{cmRoas(totRoas)}</CmNum></td>
+                        <td />
+                      </>
+                    )}
+                    <td />
                   </tr>
                 </tfoot>
               )}
