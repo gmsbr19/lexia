@@ -141,6 +141,29 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **Visibilidade financeira por papel "Equipe" (this session)** (memory
+  `project_financeiro_visibilidade`). Financeiro só p/ **Sócio/Admin/Financeiro**;
+  "Equipe" (advogado/estagiário/staff) não vê nada do financeiro — exceto honorários
+  pago/pendente na página do cliente (sem marcar recebimento). Núcleo: helper PURO
+  `verFinanceiro(role)` + `ROLES_FINANCEIRO` em [users/types.ts](src/lib/users/types.ts)
+  (NÃO é o `podeVerFinanceiro` de processos/rbac). Home: `getDashboard(verFin)` não
+  popula nº financeiros + `OfficeDashboard`/`BriefingCard` escondem; briefing tem
+  variante operacional sem financeiro (cache `briefing-diario-equipe`, `SYSTEM_EQUIPE`,
+  `incluirFinanceiro` em coletarContexto/fallback/montar; `dados` scrubbado). Guards
+  server `redirect("/")` em [/plano-acao](src/app/plano-acao/page.tsx) e
+  [/financeiro](src/app/financeiro/page.tsx); sidebar `socioPlus`→`!verFinanceiro`.
+  Comercial: só a aba **Campanhas** esconde valores (Visão/Funil intactos). LexIA:
+  tools financeiras com `roles: ROLES_FINANCEIRO`, `toApiTools(role)` filtra o registry,
+  `detalhe_cliente/caso/processo` removem o financeiro, prompt injeta recusa. Cliente:
+  `CrmLancRow.canBaixa` (Equipe vê status, sem botão) + "Novo lançamento" oculto +
+  rotas `lancamentos/[id]/{pagar,reabrir}` com `roles`. **Sem migração.** Testes:
+  `tests/financeiro-visibilidade.test.ts` (novo) + `tests/lexia-agent.test.ts`
+  (`toApiTools("admin")` + filtragem por papel). tsc/test NÃO rodados (regra: o
+  usuário verifica). **User action**: `npx tsc --noEmit` → `npm test` → visual logando
+  como Equipe (ex.: `staff`) e Sócio: home sem KPIs/painel financeiro nem "Ver plano de
+  ação" + briefing sem números; `/plano-acao` e `/financeiro` redirecionam + "Financeiro"
+  some do menu; Comercial→Campanhas sem valores; cliente vê honorários sem "Marcar
+  recebido"; LexIA "qual o faturamento?" recusa p/ Equipe e responde p/ Sócio.
 - **E-mail design system "LexIA · Sistema de e-mails" (this session)** (Claude
   Design handoff `LexIA - E-mails.html`). New shared, email-safe layout module
   [lib/notificacoes/email/layout.ts](src/lib/notificacoes/email/layout.ts) (PURO):
