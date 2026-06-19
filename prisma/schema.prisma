@@ -42,6 +42,7 @@ model User {
   processos    Processo[] @relation("ProcessoResponsavel")
   prazos       Prazo[]    @relation("PrazoResponsavel")
   convites     ConviteAcesso[] // one-time access links (set/reset the own password)
+  projetos     Projeto[]  @relation("ProjetoResponsavel") // projects this user leads
 }
 
 // One-time access link issued when an admin creates a user (or resends the
@@ -145,6 +146,7 @@ model Cliente {
   documentos      Documento[]
   partes          Parte[] // process parties that are this registered cliente
   anotacoes       ClienteAnotacao[]
+  projetos        Projeto[]
 
   @@index([tipo])
   @@index([classificacao])
@@ -204,6 +206,7 @@ model Caso {
   documentos         Documento[]
   processos          Processo[]
   anotacoes          Anotacao[]
+  projetos           Projeto[]
 
   @@index([status])
   @@index([tipo])
@@ -448,6 +451,9 @@ model Tarefa {
   processo      Processo? @relation(fields: [processoId], references: [id])
   clienteId     Int?
   cliente       Cliente?  @relation(fields: [clienteId], references: [id])
+  projetoId     Int? // container de trabalho dinâmico (substitui a string `projeto`; backfill via seed)
+  projetoRef    Projeto?  @relation(fields: [projetoId], references: [id])
+  concluidoEm   DateTime? // setado na transição p/ done (alimenta cycle time / taxa no prazo do dashboard)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -457,6 +463,7 @@ model Tarefa {
   @@index([prazo])
   @@index([data])
   @@index([processoId])
+  @@index([projetoId])
 }
 
 // ── Agenda (operator-entered office calendar; NOT in the Astrea backup) ──────
@@ -914,4 +921,87 @@ model ExecucaoCaptura {
 
   @@index([fonte, createdAt])
   @@index([status])
+}
+
+// ── Projetos & Tarefas (container de trabalho dinâmico) ─────────────────────
+// Um Projeto agrupa Tarefas com dono, prazo-alvo e status. Substitui a antiga
+// string `Tarefa.projeto` (área de prática), que vira a TAG `Projeto.area`. O
+// progresso/saúde NÃO são persistidos — derivam das tarefas na leitura.
+// Soft-delete `excluidoEm`: a lista de projetos filtra excluidoEm=null e a
+// leitura de tarefas trata um projeto excluído como "sem projeto" (a tarefa
+// nunca some). `chave` dá um slug estável p/ seed idempotente (áreas, holding).
+model Projeto {
+  id               Int       @id @default(autoincrement())
+  chave            String?   @unique // slug estável p/ seed (ex.: 'area-trab'); null em projetos do usuário
+  nome             String
+  descricao        String?
+  status           String    @default("ativo") // 'ativo' | 'pausado' | 'concluido' | 'arquivado'
+  cor              String? // hex (ponto/cor no rail)
+  icone            String?
+  area             String? // tag de área de prática (inbox/trab/soc/trib/civ/int ou livre)
+  prazo            DateTime? // data-alvo (local noon)
+  responsavelId    Int?
+  responsavel      User?     @relation("ProjetoResponsavel", fields: [responsavelId], references: [id])
+  casoId           Int?
+  caso             Caso?     @relation(fields: [casoId], references: [id])
+  clienteId        Int?
+  cliente          Cliente?  @relation(fields: [clienteId], references: [id])
+  templateOrigemId Int? // template a partir do qual foi instanciado (se houver)
+  templateOrigem   ProjetoTemplate? @relation(fields: [templateOrigemId], references: [id])
+  ordem            Int       @default(0)
+  excluidoEm       DateTime? // soft-delete marker
+  tarefas          Tarefa[]
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([status])
+  @@index([responsavelId])
+  @@index([casoId])
+  @@index([clienteId])
+  @@index([excluidoEm])
+}
+
+// Modelo de projeto reutilizável (estilo Todoist) — o escritório instancia um
+// processo repetível (ex.: "Holding Patrimonial") gerando 1 Projeto + N Tarefas
+// com prazos relativos em DIAS ÚTEIS (calcularPrazo). Editável por admin/sócio.
+model ProjetoTemplate {
+  id         Int       @id @default(autoincrement())
+  chave      String?   @unique // slug p/ seed idempotente (ex.: 'holding-patrimonial')
+  nome       String
+  descricao  String?
+  area       String?
+  cor        String?
+  icone      String?
+  ativo      Boolean   @default(true)
+  ordem      Int       @default(0)
+  excluidoEm DateTime? // soft-delete marker
+  itens      ProjetoTemplateTarefa[]
+  projetos   Projeto[]
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([ativo])
+}
+
+// Um item de template = uma tarefa-modelo. `offsetDias` é o nº de DIAS ÚTEIS de
+// folga a partir da `base`: 'inicio' (data de início do projeto) ou 'anterior'
+// (prazo do item anterior, encadeado). `responsavelPlaceholder` é um rótulo de
+// papel mapeado a um User real no momento da instanciação.
+model ProjetoTemplateTarefa {
+  id                     Int      @id @default(autoincrement())
+  templateId             Int
+  template               ProjetoTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  titulo                 String
+  descricao              String?
+  prio                   Int      @default(3) // 1=Urgente .. 4=Normal
+  responsavelPlaceholder String? // rótulo de papel (ex.: "Advogado responsável")
+  offsetDias             Int      @default(0) // dias úteis de folga
+  base                   String   @default("inicio") // 'inicio' | 'anterior'
+  dor                    String   @default("[]") // JSON: string[]
+  dod                    String   @default("[]") // JSON: string[]
+  ordem                  Int      @default(0)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@index([templateId])
 }
