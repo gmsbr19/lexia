@@ -32,6 +32,7 @@ const ROUTE_META: Record<string, { label: string; icon: CrmIconName }> = {
   "/financeiro": { label: "Financeiro", icon: "wallet" },
   "/comercial": { label: "Comercial", icon: "megaphone" },
   "/tarefas": { label: "Tarefas", icon: "listChecks" },
+  "/projetos": { label: "Projetos", icon: "listChecks" },
   "/clientes": { label: "Clientes", icon: "users" },
   "/contratos": { label: "Contratos", icon: "receipt" },
   "/casos": { label: "Casos", icon: "briefcase" },
@@ -54,6 +55,7 @@ export function metaForPath(pathname: string): { label: string; icon: CrmIconNam
 export function activeNavId(pathname: string): string {
   if (pathname === "/") return "inicio"
   const seg = "/" + (pathname.split("/")[1] ?? "")
+  if (seg === "/projetos") return "tarefas" // Projetos é parte do módulo Tarefas
   const item = SIDEBAR.find((s) => s.href === seg)
   return item?.id ?? ""
 }
