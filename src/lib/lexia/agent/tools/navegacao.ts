@@ -14,6 +14,8 @@ const ROTAS: RegExp[] = [
   /^\/contratos$/,
   /^\/agenda$/,
   /^\/tarefas$/,
+  /^\/projetos$/,
+  /^\/projetos\/\d+$/,
   /^\/comercial$/,
   /^\/documents$/,
   /^\/documents\/editor\/[a-z-]+$/,
@@ -42,7 +44,7 @@ export const navegacaoTools = [
     description:
       "Leva o usuário a uma tela do app. Use quando ele pedir para 'abrir/ir para/mostrar' uma seção. " +
       "Rotas válidas: / (início), /financeiro (aceita ?tab=&mes=&periodo=&dir=&stat=&q=), /clientes, /clientes/<id>, " +
-      "/contratos (?contrato=<id>), /agenda, /tarefas, /comercial (?tab=), /documents, " +
+      "/contratos (?contrato=<id>), /agenda, /tarefas, /projetos, /projetos/<id>, /comercial (?tab=), /documents, " +
       "/processos (módulo unificado 'Casos & Processos'; aceita ?view=painel|processos|prazos|andamentos|captura e ?caso=<id> para abrir um caso), " +
       "/processos/<id>, /plano-acao, /lexia. " +
       "Obs.: /casos é legado e redireciona para /processos?view=processos — prefira /processos.",
