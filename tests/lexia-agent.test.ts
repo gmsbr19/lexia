@@ -111,6 +111,23 @@ describe("registry — deterministic, valid tool schemas", () => {
     expect(nomes("financeiro").has("acerto_socios")).toBe(false)
     expect(nomes("socio").has("acerto_socios")).toBe(true)
   })
+
+  it("expõe as tools de projetos e gateia a escrita (sócio/advogado), mantendo a leitura aberta", () => {
+    const nomes = (role: string) => new Set(toApiTools(role).map((t) => t.name))
+    // leitura disponível para todos (inclusive estagiário/staff)
+    for (const role of ["estagiario", "staff", "advogado", "socio", "admin"]) {
+      expect(nomes(role).has("listar_projetos"), role).toBe(true)
+      expect(nomes(role).has("listar_templates_projeto"), role).toBe(true)
+    }
+    // criar/instanciar projeto: só sócio/advogado (+ admin implícito)
+    const ESCRITA = ["criar_projeto", "instanciar_template_projeto"]
+    for (const n of ESCRITA) {
+      expect(nomes("estagiario").has(n)).toBe(false)
+      expect(nomes("staff").has(n)).toBe(false)
+      expect(nomes("financeiro").has(n)).toBe(false)
+      for (const role of ["advogado", "socio", "admin"]) expect(nomes(role).has(n), `${role}:${n}`).toBe(true)
+    }
+  })
 })
 
 describe("sse encoder", () => {
