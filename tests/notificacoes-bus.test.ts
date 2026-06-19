@@ -30,8 +30,8 @@ describe("bus de notificações", () => {
     emitNotificacao("a@x.com", fakeEvent(1))
     emitNotificacao("b@x.com", fakeEvent(2))
 
-    expect(aRecebidos.map((e) => e.notif.id)).toEqual([1])
-    expect(bRecebidos.map((e) => e.notif.id)).toEqual([2])
+    expect(aRecebidos.map((e) => ("notif" in e ? e.notif.id : null))).toEqual([1])
+    expect(bRecebidos.map((e) => ("notif" in e ? e.notif.id : null))).toEqual([2])
     offA()
     offB()
   })
@@ -42,6 +42,6 @@ describe("bus de notificações", () => {
     emitNotificacao("c@x.com", fakeEvent(1))
     off()
     emitNotificacao("c@x.com", fakeEvent(2))
-    expect(recebidos.map((e) => e.notif.id)).toEqual([1])
+    expect(recebidos.map((e) => ("notif" in e ? e.notif.id : null))).toEqual([1])
   })
 })
