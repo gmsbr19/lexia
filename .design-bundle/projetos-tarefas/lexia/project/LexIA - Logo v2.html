@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LexIA · Logotipo v2 — conexões & loops</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Spectral:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="styles/tokens.css" />
+
+  <style>
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      background: #f0eee9; overflow: hidden;
+    }
+    #root { width: 100%; height: 100%; }
+  </style>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="design-canvas.jsx"></script>
+  <script type="text/babel" src="src/logo.jsx"></script>
+</head>
+<body>
+  <template id="__bundler_thumbnail" data-bg-color="#020D25">
+    <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+      <rect width="1200" height="800" fill="#020D25"/>
+      <g fill="none" stroke="#C0A147" stroke-width="34" stroke-linecap="round">
+        <line x1="500" y1="300" x2="500" y2="430"/>
+        <circle cx="500" cy="478" r="48"/>
+        <line x1="548" y1="478" x2="700" y2="478"/>
+      </g>
+    </svg>
+  </template>
+
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="env,react">
+    const NAVY = '#020D25', GOLD = '#C0A147', GOLD_DEEP = '#9A7F2E', CREAM = '#F5F1E4', PAPER = '#FAFAF7';
+    const SERIF = '"Spectral", Georgia, serif';
+    const SANS = '"Inter", system-ui, sans-serif';
+
+    // Favicon: tile navy com borda dourada + símbolo dourado dentro.
+    function FaviconRow({ Symbol }) {
+      const sizes = [56, 40, 28, 18];
+      return (
+        <LexStage>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 44 }}>
+            {sizes.map((s) => (
+              <div key={s} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
+                <div style={{ width: s, height: s, borderRadius: Math.round(s * 0.24),
+                  background: '#0A1733', border: '1px solid rgba(192,161,71,0.40)',
+                  display: 'grid', placeItems: 'center' }}>
+                  <Symbol size={Math.round(s * 0.62)} color={GOLD} />
+                </div>
+                <span style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 11, color: 'rgba(245,241,228,0.55)' }}>{s}px</span>
+              </div>
+            ))}
+          </div>
+        </LexStage>
+      );
+    }
+
+    // Sidebar com o símbolo escolhido.
+    function Sidebar({ Symbol, theme = 'dark' }) {
+      const dark = theme === 'dark';
+      const pageBg = dark ? NAVY : PAPER;
+      const bg = dark ? '#0A1733' : '#FFFFFF';
+      const txt = dark ? CREAM : NAVY;
+      const goldTxt = dark ? GOLD : GOLD_DEEP;
+      const dim = dark ? 'rgba(245,241,228,0.60)' : 'rgba(2,13,37,0.58)';
+      const bd = dark ? 'rgba(255,255,255,0.08)' : 'rgba(2,13,37,0.08)';
+      const nav = ['Início', 'Documentos', 'Casos', 'Clientes', 'Agenda'];
+      return (
+        <div style={{ width: '100%', height: '100%', background: pageBg, display: 'flex', padding: 22 }}>
+          <div style={{ width: '100%', background: bg, border: `1px solid ${bd}`, borderRadius: 14,
+            padding: '22px 16px', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 6px 22px' }}>
+              <div style={{ width: 36, height: 36, borderRadius: 9, background: dark ? '#0E1B3D' : '#FBF8EF',
+                border: `1px solid ${dark ? 'rgba(192,161,71,0.40)' : 'rgba(192,161,71,0.45)'}`,
+                display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                <Symbol size={22} color={goldTxt} />
+              </div>
+              <span style={{ fontFamily: SERIF, fontWeight: 500, fontSize: 18, letterSpacing: '-0.02em' }}>
+                <span style={{ color: txt }}>Lex</span><span style={{ color: goldTxt }}>IA</span>
+              </span>
+            </div>
+            <div style={{ height: 1, background: bd, margin: '0 -16px 14px' }} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {nav.map((n, i) => (
+                <div key={n} style={{ display: 'flex', alignItems: 'center', gap: 11, height: 34, padding: '0 10px',
+                  borderRadius: 8, background: i === 0 ? 'rgba(192,161,71,0.12)' : 'transparent',
+                  color: i === 0 ? goldTxt : dim, fontFamily: SANS, fontSize: 14, fontWeight: i === 0 ? 500 : 400 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: 2, background: 'currentColor', opacity: i === 0 ? 1 : 0.5 }} />
+                  {n}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    const App = () => (
+      <DesignCanvas>
+        <DCSection
+          id="simbolos"
+          title="Símbolo — conexões & loops"
+          subtitle="Mais ousadia no símbolo: nós, redes e laços (linguagem de IA) em geometria limpa e séria. A wordmark serifa 'LexIA' segue carregando a gravidade do direito. Símbolo grande em cima, lockup embaixo.">
+          <DCArtboard id="loopl" label="A · Elo (loop-L) — monograma + nó" width={560} height={400}>
+            <Direction Symbol={MarkLoopL} />
+          </DCArtboard>
+          <DCArtboard id="constelacao" label="B · Constelação — rede + equilíbrio (recomendado)" width={560} height={400}>
+            <Direction Symbol={MarkConstellation} />
+          </DCArtboard>
+          <DCArtboard id="elos" label="C · Elos entrelaçados — vínculo + conexão" width={560} height={400}>
+            <Direction Symbol={MarkLinked} />
+          </DCArtboard>
+          <DCArtboard id="orbita" label="D · Órbita — inteligência contínua" width={560} height={400}>
+            <Direction Symbol={MarkOrbit} />
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection
+          id="claro"
+          title="Em fundo claro"
+          subtitle="As duas direções mais fortes no tema claro — tinta navy + dourado profundo p/ contraste.">
+          <DCArtboard id="loopl-light" label="A · Elo — claro" width={560} height={400}>
+            <Direction Symbol={MarkLoopL} bg={PAPER} cream={NAVY} gold={GOLD_DEEP} />
+          </DCArtboard>
+          <DCArtboard id="constelacao-light" label="B · Constelação — claro" width={560} height={400}>
+            <Direction Symbol={MarkConstellation} bg={PAPER} cream={NAVY} gold={GOLD_DEEP} />
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection
+          id="aplicacao"
+          title="Aplicação — direção B (constelação)"
+          subtitle="Como o símbolo recomendado (constelação) vive em escala pequena e dentro do produto. Troco facilmente por outra direção se você preferir.">
+          <DCArtboard id="favicon" label="Favicon & ícone de app" width={620} height={300}>
+            <FaviconRow Symbol={MarkConstellation} />
+          </DCArtboard>
+          <DCArtboard id="side-dark" label="Sidebar — escuro" width={300} height={420}>
+            <Sidebar Symbol={MarkConstellation} theme="dark" />
+          </DCArtboard>
+          <DCArtboard id="side-light" label="Sidebar — claro" width={300} height={420}>
+            <Sidebar Symbol={MarkConstellation} theme="light" />
+          </DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+    );
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LexIA · Projetos & Tarefas</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="styles/tokens.css" />
+
+  <style>
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #f0eee9; overflow: hidden;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
+    #root { width: 100%; height: 100%; }
+    .lex-artboard { width: 100%; height: 100%; display: flex; overflow: hidden; position: relative; }
+
+    .theme-light { --fin-pos: #2E9E5B; --fin-neg: #C0492F; color-scheme: light; --glass-bg: rgba(255,255,255,0.86); }
+    .theme-dark  { --fin-pos: #4FC07D; --fin-neg: #E07A60; color-scheme: dark;  --glass-bg: rgba(18,32,62,0.80); }
+
+    /* hover affordances (shared) */
+    .task-row { transition: background .12s; }
+    .task-row:hover { background: var(--surface-hover); }
+    .task-row.is-selected:hover { background: var(--accent-soft); }
+    .crit-row:hover .crit-x { opacity: 1 !important; }
+    .picker-btn:hover, .picker-mini:hover { background: var(--surface-hover); }
+    .kanban-card:hover, .pool-card:hover { box-shadow: var(--shadow-md); border-color: var(--border-strong) !important; }
+    .task-check:hover { box-shadow: 0 0 0 3px var(--accent-soft); }
+    .dash-row:hover { background: var(--surface-hover); }
+    .vinc-chip:hover { border-color: var(--border-strong); color: var(--text); }
+    .mode-card:hover { border-color: var(--border-strong); }
+
+    .lift-card { transition: box-shadow .14s, border-color .14s, transform .14s; }
+    .lift-card:hover { box-shadow: var(--shadow-md); border-color: var(--border-strong) !important; }
+
+    /* native date/time inputs */
+    .dt-input { height: 30px; border: 1px solid var(--border-strong); border-radius: 8px;
+      background: var(--surface); color: var(--text); font-family: var(--font-sans); font-size: 12.5px;
+      padding: 0 8px; outline: none; }
+    .dt-input:focus { border-color: var(--brand-gold); box-shadow: 0 0 0 3px var(--ring); }
+    .dt-input::-webkit-calendar-picker-indicator { filter: var(--cal-filter, none); cursor: pointer; opacity: .6; }
+    .theme-dark .dt-input::-webkit-calendar-picker-indicator { filter: invert(0.8); }
+
+    /* rail */
+    .proj-workspace { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+    .proj-two-pane { flex: 1; display: flex; min-height: 0; position: relative; }
+    .proj-rail { width: 264px; flex-shrink: 0; background: var(--bg-soft); border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; min-height: 0; }
+    .rail-item { transition: background .12s; }
+    .rail-item:hover { background: var(--surface-hover); }
+    .rail-item:hover .rail-fav { opacity: 1 !important; }
+    .rail-scrim { display: none; }
+    .rail-toggle { display: none; }
+
+    /* bulk action button */
+    .bulk-act { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border-radius: 8px;
+      border: none; background: transparent; color: var(--text-muted); cursor: pointer; font-size: 12.5px; font-weight: 500;
+      font-family: var(--font-sans); white-space: nowrap; transition: background .12s, color .12s; }
+    .bulk-act:hover { background: var(--surface-hover); color: var(--text); }
+    .bulk-act.danger:hover { background: var(--crit-soft); color: var(--crit); }
+
+    .tpl-item:hover { border-color: var(--border-strong) !important; }
+    .tpl-grip:active { cursor: grabbing; }
+
+    /* dashboard health table — fixed widths so nothing clips */
+    .dash-table th, .dash-table td { padding-left: 12px; padding-right: 12px; }
+    .dash-table th:nth-child(2), .dash-table td:nth-child(2) { width: 92px; }
+    .dash-table th:nth-child(3), .dash-table td:nth-child(3) { width: 152px; }
+    .dash-table th:nth-child(4), .dash-table td:nth-child(4) { width: 90px; }
+    .dash-table th:nth-child(5), .dash-table td:nth-child(5) { width: 56px; }
+
+    /* entrance */
+    @keyframes toastIn { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+    .toast-in, .bulk-bar { animation: toastIn .18s var(--ease) both; }
+    @keyframes overlayIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes panelIn { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
+    .overlay-scrim { animation: overlayIn .14s ease-out both; }
+    .overlay-panel { animation: panelIn .16s var(--ease) both; }
+
+    /* responsive: rail becomes a drawer below 920px */
+    @media (max-width: 1100px) {
+      .kpi-grid { grid-template-columns: repeat(2, 1fr) !important; }
+      .dash-grid { grid-template-columns: 1fr !important; }
+    }
+    @media (max-width: 920px) {
+      .proj-rail { position: absolute; top: 0; bottom: 0; left: 0; z-index: 40; width: 280px;
+        transform: translateX(-100%); transition: transform .22s var(--ease); box-shadow: var(--shadow-md); }
+      .proj-rail.is-open { transform: translateX(0); }
+      .rail-scrim.is-open { display: block; position: absolute; inset: 0; z-index: 35; background: var(--overlay); }
+      .rail-toggle { display: inline-flex !important; }
+    }
+    @media (max-width: 640px) {
+      .kpi-grid { grid-template-columns: 1fr !important; }
+    }
+  </style>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="src/icons.jsx"></script>
+  <script type="text/babel" src="src/shell.jsx"></script>
+  <script type="text/babel" src="src/fin/fin-kit.jsx"></script>
+  <script type="text/babel" src="src/projects/projetos-data.jsx"></script>
+  <script type="text/babel" src="src/tasks/tasks-kit.jsx"></script>
+  <script type="text/babel" src="src/tasks/task-modal.jsx"></script>
+  <script type="text/babel" src="src/tasks/views.jsx"></script>
+  <script type="text/babel" src="src/projects/projetos-kit.jsx"></script>
+  <script type="text/babel" src="src/projects/projetos-tabs.jsx"></script>
+  <script type="text/babel" src="src/projects/dashboard-tab.jsx"></script>
+  <script type="text/babel" src="src/projects/templates-tab.jsx"></script>
+  <script type="text/babel" src="src/projects/projeto-modals.jsx"></script>
+  <script type="text/babel" src="src/projects/projetos-app.jsx"></script>
+</head>
+<body>
+  <template id="__bundler_thumbnail" data-bg-color="#020D25">
+    <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+      <rect width="1200" height="800" fill="#020D25"/>
+      <rect x="360" y="250" width="190" height="120" rx="14" fill="#0A1733" stroke="#C0A147" stroke-opacity="0.4"/>
+      <rect x="380" y="276" width="120" height="10" rx="5" fill="#C0A147"/>
+      <rect x="380" y="300" width="150" height="8" rx="4" fill="#274574"/>
+      <rect x="380" y="330" width="110" height="8" rx="4" fill="#274574"/>
+      <rect x="580" y="250" width="260" height="120" rx="14" fill="#0A1733" stroke="#274574"/>
+      <circle cx="620" cy="295" r="16" fill="none" stroke="#4FC07D" stroke-width="5"/>
+      <path d="M613 295 l5 5 10 -11" fill="none" stroke="#4FC07D" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="650" y="288" width="170" height="9" rx="4.5" fill="#F5F1E4" opacity="0.7"/>
+      <rect x="650" y="306" width="120" height="8" rx="4" fill="#274574"/>
+      <text x="600" y="470" font-family="Inter, sans-serif" font-size="42" font-weight="600" fill="#F5F1E4">Projetos & Tarefas</text>
+      <text x="600" y="510" font-family="Inter, sans-serif" font-size="24" font-weight="400" fill="#C0A147">LexIA</text>
+    </svg>
+  </template>
+
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="env,react">
+    const LS = 'lexia-projetos-theme';
+    const Root = () => {
+      const { useState, useEffect } = React;
+      const [theme, setTheme] = useState(() => localStorage.getItem(LS) || 'light');
+      useEffect(() => { localStorage.setItem(LS, theme); }, [theme]);
+      return (
+        <div className={`lex-artboard theme-${theme}`}>
+          <div className="app-screen">
+            <ProjetosApp theme={theme} onToggleTheme={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} />
+          </div>
+        </div>
+      );
+    };
+    ReactDOM.createRoot(document.getElementById('root')).render(<Root />);
+  </script>
+</body>
+</html>

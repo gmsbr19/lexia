@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LexIA · Tarefas</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="styles/tokens.css" />
+
+  <style>
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #f0eee9; overflow: hidden;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
+    #root { width: 100%; height: 100%; }
+    .lex-artboard { width: 100%; height: 100%; display: flex; overflow: hidden; position: relative; }
+
+    .theme-light { --fin-pos: #2E9E5B; --fin-neg: #C0492F; color-scheme: light; }
+    .theme-dark  { --fin-pos: #4FC07D; --fin-neg: #E07A60; color-scheme: dark; }
+
+    /* hover affordances */
+    .task-row { transition: background .12s; }
+    .task-row:hover { background: var(--surface-hover); }
+    .crit-row:hover .crit-x { opacity: 1 !important; }
+    .picker-btn:hover { background: var(--surface-hover); }
+    .kanban-card:hover, .pool-card:hover { box-shadow: var(--shadow-md); border-color: var(--border-strong) !important; }
+    .task-check:hover { box-shadow: 0 0 0 3px var(--accent-soft); }
+
+    /* native date/time inputs */
+    .dt-input { height: 30px; border: 1px solid var(--border-strong); border-radius: 8px;
+      background: var(--surface); color: var(--text); font-family: var(--font-sans); font-size: 12.5px;
+      padding: 0 8px; outline: none; }
+    .dt-input:focus { border-color: var(--brand-gold); box-shadow: 0 0 0 3px var(--ring); }
+  </style>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="src/icons.jsx"></script>
+  <script type="text/babel" src="src/shell.jsx"></script>
+  <script type="text/babel" src="src/fin/fin-kit.jsx"></script>
+  <script type="text/babel" src="src/tasks/tasks-data.jsx"></script>
+  <script type="text/babel" src="src/tasks/tasks-kit.jsx"></script>
+  <script type="text/babel" src="src/tasks/task-modal.jsx"></script>
+  <script type="text/babel" src="src/tasks/views.jsx"></script>
+  <script type="text/babel" src="src/tasks/tarefas-app.jsx"></script>
+</head>
+<body>
+  <template id="__bundler_thumbnail" data-bg-color="#020D25">
+    <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+      <rect width="1200" height="800" fill="#020D25"/>
+      <circle cx="360" cy="300" r="22" fill="none" stroke="#C0A147" stroke-width="6"/>
+      <path d="M350 300 l8 8 16 -18" fill="none" stroke="#C0A147" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="410" y="288" width="430" height="14" rx="7" fill="#1F3A6E"/>
+      <circle cx="360" cy="400" r="22" fill="none" stroke="#2E9E5B" stroke-width="6"/>
+      <path d="M350 400 l8 8 16 -18" fill="none" stroke="#2E9E5B" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="410" y="388" width="360" height="14" rx="7" fill="#274574"/>
+      <text x="360" y="540" font-family="Georgia, serif" font-size="46" font-weight="700" fill="#F5F1E4">LexIA · Tarefas</text>
+    </svg>
+  </template>
+
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="env,react">
+    const LS = 'lexia-tarefas-theme';
+    const Root = () => {
+      const { useState, useEffect } = React;
+      const [theme, setTheme] = useState(() => localStorage.getItem(LS) || 'light');
+      useEffect(() => { localStorage.setItem(LS, theme); }, [theme]);
+      return (
+        <div className={`lex-artboard theme-${theme}`}>
+          <div className="app-screen">
+            <TarefasApp theme={theme} onToggleTheme={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} />
+          </div>
+        </div>
+      );
+    };
+    ReactDOM.createRoot(document.getElementById('root')).render(<Root />);
+  </script>
+</body>
+</html>

@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LexIA · Processos & Prazos</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="styles/tokens.css" />
+
+  <style>
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      background: #f0eee9; overflow: hidden;
+    }
+    #root { width: 100%; height: 100%; }
+    .lex-artboard { width: 100%; height: 100%; display: flex; overflow: hidden; position: relative; }
+    .lex-artboard *, .lex-artboard *::before, .lex-artboard *::after { box-sizing: border-box; }
+
+    /* semantic finance + blue accent tokens */
+    .theme-light { --fin-pos: #2E9E5B; --fin-neg: #C0492F; --crm-blue: #2A6FB0; }
+    .theme-dark  { --fin-pos: #4FC07D; --fin-neg: #E07A60; --crm-blue: #5C9BD8; }
+
+    /* row hover affordance */
+    .crm-row { transition: background .12s; }
+    .crm-row:hover { background: var(--surface-hover); }
+
+    /* fx quiet "marcar recebido" button (reused) */
+    .fx-baixa {
+      display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px;
+      border-radius: 7px; border: 1px solid var(--border-strong); background: transparent;
+      font-family: var(--font-sans); font-size: 11.5px; font-weight: 500; color: var(--text-muted);
+      cursor: pointer; white-space: nowrap; transition: color .12s, border-color .12s, background .12s;
+    }
+    .fx-baixa:hover { color: var(--fin-pos,#2E9E5B); border-color: var(--fin-pos,#2E9E5B); background: rgba(46,158,91,0.08); }
+
+    .fx-check {
+      width: 16px; height: 16px; border-radius: 5px; padding: 0; flex-shrink: 0;
+      border: 1.5px solid var(--border-strong); background: var(--surface);
+      cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+      color: #F5F1E4; transition: border-color .12s, background .12s, box-shadow .12s;
+    }
+    .fx-check:hover { border-color: var(--accent); }
+    .theme-light .fx-check.on { background: var(--brand-navy); border-color: var(--brand-navy); }
+    .theme-dark .fx-check.on { background: var(--brand-gold); border-color: var(--brand-gold); color: var(--brand-navy); }
+
+    .fx-menu-item {
+      display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+      padding: 8px 10px; border: none; background: transparent; border-radius: 7px;
+      font-size: 12.5px; font-weight: 500; color: var(--text); cursor: pointer; font-family: var(--font-sans);
+    }
+    .fx-menu-item:hover { background: var(--surface-hover); }
+    select.input option { background: var(--surface); color: var(--text); }
+
+    .crm-chip:hover { border-color: var(--accent) !important; background: var(--accent-soft) !important; }
+    .crm-kbd {
+      display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px;
+      padding: 0 4px; border-radius: 4px; background: var(--surface); border: 1px solid var(--border-strong);
+      font-family: var(--font-mono); font-size: 10px; color: var(--text-muted);
+    }
+
+    /* animations */
+    /* entrance animations are TRANSFORM-ONLY (opacity stays 1) so content is never
+       stuck invisible if a throttled/background tab freezes the animation timeline. */
+    @keyframes crmPopIn { from { transform: scale(0.96) translateY(8px); } to { transform: scale(1) translateY(0); } }
+    .crm-pop-in { animation: crmPopIn .18s cubic-bezier(.22,1,.36,1); }
+
+    @keyframes crmLexiaIn { from { transform: translateY(18px) scale(0.94); } to { transform: translateY(0) scale(1); } }
+    .crm-lexia-in { transform-origin: bottom right; animation: crmLexiaIn .26s cubic-bezier(.22,1,.36,1); }
+
+    @keyframes crmOrbRing { 0% { transform: scale(1); opacity: 0.55; } 70% { transform: scale(1.7); opacity: 0; } 100% { transform: scale(1.7); opacity: 0; } }
+    .crm-orb-ring { position: absolute; inset: 0; border-radius: 50%; border: 2px solid #C0A147; animation: crmOrbRing 2.6s ease-out infinite; }
+
+    @keyframes crmFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+    .crm-orb-float { animation: crmFloat 3.4s ease-in-out infinite; }
+
+    @keyframes crmDot { 0%,80%,100% { transform: translateY(0); opacity: 0.4; } 40% { transform: translateY(-4px); opacity: 1; } }
+    .crm-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); animation: crmDot 1.2s ease-in-out infinite; }
+
+    @keyframes crmToastIn { from { transform: translateY(10px); } to { transform: translateY(0); } }
+    .crm-toast { animation: crmToastIn .2s ease-out; }
+
+    /* ---- LexIA unified command bar ---- */
+    @keyframes lexSpin { to { transform: rotate(360deg); } }
+    @keyframes lexDrift1 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(26px,-18px) scale(1.2); } }
+    @keyframes lexDrift2 { 0%,100% { transform: translate(0,0) scale(1.05); } 50% { transform: translate(-30px,16px) scale(1.22); } }
+    @keyframes lexDrift3 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(18px,20px) scale(1.16); } }
+    @keyframes lexRise { from { transform: translate(-50%, 18px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
+    @keyframes lexFade { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes lexPillGlow { 0%,100% { opacity: .45; } 50% { opacity: .85; } }
+    @keyframes lexPulse { 0% { transform: scale(1); opacity: .65; } 70%,100% { transform: scale(1.9); opacity: 0; } }
+    @keyframes lexBob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+
+    .lex-orb-grad { background: conic-gradient(from 0deg, #f1dda6, #C0A147, #9a7f2e, #e6cd86, #C0A147, #f1dda6); animation: lexSpin 9s linear infinite; }
+    .lex-aurora-1 { animation: lexDrift1 15s ease-in-out infinite; }
+    .lex-aurora-2 { animation: lexDrift2 19s ease-in-out infinite; }
+    .lex-aurora-3 { animation: lexDrift3 17s ease-in-out infinite; }
+    .lex-rise { animation: lexRise .3s cubic-bezier(.22,1,.36,1); }
+    .lex-back { animation: lexFade .18s ease-out; }
+    /* camadas de brilho atrás do vidro — crossfade de duas auras espelhadas: as cores parecem
+       trocar de lugar e respirar. opacidade + scale (nunca posição), sempre ease-in-out. */
+    @keyframes auraA { 0%,100% { opacity: .5; transform: scale(1); }    50% { opacity: .16; transform: scale(1.03); } }
+    @keyframes auraB { 0%,100% { opacity: .16; transform: scale(1.03); } 50% { opacity: .5;  transform: scale(1); } }
+    .lex-glow-a { animation: auraA 6s ease-in-out infinite; }
+    .lex-glow-b { animation: auraB 6s ease-in-out infinite; }
+    /* pulso de luz do glow da pílula — duração diferente das auras p/ nunca sincronizar */
+    @keyframes breatheGlow { 0%,100% { opacity: .16; } 50% { opacity: .42; } }
+    .lex-pill-breathe { animation: breatheGlow 4.5s ease-in-out infinite; }
+    /* aura dourada varrendo a BORDA da pílula — mesmo gradiente cônico do ícone spark.
+       o ângulo é animado via @property (gira em volta sem mover o elemento) e mascarado só na borda. */
+    @property --lex-aura-angle { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
+    @keyframes lexAuraSpin { to { --lex-aura-angle: 360deg; } }
+    .lex-pill-aura::before {
+      content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1.3px; pointer-events: none;
+      background: conic-gradient(from var(--lex-aura-angle), #f1dda6, #C0A147, #9a7f2e, #e6cd86, #C0A147, #f1dda6);
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+              mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor; mask-composite: exclude;
+      opacity: .9; animation: lexAuraSpin 8s linear infinite;
+    }
+    .lex-pill-glow { animation: lexPillGlow 5.5s ease-in-out infinite; }
+    .lex-pulse-ring { animation: lexPulse 2.6s ease-out infinite; }
+    .lex-pill { transition: transform .2s cubic-bezier(.22,1,.36,1), box-shadow .2s ease, border-color .2s ease; }
+    .lex-pill:hover { transform: translateX(-50%) translateY(-2px); }
+    /* theme-aware acrylic fills — in dark we float a lighter navy so the surface reads above the near-black bg */
+    .theme-light { --lex-acrylic: color-mix(in srgb, #FFFFFF 62%, transparent); --lex-acrylic-pill: color-mix(in srgb, #FFFFFF 70%, transparent); --lex-acrylic-border: var(--border-strong); }
+    .theme-dark  { --lex-acrylic: color-mix(in srgb, #15264A 40%, transparent); --lex-acrylic-pill: color-mix(in srgb, #15264A 62%, transparent); --lex-acrylic-border: rgba(255,255,255,0.16); }
+    .lex-row { transition: background .1s ease; }
+    .lex-row:hover { background: var(--accent-soft); }
+
+    /* ---- documentos: geração (shimmer no papel) + cláusula nova (highlight) ---- */
+    @keyframes lexShimmer { from { background-position: -460px 0; } to { background-position: 460px 0; } }
+    .lex-skel {
+      border-radius: 4px;
+      background: linear-gradient(90deg, rgba(2,13,37,0.07) 25%, rgba(2,13,37,0.14) 50%, rgba(2,13,37,0.07) 75%);
+      background-size: 920px 100%;
+      animation: lexShimmer 1.4s linear infinite;
+    }
+    @keyframes lexClauseIn { 0% { background: rgba(192,161,71,0.32); } 100% { background: rgba(192,161,71,0); } }
+    .lex-clause-new { animation: lexClauseIn 2.6s ease-out; border-radius: 6px; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .crm-pop-in, .crm-lexia-in, .crm-orb-ring, .crm-orb-float, .crm-dot, .crm-toast,
+      .lex-orb-grad, .lex-aurora-1, .lex-aurora-2, .lex-aurora-3, .lex-rise, .lex-pill-glow, .lex-pulse-ring, .lex-glow-a, .lex-glow-b, .lex-pill-aura::before, .lex-pill-breathe,
+      .lex-skel, .lex-clause-new { animation: none !important; }
+    }
+
+    /* ---- workspace tabs (Notion-style) ---- */
+    .crm-tabscroll { scrollbar-width: none; }
+    .crm-tabscroll::-webkit-scrollbar { height: 0; width: 0; }
+
+    .crm-tab {
+      display: flex; align-items: center; gap: 7px; height: 32px; flex: 0 1 auto;
+      min-width: 78px; max-width: 188px; padding: 0 5px 0 10px; border-radius: 8px;
+      border: 1px solid transparent; background: transparent; cursor: pointer; user-select: none;
+      font-family: var(--font-sans); font-size: 12.5px; font-weight: 500; color: var(--text-muted);
+      letter-spacing: -0.01em; transition: background .12s, color .12s, border-color .12s, box-shadow .12s;
+    }
+    .crm-tab:hover { background: var(--surface-hover); color: var(--text); }
+    .crm-tab.active { background: var(--surface); color: var(--text); border-color: var(--border-strong); box-shadow: var(--shadow-sm); font-weight: 600; }
+    .crm-tab-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .crm-tab-x {
+      display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px;
+      border-radius: 5px; color: var(--text-subtle); flex-shrink: 0; opacity: 0;
+      transition: opacity .12s, background .12s, color .12s;
+    }
+    .crm-tab:hover .crm-tab-x, .crm-tab.active .crm-tab-x { opacity: 0.7; }
+    .crm-tab-x:hover { background: var(--bg-sunken); color: var(--text); opacity: 1; }
+
+    .crm-addtab {
+      flex-shrink: 0; width: 28px; height: 28px; border-radius: 7px; border: none; background: transparent;
+      color: var(--text-subtle); display: inline-flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: background .12s, color .12s; margin-left: 2px;
+    }
+    .crm-addtab:hover { background: var(--surface-hover); color: var(--text); }
+
+    .crm-split-grab {
+      flex: 0 0 10px; align-self: stretch; cursor: col-resize; position: relative;
+      display: flex; align-items: stretch; justify-content: center; background: transparent;
+    }
+    .crm-split-line { width: 1px; background: var(--border); transition: background .12s, width .12s; }
+    .crm-split-grab:hover .crm-split-line, .crm-split-grab:active .crm-split-line { width: 2px; background: var(--accent); }
+  </style>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script>window.CRM_ENTRY = 'processos';</script>
+
+  <script type="text/babel" src="src/icons.jsx"></script>
+  <script type="text/babel" src="src/finx/fin-store.jsx"></script>
+  <script type="text/babel" src="src/finx/fin-ui.jsx"></script>
+
+  <script type="text/babel" src="src/crm/crm-data.jsx"></script>
+  <script type="text/babel" src="src/crm/crm-ui.jsx"></script>
+  <script type="text/babel" src="src/crm/crm-shell.jsx"></script>
+  <script type="text/babel" src="src/crm/crm-tabs.jsx"></script>
+  <script type="text/babel" src="src/crm/crm-spotlight.jsx"></script>
+  <script type="text/babel" src="src/crm/crm-lexia.jsx"></script>
+  <script type="text/babel" src="src/crm/crm-lexia-bar.jsx"></script>
+  <script type="text/babel" src="src/crm/crm-settings.jsx"></script>
+  <script type="text/babel" src="src/crm/page-clientes.jsx"></script>
+  <script type="text/babel" src="src/crm/page-cliente-detail.jsx"></script>
+  <script type="text/babel" src="src/crm/page-casos.jsx"></script>
+  <script type="text/babel" src="src/crm/page-contratos.jsx"></script>
+  <script type="text/babel" src="src/crm/page-agenda.jsx"></script>
+  <script type="text/babel" src="src/crm/page-documentos.jsx"></script>
+
+  <!-- Módulo Contencioso (processos, prazos, andamentos) -->
+  <script type="text/babel" src="src/crm/proc-data.jsx"></script>
+  <script type="text/babel" src="src/crm/proc-ui.jsx"></script>
+  <script type="text/babel" src="src/crm/proc-modals.jsx"></script>
+  <script type="text/babel" src="src/crm/page-painel.jsx"></script>
+  <script type="text/babel" src="src/crm/page-processos.jsx"></script>
+  <script type="text/babel" src="src/crm/proc-ficha.jsx"></script>
+  <script type="text/babel" src="src/crm/page-prazos.jsx"></script>
+  <script type="text/babel" src="src/crm/page-andamentos.jsx"></script>
+  <script type="text/babel" src="src/crm/page-contencioso.jsx"></script>
+
+  <!-- Central de notificações (sino + toasts estilo Apple + página /notificações) -->
+  <script type="text/babel" src="src/crm/crm-notifications.jsx"></script>
+
+  <script type="text/babel" src="src/crm/crm-app.jsx"></script>
+</head>
+<body>
+  <template id="__bundler_thumbnail" data-bg-color="#020D25">
+    <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+      <rect width="1200" height="800" fill="#020D25"/>
+      <rect x="360" y="250" width="480" height="300" rx="18" fill="#F5F1E4"/>
+      <circle cx="430" cy="320" r="22" fill="#C0A147"/>
+      <rect x="470" y="308" width="220" height="12" rx="4" fill="#020D25" opacity="0.8"/>
+      <rect x="470" y="332" width="160" height="9" rx="3" fill="#020D25" opacity="0.35"/>
+      <rect x="400" y="380" width="400" height="8" rx="3" fill="#020D25" opacity="0.18"/>
+      <rect x="400" y="408" width="400" height="8" rx="3" fill="#020D25" opacity="0.18"/>
+      <rect x="400" y="436" width="280" height="8" rx="3" fill="#020D25" opacity="0.18"/>
+      <circle cx="800" cy="520" r="34" fill="#C0A147"/>
+      <text x="800" y="532" text-anchor="middle" font-family="Georgia, serif" font-size="34" font-weight="700" fill="#020D25">L</text>
+    </svg>
+  </template>
+
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="env,react">
+    ReactDOM.createRoot(document.getElementById('root')).render(<CrmApp />);
+  </script>
+</body>
+</html>

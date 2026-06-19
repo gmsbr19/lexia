@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LexIA · Sistema de E-mails</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    /* ===== chrome da vitrine (NÃO faz parte do e-mail) ===== */
+    :root{
+      --navy:#020D25; --gold:#C0A147; --gold-soft:#D8BE7A;
+      --ink:#1d2330; --muted:#5c6373; --line:#dcdcd4;
+      --page:#e7e6e0;
+    }
+    *{box-sizing:border-box;}
+    body{
+      margin:0; background:var(--page);
+      font-family:'Inter',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+      color:var(--ink); -webkit-font-smoothing:antialiased;
+      letter-spacing:-0.01em;
+    }
+    .show-head{
+      max-width:920px; margin:0 auto; padding:56px 28px 8px;
+    }
+    .show-eyebrow{
+      font-size:11px; font-weight:600; text-transform:uppercase;
+      letter-spacing:.16em; color:var(--gold); margin:0 0 14px;
+    }
+    .show-head h1{
+      font-size:32px; font-weight:600; letter-spacing:-0.03em;
+      line-height:1.1; margin:0 0 14px; color:var(--navy);
+    }
+    .show-head p{
+      font-size:15px; line-height:1.6; color:var(--muted);
+      max-width:620px; margin:0;
+    }
+    .spec-row{
+      display:flex; flex-wrap:wrap; gap:8px; margin-top:22px;
+    }
+    .spec{
+      display:inline-flex; align-items:center; gap:7px;
+      font-size:12px; color:var(--muted);
+      background:#fff; border:1px solid var(--line);
+      border-radius:999px; padding:6px 13px;
+    }
+    .spec b{color:var(--navy); font-weight:500;}
+    .spec .sw{width:10px;height:10px;border-radius:3px;display:inline-block;}
+
+    .show-section{ max-width:920px; margin:0 auto; padding:34px 28px 6px; }
+    .label-row{ display:flex; align-items:baseline; gap:12px; margin:0 0 4px; }
+    .label-row .n{
+      font-family:'JetBrains Mono',monospace; font-size:12px;
+      color:var(--gold); font-weight:500;
+    }
+    .label-row h2{
+      font-size:19px; font-weight:600; letter-spacing:-0.02em;
+      margin:0; color:var(--navy);
+    }
+    .trigger{
+      font-size:13.5px; color:var(--muted); margin:0 0 22px;
+      max-width:640px; line-height:1.55;
+    }
+    .trigger code{
+      font-family:'JetBrains Mono',monospace; font-size:12px;
+      background:#fff; border:1px solid var(--line); border-radius:5px;
+      padding:1px 6px; color:var(--navy);
+    }
+
+    /* envelope que emula o e-mail na caixa de entrada */
+    .mail-wrap{ display:flex; justify-content:center; padding-bottom:18px; }
+    .mail-shadow{
+      width:600px; max-width:100%;
+      box-shadow:0 1px 2px rgba(2,13,37,.06), 0 18px 50px rgba(2,13,37,.13);
+      border-radius:16px; overflow:hidden;
+      background:#ffffff;
+    }
+    .show-foot{
+      max-width:920px; margin:0 auto; padding:30px 28px 80px;
+      font-size:12.5px; color:var(--muted); line-height:1.6;
+    }
+    .show-foot code{ font-family:'JetBrains Mono',monospace; color:var(--navy); }
+    @media (max-width:640px){
+      .show-head h1{font-size:26px;}
+      .mail-shadow{border-radius:0;}
+    }
+  </style>
+</head>
+<body>
+
+  <header class="show-head">
+    <p class="show-eyebrow">LexIA · Sistema de e-mails</p>
+    <h1>Um padrão para tudo<br>que sai da caixa de saída.</h1>
+    <p>Cabeçalho navy com a assinatura da marca, corpo claro para máxima legibilidade na caixa de entrada
+      e um único CTA dourado por mensagem. Construído em HTML email-safe (tabelas + estilos inline, 600px),
+      seguindo os tokens do design system da LexIA. Cinco modelos prontos para o app do escritório NCM Advogados.</p>
+    <div class="spec-row">
+      <span class="spec"><span class="sw" style="background:#020D25"></span><b>Header</b> navy #020D25</span>
+      <span class="spec"><span class="sw" style="background:#ffffff;border:1px solid var(--line)"></span><b>Corpo</b> claro #FFFFFF</span>
+      <span class="spec"><span class="sw" style="background:#C0A147"></span><b>CTA</b> dourado #C0A147</span>
+      <span class="spec"><b>Inter</b> · 400 / 500</span>
+      <span class="spec"><b>600px</b> · responsivo</span>
+    </div>
+  </header>
+
+  <!-- ============================================================= -->
+  <!-- 01 · NOTIFICAÇÃO -->
+  <!-- ============================================================= -->
+  <section class="show-section">
+    <div class="label-row"><span class="n">01</span><h2>Notificação</h2></div>
+    <p class="trigger">Disparada pelo app em prazos, movimentações de processo e atualizações de caso.
+      Estrutura genérica reaproveitável: <code>eyebrow</code> + título + resumo + card de detalhe + CTA único.</p>
+  </section>
+  <div class="mail-wrap"><div class="mail-shadow">
+    <!-- EMAIL 01 :: início -->
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;">Prazo do caso Editora Linhares vence em 3 dias — 20/06/2026.</div>
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:100%;background:#ffffff;border-collapse:collapse;font-family:'Inter',Arial,Helvetica,sans-serif;">
+      <!-- HEADER navy -->
+      <tr><td style="background:#020D25;padding:24px 40px;border-bottom:2px solid #C0A147;">
+        <span style="font-size:20px;font-weight:600;letter-spacing:-0.02em;color:#F5F1E4;">Lex<span style="color:#C0A147;">IA</span></span>
+      </td></tr>
+      <!-- CORPO -->
+      <tr><td style="padding:40px 40px 8px;">
+        <p style="margin:0 0 16px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.12em;color:#B47E12;">Prazo se aproximando</p>
+        <h1 style="margin:0 0 14px;font-size:24px;line-height:1.25;font-weight:600;letter-spacing:-0.025em;color:#020D25;">Faltam 3 dias para um prazo do caso Editora Linhares</h1>
+        <p style="margin:0 0 28px;font-size:16px;line-height:1.6;color:rgba(2,13,37,0.64);">Olá, Thiago. O prazo abaixo está chegando. Revise o documento e protocole dentro do período para não correr risco de perda.</p>
+      </td></tr>
+      <!-- CARD de detalhe -->
+      <tr><td style="padding:0 40px 28px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FAFAF7;border:1px solid rgba(2,13,37,0.08);border-radius:14px;border-collapse:separate;">
+          <tr><td style="padding:22px 24px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:rgba(2,13,37,0.44);padding-bottom:4px;">Caso</td>
+                <td align="right" style="padding-bottom:4px;">
+                  <span style="display:inline-block;font-size:12px;font-weight:500;color:#B47E12;background:rgba(180,126,18,0.12);border-radius:6px;padding:4px 10px;">Em revisão</span>
+                </td>
+              </tr>
+              <tr><td colspan="2" style="font-size:16px;font-weight:500;color:#020D25;padding-bottom:18px;">Editora Linhares · Recurso de apelação</td></tr>
+              <tr><td colspan="2" style="border-top:1px solid rgba(2,13,37,0.08);padding-top:16px;"></td></tr>
+              <tr>
+                <td style="font-size:14px;color:rgba(2,13,37,0.64);padding:2px 0;">Tipo de prazo</td>
+                <td align="right" style="font-size:14px;font-weight:500;color:#020D25;padding:2px 0;">Razões de recurso</td>
+              </tr>
+              <tr>
+                <td style="font-size:14px;color:rgba(2,13,37,0.64);padding:2px 0;">Vencimento</td>
+                <td align="right" style="font-size:14px;font-weight:500;color:#020D25;padding:2px 0;font-variant-numeric:tabular-nums;">20/06/2026 · sex.</td>
+              </tr>
+              <tr>
+                <td style="font-size:14px;color:rgba(2,13,37,0.64);padding:2px 0;">Responsável</td>
+                <td align="right" style="font-size:14px;font-weight:500;color:#020D25;padding:2px 0;">Thiago Mendes</td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </td></tr>
+      <!-- CTA -->
+      <tr><td style="padding:0 40px 14px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+          <td bgcolor="#C0A147" style="border-radius:8px;">
+            <a href="#" style="display:inline-block;padding:13px 26px;font-family:'Inter',Arial,Helvetica,sans-serif;font-size:14px;font-weight:500;line-height:1;color:#020D25;text-decoration:none;border-radius:8px;letter-spacing:-0.01em;">Abrir o caso no LexIA</a>
+          </td>
+        </tr></table>
+      </td></tr>
+      <tr><td style="padding:0 40px 40px;">
+        <p style="margin:0;font-size:13px;line-height:1.55;color:rgba(2,13,37,0.44);">Você recebe este aviso porque acompanha o caso. Ajuste a antecedência dos alertas em Configurações › Notificações.</p>
+      </td></tr>
+      <!-- FOOTER -->
+      <tr><td style="background:#FAFAF7;border-top:1px solid rgba(2,13,37,0.08);padding:26px 40px;">
+        <p style="margin:0 0 6px;font-size:13px;font-weight:500;color:#020D25;">NCM Advogados</p>
+        <p style="margin:0 0 12px;font-size:12px;line-height:1.6;color:rgba(2,13,37,0.56);">Av. Marquês de São Vicente, 1619, Sala 505 · Barra Funda, São Paulo - SP · CEP 01139-003<br>contato@ncm.adv.br</p>
+        <p style="margin:0;font-size:12px;color:rgba(2,13,37,0.44);"><a href="#" style="color:rgba(2,13,37,0.56);text-decoration:underline;">Preferências de e-mail</a> · <a href="#" style="color:rgba(2,13,37,0.56);text-decoration:underline;">Descadastrar</a></p>
+      </td></tr>
+    </table>
+    <!-- EMAIL 01 :: fim -->
+  </div></div>
+
+  <!-- ============================================================= -->
+  <!-- 02 · REDEFINIÇÃO DE SENHA -->
+  <!-- ============================================================= -->
+  <section class="show-section">
+    <div class="label-row"><span class="n">02</span><h2>Redefinição de senha</h2></div>
+    <p class="trigger">Disparada quando o usuário pede "Esqueci minha senha". Transacional: foco total em um
+      botão, link de fallback, validade e nota de segurança. Sem descadastro.</p>
+  </section>
+  <div class="mail-wrap"><div class="mail-shadow">
+    <!-- EMAIL 02 :: início -->
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;">Crie uma nova senha de acesso ao LexIA. O link expira em 60 minutos.</div>
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:100%;background:#ffffff;border-collapse:collapse;font-family:'Inter',Arial,Helvetica,sans-serif;">
+      <tr><td style="background:#020D25;padding:24px 40px;border-bottom:2px solid #C0A147;">
+        <span style="font-size:20px;font-weight:600;letter-spacing:-0.02em;color:#F5F1E4;">Lex<span style="color:#C0A147;">IA</span></span>
+      </td></tr>
+      <tr><td style="padding:40px 40px 8px;">
+        <p style="margin:0 0 16px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.12em;color:rgba(2,13,37,0.44);">Segurança da conta</p>
+        <h1 style="margin:0 0 14px;font-size:24px;line-height:1.25;font-weight:600;letter-spacing:-0.025em;color:#020D25;">Redefinir sua senha</h1>
+        <p style="margin:0 0 28px;font-size:16px;line-height:1.6;color:rgba(2,13,37,0.64);">Recebemos um pedido para redefinir a senha de <span style="color:#020D25;font-weight:500;">thiago@ncm.adv.br</span>. Clique no botão abaixo para criar uma nova senha.</p>
+      </td></tr>
+      <tr><td style="padding:0 40px 22px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+          <td bgcolor="#C0A147" style="border-radius:8px;">
+            <a href="#" style="display:inline-block;padding:14px 30px;font-family:'Inter',Arial,Helvetica,sans-serif;font-size:15px;font-weight:500;line-height:1;color:#020D25;text-decoration:none;border-radius:8px;letter-spacing:-0.01em;">Criar nova senha</a>
+          </td>
+        </tr></table>
+      </td></tr>
+      <!-- validade -->
+      <tr><td style="padding:0 40px 24px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FAFAF7;border:1px solid rgba(2,13,37,0.08);border-radius:10px;border-collapse:separate;">
+          <tr><td style="padding:14px 18px;font-size:13.5px;line-height:1.55;color:rgba(2,13,37,0.64);">
+            Por segurança, este link expira em <span style="color:#020D25;font-weight:500;">60 minutos</span> e só pode ser usado uma vez.
+          </td></tr>
+        </table>
+      </td></tr>
+      <tr><td style="padding:0 40px 8px;">
+        <p style="margin:0 0 8px;font-size:13px;line-height:1.6;color:rgba(2,13,37,0.56);">Se o botão não funcionar, copie e cole este endereço no navegador:</p>
+        <p style="margin:0 0 24px;font-size:12.5px;line-height:1.5;word-break:break-all;font-family:'JetBrains Mono',monospace;color:#9A7F2E;">https://app.lexia.com.br/redefinir-senha?token=a8f3e1c0-9b27-4d6e-bf12-7c0a9e4d3b81</p>
+      </td></tr>
+      <tr><td style="padding:0 40px 40px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+          <td style="border-top:1px solid rgba(2,13,37,0.08);padding-top:20px;">
+            <p style="margin:0;font-size:13px;line-height:1.6;color:rgba(2,13,37,0.56);">Não pediu esta alteração? Ignore este e-mail — sua senha atual continua valendo. Se desconfia de acesso indevido, fale com <a href="mailto:contato@ncm.adv.br" style="color:#9A7F2E;text-decoration:underline;">contato@ncm.adv.br</a>.</p>
+          </td>
+        </tr></table>
+      </td></tr>
+      <tr><td style="background:#FAFAF7;border-top:1px solid rgba(2,13,37,0.08);padding:26px 40px;">
+        <p style="margin:0 0 6px;font-size:13px;font-weight:500;color:#020D25;">NCM Advogados</p>
+        <p style="margin:0;font-size:12px;line-height:1.6;color:rgba(2,13,37,0.56);">Av. Marquês de São Vicente, 1619, Sala 505 · Barra Funda, São Paulo - SP · CEP 01139-003<br>contato@ncm.adv.br</p>
+      </td></tr>
+    </table>
+    <!-- EMAIL 02 :: fim -->
+  </div></div>
+
+  <!-- ============================================================= -->
+  <!-- 03 · CONVITE / NOVO USUÁRIO -->
+  <!-- ============================================================= -->
+  <section class="show-section">
+    <div class="label-row"><span class="n">03</span><h2>Convite / novo usuário</h2></div>
+    <p class="trigger">Enviada quando um administrador cria um acesso. O convidado monta o próprio login:
+      define a senha e entra. Mostra quem convidou, o papel atribuído e a validade do convite.</p>
+  </section>
+  <div class="mail-wrap"><div class="mail-shadow">
+    <!-- EMAIL 03 :: início -->
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;">Você foi convidado para o LexIA da NCM Advogados. Crie seu acesso.</div>
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:100%;background:#ffffff;border-collapse:collapse;font-family:'Inter',Arial,Helvetica,sans-serif;">
+      <tr><td style="background:#020D25;padding:24px 40px;border-bottom:2px solid #C0A147;">
+        <span style="font-size:20px;font-weight:600;letter-spacing:-0.02em;color:#F5F1E4;">Lex<span style="color:#C0A147;">IA</span></span>
+      </td></tr>
+      <tr><td style="padding:40px 40px 8px;">
+        <p style="margin:0 0 16px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.12em;color:#9A7F2E;">Convite para o escritório</p>
+        <h1 style="margin:0 0 14px;font-size:24px;line-height:1.25;font-weight:600;letter-spacing:-0.025em;color:#020D25;">Você foi convidado para o LexIA</h1>
+        <p style="margin:0 0 28px;font-size:16px;line-height:1.6;color:rgba(2,13,37,0.64);"><span style="color:#020D25;font-weight:500;">Thiago Mendes</span> convidou você para colaborar no LexIA da NCM Advogados. Crie seu acesso para começar a gerar documentos, acompanhar casos e prazos.</p>
+      </td></tr>
+      <!-- card papel -->
+      <tr><td style="padding:0 40px 28px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FAFAF7;border:1px solid rgba(2,13,37,0.08);border-radius:14px;border-collapse:separate;">
+          <tr><td style="padding:20px 24px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="font-size:14px;color:rgba(2,13,37,0.64);padding:3px 0;">E-mail de acesso</td>
+                <td align="right" style="font-size:14px;font-weight:500;color:#020D25;padding:3px 0;">camila@ncm.adv.br</td>
+              </tr>
+              <tr>
+                <td style="font-size:14px;color:rgba(2,13,37,0.64);padding:3px 0;">Perfil</td>
+                <td align="right" style="font-size:14px;font-weight:500;color:#020D25;padding:3px 0;">Advogada · acesso completo</td>
+              </tr>
+              <tr>
+                <td style="font-size:14px;color:rgba(2,13,37,0.64);padding:3px 0;">Convidado por</td>
+                <td align="right" style="font-size:14px;font-weight:500;color:#020D25;padding:3px 0;">Thiago Mendes</td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </td></tr>
+      <tr><td style="padding:0 40px 22px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+          <td bgcolor="#C0A147" style="border-radius:8px;">
+            <a href="#" style="display:inline-block;padding:14px 30px;font-family:'Inter',Arial,Helvetica,sans-serif;font-size:15px;font-weight:500;line-height:1;color:#020D25;text-decoration:none;border-radius:8px;letter-spacing:-0.01em;">Criar meu acesso</a>
+          </td>
+        </tr></table>
+      </td></tr>
+      <tr><td style="padding:0 40px 40px;">
+        <p style="margin:0;font-size:13px;line-height:1.6;color:rgba(2,13,37,0.56);">Você definirá sua própria senha no próximo passo. O convite expira em <span style="color:#020D25;font-weight:500;">7 dias</span>. Não esperava este convite? É só ignorar este e-mail.</p>
+      </td></tr>
+      <tr><td style="background:#FAFAF7;border-top:1px solid rgba(2,13,37,0.08);padding:26px 40px;">
+        <p style="margin:0 0 6px;font-size:13px;font-weight:500;color:#020D25;">NCM Advogados</p>
+        <p style="margin:0;font-size:12px;line-height:1.6;color:rgba(2,13,37,0.56);">Av. Marquês de São Vicente, 1619, Sala 505 · Barra Funda, São Paulo - SP · CEP 01139-003<br>contato@ncm.adv.br</p>
+      </td></tr>
+    </table>
+    <!-- EMAIL 03 :: fim -->
+  </div></div>
+
+  <!-- ============================================================= -->
+  <!-- 04 · COBRANÇA DE CLIENTE -->
+  <!-- ============================================================= -->
+  <section class="show-section">
+    <div class="label-row"><span class="n">04</span><h2>Cobrança de cliente</h2></div>
+    <p class="trigger">Enviada ao cliente do escritório sobre honorários ou parcela em aberto. Tom cordial,
+      "fatura" clara com valor em destaque, vencimento, meios de pagamento (PIX / boleto) e CTA para pagar.</p>
+  </section>
+  <div class="mail-wrap"><div class="mail-shadow">
+    <!-- EMAIL 04 :: início -->
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;">Honorários — parcela 2/4 no valor de R$ 4.500,00 vence em 20/06/2026.</div>
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:100%;background:#ffffff;border-collapse:collapse;font-family:'Inter',Arial,Helvetica,sans-serif;">
+      <tr><td style="background:#020D25;padding:24px 40px;border-bottom:2px solid #C0A147;">
+        <span style="font-size:20px;font-weight:600;letter-spacing:-0.02em;color:#F5F1E4;">Lex<span style="color:#C0A147;">IA</span></span>
+      </td></tr>
+      <tr><td style="padding:40px 40px 8px;">
+        <p style="margin:0 0 16px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.12em;color:rgba(2,13,37,0.44);">Cobrança de honorários</p>
+        <h1 style="margin:0 0 14px;font-size:24px;line-height:1.25;font-weight:600;letter-spacing:-0.025em;color:#020D25;">Sua parcela de honorários vence em breve</h1>
+        <p style="margin:0 0 28px;font-size:16px;line-height:1.6;color:rgba(2,13,37,0.64);">Olá, Helena. Segue o resumo da parcela em aberto referente ao contrato de honorários. Você pode pagar direto pelo botão abaixo.</p>
+      </td></tr>
+      <!-- fatura -->
+      <tr><td style="padding:0 40px 24px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FAFAF7;border:1px solid rgba(2,13,37,0.08);border-radius:14px;border-collapse:separate;">
+          <!-- valor em destaque -->
+          <tr><td style="padding:24px 24px 18px;border-bottom:1px solid rgba(2,13,37,0.08);">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+              <td>
+                <p style="margin:0 0 4px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:rgba(2,13,37,0.44);">Valor a pagar</p>
+                <p style="margin:0;font-size:30px;font-weight:600;letter-spacing:-0.02em;color:#020D25;font-variant-numeric:tabular-nums;">R$ 4.500,00</p>
+              </td>
+              <td align="right" style="vertical-align:top;">
+                <span style="display:inline-block;font-size:12px;font-weight:500;color:#B47E12;background:rgba(180,126,18,0.12);border-radius:6px;padding:5px 11px;">Vence em 5 dias</span>
+              </td>
+            </tr></table>
+          </td></tr>
+          <!-- linhas -->
+          <tr><td style="padding:18px 24px 22px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="font-size:14px;color:rgba(2,13,37,0.64);padding:3px 0;">Referência</td>
+                <td align="right" style="font-size:14px;font-weight:500;color:#020D25;padding:3px 0;">Honorários · parcela 2 de 4</td>
+              </tr>
+              <tr>
+                <td style="font-size:14px;color:rgba(2,13,37,0.64);padding:3px 0;">Contrato</td>
+                <td align="right" style="font-size:14px;font-weight:500;color:#020D25;padding:3px 0;">Ação trabalhista nº 0012345-67</td>
+              </tr>
+              <tr>
+                <td style="font-size:14px;color:rgba(2,13,37,0.64);padding:3px 0;">Vencimento</td>
+                <td align="right" style="font-size:14px;font-weight:500;color:#020D25;padding:3px 0;font-variant-numeric:tabular-nums;">20/06/2026</td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </td></tr>
+      <tr><td style="padding:0 40px 18px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+          <td bgcolor="#C0A147" style="border-radius:8px;">
+            <a href="#" style="display:inline-block;padding:14px 30px;font-family:'Inter',Arial,Helvetica,sans-serif;font-size:15px;font-weight:500;line-height:1;color:#020D25;text-decoration:none;border-radius:8px;letter-spacing:-0.01em;">Pagar agora</a>
+          </td>
+        </tr></table>
+      </td></tr>
+      <tr><td style="padding:0 40px 40px;">
+        <p style="margin:0 0 10px;font-size:13px;line-height:1.6;color:rgba(2,13,37,0.56);">Aceitamos <span style="color:#020D25;font-weight:500;">PIX</span> (confirmação imediata) e <span style="color:#020D25;font-weight:500;">boleto bancário</span>. Já efetuou o pagamento? Desconsidere este aviso.</p>
+        <p style="margin:0;font-size:13px;line-height:1.6;color:rgba(2,13,37,0.56);">Dúvidas sobre a cobrança? Responda este e-mail ou fale com <a href="mailto:contato@ncm.adv.br" style="color:#9A7F2E;text-decoration:underline;">contato@ncm.adv.br</a>.</p>
+      </td></tr>
+      <tr><td style="background:#FAFAF7;border-top:1px solid rgba(2,13,37,0.08);padding:26px 40px;">
+        <p style="margin:0 0 6px;font-size:13px;font-weight:500;color:#020D25;">NCM Advogados</p>
+        <p style="margin:0;font-size:12px;line-height:1.6;color:rgba(2,13,37,0.56);">Av. Marquês de São Vicente, 1619, Sala 505 · Barra Funda, São Paulo - SP · CEP 01139-003<br>contato@ncm.adv.br</p>
+      </td></tr>
+    </table>
+    <!-- EMAIL 04 :: fim -->
+  </div></div>
+
+  <!-- ============================================================= -->
+  <!-- 05 · RECIBO / PAGAMENTO CONFIRMADO -->
+  <!-- ============================================================= -->
+  <section class="show-section">
+    <div class="label-row"><span class="n">05</span><h2>Recibo · pagamento confirmado</h2></div>
+    <p class="trigger">Confirmação enviada ao cliente após a quitação. Status verde de sucesso, recibo com
+      valor pago, forma e data, e CTA secundário para baixar o comprovante em PDF.</p>
+  </section>
+  <div class="mail-wrap"><div class="mail-shadow">
+    <!-- EMAIL 05 :: início -->
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;">Recebemos o pagamento de R$ 4.500,00. Recibo nº 2026-0428.</div>
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:100%;background:#ffffff;border-collapse:collapse;font-family:'Inter',Arial,Helvetica,sans-serif;">
+      <tr><td style="background:#020D25;padding:24px 40px;border-bottom:2px solid #C0A147;">
+        <span style="font-size:20px;font-weight:600;letter-spacing:-0.02em;color:#F5F1E4;">Lex<span style="color:#C0A147;">IA</span></span>
+      </td></tr>
+      <tr><td style="padding:40px 40px 8px;">
+        <p style="margin:0 0 16px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.12em;color:#1F8A4C;">Pagamento confirmado</p>
+        <h1 style="margin:0 0 14px;font-size:24px;line-height:1.25;font-weight:600;letter-spacing:-0.025em;color:#020D25;">Recebemos o seu pagamento</h1>
+        <p style="margin:0 0 28px;font-size:16px;line-height:1.6;color:rgba(2,13,37,0.64);">Obrigado, Helena. A parcela de honorários foi quitada. Guarde este e-mail como comprovante ou baixe o recibo em PDF.</p>
+      </td></tr>
+      <!-- recibo -->
+      <tr><td style="padding:0 40px 24px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FAFAF7;border:1px solid rgba(2,13,37,0.08);border-radius:14px;border-collapse:separate;">
+          <tr><td style="padding:24px 24px 18px;border-bottom:1px solid rgba(2,13,37,0.08);">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+              <td>
+                <p style="margin:0 0 4px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:rgba(2,13,37,0.44);">Valor pago</p>
+                <p style="margin:0;font-size:30px;font-weight:600;letter-spacing:-0.02em;color:#020D25;font-variant-numeric:tabular-nums;">R$ 4.500,00</p>
+              </td>
+              <td align="right" style="vertical-align:top;">
+                <span style="display:inline-block;font-size:12px;font-weight:500;color:#1F8A4C;background:rgba(31,138,76,0.10);border-radius:6px;padding:5px 11px;">Pago</span>
+              </td>
+            </tr></table>
+          </td></tr>
+          <tr><td style="padding:18px 24px 22px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="font-size:14px;color:rgba(2,13,37,0.64);padding:3px 0;">Recibo nº</td>
+                <td align="right" style="font-size:14px;font-weight:500;color:#020D25;padding:3px 0;font-variant-numeric:tabular-nums;">2026-0428</td>
+              </tr>
+              <tr>
+                <td style="font-size:14px;color:rgba(2,13,37,0.64);padding:3px 0;">Referência</td>
+                <td align="right" style="font-size:14px;font-weight:500;color:#020D25;padding:3px 0;">Honorários · parcela 2 de 4</td>
+              </tr>
+              <tr>
+                <td style="font-size:14px;color:rgba(2,13,37,0.64);padding:3px 0;">Forma de pagamento</td>
+                <td align="right" style="font-size:14px;font-weight:500;color:#020D25;padding:3px 0;">PIX</td>
+              </tr>
+              <tr>
+                <td style="font-size:14px;color:rgba(2,13,37,0.64);padding:3px 0;">Data</td>
+                <td align="right" style="font-size:14px;font-weight:500;color:#020D25;padding:3px 0;font-variant-numeric:tabular-nums;">15/06/2026 · 14h32</td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </td></tr>
+      <tr><td style="padding:0 40px 40px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+          <td style="border:1px solid rgba(2,13,37,0.16);border-radius:8px;">
+            <a href="#" style="display:inline-block;padding:12px 24px;font-family:'Inter',Arial,Helvetica,sans-serif;font-size:14px;font-weight:500;line-height:1;color:#020D25;text-decoration:none;border-radius:8px;letter-spacing:-0.01em;">Baixar recibo em PDF</a>
+          </td>
+        </tr></table>
+      </td></tr>
+      <tr><td style="background:#FAFAF7;border-top:1px solid rgba(2,13,37,0.08);padding:26px 40px;">
+        <p style="margin:0 0 6px;font-size:13px;font-weight:500;color:#020D25;">NCM Advogados</p>
+        <p style="margin:0;font-size:12px;line-height:1.6;color:rgba(2,13,37,0.56);">Av. Marquês de São Vicente, 1619, Sala 505 · Barra Funda, São Paulo - SP · CEP 01139-003<br>contato@ncm.adv.br</p>
+      </td></tr>
+    </table>
+    <!-- EMAIL 05 :: fim -->
+  </div></div>
+
+  <footer class="show-foot">
+    <p style="margin:0;">Sistema de e-mails LexIA · HTML email-safe (tabelas + estilos inline, 600px) sobre os tokens de <code>styles/tokens.css</code>. Cada bloco entre os comentários <code>EMAIL NN :: início/fim</code> é autocontido e pode ser copiado individualmente para a ferramenta de envio.</p>
+  </footer>
+
+  <template id="__bundler_thumbnail" data-bg-color="#020D25">
+    <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+      <rect width="1200" height="800" fill="#020D25"/>
+      <rect x="360" y="250" width="480" height="320" rx="20" fill="#ffffff"/>
+      <rect x="360" y="250" width="480" height="64" rx="20" fill="#020D25"/>
+      <rect x="360" y="306" width="480" height="8" fill="#C0A147"/>
+      <text x="392" y="294" font-family="Inter, sans-serif" font-size="26" font-weight="600" fill="#F5F1E4">Lex<tspan fill="#C0A147">IA</tspan></text>
+      <rect x="392" y="360" width="280" height="14" rx="7" fill="#020D25"/>
+      <rect x="392" y="392" width="416" height="9" rx="4.5" fill="#020D25" opacity="0.3"/>
+      <rect x="392" y="412" width="380" height="9" rx="4.5" fill="#020D25" opacity="0.3"/>
+      <rect x="392" y="470" width="150" height="44" rx="8" fill="#C0A147"/>
+    </svg>
+  </template>
+
+</body>
+</html>
