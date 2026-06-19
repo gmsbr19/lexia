@@ -31,7 +31,9 @@ export function comCacheBreakpoints(messages: Anthropic.MessageParam[]): Anthrop
     while (i >= 0 && !CACHEAVEL.has((m.content[i] as { type: string }).type)) i--
     if (i < 0) return
     const blocks = m.content.slice()
-    blocks[i] = { ...(blocks[i] as Anthropic.ContentBlockParam), cache_control: EPHEMERAL }
+    // i points at a CACHEAVEL block (text/tool_result/tool_use/image/document) — all
+    // accept cache_control; the cast bypasses the union's thinking-block members.
+    blocks[i] = { ...(blocks[i] as Anthropic.ContentBlockParam), cache_control: EPHEMERAL } as Anthropic.ContentBlockParam
     out[idx] = { ...m, content: blocks }
   }
 
