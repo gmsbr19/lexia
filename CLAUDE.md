@@ -141,6 +141,67 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **Projetos & Tarefas — FRONTEND (Fase 4, this session)** (memory `project_projetos_module`).
+  Importou o design "LexIA - Projetos & Tarefas" via MCP `claude_design` (DesignSync) e o
+  integrou como **workspace de 4 abas** (Tarefas · Projetos · Dashboard · Templates) em
+  [src/components/projetos/](src/components/projetos): `pj-meta.ts` (puro: `deriveRollup` espelha
+  saúde/progresso no cliente p/ updates otimistas; `addBizDaysClient` preview do wizard; datas),
+  `pj-kit.tsx` (ModuleTabs, SaudeChip, ProjStatusPill, ProgressBar/Ring, ProjectIcon/RailItem/Card,
+  **BulkBar** acrílica, Overlay/ModalHeader, PageFrame/Header, AREAS/COLOR/ICON_CHOICES),
+  `pj-theme.css` (rail+canvas responsivo, skeleton, lift-card), `ProjectModal.tsx`,
+  `TemplatesTab.tsx` (galeria + editor drag-reorder + wizard 4 passos), `DashboardTab.tsx`,
+  `ProjectsTab.tsx` (rail+canvas+header inline-rename), `CrossTarefasTab.tsx`, e o orquestrador
+  **`ProjetosWorkspace.tsx`** (dono do estado; persiste via `apiSend`→runMutation; refetch após
+  mutação de projeto/template). **Reusa** os 5 views + TaskModal + tf-kit/tf-meta de Tarefas
+  (views ganharam seleção opcional p/ bulk; `tf-icons` +~20 ícones; `Menu` ganhou `placement:"up"`).
+  Rotas: **`/tarefas`** agora é o workspace (`?tab=` escolhe aba; `?tarefa=<id>` ainda deep-abre);
+  novas **`/projetos`** e **`/projetos/[id]`** (loader [workspace.ts](src/lib/projetos/workspace.ts)).
+  RBAC cliente: `canEdit` (admin/socio/advogado) p/ criar/editar projeto + nova-tarefa-no-projeto;
+  `canTemplate` (admin/socio) p/ editor de template. `favorito` é client-only efêmero. `TarefasApp.tsx`
+  antigo REMOVIDO. **tsc limpo (0 erros) + 266 testes verdes** (`tests/projetos-ui.test.ts` novo).
+  **User action**: parar `next dev` → (se ainda não) `npm run db:migrate` → `npm run db:generate`
+  → `npm run db:seed:projetos` → `npm run dev`. Conferir visual em `/tarefas`: 4 abas; aba Projetos
+  (rail+canvas, criar/editar/excluir/arquivar/renomear); Templates → "Usar template" → wizard;
+  Dashboard com KPIs; seleção + BulkBar; Estagiário sem botões de criar projeto/template.
+- **Projetos & Tarefas — BACKEND (Fase 3, this session)** (memory `project_projetos_module`).
+  Transformou "projetos" (antes 6 áreas hardcoded em [tarefas/types.ts](src/lib/tarefas/types.ts))
+  em **entidade dinâmica**. 3 models novos: **`Projeto`** (dono/prazo/status/area-tag/
+  cor/vínculo caso|cliente/templateOrigem/soft-delete `excluidoEm`/`chave` p/ seed),
+  **`ProjetoTemplate`** + **`ProjetoTemplateTarefa`** (item c/ prazo relativo `offsetDias`
+  em dias úteis + `base` inicio|anterior). `Tarefa` ganhou **`projetoId`** (FK) +
+  **`concluidoEm`** (alimenta cycle time/taxa-no-prazo). Migração **20260619000000_projetos**
+  (rebuild de Tarefa, mão-autorada). Núcleo PURO testável
+  [projetos/template.ts](src/lib/projetos/template.ts): `instanciarTemplate` (reusa
+  `calcularPrazo`/`carregarContextoPrazo` do motor CPC) + `saudeProjeto`/`progressoProjeto`/
+  `contarAtrasadas` (saúde/progresso DERIVADOS, nunca persistidos). Write
+  [mutations.ts](src/lib/projetos/mutations.ts): CRUD Projeto, CRUD Template (replace-all
+  de itens), `instanciarTemplateProjeto` (1 projeto + N tarefas via createMany numa tx, SEM
+  notif por-tarefa), `bulkUpdateTarefas` (F4). Read [queries.ts](src/lib/projetos/queries.ts):
+  `getProjetosDataset`/`getProjeto`/`getTemplates`/`getProdutividadeDashboard` (KPIs +
+  saúde-por-projeto + carga-por-pessoa + gargalos, estilo `getDashboard`). Rotas via
+  `runMutation`: `/api/projetos`(GET+POST), `/api/projetos/[id]`(PATCH+DELETE),
+  `/instanciar`, `/dashboard`(GET), `/templates`(GET+POST), `/templates/[id]`,
+  `/api/tarefas/lote`(PATCH). RBAC: criar/editar projeto = **sócio+advogado**
+  (`ROLES_PROJETO_ESCRITA`), templates = **sócio** (`ROLES_TEMPLATE`); leitura aberta;
+  projeto **fora** do gate `verFinanceiro`. LexIA: nova
+  [tools/projetos.ts](src/lib/lexia/agent/tools/projetos.ts) (`listar_projetos`,
+  `detalhe_projeto`, `listar_templates_projeto` readonly; `criar_projeto`,
+  `instanciar_template_projeto` mutation gated) registrada; `criar_tarefa` ganhou
+  `projetoId`; `/projetos` no whitelist de `navegar`; bullet no `prompt.ts`. Seed
+  **`db:seed:projetos`** ([scripts/seed-projetos.ts](scripts/seed-projetos.ts)):
+  upsert 1 Projeto por área (`chave area-<id>`) + **backfill** `Tarefa.projetoId` +
+  template **"Holding Patrimonial"** (~11 itens). Soft-delete de Projeto: tarefas NÃO
+  somem (lêem como "sem projeto"). Aditivo/lossless: a string `Tarefa.projeto` é
+  MANTIDA (Fase 4 a aposenta). Testes novos: `tests/projetos-template.test.ts` (puro) +
+  `tests/lexia-agent.test.ts` (gating das tools de projeto). tsc/test NÃO rodados (regra +
+  Prisma lock). **Decisões Fase 1**: workspace de módulo (abas + rail) + caso/projeto
+  separados c/ criação explícita + sugestão IA. **Fase 2** (prompt p/ Claude Design)
+  ENTREGUE. **Fase 4** (integrar bundle do Claude Design) ENTREGUE (ver bullet acima).
+  **User action (REQUIRED — Windows Prisma lock)**: parar `next dev` → `npm run db:migrate`
+  (aplica 20260619000000_projetos) → `npm run db:generate` → `npm run db:seed:projetos`
+  (áreas + backfill + Holding) → `npx tsc --noEmit` → `npm test` → `npm run dev`. Conferir:
+  `npm test` verde; ledger de tarefas com `projetoId`; LexIA "quais projetos temos?" /
+  "qual a saúde dos projetos?" / "instancie o template Holding para o cliente X" (sócio).
 - **Visibilidade financeira por papel "Equipe" (this session)** (memory
   `project_financeiro_visibilidade`). Financeiro só p/ **Sócio/Admin/Financeiro**;
   "Equipe" (advogado/estagiário/staff) não vê nada do financeiro — exceto honorários
