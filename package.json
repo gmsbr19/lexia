@@ -23,6 +23,7 @@
     "db:seed:rateio": "tsx scripts/seed-rateio.ts",
     "db:seed:comercial": "tsx scripts/seed-comercial.ts",
     "db:seed:feriados": "tsx scripts/seed-feriados.ts",
+    "db:seed:projetos": "tsx scripts/seed-projetos.ts",
     "db:purge:processos:demo": "tsx scripts/purge-processos-demo.ts",
     "db:import:genions": "tsx scripts/import-genions.ts",
     "db:import:meta": "tsx scripts/import-meta-campaigns.ts",
