@@ -26,6 +26,7 @@ export const tarefaCreateSchema = z.object({
   responsavelId: idOpt,
   casoId: idOpt,
   clienteId: idOpt,
+  projetoId: idOpt,
   ordem: z.number().int().optional(),
 })
 

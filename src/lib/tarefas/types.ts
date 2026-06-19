@@ -142,6 +142,7 @@ export interface TaskRow {
   responsavelId: number | null
   casoId: number | null
   clienteId: number | null
+  projetoId: number | null // container de trabalho dinâmico (null = sem projeto / projeto excluído)
   vinculo: VinculoRef | null
   ordem: number
 }

@@ -39,7 +39,7 @@ function deriveInitials(nome: string): string {
   return (w.slice(0, 2) || "?").toUpperCase()
 }
 
-function toTeamMember(u: UsuarioAtivo): TeamMember {
+export function toTeamMember(u: UsuarioAtivo): TeamMember {
   return {
     id: u.id,
     nome: u.nome,
@@ -74,9 +74,11 @@ export async function getTarefasDataset(): Promise<TarefasDataset> {
         responsavelId: true,
         casoId: true,
         clienteId: true,
+        projetoId: true,
         ordem: true,
         caso: { select: { titulo: true } },
         cliente: { select: { nome: true } },
+        projetoRef: { select: { excluidoEm: true } },
       },
       orderBy: [{ ordem: "asc" }, { createdAt: "asc" }],
     }),
@@ -109,6 +111,8 @@ export async function getTarefasDataset(): Promise<TarefasDataset> {
       responsavelId: r.responsavelId,
       casoId: r.casoId,
       clienteId: r.clienteId,
+      // projeto excluído (soft-delete) → trata como "sem projeto" (a tarefa nunca some).
+      projetoId: r.projetoRef && !r.projetoRef.excluidoEm ? r.projetoId : null,
       vinculo,
       ordem: r.ordem,
     }

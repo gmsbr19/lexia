@@ -36,6 +36,7 @@ export interface TarefaCreate {
   responsavelId?: number | null
   casoId?: number | null
   clienteId?: number | null
+  projetoId?: number | null
   ordem?: number
 }
 
@@ -66,6 +67,8 @@ export async function createTarefa(input: TarefaCreate, actorEmail?: string | nu
       criadoPorId,
       casoId,
       clienteId,
+      projetoId: optId(input.projetoId),
+      concluidoEm: status === "done" ? new Date() : null,
       ordem: Number.isInteger(input.ordem) ? (input.ordem as number) : 0,
       origem: "manual",
       geradoPorApp: true,
@@ -97,6 +100,7 @@ export interface TarefaPatch {
   responsavelId?: number | null
   casoId?: number | null
   clienteId?: number | null
+  projetoId?: number | null
   ordem?: number
 }
 
@@ -131,7 +135,13 @@ export async function updateTarefa(id: number, patch: TarefaPatch, actorEmail?: 
   if (patch.dor !== undefined) data.dor = serializeArr(patch.dor)
   if (patch.dod !== undefined) data.dod = serializeArr(patch.dod)
   if (patch.responsavelId !== undefined) data.responsavelId = optId(patch.responsavelId)
+  if (patch.projetoId !== undefined) data.projetoId = optId(patch.projetoId)
   if (patch.ordem !== undefined && Number.isInteger(patch.ordem)) data.ordem = patch.ordem
+  // concluidoEm acompanha a transição de done (alimenta cycle time / taxa no prazo).
+  if (data.done !== undefined) {
+    if (data.done === true && !antes?.done) data.concluidoEm = new Date()
+    else if (data.done === false && antes?.done) data.concluidoEm = null
+  }
   // Vínculo: when either side is present in the patch, resolve the pair together.
   if (patch.casoId !== undefined || patch.clienteId !== undefined) {
     const { casoId, clienteId } = resolveVinculo(patch.casoId ?? null, patch.clienteId ?? null)
