@@ -26,19 +26,65 @@ export interface ViewCallbacks {
   onLinkClick: (v: VinculoRef) => void
 }
 
+// Optional multi-select layer (bulk edit). When `selectable`, a click toggles
+// selection instead of opening the task, and a square box replaces the toggle.
+export interface Selectable {
+  selectable?: boolean
+  selectedIds?: Set<number>
+  onSelect?: (id: number) => void
+}
+
+function SelectBox({ checked }: { checked: boolean }) {
+  return (
+    <span
+      style={{
+        width: 19,
+        height: 19,
+        flexShrink: 0,
+        borderRadius: 6,
+        border: `1.7px solid ${checked ? "var(--accent)" : "var(--border-strong)"}`,
+        background: checked ? "var(--accent)" : "transparent",
+        color: "var(--brand-navy)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Icon name="check" size={12} strokeWidth={3} style={{ opacity: checked ? 1 : 0 }} />
+    </span>
+  )
+}
+
 // ── shared task row (Hoje / Lista) ───────────────────────────────────────────
 export function TaskRow({
   task,
   showProject = true,
+  selectable,
+  selected,
+  onSelect,
   ...cb
-}: { task: TaskRow; showProject?: boolean } & ViewCallbacks) {
+}: { task: TaskRow; showProject?: boolean; selected?: boolean } & Pick<Selectable, "selectable" | "onSelect"> & ViewCallbacks) {
+  const handleClick = () => (selectable && onSelect ? onSelect(task.id) : cb.onOpen(task.id))
   return (
     <div
-      onClick={() => cb.onOpen(task.id)}
+      onClick={handleClick}
       className="task-row"
-      style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 10px", borderRadius: 10, cursor: "pointer", opacity: task.done ? 0.5 : 1 }}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        padding: "9px 10px",
+        borderRadius: 10,
+        cursor: "pointer",
+        opacity: task.done && !selectable ? 0.5 : 1,
+        background: selected ? "var(--accent-soft)" : undefined,
+      }}
     >
-      <TaskCheck done={task.done} prio={task.prio} onToggle={() => cb.onToggle(task.id)} />
+      {selectable ? (
+        <SelectBox checked={!!selected} />
+      ) : (
+        <TaskCheck done={task.done} prio={task.prio} onToggle={() => cb.onToggle(task.id)} />
+      )}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
           <span
@@ -103,7 +149,8 @@ function RowGroup({ children }: { children: React.ReactNode }) {
 }
 
 // ── HOJE / PRÓXIMAS ──────────────────────────────────────────────────────────
-export function HojeView({ tasks, ...cb }: { tasks: TaskRow[] } & ViewCallbacks) {
+export function HojeView({ tasks, selectable, selectedIds, onSelect, ...cb }: { tasks: TaskRow[] } & Selectable & ViewCallbacks) {
+  const row = (t: TaskRow) => <TaskRow key={t.id} task={t} selectable={selectable} selected={selectedIds?.has(t.id)} onSelect={onSelect} {...cb} />
   const scheduled = tasks.filter((t) => t.data)
   const overdue = scheduled.filter((t) => !t.done && tDiff(t.data as string) < 0).sort(byTime)
   const today = scheduled.filter((t) => tDiff(t.data as string) === 0).sort(byTime)
@@ -132,9 +179,7 @@ export function HojeView({ tasks, ...cb }: { tasks: TaskRow[] } & ViewCallbacks)
             tone="vencido"
             right={<span style={{ fontSize: 12, color: "var(--fin-neg)", fontWeight: 500 }}>{overdue.length} pendente{overdue.length > 1 ? "s" : ""}</span>}
           />
-          {overdue.map((t) => (
-            <TaskRow key={t.id} task={t} {...cb} />
-          ))}
+          {overdue.map(row)}
         </RowGroup>
       )}
       <RowGroup>
@@ -146,7 +191,7 @@ export function HojeView({ tasks, ...cb }: { tasks: TaskRow[] } & ViewCallbacks)
           right={<span style={{ fontSize: 12, color: "var(--text-subtle)" }}>{WD_LONG[td.getDay()]}, {td.getDate()} {MO[td.getMonth()]}</span>}
         />
         {today.length ? (
-          today.map((t) => <TaskRow key={t.id} task={t} {...cb} />)
+          today.map(row)
         ) : (
           <EmptyState icon="checkCircle" title="Nada para hoje" sub="Aproveite ou puxe uma tarefa de Próximas." />
         )}
@@ -164,18 +209,14 @@ export function HojeView({ tasks, ...cb }: { tasks: TaskRow[] } & ViewCallbacks)
                 count={dayGroups[d].length}
                 right={<span style={{ fontSize: 12, color: "var(--text-subtle)" }}>{dt.getDate()} {MO[dt.getMonth()]}</span>}
               />
-              {dayGroups[d].map((t) => (
-                <TaskRow key={t.id} task={t} {...cb} />
-              ))}
+              {dayGroups[d].map(row)}
             </RowGroup>
           )
         })}
       {later.length > 0 && (
         <RowGroup>
           <SectionHeader icon="calendarClock" label="Mais tarde" count={later.length} />
-          {later.map((t) => (
-            <TaskRow key={t.id} task={t} {...cb} />
-          ))}
+          {later.map(row)}
         </RowGroup>
       )}
       {noDate > 0 && (
@@ -208,7 +249,7 @@ interface Group {
   items: TaskRow[]
 }
 
-export function ListaView({ tasks, groupBy, ...cb }: { tasks: TaskRow[]; groupBy: GroupBy } & ViewCallbacks) {
+export function ListaView({ tasks, groupBy, selectable, selectedIds, onSelect, ...cb }: { tasks: TaskRow[]; groupBy: GroupBy } & Selectable & ViewCallbacks) {
   const { projects, socios } = useTarefasCtx()
   let groups: Group[] = []
 
@@ -264,7 +305,7 @@ export function ListaView({ tasks, groupBy, ...cb }: { tasks: TaskRow[]; groupBy
             .slice()
             .sort(byTime)
             .map((t) => (
-              <TaskRow key={t.id} task={t} showProject={groupBy !== "projeto"} {...cb} />
+              <TaskRow key={t.id} task={t} showProject={groupBy !== "projeto"} selectable={selectable} selected={selectedIds?.has(t.id)} onSelect={onSelect} {...cb} />
             ))}
         </RowGroup>
       ))}

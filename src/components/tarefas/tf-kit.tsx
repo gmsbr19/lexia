@@ -262,11 +262,13 @@ export function Menu({
   children,
   align = "left",
   width = 220,
+  placement = "down",
 }: {
   trigger: ReactNode
   children: ReactNode | ((close: () => void) => ReactNode)
   align?: "left" | "right"
   width?: number
+  placement?: "down" | "up"
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -286,7 +288,7 @@ export function Menu({
         <div
           style={{
             position: "absolute",
-            top: "calc(100% + 6px)",
+            ...(placement === "up" ? { bottom: "calc(100% + 6px)" } : { top: "calc(100% + 6px)" }),
             ...(align === "right" ? { right: 0 } : { left: 0 }),
             zIndex: 50,
             width,
