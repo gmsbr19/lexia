@@ -14,9 +14,6 @@ import * as c from "./interativo.css"
 type DirF = "todos" | "in" | "out"
 type StatF = "todos" | "avencer" | "vencido" | "pago"
 const PAGE = 120
-// Breathing room at the end of the list so the floating LexIA pill (which rests
-// just above the totals footer) never covers the last row.
-const PILL_SAFE = 88
 
 export interface InitialFilter {
   dir?: DirF
@@ -384,8 +381,6 @@ export function LancamentosTable({
             </button>
           </div>
         )}
-        {/* keeps the card (last row) above the pill that floats over the totals */}
-        <div style={{ height: PILL_SAFE, flexShrink: 0 }} aria-hidden />
       </div>
 
       <div className={c.totalsBar} ref={totalsRef}>

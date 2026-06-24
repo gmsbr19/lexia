@@ -411,11 +411,12 @@ export const selectChevron = style({ position: "absolute", right: 12, top: "50%"
 // Outer padding frame — does NOT scroll; the rounded card inside is the scroller
 // so the sticky table header is clipped to the radius and the top corners keep
 // their rounding on scroll (instead of squaring off behind the sticky header).
-export const tableScroll = style({ flex: 1, minHeight: 0, padding: "0 40px", display: "flex", flexDirection: "column", overflow: "hidden" })
+export const tableScroll = style({ flex: 1, minHeight: 0, padding: "0 40px 14px", display: "flex", flexDirection: "column", overflow: "hidden" })
 export const tableCard = style({
-  // hug content (so few rows don't fill into a big empty card) but shrink + scroll
-  // when the list overflows; the rounded box clips the sticky header on scroll.
-  flex: "0 1 auto",
+  // fill the available height (so the card spans the whole container instead of
+  // floating above empty page) and shrink + scroll when the list overflows; the
+  // rounded box clips the sticky header on scroll.
+  flex: "1 1 auto",
   minHeight: 0,
   background: tokens.color.surface,
   border: `1px solid ${tokens.color.border}`,
@@ -562,17 +563,17 @@ export const alert = style({
 // ── grids for visão / fluxo ──────────────────────────────────────────────────
 export const visaoGrid = style({
   display: "grid",
-  gridTemplateColumns: "1fr 1.3fr",
+  gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.3fr)",
   gap: 20,
   alignItems: "start",
-  "@media": { "screen and (max-width: 1000px)": { gridTemplateColumns: "1fr" } },
+  "@media": { "screen and (max-width: 1000px)": { gridTemplateColumns: "minmax(0, 1fr)" } },
 })
 export const fluxoGrid = style({
   display: "grid",
-  gridTemplateColumns: "1fr 1.25fr",
+  gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.25fr)",
   gap: 20,
   alignItems: "start",
-  "@media": { "screen and (max-width: 1000px)": { gridTemplateColumns: "1fr" } },
+  "@media": { "screen and (max-width: 1000px)": { gridTemplateColumns: "minmax(0, 1fr)" } },
 })
 export const colStack = style({ display: "flex", flexDirection: "column", gap: 20 })
 
