@@ -282,7 +282,10 @@ export function Menu({
   }, [open])
   const close = () => setOpen(false)
   return (
-    <div ref={ref} style={{ position: "relative", display: "inline-flex" }}>
+    // When open, the wrapper becomes a high stacking context so the dropdown
+    // always paints above neighbouring form rows / pickers (e.g. Projeto above
+    // Responsável in the task modal) instead of being partially occluded.
+    <div ref={ref} style={{ position: "relative", display: "inline-flex", zIndex: open ? 60 : undefined }}>
       <div onClick={() => setOpen((o) => !o)}>{trigger}</div>
       {open && (
         <div

@@ -2,7 +2,8 @@
 
 // Tarefas — the five views (ported from the design's views.jsx). All read a
 // filtered task list + shared callbacks.
-import { useState } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
+import { AnimatePresence, motion } from "motion/react"
 import { PRIO, STATUS, type TaskPrio, type TaskRow, type TaskStatus, type VinculoRef } from "@/lib/tarefas/types"
 import { Icon, type TfIconName } from "./tf-icons"
 import { useTarefasCtx } from "./TarefasContext"
@@ -52,6 +53,91 @@ function SelectBox({ checked }: { checked: boolean }) {
     >
       <Icon name="check" size={12} strokeWidth={3} style={{ opacity: checked ? 1 : 0 }} />
     </span>
+  )
+}
+
+// Whether to hide completed tasks (Hoje/Lista). Default ON at the call sites.
+export interface HideDone {
+  hideDone?: boolean
+}
+
+const COMPLETION_GRACE_MS = 650
+
+// Tracks tasks that JUST transitioned to done so they can linger (showing the
+// filled check + strikethrough) before being animated out when hideDone is on.
+function useJustCompleted(tasks: TaskRow[]): Set<number> {
+  const [ids, setIds] = useState<Set<number>>(() => new Set())
+  const prev = useRef<Map<number, boolean>>(new Map())
+  const timers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map())
+  useEffect(() => {
+    tasks.forEach((t) => {
+      const was = prev.current.get(t.id)
+      if (was === false && t.done) {
+        setIds((s) => (s.has(t.id) ? s : new Set(s).add(t.id)))
+        const old = timers.current.get(t.id)
+        if (old) clearTimeout(old)
+        timers.current.set(
+          t.id,
+          setTimeout(() => {
+            timers.current.delete(t.id)
+            setIds((s) => {
+              if (!s.has(t.id)) return s
+              const n = new Set(s)
+              n.delete(t.id)
+              return n
+            })
+          }, COMPLETION_GRACE_MS),
+        )
+      } else if (was === true && !t.done) {
+        // reopened before the grace expired — show it again immediately
+        const old = timers.current.get(t.id)
+        if (old) {
+          clearTimeout(old)
+          timers.current.delete(t.id)
+        }
+        setIds((s) => {
+          if (!s.has(t.id)) return s
+          const n = new Set(s)
+          n.delete(t.id)
+          return n
+        })
+      }
+      prev.current.set(t.id, t.done)
+    })
+  }, [tasks])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => () => timers.current.forEach(clearTimeout), [])
+  return ids
+}
+
+// Applies hide-completed (keeping just-completed tasks during their grace window)
+// and returns the visible slice. The grace set is what powers the exit animation.
+function useVisibleTasks(tasks: TaskRow[], hideDone: boolean | undefined): TaskRow[] {
+  const just = useJustCompleted(tasks)
+  if (!hideDone) return tasks
+  return tasks.filter((t) => !t.done || just.has(t.id))
+}
+
+const ROW_EASE = [0.22, 1, 0.36, 1] as const
+
+// Wraps task rows so completion (removal from the list) collapses + fades out
+// instead of snapping. Keyed by task id; entrance is suppressed on first paint.
+function AnimatedRows({ rows }: { rows: { id: number; el: ReactNode }[] }) {
+  return (
+    <AnimatePresence initial={false}>
+      {rows.map((r) => (
+        <motion.div
+          key={r.id}
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: "auto" }}
+          exit={{ opacity: 0, height: 0, scale: 0.97 }}
+          transition={{ duration: 0.3, ease: ROW_EASE }}
+          style={{ overflow: "hidden" }}
+        >
+          {r.el}
+        </motion.div>
+      ))}
+    </AnimatePresence>
   )
 }
 
@@ -149,9 +235,11 @@ function RowGroup({ children }: { children: React.ReactNode }) {
 }
 
 // ── HOJE / PRÓXIMAS ──────────────────────────────────────────────────────────
-export function HojeView({ tasks, selectable, selectedIds, onSelect, ...cb }: { tasks: TaskRow[] } & Selectable & ViewCallbacks) {
-  const row = (t: TaskRow) => <TaskRow key={t.id} task={t} selectable={selectable} selected={selectedIds?.has(t.id)} onSelect={onSelect} {...cb} />
-  const scheduled = tasks.filter((t) => t.data)
+export function HojeView({ tasks, hideDone, selectable, selectedIds, onSelect, ...cb }: { tasks: TaskRow[] } & HideDone & Selectable & ViewCallbacks) {
+  const vis = useVisibleTasks(tasks, hideDone)
+  const rows = (arr: TaskRow[]) =>
+    arr.map((t) => ({ id: t.id, el: <TaskRow task={t} selectable={selectable} selected={selectedIds?.has(t.id)} onSelect={onSelect} {...cb} /> }))
+  const scheduled = vis.filter((t) => t.data)
   const overdue = scheduled.filter((t) => !t.done && tDiff(t.data as string) < 0).sort(byTime)
   const today = scheduled.filter((t) => tDiff(t.data as string) === 0).sort(byTime)
   const upcoming = scheduled
@@ -165,7 +253,7 @@ export function HojeView({ tasks, selectable, selectedIds, onSelect, ...cb }: { 
     if (n <= 7) (dayGroups[t.data as string] = dayGroups[t.data as string] || []).push(t)
     else later.push(t)
   })
-  const noDate = tasks.filter((t) => !t.data && !t.done).length
+  const noDate = vis.filter((t) => !t.data && !t.done).length
   const td = tParse(TODAY())
 
   return (
@@ -179,7 +267,7 @@ export function HojeView({ tasks, selectable, selectedIds, onSelect, ...cb }: { 
             tone="vencido"
             right={<span style={{ fontSize: 12, color: "var(--fin-neg)", fontWeight: 500 }}>{overdue.length} pendente{overdue.length > 1 ? "s" : ""}</span>}
           />
-          {overdue.map(row)}
+          <AnimatedRows rows={rows(overdue)} />
         </RowGroup>
       )}
       <RowGroup>
@@ -191,7 +279,7 @@ export function HojeView({ tasks, selectable, selectedIds, onSelect, ...cb }: { 
           right={<span style={{ fontSize: 12, color: "var(--text-subtle)" }}>{WD_LONG[td.getDay()]}, {td.getDate()} {MO[td.getMonth()]}</span>}
         />
         {today.length ? (
-          today.map(row)
+          <AnimatedRows rows={rows(today)} />
         ) : (
           <EmptyState icon="checkCircle" title="Nada para hoje" sub="Aproveite ou puxe uma tarefa de Próximas." />
         )}
@@ -209,14 +297,14 @@ export function HojeView({ tasks, selectable, selectedIds, onSelect, ...cb }: { 
                 count={dayGroups[d].length}
                 right={<span style={{ fontSize: 12, color: "var(--text-subtle)" }}>{dt.getDate()} {MO[dt.getMonth()]}</span>}
               />
-              {dayGroups[d].map(row)}
+              <AnimatedRows rows={rows(dayGroups[d])} />
             </RowGroup>
           )
         })}
       {later.length > 0 && (
         <RowGroup>
           <SectionHeader icon="calendarClock" label="Mais tarde" count={later.length} />
-          {later.map(row)}
+          <AnimatedRows rows={rows(later)} />
         </RowGroup>
       )}
       {noDate > 0 && (
@@ -249,27 +337,30 @@ interface Group {
   items: TaskRow[]
 }
 
-export function ListaView({ tasks, groupBy, selectable, selectedIds, onSelect, ...cb }: { tasks: TaskRow[]; groupBy: GroupBy } & Selectable & ViewCallbacks) {
+export function ListaView({ tasks, groupBy, hideDone, selectable, selectedIds, onSelect, ...cb }: { tasks: TaskRow[]; groupBy: GroupBy } & HideDone & Selectable & ViewCallbacks) {
   const { projects, socios } = useTarefasCtx()
+  const vis = useVisibleTasks(tasks, hideDone)
   let groups: Group[] = []
 
   if (groupBy === "projeto") {
-    groups = projects.map((p) => ({ key: p.id, header: { dot: p.color, label: p.name }, items: tasks.filter((t) => t.projeto === p.id) }))
+    groups = projects.map((p) => ({ key: p.id, header: { dot: p.color, label: p.name }, items: vis.filter((t) => t.projeto === p.id) }))
   } else if (groupBy === "responsavel") {
-    groups = socios.map((m) => ({ key: m.id, header: { avatar: m.id, label: m.nome }, items: tasks.filter((t) => t.responsavelId === m.id) }))
-    groups.push({ key: "none", header: { label: "Não atribuídas" }, items: tasks.filter((t) => t.responsavelId == null) })
+    groups = socios.map((m) => ({ key: m.id, header: { avatar: m.id, label: m.nome }, items: vis.filter((t) => t.responsavelId === m.id) }))
+    groups.push({ key: "none", header: { label: "Não atribuídas" }, items: vis.filter((t) => t.responsavelId == null) })
   } else if (groupBy === "prioridade") {
     groups = ([1, 2, 3, 4] as TaskPrio[]).map((n) => ({
       key: n,
       header: { dot: PRIO[n].color, label: `${PRIO[n].short} · ${PRIO[n].label}` },
-      items: tasks.filter((t) => t.prio === n),
+      items: vis.filter((t) => t.prio === n),
     }))
   } else {
+    // Group strictly by the deadline's distance from today. "Vence hoje" means
+    // exactly today (n === 0); anything in the past — done OR not — is "Vencido".
     const bucket = (t: TaskRow): string => {
       if (!t.prazo) return "sem"
       const n = tDiff(t.prazo)
-      if (!t.done && n < 0) return "venc"
-      if (n <= 0) return "hoje"
+      if (n < 0) return "venc"
+      if (n === 0) return "hoje"
       if (n <= 7) return "sem7"
       return "depois"
     }
@@ -280,7 +371,7 @@ export function ListaView({ tasks, groupBy, selectable, selectedIds, onSelect, .
       ["depois", "Depois", null],
       ["sem", "Sem prazo", null],
     ]
-    groups = defs.map(([k, label, dot]) => ({ key: k, header: { dot, label }, items: tasks.filter((t) => bucket(t) === k) }))
+    groups = defs.map(([k, label, dot]) => ({ key: k, header: { dot, label }, items: vis.filter((t) => bucket(t) === k) }))
   }
 
   groups = groups.filter((g) => g.items.length)
@@ -301,12 +392,15 @@ export function ListaView({ tasks, groupBy, selectable, selectedIds, onSelect, .
             }
             count={g.items.length}
           />
-          {g.items
-            .slice()
-            .sort(byTime)
-            .map((t) => (
-              <TaskRow key={t.id} task={t} showProject={groupBy !== "projeto"} selectable={selectable} selected={selectedIds?.has(t.id)} onSelect={onSelect} {...cb} />
-            ))}
+          <AnimatedRows
+            rows={g.items
+              .slice()
+              .sort(byTime)
+              .map((t) => ({
+                id: t.id,
+                el: <TaskRow task={t} showProject={groupBy !== "projeto"} selectable={selectable} selected={selectedIds?.has(t.id)} onSelect={onSelect} {...cb} />,
+              }))}
+          />
         </RowGroup>
       ))}
     </div>
