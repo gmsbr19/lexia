@@ -147,6 +147,7 @@ function IconBtn({ icon, title, onClick, disabled, dot }: { icon: string; title:
 
 // ───────────────────────── sidebar user card (→ upward dropdown) ─────────────────────────
 function SidebarUser({ name, email, role, dark, collapsed, onToggleTheme }: { name: string; email: string; role: Role; collapsed: boolean; dark: boolean; onToggleTheme: () => void }) {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const initials = crmInitials(name || email || "?")
   const roleLabel = role === "admin" ? "Administrador" : role === "socio" ? "Sócio" : "Equipe"
@@ -196,7 +197,7 @@ function SidebarUser({ name, email, role, dark, collapsed, onToggleTheme }: { na
               </button>
             </div>
             <div style={{ height: 1, background: "var(--border)", margin: "2px 6px 4px" }} />
-            <button onClick={() => signOut({ redirectTo: "/login" })} className="fx-menu-item" style={{ color: "var(--fin-neg,#C0492F)" }}>
+            <button onClick={() => signOut({ redirect: false }).then(() => router.push("/login"))} className="fx-menu-item" style={{ color: "var(--fin-neg,#C0492F)" }}>
               <Icon name="logout" size={15} />Sair
             </button>
           </div>

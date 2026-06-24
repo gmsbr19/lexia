@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { LogOut } from "lucide-react"
 import { signOut } from "next-auth/react"
+import { useRouter } from "next/navigation"
 import { btn } from "@/styles/components.css"
 import { tokens } from "@/styles/tokens.css"
 
@@ -13,6 +14,7 @@ type SessionUser = { name?: string | null; email?: string | null }
  * the (client) AppShell needs no SessionProvider or server wiring.
  */
 export function UserChip() {
+  const router = useRouter()
   const [user, setUser] = useState<SessionUser | null>(null)
 
   useEffect(() => {
@@ -66,7 +68,7 @@ export function UserChip() {
       <button
         className={btn({ variant: "ghost" })}
         style={{ height: 32, padding: "0 10px", fontSize: 12 }}
-        onClick={() => signOut({ redirectTo: "/login" })}
+        onClick={() => signOut({ redirect: false }).then(() => router.push("/login"))}
         title="Sair"
       >
         <LogOut size={14} />
