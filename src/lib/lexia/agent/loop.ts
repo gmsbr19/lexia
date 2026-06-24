@@ -5,7 +5,9 @@ import type Anthropic from "@anthropic-ai/sdk"
 import { assertRole, FORBIDDEN_MESSAGE } from "@/lib/auth/session"
 import { registrarUso } from "@/lib/consumo/registrar"
 import { UserError } from "@/lib/errors"
+import { writeAudit } from "@/lib/finance/api"
 import { log } from "@/lib/log"
+import { assertRateLimit, RateLimitError } from "@/lib/rate-limit"
 import { comCacheBreakpoints } from "./cache"
 import { getAnthropic } from "./client"
 import { criarAcaoPendente } from "./pending"
@@ -39,7 +41,8 @@ export async function runAgentTurn(
   emit: Emit,
 ): Promise<TurnResult> {
   const anthropic = getAnthropic()
-  const tools = decision.useTools ? toApiTools(ctx.user.role) : undefined
+  // "pergunta" mode drops the mutation tools entirely (read-only assistant).
+  const tools = decision.useTools ? toApiTools(ctx.user.role, ctx.mode) : undefined
   const system = systemPrompt()
 
   const blocks: UiBlock[] = []
@@ -106,6 +109,9 @@ export async function runAgentTurn(
     let proposal:
       | { tu: Anthropic.ToolUseBlock; input: unknown; resumo: string; detalhes?: { label: string; valor: string }[] }
       | null = null
+    // Auto-mode: one mutation is executed inline per assistant message; further
+    // mutations in the same message are deferred to the next iteration.
+    let didAutoMutation = false
 
     for (const tu of toolUses) {
       const tool = getTool(tu.name)
@@ -142,6 +148,35 @@ export async function runAgentTurn(
       }
 
       if (tool.kind === "mutation") {
+        // MODO AUTOMÁTICO: executa a mutação na hora, sem cartão de confirmação,
+        // reusando as mesmas garantias do caminho confirmado (role já checado
+        // acima; rate-limit + auditoria aqui). Uma por mensagem. EXCEÇÕES que
+        // SEMPRE pedem confirmação mesmo com auto ligado: o modo "plano"
+        // (que prometeu aprovação) e ações DESTRUTIVAS/irreversíveis (excluir/
+        // anonimizar) — segurança humana antes de um write sem volta.
+        if (ctx.autoMode && ctx.mode !== "plano" && !ehDestrutiva(tu.name)) {
+          if (didAutoMutation) {
+            resolved.push({ type: "tool_result", tool_use_id: tu.id, content: "Proponha uma ação por vez.", is_error: true })
+            continue
+          }
+          didAutoMutation = true
+          emit({ type: "tool", id: tu.id, name: tu.name, label, status: "run" })
+          try {
+            assertRateLimit(ctx.user.email, `lexia.${tu.name}`)
+            const out = await tool.run!(ctx, input)
+            await writeAudit(ctx.user.email, { action: `lexia.${tu.name}`, entity: tool.name, payload: input }, out)
+            resolved.push({ type: "tool_result", tool_use_id: tu.id, content: truncate(JSON.stringify(out ?? null)) })
+            emitTool(emit, blocks, tu.id, tu.name, label, "ok")
+          } catch (e) {
+            const m = e instanceof UserError || e instanceof RateLimitError ? e.message : "Falha ao executar a ferramenta"
+            if (!(e instanceof UserError) && !(e instanceof RateLimitError)) {
+              log.error({ tool: tu.name, err: e instanceof Error ? e.message : String(e) }, "lexia auto-mutation failed")
+            }
+            resolved.push({ type: "tool_result", tool_use_id: tu.id, content: m, is_error: true })
+            emitTool(emit, blocks, tu.id, tu.name, label, "erro")
+          }
+          continue
+        }
         let resumo = tool.resumo ? tool.resumo(input) : `Confirmar: ${label}`
         let detalhes: { label: string; valor: string }[] | undefined
         if (tool.montarConfirmacao) {
@@ -163,15 +198,7 @@ export async function runAgentTurn(
       emit({ type: "tool", id: tu.id, name: tu.name, label, status: "run" })
       try {
         const out = await tool.run!(ctx, input)
-        if (tool.kind === "client" && tool.clientEvent === "doc-patch") {
-          // Propose edits to the OPEN document: emit the suggestions so the editor
-          // renders "Aceitar" cards over the live preview (no DB round-trip).
-          const sugestoes = (out as { sugestoes?: { field: string; label: string; value: string }[] }).sugestoes ?? []
-          emit({ type: "doc-patch", sugestoes })
-          blocks.push({ type: "doc-patch", sugestoes })
-          resolved.push({ type: "tool_result", tool_use_id: tu.id, content: `ok — propus ${sugestoes.length} alteração(ões) ao documento aberto` })
-          emit({ type: "tool", id: tu.id, name: tu.name, label, status: "ok" })
-        } else if (tool.kind === "client") {
+        if (tool.kind === "client") {
           const rota = String(out)
           emit({ type: "navigate", rota })
           blocks.push({ type: "navigate", rota })
@@ -243,4 +270,9 @@ function emitTool(emit: Emit, blocks: UiBlock[], id: string, name: string, label
 /** Keep tool results from flooding the context window. */
 function truncate(s: string, max = 8000): string {
   return s.length > max ? `${s.slice(0, max)}…(resultado truncado)` : s
+}
+
+/** Ações irreversíveis (excluir/anonimizar) — sempre confirmadas, mesmo em auto-mode. */
+function ehDestrutiva(name: string): boolean {
+  return /^excluir_/.test(name) || /anonim/.test(name)
 }

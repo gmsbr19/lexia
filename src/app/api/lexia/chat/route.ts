@@ -15,14 +15,14 @@ import { carregarHistorico, ensureConversa, persistAssistantMsg, persistUserMsg 
 import { mensagemErro } from "@/lib/lexia/agent/client"
 import { construirConteudo } from "@/lib/lexia/agent/anexos"
 import { contextoLinha } from "@/lib/lexia/agent/prompt"
-import { documentoContextoLexia } from "@/lib/documents/ai-suggest"
-import type { ContratoHonorariosData } from "@/lib/types/contrato-honorarios"
+import { getLexiaPrefsRaw } from "@/lib/lexia/preferencias"
 import { decidirModelo } from "@/lib/lexia/agent/router"
 import { aplicarTeto, MODO_ECONOMICO_AVISO } from "@/lib/consumo/guard"
 import { runAgentTurn } from "@/lib/lexia/agent/loop"
 import { sseResponse } from "@/lib/lexia/agent/sse"
-import { validarAnexos } from "@/lib/lexia/anexos/validacao"
-import type { AgentCtx } from "@/lib/lexia/agent/types"
+import { MIME_DOCX, validarAnexos } from "@/lib/lexia/anexos/validacao"
+import { importarDocxComoDocumento } from "@/lib/documents/importar"
+import type { AgentCtx, UiBlock } from "@/lib/lexia/agent/types"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -65,20 +65,46 @@ export async function POST(req: Request) {
       const userMsg = await persistUserMsg(conversaId, mensagemRaw, body.anexos)
       emit({ type: "start", conversaId, userMsgId: userMsg.id })
 
-      // When the user is in the document editor, the open contract rides with the
-      // turn so the agent can read it and propose edits (editar_documento_aberto).
-      const docBlock =
-        body.documento && body.documento.template.startsWith("contrato")
-          ? `\n\n<documento_aberto>\n${documentoContextoLexia(body.documento.data as ContratoHonorariosData)}\n</documento_aberto>`
-          : ""
-      const texto = `${contextoLinha(sessionUser, body.pagina)}${docBlock}\n\n${instrucao}`
+      // A .docx attachment is NOT readable by the model: intercept it, import it
+      // server-side (mammoth → LexDoc → draft Documento) and open the editor
+      // directly. No model call this turn (deterministic, zero tokens).
+      const docx = body.anexos?.find((a) => a.mimeType === MIME_DOCX)
+      if (docx) {
+        const nomeDoc = docx.nome.replace(/\.[^.]+$/, "") || "Documento importado"
+        let novoId: number
+        try {
+          ;({ id: novoId } = await importarDocxComoDocumento(Buffer.from(docx.dataBase64, "base64"), nomeDoc, sessionUser.email))
+        } catch {
+          throw new UserError("Não consegui ler esse .docx — confira se é um arquivo Word válido e não está corrompido.")
+        }
+        const rota = `/documents/doc/${novoId}`
+        const txt = `Importei **${nomeDoc}** e abri no editor. Por lá você pode detectar os campos, editar com a LexIA e exportar em PDF/DOCX.`
+        emit({ type: "text", delta: txt })
+        emit({ type: "navigate", rota })
+        const blocks: UiBlock[] = [
+          { type: "text", text: txt },
+          { type: "navigate", rota },
+        ]
+        const saved = await persistAssistantMsg(conversaId, { text: txt, blocks, model: "import", inputTokens: 0, outputTokens: 0 })
+        emit({ type: "done", mensagemId: saved.id, model: "import", inputTokens: 0, outputTokens: 0 })
+        return
+      }
+
+      // Preferências do usuário (persona/instruções no banco) + as seleções vivas
+      // do composer (modelo/modo/auto), que prevalecem para efeito imediato.
+      const prefs = await getLexiaPrefsRaw(sessionUser.email)
+      const agentMode = body.agentMode ?? prefs.agentMode ?? "agente"
+      const autoMode = body.autoMode ?? prefs.autoMode ?? false
+      const modelo = body.modelo ?? prefs.modelo
+
+      const texto = `${contextoLinha(sessionUser, body.pagina, { ...prefs, agentMode })}\n\n${instrucao}`
       const messages: Anthropic.MessageParam[] = [
         ...prior,
         { role: "user", content: construirConteudo(texto, body.anexos) },
       ]
-      const teto = await aplicarTeto(decidirModelo(mensagemRaw, lastModel, { temAnexos }))
+      const teto = await aplicarTeto(decidirModelo(mensagemRaw, lastModel, { temAnexos, forcarOpus: body.opus, modelo }))
       const decision = teto.decision
-      const ctx: AgentCtx = { user: sessionUser, conversaId, page: body.pagina, signal: req.signal }
+      const ctx: AgentCtx = { user: sessionUser, conversaId, page: body.pagina, signal: req.signal, mode: agentMode, autoMode }
 
       const result = await runAgentTurn(ctx, messages, decision, emit)
       if (teto.rebaixado) result.blocks.unshift({ type: "notice", text: MODO_ECONOMICO_AVISO })

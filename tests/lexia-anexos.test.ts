@@ -89,8 +89,13 @@ describe("roteamento com anexos", () => {
     expect(d.model).toBe("claude-sonnet-4-6")
   })
 
-  it("anexo + redação real → Opus", () => {
+  it("anexo + redação real → Sonnet (Opus virou opt-in)", () => {
     const d = decidirModelo("com base neste anexo, redija um parecer", null, { temAnexos: true })
+    expect(d.model).toBe("claude-sonnet-4-6")
+  })
+
+  it("anexo + forcarOpus → Opus", () => {
+    const d = decidirModelo("com base neste anexo, redija um parecer", null, { temAnexos: true, forcarOpus: true })
     expect(d.model).toBe("claude-opus-4-8")
   })
 })

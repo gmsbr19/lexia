@@ -18,7 +18,6 @@ const ROTAS: RegExp[] = [
   /^\/projetos\/\d+$/,
   /^\/comercial$/,
   /^\/documents$/,
-  /^\/documents\/editor\/[a-z-]+$/,
   /^\/processos$/,
   /^\/processos\/\d+$/,
   /^\/plano-acao$/,

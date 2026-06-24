@@ -17,7 +17,9 @@ import { crmInitials } from "@/components/crm/crm-fmt"
 import { CrmToastHost } from "@/components/crm/crm-kit"
 import { useCrmChrome } from "@/components/crm/crm-chrome-store"
 import { CrmSettings } from "@/components/crm/overlays/CrmSettings"
-import { LexiaBar } from "@/components/lexia/LexiaBar"
+import { LexiaChat } from "@/components/lexia/LexiaChat"
+import { LexiaSpotlight } from "@/components/lexia/LexiaSpotlight"
+import { Orb } from "@/components/lexia/LexiaKit"
 import { NotificacoesBell } from "./NotificacoesBell"
 import { NotificacoesStream } from "./NotificacoesStream"
 import { NotificacoesToasts } from "./NotificacoesToasts"
@@ -27,13 +29,14 @@ import type { ClienteRow } from "@/lib/finance/types"
 import type { CrmDataset, CrmNav, CrmPage, Role } from "@/components/crm/crm-types"
 import { useTabs } from "./tabs-store"
 import { SIDEBAR, activeNavId, metaForPath } from "./unified-nav"
+import { useAreasStore } from "@/lib/areas/store"
 
 function emptyDataset(clientes: ClienteRow[], role: Role, userName: string, userEmail: string): CrmDataset {
   return { clientes, casos: [], contratos: [], socios: [], clienteOptions: [], casoOptions: [], contaOptions: [], role, userName, userEmail }
 }
 
-const BAR_DOCK_W = 408 // keep in sync with the LexiaBar right-dock width
-const BAR_DOCK_KEY = "lexia-bar-dock"
+const CHAT_SIDEBAR_W = 412 // keep in sync with the LexiaChat sidebar-mode width
+const CHAT_MODE_KEY = "lexia-chat-mode"
 
 // ───────────────────────── sidebar ─────────────────────────
 function Sidebar({
@@ -207,7 +210,8 @@ export function UnifiedShell({ children }: { children: ReactNode }) {
   const router = useRouter()
   const pathname = usePathname() || "/"
   const { dark, toggleDark } = useTheme()
-  const { bar, barSeed, settings, toggleBar, openBar, openSettings, close } = useCrmChrome()
+  const { spotlight, spotlightSeed, chat, chatAsk, settings, openSpotlight, toggleSpotlight, closeSpotlight, openChat, askChat, openConversa, closeChat, openSettings, close } =
+    useCrmChrome()
   const anyModalOpen = useAnyModalOpen()
   const bottomInset = useBottomInset()
   const { tabs, activeId, hydrated, hydrate, markPendingNew, reconcile, setActive, close: closeTab } = useTabs()
@@ -217,20 +221,20 @@ export function UnifiedShell({ children }: { children: ReactNode }) {
   const [clientes, setClientes] = useState<ClienteRow[]>([])
   const [anon, setAnon] = useState(false)
   const [overdue, setOverdue] = useState<{ count: number; totalCents: number } | null>(null)
-  // LexIA bar dock placement (center overlay vs pinned-right sidebar), persisted.
-  const [barDock, setBarDock] = useState<"center" | "right">("center")
+  // LexIA chat layout (flutuante / barra lateral / tela cheia), persisted.
+  const [chatMode, setChatMode] = useState<"float" | "sidebar" | "full">("float")
   useEffect(() => {
     try {
-      const v = localStorage.getItem(BAR_DOCK_KEY)
-      if (v === "right" || v === "center") setBarDock(v)
+      const v = localStorage.getItem(CHAT_MODE_KEY)
+      if (v === "float" || v === "sidebar" || v === "full") setChatMode(v)
     } catch {
       /* ignore */
     }
   }, [])
-  const changeBarDock = useCallback((d: "center" | "right") => {
-    setBarDock(d)
+  const changeChatMode = useCallback((m: "float" | "sidebar" | "full") => {
+    setChatMode(m)
     try {
-      localStorage.setItem(BAR_DOCK_KEY, d)
+      localStorage.setItem(CHAT_MODE_KEY, m)
     } catch {
       /* ignore */
     }
@@ -250,18 +254,21 @@ export function UnifiedShell({ children }: { children: ReactNode }) {
 
   useEffect(() => { hydrate() }, [hydrate])
 
-  // ⌘K toggles the unified LexIA bar
+  const loadAreas = useAreasStore((s) => s.load)
+  useEffect(() => { if (!isLogin) void loadAreas() }, [isLogin, loadAreas])
+
+  // ⌘K toggles the Spotlight (the command palette)
   useEffect(() => {
     if (isLogin) return
     const h = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault()
-        toggleBar()
+        toggleSpotlight()
       }
     }
     window.addEventListener("keydown", h)
     return () => window.removeEventListener("keydown", h)
-  }, [isLogin, toggleBar])
+  }, [isLogin, toggleSpotlight])
 
   // proactive overdue snapshot for the bar's pulsing hint (sócio+; best-effort)
   useEffect(() => {
@@ -321,15 +328,18 @@ export function UnifiedShell({ children }: { children: ReactNode }) {
   const dataset = emptyDataset(clientes, role, me?.nome ?? "", me?.email ?? "")
   const visibleTabs = hydrated ? tabs : []
 
-  // The dock pill is hidden on routes whose AI surface lives elsewhere (the
-  // editor side panel, the full /lexia page) AND whenever any modal is open — the
-  // pill floats above modals and would otherwise cover them.
-  const routePillHidden = pathname.startsWith("/documents/editor") || pathname.startsWith("/lexia")
-  const pillHidden = routePillHidden || anyModalOpen
+  // The launcher orb is hidden on routes whose AI surface lives elsewhere (the
+  // editor side panel, the full /lexia page), whenever the chat/spotlight is open
+  // (they replace it), and whenever any modal is open (it floats above modals).
+  const routePillHidden =
+    pathname.startsWith("/documents/doc") || pathname.startsWith("/lexia")
+  const orbHidden = chat || spotlight || routePillHidden || anyModalOpen
 
-  // When the LexIA bar is pinned to the right (open), reflow the page content so
-  // it stays clickable beside the non-modal chat sidebar.
-  const reflowRight = bar && barDock === "right" ? BAR_DOCK_W : 0
+  // When the LexIA chat is in sidebar mode (open), reflow the page content so it
+  // stays clickable beside the non-modal chat sidebar.
+  const reflowRight = chat && chatMode === "sidebar" ? CHAT_SIDEBAR_W : 0
+  const greetingName = (me?.nome ?? "").split(" ")[0] || "você"
+  const dockBottom = bottomInset > 0 ? bottomInset + 16 : 24
 
   return (
     <div className="crm-scope" style={{ height: "100dvh", display: "flex", overflow: "hidden", background: "var(--bg)", color: "var(--text)", fontFamily: "var(--font-sans)", letterSpacing: "-0.01em" }}>
@@ -342,7 +352,7 @@ export function UnifiedShell({ children }: { children: ReactNode }) {
           activeId={activeNavId(pathname)}
           role={role}
           onNav={onNav}
-          onOpenBar={() => openBar()}
+          onOpenBar={() => openSpotlight()}
           onOpenSettings={openSettings}
           userName={me?.nome ?? ""}
           userEmail={me?.email ?? ""}
@@ -382,28 +392,62 @@ export function UnifiedShell({ children }: { children: ReactNode }) {
             <NotificacoesBell />
           </div>
 
-          {/* content — reflows left when the LexIA bar is pinned right */}
+          {/* content — reflows left when the LexIA chat is in sidebar mode */}
           <div style={{ flex: 1, overflow: "auto", minHeight: 0, background: "var(--bg)", paddingRight: reflowRight, transition: "padding .2s ease" }}>{children}</div>
         </main>
 
-        {/* unified LexIA bar — the single AI surface (search + actions + chat) */}
-        <LexiaBar
-          variant="dock"
-          open={bar}
-          onOpenChange={(o) => (o ? openBar() : close("bar"))}
-          seed={barSeed}
-          overdue={overdue}
-          pillHidden={pillHidden}
+        {/* LexIA · orbe lançador — abre/minimiza o chat (canto inf. direito) */}
+        {!orbHidden && (
+          <button
+            onClick={openChat}
+            aria-label="Abrir LexIA"
+            className="crm-scope"
+            style={{
+              position: "fixed", bottom: dockBottom, right: 24, zIndex: 1305,
+              width: 58, height: 58, padding: 0, border: "none", background: "transparent", cursor: "pointer", borderRadius: "50%",
+              transition: "transform .2s cubic-bezier(.34,1.3,.5,1)",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px) scale(1.06)" }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = "none" }}
+          >
+            <Orb size={58} glow />
+            {overdue && overdue.count > 0 && (
+              <span title={`${overdue.count} honorários vencidos`} style={{ position: "absolute", top: 2, right: 2, zIndex: 4, width: 14, height: 14, borderRadius: "50%", background: "var(--fin-neg,#C0492F)", border: "2.5px solid var(--bg)" }} />
+            )}
+          </button>
+        )}
+
+        {/* LexIA · chat IA (sempre montado p/ preservar a conversa; null quando fechado) */}
+        <LexiaChat
+          open={chat}
+          greetingName={greetingName}
           page={page}
           clienteId={clienteId}
           nav={nav}
           onNavigate={(href) => router.push(href)}
-          onAction={action}
-          dock={barDock}
-          onDockChange={changeBarDock}
+          mode={chatMode}
+          onModeChange={changeChatMode}
+          askText={chatAsk.text}
+          askConversaId={chatAsk.conversaId}
+          askSeq={chatAsk.seq}
           bottomInset={bottomInset}
-          onExpand={(cid) => { router.push(cid ? `/lexia?conversa=${cid}` : "/lexia"); close("bar") }}
+          onMinimize={closeChat}
         />
+
+        {/* LexIA · Spotlight (⌘K) — paleta de comando + iniciar conversa */}
+        {spotlight && (
+          <LexiaSpotlight
+            seed={spotlightSeed}
+            page={page}
+            clienteId={clienteId}
+            nav={nav}
+            onNavigate={(href) => router.push(href)}
+            onAction={action}
+            onAskAI={(prompt) => askChat(prompt)}
+            onOpenConversa={(id) => openConversa(id)}
+            onClose={closeSpotlight}
+          />
+        )}
 
         {/* global overlays */}
         {settings && (

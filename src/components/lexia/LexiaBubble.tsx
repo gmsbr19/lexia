@@ -7,40 +7,21 @@ import { useRouter } from "next/navigation"
 import { Icon } from "@/components/crm/crm-icons"
 import { AnexoChips } from "./AnexoChips"
 import { ConfirmCard } from "./ConfirmCard"
-import { DocPatchCard } from "./DocPatchCard"
 import { Markdown } from "./Markdown"
 import { ToolChip } from "./ToolChip"
-import type { ChatMsg, DocPatchSuggestion } from "./types"
+import { Orb } from "./LexiaKit"
+import type { ChatMsg } from "./types"
 
-const GOLD_GRAD = "var(--brand-gold)"
-
-function Avatar() {
+// Estado de carregamento: rótulo com shimmer dourado + três pontinhos (§6).
+function Thinking() {
   return (
-    <div
-      style={{
-        width: 28,
-        height: 28,
-        borderRadius: 8,
-        flexShrink: 0,
-        background: GOLD_GRAD,
-        color: "#020D25",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.35)",
-      }}
-    >
-      <Icon name="sparkles" size={15} />
-    </div>
-  )
-}
-
-function ThinkingDots() {
-  return (
-    <div style={{ display: "flex", gap: 4, padding: "12px 14px", borderRadius: 14, background: "var(--bg-sunken)", alignSelf: "flex-start" }}>
-      <span className="lx-dot" style={{ animationDelay: "0ms" }} />
-      <span className="lx-dot" style={{ animationDelay: "160ms" }} />
-      <span className="lx-dot" style={{ animationDelay: "320ms" }} />
+    <div style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 4 }}>
+      <span className="lx-thinking-label">Pensando…</span>
+      <span style={{ display: "inline-flex", gap: 4 }}>
+        <span className="lx-dot" style={{ animationDelay: "0ms" }} />
+        <span className="lx-dot" style={{ animationDelay: "160ms" }} />
+        <span className="lx-dot" style={{ animationDelay: "320ms" }} />
+      </span>
     </div>
   )
 }
@@ -49,12 +30,10 @@ export function LexiaBubble({
   msg,
   streaming,
   onDecide,
-  onDocAccept,
 }: {
   msg: ChatMsg
   streaming: boolean
   onDecide: (acaoId: number, decisao: "confirmar" | "recusar") => void
-  onDocAccept?: (sugestoes: DocPatchSuggestion[]) => void
 }) {
   const router = useRouter()
   if (msg.role === "user") {
@@ -86,27 +65,20 @@ export function LexiaBubble({
 
   const empty = msg.blocks.length === 0
   return (
-    <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-      <Avatar />
-      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+    <div style={{ display: "flex", gap: 11, alignItems: "flex-start" }}>
+      <Orb size={28} />
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 9, paddingTop: 2 }}>
         {empty ? (
-          <ThinkingDots />
+          <Thinking />
         ) : (
           msg.blocks.map((b, i) => {
             switch (b.type) {
               case "text":
+                // resposta da IA = texto corrido (sem balão); só o usuário tem balão.
                 return (
                   <div
                     key={i}
-                    style={{
-                      background: "var(--bg-sunken)",
-                      color: "var(--text)",
-                      padding: "10px 13px",
-                      borderRadius: 14,
-                      borderTopLeftRadius: 4,
-                      maxWidth: "100%",
-                      wordBreak: "break-word",
-                    }}
+                    style={{ fontSize: 14, lineHeight: 1.6, color: "var(--text)", letterSpacing: "-0.01em", maxWidth: "100%", wordBreak: "break-word" }}
                   >
                     <Markdown text={b.text} />
                   </div>
@@ -115,8 +87,6 @@ export function LexiaBubble({
                 return <ToolChip key={i} block={b} />
               case "confirm":
                 return <ConfirmCard key={i} block={b} onDecide={onDecide} busy={streaming} />
-              case "doc-patch":
-                return <DocPatchCard key={i} sugestoes={b.sugestoes} onAccept={onDocAccept} />
               case "navigate":
                 return (
                   <div key={i} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-subtle)", alignSelf: "flex-start" }}>

@@ -11,27 +11,47 @@ export const anexoSchema = z.object({
   dataBase64: z.string().min(1),
 })
 
+// Modo do agente, modelo e toggles que a barra de chat envia POR TURNO (a persona
+// e as instruções vivem no banco; estes são as seleções vivas do composer).
+export const lexiaAgentModeSchema = z.enum(["agente", "pergunta", "plano"])
+export const lexiaModeloSchema = z.enum(["auto", "rapido", "avancado"])
+
 export const lexiaChatSchema = z
   .object({
     conversaId: idOpt,
     mensagem: z.string().max(4000).optional().default(""),
     pagina: z.string().max(100).optional(), // current app route, for agent context
     anexos: z.array(anexoSchema).max(MAX_ANEXOS).optional(),
-    // Snapshot of the document open in the editor — lets the agent read + propose
-    // edits to it (editar_documento_aberto). Not persisted; rides only this turn.
-    documento: z
-      .object({
-        documentoId: idOpt,
-        template: z.string().max(60),
-        data: z.unknown(),
-      })
-      .optional(),
+    opus: z.boolean().optional(), // legado: equivale a modelo:'avancado' (compat)
+    modelo: lexiaModeloSchema.optional(), // seletor de modelo da barra (auto|rapido|avancado)
+    agentMode: lexiaAgentModeSchema.optional(), // modo vivo do composer
+    autoMode: z.boolean().optional(), // ligado: executa mutações sem confirmar
   })
   // Permite enviar só anexo (sem legenda), mas não uma mensagem totalmente vazia.
   .refine((b) => b.mensagem.trim().length > 0 || (b.anexos?.length ?? 0) > 0, {
     message: "Escreva uma mensagem ou anexe um arquivo",
     path: ["mensagem"],
   })
+
+// Preferências da LexIA (User.lexiaPrefs) — a UI envia o objeto completo; todos os
+// campos são opcionais. Limites defensivos no texto livre das instruções/memórias.
+export const lexiaPrefsSchema = z
+  .object({
+    persona: z.enum(["custom", "senior", "cordial", "analista"]).optional(),
+    instrucoes: z
+      .object({
+        identidade: z.string().max(2000).optional(),
+        interacao: z.string().max(2000).optional(),
+        memorias: z.array(z.string().max(400)).max(30).optional(),
+      })
+      .strict()
+      .optional(),
+    agentMode: lexiaAgentModeSchema.optional(),
+    webAccess: z.boolean().optional(),
+    autoMode: z.boolean().optional(),
+    modelo: lexiaModeloSchema.optional(),
+  })
+  .strict()
 
 export const acaoDecisaoSchema = z.object({
   decisao: z.enum(["confirmar", "recusar"]),

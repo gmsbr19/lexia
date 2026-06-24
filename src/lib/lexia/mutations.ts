@@ -105,7 +105,6 @@ function resumoBlocks(blocks: UiBlock[]): string {
     if (b.type === "confirm") return `(propôs: ${b.resumo})`
     if (b.type === "notice") return b.text
     if (b.type === "navigate") return `(abriu ${b.rota})`
-    if (b.type === "doc-patch") return `(propôs ${b.sugestoes.length} alteração(ões) no documento)`
   }
   return "(ação realizada)"
 }

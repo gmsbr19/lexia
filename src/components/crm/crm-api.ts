@@ -4,6 +4,7 @@
 // the workspace, pages and overlays use. GET endpoints return data directly;
 // mutation endpoints (runMutation) return { ok, result } → unwrapped to result.
 import { apiSend } from "@/lib/client/api"
+import type { LexiaPrefs, LexiaPrefsResolved } from "@/lib/lexia/preferencias-core"
 import type { ConsumoData, ConsumoInterno, ConsumoOrcamento, ConsumoPeriodo } from "@/lib/consumo/types"
 import type {
   AgendaDataset,
@@ -89,6 +90,10 @@ export const lexiaConversa = (id: number) => get<LexiaConversaDetail>(`/api/lexi
 export const lexiaNewConversa = (titulo?: string) => mut<{ id: number; titulo: string | null }>(`/api/lexia/conversas`, "POST", { titulo: titulo ?? null })
 export const lexiaRenameConversa = (id: number, titulo: string) => mut(`/api/lexia/conversas/${id}`, "PATCH", { titulo })
 export const lexiaDeleteConversa = (id: number) => mut(`/api/lexia/conversas/${id}`, "DELETE")
+
+// ── LexIA preferências (persona, instruções, modo, modelo, toggles) ──
+export const getLexiaPrefs = () => get<LexiaPrefsResolved>(`/api/lexia/preferencias`)
+export const setLexiaPrefs = (prefs: LexiaPrefs) => mut<LexiaPrefsResolved>(`/api/lexia/preferencias`, "PATCH", prefs)
 
 // ── settings / users / audit (admin/socio) ──
 export const getEscritorio = () => get<EscritorioConfig>(`/api/settings/escritorio`)

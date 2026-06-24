@@ -2,7 +2,7 @@
 // SERVER ONLY. O loop e o snapshot de confirmação já trabalham com
 // Anthropic.MessageParam[] de blocos, então basta montar a mensagem do usuário.
 import type Anthropic from "@anthropic-ai/sdk"
-import { ehPdf, type AnexoMime } from "@/lib/lexia/anexos/validacao"
+import { ehPdf } from "@/lib/lexia/anexos/validacao"
 
 interface AnexoComBytes {
   mimeType: string
@@ -17,9 +17,11 @@ export function anexoParaBloco(mimeType: string, base64: string): Anthropic.Cont
       source: { type: "base64", media_type: "application/pdf", data: base64 },
     }
   }
+  // Only image MIMEs reach here: PDF is handled above and .docx is intercepted +
+  // imported upstream (chat route), never sent to the model.
   return {
     type: "image",
-    source: { type: "base64", media_type: mimeType as Exclude<AnexoMime, "application/pdf">, data: base64 },
+    source: { type: "base64", media_type: mimeType as "image/png" | "image/jpeg" | "image/webp" | "image/gif", data: base64 },
   }
 }
 

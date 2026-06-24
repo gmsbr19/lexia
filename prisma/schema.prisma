@@ -33,6 +33,10 @@ model User {
   // navegador:bool, emailMinPrioridade?:'normal'|'alta'|'critica' }. null = app tudo
   // ligado, e-mail desligado (opt-in). Ver src/lib/notificacoes/preferencias.ts.
   notifPrefs   String?
+  // Preferências da LexIA (JSON): { persona, instrucoes:{identidade,interacao,
+  // memorias[]}, agentMode:'agente'|'pergunta'|'plano', webAccess, autoMode,
+  // modelo:'auto'|'rapido'|'avancado' }. null = padrões. Ver src/lib/lexia/preferencias.ts.
+  lexiaPrefs   String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   tarefas      Tarefa[] // tasks delegated to this user

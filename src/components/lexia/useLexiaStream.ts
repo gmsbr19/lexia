@@ -9,16 +9,26 @@ import type { SseEvent } from "@/lib/lexia/types"
 import type { LexiaMensagemRow } from "@/lib/lexia/types"
 import { streamLexia, LexiaStreamError } from "./sse-client"
 import type { ClientAnexo } from "./anexos"
-import type { ChatBlock, ChatMsg, DocumentoContexto } from "./types"
+import type { LexiaAgentMode, LexiaModelo } from "@/lib/lexia/preferencias-core"
+import type { ChatBlock, ChatMsg } from "./types"
 
 let seq = 0
 const nextId = () => `m${++seq}`
+
+/** Seleções vivas do composer enviadas por turno (a persona/instruções vêm do banco). */
+export interface SendOpts {
+  /** legado — equivale a modelo:'avancado' */
+  opus?: boolean
+  modelo?: LexiaModelo
+  agentMode?: LexiaAgentMode
+  autoMode?: boolean
+}
 
 export interface UseLexia {
   messages: ChatMsg[]
   streaming: boolean
   conversaId: number | null
-  send: (text: string, pagina?: string, anexos?: ClientAnexo[], documento?: DocumentoContexto) => void
+  send: (text: string, pagina?: string, anexos?: ClientAnexo[], opts?: SendOpts) => void
   decide: (acaoId: number, decisao: "confirmar" | "recusar") => void
   stop: () => void
   reset: () => void
@@ -121,12 +131,6 @@ export function useLexiaStream(initialConversaId: number | null = null, opts: Us
             blocks.push({ type: "link", rota: ev.rota, label: ev.label })
             flush()
             break
-          case "doc-patch":
-            // Proposed edits to the open document — render the "Aceitar" card; do
-            // NOT auto-apply (the user's accept gesture drives the live preview).
-            blocks.push({ type: "doc-patch", sugestoes: ev.sugestoes })
-            flush()
-            break
           case "confirm":
             blocks.push({
               type: "confirm",
@@ -171,7 +175,7 @@ export function useLexiaStream(initialConversaId: number | null = null, opts: Us
   )
 
   const send = useCallback(
-    (text: string, pagina?: string, anexos?: ClientAnexo[], documento?: DocumentoContexto) => {
+    (text: string, pagina?: string, anexos?: ClientAnexo[], opts?: SendOpts) => {
       const t = text.trim()
       if ((!t && !anexos?.length) || abortRef.current) return
       lastPromptRef.current = t || "documento anexado"
@@ -184,7 +188,16 @@ export function useLexiaStream(initialConversaId: number | null = null, opts: Us
       const payloadAnexos = anexos?.map((a) => ({ nome: a.nome, mimeType: a.mimeType, dataBase64: a.dataBase64 }))
       void runStream(
         "/api/lexia/chat",
-        { conversaId: convRef.current, mensagem: t, pagina, anexos: payloadAnexos, documento },
+        {
+          conversaId: convRef.current,
+          mensagem: t,
+          pagina,
+          anexos: payloadAnexos,
+          opus: opts?.opus || undefined,
+          modelo: opts?.modelo,
+          agentMode: opts?.agentMode,
+          autoMode: opts?.autoMode,
+        },
         assistantId,
       )
     },

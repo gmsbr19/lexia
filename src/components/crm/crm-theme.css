@@ -345,6 +345,7 @@
   .crm-scope .crm-pop-in, .crm-scope .crm-lexia-in, .crm-orb-ring,
   .crm-orb-float, .crm-scope .crm-dot, .crm-scope .crm-toast,
   .crm-scope .lex-orb-grad, .crm-scope .lex-pulse-ring, .crm-scope .lex-rightdock-in,
-  .crm-scope .lex-blob-a, .crm-scope .lex-blob-b,
+  .crm-scope .lex-back, .crm-scope .lex-blob-a, .crm-scope .lex-blob-b,
+  .crm-scope .lex-aura, .crm-scope .lx-aura,
   .crm-scope .lex-aura-edge::before, .crm-scope .lex-icon-glow { animation: none !important; }
 }

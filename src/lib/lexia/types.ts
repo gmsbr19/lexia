@@ -11,9 +11,6 @@ export type UiBlock =
   | { type: "navigate"; rota: string }
   // a clickable deep-link to an entity the agent just created/changed
   | { type: "link"; rota: string; label: string }
-  // proposed edits to the OPEN document — rendered as "Aceitar" cards in the
-  // editor's embedded LexIA (applied to the live preview, no DB round-trip)
-  | { type: "doc-patch"; sugestoes: { field: string; label: string; value: string }[] }
   | {
       type: "confirm"
       acaoId: number
@@ -39,7 +36,6 @@ export type SseEvent =
   | { type: "tool"; id: string; name: string; label: string; status: "run" | "ok" | "erro" }
   | { type: "navigate"; rota: string }
   | { type: "link"; rota: string; label: string }
-  | { type: "doc-patch"; sugestoes: { field: string; label: string; value: string }[] }
   | { type: "confirm"; acaoId: number; toolName: string; resumo: string; payload: unknown; detalhes?: ConfirmDetalhe[] }
   | { type: "done"; mensagemId?: number; model: string; inputTokens: number; outputTokens: number; pendente?: number }
   | { type: "error"; mensagem: string }

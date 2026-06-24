@@ -25,6 +25,18 @@ export interface AgentCtx {
   page?: string
   /** Aborts when the HTTP client disconnects. */
   signal: AbortSignal
+  /**
+   * Modo do agente (preferência do usuário). "pergunta" remove as ferramentas de
+   * mutação; "plano" pede um plano antes de agir (diretriz no contexto). Default
+   * "agente". Lido pelo loop para escolher as ferramentas e o gate de confirmação.
+   */
+  mode?: "agente" | "pergunta" | "plano"
+  /**
+   * Modo automático: quando true, a mutação proposta é EXECUTADA na hora (sem o
+   * cartão de confirmação), reusando role/rate-limit/auditoria. Default false
+   * (pede confirmação) — preserva o comportamento atual.
+   */
+  autoMode?: boolean
 }
 
 export interface AgentTool {
@@ -34,11 +46,10 @@ export interface AgentTool {
   kind: ToolKind
   /**
    * client tools only: which SSE event the loop emits from this tool's output.
-   * "navigate" (default) → the run() returns a route string and the browser
-   * router.pushes it. "doc-patch" → the run() returns { sugestoes } and the
-   * editor renders "Aceitar" cards over the live document. Omit ⇒ "navigate".
+   * "navigate" → the run() returns a route string and the browser router.pushes
+   * it. Omit ⇒ "navigate".
    */
-  clientEvent?: "navigate" | "doc-patch"
+  clientEvent?: "navigate"
   /** Roles allowed to invoke this tool ('admin' always passes). Omit = any user. */
   roles?: Role[]
   /** Mutation tools: PT-BR one-line summary for the confirmation card (sync fallback). */
@@ -62,7 +73,7 @@ export function defineTool<S extends z.ZodType>(def: {
   description: string
   schema: S
   kind: ToolKind
-  clientEvent?: "navigate" | "doc-patch"
+  clientEvent?: "navigate"
   roles?: Role[]
   resumo?: (input: z.infer<S>) => string
   montarConfirmacao?: (ctx: AgentCtx, input: z.infer<S>) => Promise<Confirmacao>

@@ -5,7 +5,7 @@ import { TOOLS, TOOLS_BY_NAME, toApiTools } from "@/lib/lexia/agent/registry"
 import { encodeSse } from "@/lib/lexia/agent/sse"
 import { addDiasISO } from "@/lib/lexia/agent/datas"
 
-describe("router — model selection (equilibrado: de-stickified, narrow Opus)", () => {
+describe("router — model selection (Sonnet default, Opus opt-in only)", () => {
   it("routes greetings to Haiku without tools", () => {
     const d = decidirModelo("Oi, tudo bem?")
     expect(d.model).toBe("claude-haiku-4-5")
@@ -13,8 +13,12 @@ describe("router — model selection (equilibrado: de-stickified, narrow Opus)",
     expect(d.effort).toBeUndefined()
   })
 
-  it("routes genuine drafting to Opus at medium effort with a bounded output cap", () => {
-    const d = decidirModelo("Pode redigir uma minuta de petição inicial?")
+  it("routes drafting to Sonnet by default — there is no auto-Opus", () => {
+    expect(decidirModelo("Pode redigir uma minuta de petição inicial?").model).toBe("claude-sonnet-4-6")
+  })
+
+  it("uses Opus ONLY when the user opts in (forcarOpus): medium effort + bounded cap", () => {
+    const d = decidirModelo("Pode redigir uma minuta de petição inicial?", null, { forcarOpus: true })
     expect(d.model).toBe("claude-opus-4-8")
     expect(d.effort).toBe("medium")
     expect(d.maxTokens).toBe(8000)
@@ -42,14 +46,23 @@ describe("router — model selection (equilibrado: de-stickified, narrow Opus)",
     expect(decidirModelo("", null).model).toBe("claude-sonnet-4-6")
   })
 
-  it("only very long messages (>1200 chars) escalate to Opus", () => {
+  it("never auto-escalates on length — even very long messages stay on Sonnet", () => {
     expect(decidirModelo("a".repeat(700)).model).toBe("claude-sonnet-4-6")
-    expect(decidirModelo("a".repeat(1300)).model).toBe("claude-opus-4-8")
+    expect(decidirModelo("a".repeat(1300)).model).toBe("claude-sonnet-4-6")
   })
 
-  it("attachments use Sonnet (vision) unless the ask is heavy drafting", () => {
+  it("attachments always use Sonnet (vision + tools); forcarOpus overrides", () => {
     expect(decidirModelo("o que diz esse documento?", null, { temAnexos: true }).model).toBe("claude-sonnet-4-6")
-    expect(decidirModelo("redija um parecer a partir deste anexo", null, { temAnexos: true }).model).toBe("claude-opus-4-8")
+    expect(decidirModelo("redija um parecer a partir deste anexo", null, { temAnexos: true }).model).toBe("claude-sonnet-4-6")
+    expect(decidirModelo("redija…", null, { temAnexos: true, forcarOpus: true }).model).toBe("claude-opus-4-8")
+  })
+
+  it("model selector: 'avancado' → Opus; 'rapido'/'auto' stay on the default routing", () => {
+    expect(decidirModelo("analise os recebíveis", null, { modelo: "avancado" }).model).toBe("claude-opus-4-8")
+    expect(decidirModelo("analise os recebíveis", null, { modelo: "rapido" }).model).toBe("claude-sonnet-4-6")
+    expect(decidirModelo("analise os recebíveis", null, { modelo: "auto" }).model).toBe("claude-sonnet-4-6")
+    // greeting still goes to Haiku regardless of a non-Opus selector
+    expect(decidirModelo("oi", null, { modelo: "rapido" }).model).toBe("claude-haiku-4-5")
   })
 })
 
@@ -110,6 +123,23 @@ describe("registry — deterministic, valid tool schemas", () => {
     // 'acerto_socios'/'excluir_lancamento' continuam só para sócio (não financeiro)
     expect(nomes("financeiro").has("acerto_socios")).toBe(false)
     expect(nomes("socio").has("acerto_socios")).toBe(true)
+  })
+
+  it("modo 'pergunta' (somente leitura) remove TODAS as ferramentas de mutação", () => {
+    const all = toApiTools("admin")
+    const pergunta = toApiTools("admin", "pergunta")
+    const mutNames = new Set(TOOLS.filter((t) => t.kind === "mutation").map((t) => t.name))
+    expect(mutNames.size).toBeGreaterThan(0)
+    // nenhuma mutação no modo pergunta
+    for (const t of pergunta) expect(mutNames.has(t.name), t.name).toBe(false)
+    // as ferramentas de leitura/cliente continuam
+    const perguntaNames = new Set(pergunta.map((t) => t.name))
+    expect(perguntaNames.has("buscar")).toBe(true)
+    expect(perguntaNames.has("navegar")).toBe(true)
+    expect(perguntaNames.has("criar_tarefa")).toBe(false)
+    // 'agente'/undefined mantém todas
+    expect(toApiTools("admin", "agente").length).toBe(all.length)
+    expect(pergunta.length).toBe(all.length - mutNames.size)
   })
 
   it("expõe as tools de projetos e gateia a escrita (sócio/advogado), mantendo a leitura aberta", () => {

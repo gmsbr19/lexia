@@ -48,11 +48,16 @@ function podeUsar(role: string, tool: AgentTool): boolean {
  * (e.g. as financeiras para a "Equipe") são removidas para que o modelo nem as
  * enxergue — o assertRole no loop permanece como defesa em profundidade. A ordem
  * determinística por papel mantém o prefixo cacheável (cache estável por papel).
+ *
+ * No modo "pergunta" (somente leitura) as ferramentas de MUTAÇÃO são removidas:
+ * o modelo só enxerga consultas/navegação e não tem como propor alterações.
  */
-export function toApiTools(role: string): Anthropic.Tool[] {
-  return TOOLS.filter((t) => podeUsar(role, t)).map((t) => ({
-    name: t.name,
-    description: t.description,
-    input_schema: z.toJSONSchema(t.schema) as unknown as Anthropic.Tool.InputSchema,
-  }))
+export function toApiTools(role: string, mode?: "agente" | "pergunta" | "plano"): Anthropic.Tool[] {
+  return TOOLS.filter((t) => podeUsar(role, t))
+    .filter((t) => (mode === "pergunta" ? t.kind !== "mutation" : true))
+    .map((t) => ({
+      name: t.name,
+      description: t.description,
+      input_schema: z.toJSONSchema(t.schema) as unknown as Anthropic.Tool.InputSchema,
+    }))
 }
