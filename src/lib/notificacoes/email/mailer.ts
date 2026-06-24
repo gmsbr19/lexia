@@ -4,6 +4,7 @@
 import { env } from "@/lib/env"
 import { log } from "@/lib/log"
 import { getGraphToken } from "@/lib/graph/token"
+import { currentRequestOrigin } from "@/lib/request-origin"
 
 export interface EmailMsg {
   to: string
@@ -126,9 +127,11 @@ export function mailerStatus(): { backend: MailBackend; ativo: boolean } {
   return { backend: cachedKind, ativo: cachedKind !== "noop" }
 }
 
-/** Base absoluta p/ os deep-links do e-mail (APP_BASE_URL ou, em fallback, AUTH_URL). */
-export function baseUrl(): string | null {
-  return env.APP_BASE_URL ?? process.env.AUTH_URL ?? null
+/** Base absoluta p/ os deep-links do e-mail. Cadeia de prioridade:
+ *  APP_BASE_URL (produção explícita) → origin param (ngrok/VPS via request)
+ *  → AUTH_URL (NextAuth) → null (sem deep-link no e-mail). */
+export function baseUrl(origin?: string | null): string | null {
+  return env.APP_BASE_URL ?? origin ?? currentRequestOrigin() ?? process.env.AUTH_URL ?? null
 }
 
 /** O canal de e-mail está utilizável? Basta o SMTP — sem `baseUrl` o e-mail é

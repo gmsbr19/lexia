@@ -6,6 +6,7 @@ import { createUser } from "@/lib/users/mutations"
 import { emitirConvite } from "@/lib/users/convite"
 import { userCreateSchema } from "@/lib/users/schemas"
 import { parseBody } from "@/lib/validation"
+import { resolveRequestOrigin } from "@/lib/request-origin"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -22,7 +23,7 @@ export async function GET() {
  *  Retorna o link p/ o admin copiar (útil quando não há SMTP) + se o e-mail saiu. */
 export async function POST(req: Request) {
   const body = await readJson(req)
-  const origem = new URL(req.url).origin
+  const origem = resolveRequestOrigin(req)
   return runMutation(
     async () => {
       const user = await createUser(parseBody(userCreateSchema, body))

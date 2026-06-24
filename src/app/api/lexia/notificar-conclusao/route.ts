@@ -1,4 +1,4 @@
-// POST /api/lexia/notificar-conclusao — o cliente chama isto quando um turno da
+﻿// POST /api/lexia/notificar-conclusao — o cliente chama isto quando um turno da
 // LexIA termina COM A BARRA FECHADA (conclusão em segundo plano), para avisar o
 // próprio usuário via sino/toast. Body { conversaId?, resumo? }. Caminho separado
 // do /chat porque só o cliente sabe se o usuário estava ou não olhando o resultado.
@@ -10,6 +10,7 @@ import { readJson } from "@/lib/finance/api"
 import { RATE_LIMIT_MESSAGE, rateLimit } from "@/lib/rate-limit"
 import { notificarLexiaConcluiu } from "@/lib/notificacoes/triggers"
 import { parseBody } from "@/lib/validation"
+import { withRequestOrigin, resolveRequestOrigin } from "@/lib/request-origin"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -40,10 +41,12 @@ export async function POST(req: Request) {
     throw e
   }
 
-  await notificarLexiaConcluiu({
-    userEmail: user.email,
-    conversaId: body.conversaId ?? null,
-    resumo: body.resumo ?? null,
-  })
+  await withRequestOrigin(resolveRequestOrigin(req), () =>
+    notificarLexiaConcluiu({
+      userEmail: user.email,
+      conversaId: body.conversaId ?? null,
+      resumo: body.resumo ?? null,
+    }),
+  )
   return NextResponse.json({ ok: true })
 }

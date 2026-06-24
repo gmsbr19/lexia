@@ -47,7 +47,7 @@ export async function criarConvite(userId: number, dias: number = VALIDADE_DIAS_
 /** Monta o link absoluto da página de ativação. `origem` é o fallback (ex.: a
  *  origem do request) quando APP_BASE_URL/AUTH_URL não estão configurados. */
 export function linkConvite(rawToken: string, origem?: string | null): string | null {
-  const base = baseUrl() ?? origem ?? null
+  const base = baseUrl(origem)
   if (!base) return null
   return `${base.replace(/\/$/, "")}/definir-senha/${rawToken}`
 }
