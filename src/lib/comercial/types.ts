@@ -170,6 +170,7 @@ export interface CmDatasetCampaign {
   inicio: string | null // ISO date
   fim: string | null // ISO date
   extId: string | null
+  area: string | null
 }
 export interface CmDatasetLead {
   id: number
@@ -185,6 +186,7 @@ export interface CmDatasetLead {
   cliente: string | null
   caso: string | null
   motivoPerda: string | null
+  area: string | null
 }
 export interface CmDatasetGasto {
   id: number

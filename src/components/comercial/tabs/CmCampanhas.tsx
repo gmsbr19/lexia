@@ -6,6 +6,7 @@ import { Icon } from "../cm-icons"
 import { CmCardTitle, CmEmpty, CmFrame, CmNum, CmSegmented, CmStatusChip, CmTh } from "../cm-kit"
 import { cmCampaignStats, cmCompact, cmInt, cmRoas, type CampaignStat, type CmRef, type CmScope, type Periodo } from "../cm-meta"
 import type { CampanhaStatus, CmDataset, CmDatasetCampaign, Plataforma } from "@/lib/comercial/types"
+import { toAreaOptions, useAreasStore } from "@/lib/areas/store"
 
 function CampRow({ c, verFin, onGasto, onLeads, onEdit }: { c: CampaignStat; verFin: boolean; onGasto: (c: CmDatasetCampaign) => void; onLeads: (c: CmDatasetCampaign) => void; onEdit: (c: CmDatasetCampaign) => void }) {
   const [menu, setMenu] = useState(false)
@@ -55,10 +56,13 @@ function CampRow({ c, verFin, onGasto, onLeads, onEdit }: { c: CampaignStat; ver
 }
 
 export function CmCampanhas({ dataset, ref0, period, scope, verFin, onNew, onGasto, onEdit, onLeads, onImport }: { dataset: CmDataset; ref0: CmRef; period: Periodo; scope: CmScope; verFin: boolean; onNew: () => void; onGasto: (c: CmDatasetCampaign) => void; onEdit: (c: CmDatasetCampaign) => void; onLeads: (c: CmDatasetCampaign) => void; onImport: () => void }) {
+  const storedAreas = useAreasStore((s) => s.areas)
+  const areaOpts = useMemo(() => toAreaOptions(storedAreas), [storedAreas])
   const [fStatus, setFStatus] = useState("todas")
   const [fPlat, setFPlat] = useState("todas")
+  const [fArea, setFArea] = useState("")
   const stats = useMemo(() => cmCampaignStats(dataset, ref0, period), [dataset, ref0, period])
-  const rows = stats.filter((c) => (fStatus === "todas" || c.status === (fStatus as CampanhaStatus)) && (fPlat === "todas" || c.plataforma === (fPlat as Plataforma)))
+  const rows = stats.filter((c) => (fStatus === "todas" || c.status === (fStatus as CampanhaStatus)) && (fPlat === "todas" || c.plataforma === (fPlat as Plataforma)) && (!fArea || c.area === fArea))
   const tot = rows.reduce((a, c) => ({ inv: a.inv + c.investimento, leads: a.leads + c.leads, conv: a.conv + c.conversoes, val: a.val + c.valorContratado }), { inv: 0, leads: 0, conv: 0, val: 0 })
   const totRoas = tot.inv ? tot.val / tot.inv : null
 
@@ -78,6 +82,12 @@ export function CmCampanhas({ dataset, ref0, period, scope, verFin, onNew, onGas
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <CmSegmented size="sm" value={fStatus} onChange={setFStatus} options={[{ value: "todas", label: "Todas" }, { value: "ativa", label: "Ativas" }, { value: "pausada", label: "Pausadas" }, { value: "encerrada", label: "Encerradas" }]} />
           <CmSegmented size="sm" value={fPlat} onChange={setFPlat} options={[{ value: "todas", label: "Plataformas" }, { value: "google_ads", label: "Google" }, { value: "meta_ads", label: "Meta" }]} />
+          {areaOpts.length > 0 && (
+            <select value={fArea} onChange={(e) => setFArea(e.target.value)} style={{ height: 28, fontSize: 12, padding: "0 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", cursor: "pointer" }}>
+              <option value="">Todas as áreas</option>
+              {areaOpts.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
+            </select>
+          )}
         </div>
       </CmFrame>
 

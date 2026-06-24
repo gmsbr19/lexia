@@ -23,6 +23,7 @@ import {
   type TrendBucket,
 } from "../cm-meta"
 import type { CmDataset } from "@/lib/comercial/types"
+import { resolveAreaLabel, useAreasStore } from "@/lib/areas/store"
 
 function TrendChart({ data }: { data: TrendBucket[] }) {
   const W = 720, H = 210, padL = 10, padR = 10, padT = 16, padB = 30
@@ -123,11 +124,21 @@ function TopCampanhas({ stats, onView }: { stats: CampaignStat[]; onView: () => 
 }
 
 export function CmVisao({ dataset, ref0, period, scope, onNew, onLead, onGoCampanhas }: { dataset: CmDataset; ref0: CmRef; period: Periodo; scope: CmScope; onNew: () => void; onLead: () => void; onGoCampanhas: () => void }) {
+  const storedAreas = useAreasStore((s) => s.areas)
   const k = useMemo(() => cmKpis(dataset.leads, dataset.gastos, ref0, period), [dataset, ref0, period])
   const prev = useMemo(() => cmKpis(dataset.leads, dataset.gastos, cmShiftRef(ref0, period, -1), period), [dataset, ref0, period])
   const trend = useMemo(() => cmTrend(dataset.leads, ref0, period), [dataset.leads, ref0, period])
   const channels = useMemo(() => cmChannels(dataset, ref0, period), [dataset, ref0, period])
   const stats = useMemo(() => cmCampaignStats(dataset, ref0, period), [dataset, ref0, period])
+  const byArea = useMemo(() => {
+    const map = new Map<string, { campanhas: number; leads: number; conversoes: number; valorContratado: number; investimento: number }>()
+    for (const c of stats) {
+      const key = c.area ?? ""
+      const row = map.get(key) ?? { campanhas: 0, leads: 0, conversoes: 0, valorContratado: 0, investimento: 0 }
+      map.set(key, { campanhas: row.campanhas + 1, leads: row.leads + c.leads, conversoes: row.conversoes + c.conversoes, valorContratado: row.valorContratado + c.valorContratado, investimento: row.investimento + c.investimento })
+    }
+    return [...map.entries()].map(([area, d]) => ({ area, ...d })).sort((a, b) => b.leads - a.leads)
+  }, [stats])
 
   const noLeads = k.leads === 0
   const noSpend = k.investimento === 0
@@ -200,6 +211,30 @@ export function CmVisao({ dataset, ref0, period, scope, onNew, onLead, onGoCampa
                 <div style={{ margin: "0 -10px" }}><TopCampanhas stats={stats} onView={onGoCampanhas} /></div>
               </div>
             </div>
+
+            {storedAreas.length > 0 && byArea.some((r) => r.area) && (
+              <div className="card" style={{ padding: "18px 22px", marginTop: 20 }}>
+                <CmCardTitle title="Por área do direito" sub="Desempenho de campanhas por área" />
+                <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 12 }}>
+                  <thead><tr><CmTh>Área</CmTh><CmTh align="right">Campanhas</CmTh><CmTh align="right">Leads</CmTh><CmTh align="right">Conv.</CmTh><CmTh align="right">Valor</CmTh><CmTh align="right">ROAS</CmTh></tr></thead>
+                  <tbody>
+                    {byArea.filter((r) => r.area).map((r) => {
+                      const roas = r.investimento ? r.valorContratado / r.investimento : null
+                      return (
+                        <tr key={r.area} style={{ borderTop: "1px solid var(--border)" }}>
+                          <td style={{ padding: "10px 14px" }}><span style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{resolveAreaLabel(storedAreas, r.area) || r.area}</span></td>
+                          <td style={{ padding: "10px 14px", textAlign: "right" }}><CmNum size={12}>{cmInt(r.campanhas)}</CmNum></td>
+                          <td style={{ padding: "10px 14px", textAlign: "right" }}><CmNum size={12}>{cmInt(r.leads)}</CmNum></td>
+                          <td style={{ padding: "10px 14px", textAlign: "right" }}><CmNum size={12}>{cmInt(r.conversoes)}</CmNum></td>
+                          <td style={{ padding: "10px 14px", textAlign: "right" }}><CmNum size={12} color="var(--cm-pos,#2E9E5B)">{r.valorContratado ? cmCompact(r.valorContratado) : "—"}</CmNum></td>
+                          <td style={{ padding: "10px 14px", textAlign: "right" }}><CmNum size={12} color={roas == null ? "var(--text-subtle)" : roas >= 1 ? "var(--cm-pos,#2E9E5B)" : "var(--cm-neg,#C0492F)"}>{cmRoas(roas)}</CmNum></td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </>
         )}
       </CmFrame>

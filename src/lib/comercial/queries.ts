@@ -387,7 +387,7 @@ export async function getComercialDataset(): Promise<CmDataset> {
   const [campanhas, leads, gastos, contas, clientes, casos] = await Promise.all([
     prisma.campanha.findMany({
       orderBy: [{ ativo: "desc" }, { nome: "asc" }],
-      select: { id: true, plataforma: true, nome: true, objetivo: true, status: true, dataInicio: true, dataFim: true, externalId: true },
+      select: { id: true, plataforma: true, nome: true, objetivo: true, status: true, dataInicio: true, dataFim: true, externalId: true, area: true },
     }),
     prisma.lead.findMany({
       orderBy: { dataEntrada: "desc" },
@@ -402,6 +402,7 @@ export async function getComercialDataset(): Promise<CmDataset> {
         dataEntrada: true,
         dataConversao: true,
         motivoPerda: true,
+        area: true,
         cliente: { select: { nome: true } },
         caso: { select: { titulo: true } },
         honorario: { select: { valorCents: true } },
@@ -427,6 +428,7 @@ export async function getComercialDataset(): Promise<CmDataset> {
       inicio: isoDate(c.dataInicio),
       fim: isoDate(c.dataFim),
       extId: c.externalId,
+      area: c.area,
     })),
     leads: leads.map((l): CmDatasetLead => ({
       id: l.id,
@@ -442,6 +444,7 @@ export async function getComercialDataset(): Promise<CmDataset> {
       cliente: l.cliente?.nome ?? null,
       caso: l.caso?.titulo ?? null,
       motivoPerda: l.motivoPerda,
+      area: l.area,
     })),
     gastos: gastos.map((g): CmDatasetGasto => ({
       id: g.id,

@@ -3,7 +3,7 @@
 // LexIA · Comercial — modals: nova/editar campanha, registrar gasto, novo/editar
 // lead, converter, perdido, importar. Each collects form state and calls an async
 // onSubmit (which performs the API call in ComercialApp).
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { apiSend, newRequestId } from "@/lib/client/api"
 import { formatBRL } from "@/lib/finance/money"
 import { Icon } from "./cm-icons"
@@ -22,6 +22,7 @@ import {
   cmToday,
 } from "./cm-meta"
 import type { CampanhaStatus, CmContaOption, CmDatasetCampaign, CmDatasetLead, LeadEtapa, LeadOrigem, Plataforma } from "@/lib/comercial/types"
+import { toAreaOptions, useAreasStore } from "@/lib/areas/store"
 
 const centsInput = (c: number | null | undefined) => (c ? (c / 100).toFixed(2).replace(".", ",") : "")
 function useSubmit(onClose: () => void) {
@@ -46,9 +47,11 @@ function ErrLine({ err }: { err: string | null }) {
 }
 
 // ── Nova / Editar campanha ───────────────────────────────────────────────────
-export interface CampanhaPayload { id?: number; plataforma: Plataforma; nome: string; objetivo: string; status: CampanhaStatus; inicio: string; fim: string; extId: string }
+export interface CampanhaPayload { id?: number; plataforma: Plataforma; nome: string; objetivo: string; status: CampanhaStatus; inicio: string; fim: string; extId: string; area: string | null }
 export function CmCampanhaModal({ onClose, onSubmit, edit }: { onClose: () => void; onSubmit: (p: CampanhaPayload) => Promise<void>; edit?: CmDatasetCampaign | null }) {
   const isEdit = !!edit
+  const storedAreas = useAreasStore((s) => s.areas)
+  const areaOpts = useMemo(() => toAreaOptions(storedAreas), [storedAreas])
   const [plataforma, setPlataforma] = useState<Plataforma>(edit?.plataforma ?? "google_ads")
   const [nome, setNome] = useState(edit?.nome ?? "")
   const [objetivo, setObjetivo] = useState(edit?.objetivo ?? OBJETIVOS[0])
@@ -56,6 +59,7 @@ export function CmCampanhaModal({ onClose, onSubmit, edit }: { onClose: () => vo
   const [inicio, setInicio] = useState(edit?.inicio ?? cmToday())
   const [fim, setFim] = useState(edit?.fim ?? "")
   const [extId, setExtId] = useState(edit?.extId ?? "")
+  const [area, setArea] = useState<string>(edit?.area ?? "")
   const { busy, err, run } = useSubmit(onClose)
   const valid = !!nome.trim()
   const half = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 } as const
@@ -64,7 +68,7 @@ export function CmCampanhaModal({ onClose, onSubmit, edit }: { onClose: () => vo
     <CmModal width={560} title={isEdit ? "Editar campanha" : "Nova campanha"} sub={isEdit ? "Atualize os dados da campanha." : "Cadastre uma campanha de Google Ads ou Meta Ads."} onClose={onClose}
       footer={<>
         <button className="btn btn-ghost" onClick={onClose} style={{ height: 36 }}>Cancelar</button>
-        <button className="btn btn-primary" disabled={!valid || busy} onClick={() => run(() => onSubmit({ id: edit?.id, plataforma, nome: nome.trim(), objetivo, status, inicio, fim, extId: extId.trim() }))} style={{ height: 36, opacity: valid && !busy ? 1 : 0.5 }}><Icon name="check" size={14} />{isEdit ? "Salvar" : "Criar campanha"}</button>
+        <button className="btn btn-primary" disabled={!valid || busy} onClick={() => run(() => onSubmit({ id: edit?.id, plataforma, nome: nome.trim(), objetivo, status, inicio, fim, extId: extId.trim(), area: area || null }))} style={{ height: 36, opacity: valid && !busy ? 1 : 0.5 }}><Icon name="check" size={14} />{isEdit ? "Salvar" : "Criar campanha"}</button>
       </>}>
       <div style={{ display: "flex", flexDirection: "column", gap: 15 }}>
         <ErrLine err={err} />
@@ -90,6 +94,11 @@ export function CmCampanhaModal({ onClose, onSubmit, edit }: { onClose: () => vo
           <CmField label="Término" hint="opcional"><CmInput type="date" value={fim} onChange={(e) => setFim(e.target.value)} /></CmField>
         </div>
         <CmField label="ID externo" hint="opcional"><CmInput value={extId} onChange={(e) => setExtId(e.target.value)} placeholder="Ex.: gads-8841 / meta-2207" style={{ fontFamily: "var(--font-mono)" }} /></CmField>
+        {areaOpts.length > 0 && (
+          <CmField label="Área" hint="opcional">
+            <CmSelect value={area} onChange={(e) => setArea(e.target.value)} options={[{ value: "", label: "— Nenhuma —" }, ...areaOpts.map((a) => ({ value: a.id, label: a.label }))]} />
+          </CmField>
+        )}
       </div>
     </CmModal>
   )
@@ -135,9 +144,11 @@ export function CmGastoModal({ onClose, onSubmit, campaigns, contas, campanha }:
 }
 
 // ── Novo / Editar lead ───────────────────────────────────────────────────────
-export interface LeadPayload { id?: number; nome: string; contato: string; origem: LeadOrigem; campanhaId: number | null; etapa: LeadEtapa; valorEstimadoCents: number; dataEntrada: string }
+export interface LeadPayload { id?: number; nome: string; contato: string; origem: LeadOrigem; campanhaId: number | null; etapa: LeadEtapa; valorEstimadoCents: number; dataEntrada: string; area: string | null }
 export function CmLeadModal({ onClose, onSubmit, campaigns, edit }: { onClose: () => void; onSubmit: (p: LeadPayload) => Promise<void>; campaigns: CmDatasetCampaign[]; edit?: CmDatasetLead | null }) {
   const isEdit = !!edit
+  const storedAreas = useAreasStore((s) => s.areas)
+  const areaOpts = useMemo(() => toAreaOptions(storedAreas), [storedAreas])
   const [nome, setNome] = useState(edit?.nome ?? "")
   const [contato, setContato] = useState(edit?.contato ?? "")
   const [origem, setOrigem] = useState<LeadOrigem>(edit?.origem ?? "google_ads")
@@ -145,6 +156,7 @@ export function CmLeadModal({ onClose, onSubmit, campaigns, edit }: { onClose: (
   const [etapa, setEtapa] = useState<LeadEtapa>(edit?.etapa ?? "novo")
   const [valor, setValor] = useState(centsInput(edit?.valorEstimadoCents))
   const [data, setData] = useState(edit?.dataEntrada ?? cmToday())
+  const [area, setArea] = useState<string>(edit?.area ?? "")
   const { busy, err, run } = useSubmit(onClose)
 
   const isPaid = origem === "google_ads" || origem === "meta_ads"
@@ -152,12 +164,17 @@ export function CmLeadModal({ onClose, onSubmit, campaigns, edit }: { onClose: (
   const valid = !!nome.trim()
   const half = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 } as const
   const setOrig = (o: LeadOrigem) => { setOrigem(o); if (o !== "google_ads" && o !== "meta_ads") setCampId("") }
+  const setCamp = (id: string) => {
+    setCampId(id)
+    const camp = id ? campaigns.find((c) => String(c.id) === id) : null
+    if (camp?.area && !edit?.area) setArea(camp.area)
+  }
 
   return (
     <CmModal width={560} title={isEdit ? "Editar lead" : "Novo lead"} sub={isEdit ? "Atualize os dados do lead." : "Cadastre um lead manualmente no funil."} onClose={onClose}
       footer={<>
         <button className="btn btn-ghost" onClick={onClose} style={{ height: 36 }}>Cancelar</button>
-        <button className="btn btn-primary" disabled={!valid || busy} onClick={() => run(() => onSubmit({ id: edit?.id, nome: nome.trim(), contato: contato.trim(), origem, campanhaId: isPaid && campId ? Number(campId) : null, etapa, valorEstimadoCents: cmParseCents(valor), dataEntrada: data }))} style={{ height: 36, opacity: valid && !busy ? 1 : 0.5 }}><Icon name="check" size={14} />{isEdit ? "Salvar" : "Criar lead"}</button>
+        <button className="btn btn-primary" disabled={!valid || busy} onClick={() => run(() => onSubmit({ id: edit?.id, nome: nome.trim(), contato: contato.trim(), origem, campanhaId: isPaid && campId ? Number(campId) : null, etapa, valorEstimadoCents: cmParseCents(valor), dataEntrada: data, area: area || null }))} style={{ height: 36, opacity: valid && !busy ? 1 : 0.5 }}><Icon name="check" size={14} />{isEdit ? "Salvar" : "Criar lead"}</button>
       </>}>
       <div style={{ display: "flex", flexDirection: "column", gap: 15 }}>
         <ErrLine err={err} />
@@ -167,7 +184,7 @@ export function CmLeadModal({ onClose, onSubmit, campaigns, edit }: { onClose: (
         </div>
         <div style={half}>
           <CmField label="Origem"><CmSelect value={origem} onChange={(e) => setOrig(e.target.value as LeadOrigem)} options={ORIGENS.map((o) => ({ value: o, label: ORIGEM_LABEL[o] }))} /></CmField>
-          <CmField label="Campanha" hint={isPaid ? "" : "n/a"}><CmSelect value={campId} onChange={(e) => setCampId(e.target.value)} disabled={!isPaid} options={[{ value: "", label: isPaid ? "Selecione" : "—" }, ...campOpts.map((c) => ({ value: String(c.id), label: c.nome }))]} /></CmField>
+          <CmField label="Campanha" hint={isPaid ? "" : "n/a"}><CmSelect value={campId} onChange={(e) => setCamp(e.target.value)} disabled={!isPaid} options={[{ value: "", label: isPaid ? "Selecione" : "—" }, ...campOpts.map((c) => ({ value: String(c.id), label: c.nome }))]} /></CmField>
         </div>
         <div style={half}>
           <CmField label="Valor estimado"><CmMoneyInput value={valor} onChange={(e) => setValor(e.target.value)} /></CmField>
@@ -175,6 +192,11 @@ export function CmLeadModal({ onClose, onSubmit, campaigns, edit }: { onClose: (
         </div>
         <CmField label="Etapa"><CmSelect value={etapa} onChange={(e) => setEtapa(e.target.value as LeadEtapa)} options={[...CM_STAGES.map((s) => ({ value: s.key, label: s.label })), { value: "perdido", label: "Perdido" }]} /></CmField>
         {etapa === "ganho" && <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "10px 13px", background: "var(--bg-soft)", border: "1px solid var(--border)", borderRadius: "var(--r-sm)" }}>Para registrar cliente, caso e honorário contratado, use <strong style={{ color: "var(--text)" }}>Converter</strong> na lista.</div>}
+        {areaOpts.length > 0 && (
+          <CmField label="Área" hint="opcional">
+            <CmSelect value={area} onChange={(e) => setArea(e.target.value)} options={[{ value: "", label: "— Nenhuma —" }, ...areaOpts.map((a) => ({ value: a.id, label: a.label }))]} />
+          </CmField>
+        )}
       </div>
     </CmModal>
   )

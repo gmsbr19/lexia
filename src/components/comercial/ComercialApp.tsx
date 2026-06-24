@@ -60,7 +60,7 @@ export function ComercialApp({ dataset, verFin }: { dataset: CmDataset; verFin: 
 
   // ── mutations ──
   const submitCampanha = async (p: CampanhaPayload) => {
-    const body = { plataforma: p.plataforma, nome: p.nome, objetivo: p.objetivo, status: p.status, externalId: p.extId, dataInicio: p.inicio || null, dataFim: p.fim || null }
+    const body = { plataforma: p.plataforma, nome: p.nome, objetivo: p.objetivo, status: p.status, externalId: p.extId, dataInicio: p.inicio || null, dataFim: p.fim || null, area: p.area }
     await send(p.id ? `/api/comercial/campanhas/${p.id}` : "/api/comercial/campanhas", body, p.id ? "PATCH" : "POST")
     refresh()
   }
@@ -70,11 +70,11 @@ export function ComercialApp({ dataset, verFin }: { dataset: CmDataset; verFin: 
   }
   const submitLead = async (p: LeadPayload) => {
     if (p.id) {
-      await send(`/api/comercial/leads/${p.id}`, { nome: p.nome, telefone: p.contato, origem: p.origem, campanhaId: p.campanhaId, valorEstimadoCents: p.valorEstimadoCents, dataEntrada: p.dataEntrada }, "PATCH")
+      await send(`/api/comercial/leads/${p.id}`, { nome: p.nome, telefone: p.contato, origem: p.origem, campanhaId: p.campanhaId, valorEstimadoCents: p.valorEstimadoCents, dataEntrada: p.dataEntrada, area: p.area }, "PATCH")
       const orig = dataset.leads.find((l) => l.id === p.id)
       if (orig && orig.etapa !== p.etapa) await send(`/api/comercial/leads/${p.id}/etapa`, { etapa: p.etapa })
     } else {
-      await send("/api/comercial/leads", { nome: p.nome, telefone: p.contato, origem: p.origem, campanhaId: p.campanhaId, etapa: p.etapa, valorEstimadoCents: p.valorEstimadoCents, dataEntrada: p.dataEntrada })
+      await send("/api/comercial/leads", { nome: p.nome, telefone: p.contato, origem: p.origem, campanhaId: p.campanhaId, etapa: p.etapa, valorEstimadoCents: p.valorEstimadoCents, dataEntrada: p.dataEntrada, area: p.area })
     }
     refresh()
   }

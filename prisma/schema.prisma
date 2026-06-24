@@ -210,6 +210,7 @@ model Caso {
 
   @@index([status])
   @@index([tipo])
+  @@index([area])
   @@index([responsavelUserId])
 }
 
@@ -367,6 +368,7 @@ model Campanha {
   externalId String? // platform campaign id (optional)
   objetivo   String?
   status     String       @default("ativa") // 'ativa' | 'pausada' | 'encerrada'
+  area       String? // chave de AreaDireito (ex.: 'trab', 'soc')
   dataInicio DateTime?
   dataFim    DateTime?
   ativo      Boolean      @default(true)
@@ -376,6 +378,7 @@ model Campanha {
   leads      Lead[]
 
   @@unique([plataforma, nome]) // import idempotency
+  @@index([area])
 }
 
 // A sales lead, sourced from the Genions CRM via idempotent CSV import (upsert by
@@ -391,6 +394,7 @@ model Lead {
   origem             String     @default("outro") // 'google_ads' | 'meta_ads' | 'indicacao' | 'organico' | 'outro'
   campanhaId         Int?
   campanha           Campanha?  @relation(fields: [campanhaId], references: [id])
+  area               String? // chave de AreaDireito (ex.: 'trab', 'soc')
   etapa              String     @default("novo") // 'novo' | 'contato' | 'qualificado' | 'proposta' | 'ganho' | 'perdido'
   valorEstimadoCents Int?
   dataEntrada        DateTime // when the lead arrived (drives period scoping)
@@ -408,6 +412,7 @@ model Lead {
 
   @@index([etapa])
   @@index([origem])
+  @@index([area])
   @@index([campanhaId])
   @@index([dataEntrada])
 }
@@ -955,6 +960,7 @@ model Projeto {
   updatedAt        DateTime  @updatedAt
 
   @@index([status])
+  @@index([area])
   @@index([responsavelId])
   @@index([casoId])
   @@index([clienteId])
@@ -1004,4 +1010,23 @@ model ProjetoTemplateTarefa {
   updatedAt              DateTime @updatedAt
 
   @@index([templateId])
+}
+
+// ── Áreas do Direito (taxonomia dinâmica, gerenciável pelo admin) ─────────────
+// Entidades que referenciam uma área (Projeto, ProjetoTemplate, Caso, Lead,
+// Campanha) guardam a CHAVE (slug) como String? — sem FK rígida, preservando
+// o histórico quando uma área é arquivada (soft-delete via excluidoEm).
+model AreaDireito {
+  id         Int       @id @default(autoincrement())
+  chave      String    @unique // slug estável (ex.: 'trab', 'soc', 'trib')
+  nome       String
+  cor        String? // hex (agrupamento / AreaTag)
+  icone      String?
+  ordem      Int       @default(0)
+  ativo      Boolean   @default(true) // inativa = não aparece em pickers novos
+  excluidoEm DateTime? // soft-delete: referências existentes ficam intactas
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([excluidoEm])
 }

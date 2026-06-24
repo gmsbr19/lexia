@@ -8,6 +8,7 @@
 // Rode após `db:migrate` + `db:generate`. Reexecutar é seguro (upsert + replace).
 import { PrismaClient } from "@prisma/client"
 import { PROJECTS } from "../src/lib/tarefas/types"
+import { normalizar } from "../src/lib/text"
 
 const prisma = new PrismaClient()
 
@@ -194,10 +195,85 @@ async function seedHolding(): Promise<{ nome: string; itens: number }> {
   return { nome: tpl.nome, itens: HOLDING_ITENS.length }
 }
 
+// ── AreaDireito canonical seed ────────────────────────────────────────────────
+// Maps PROJECTS (excluding inbox) to AreaDireito entries. Chave = PROJECTS[*].id.
+// Also normalizes legacy Caso.area free-text values to canonical chaves.
+async function seedAreasDireito(): Promise<void> {
+  const normalMap: Record<string, string> = {
+    trabalhista: "trab",
+    "direito trabalhista": "trab",
+    "trabalhista individual": "trab",
+    civel: "civ",
+    "civel contratos": "civ",
+    "civil contratos": "civ",
+    contratos: "civ",
+    tributario: "trib",
+    "tributario fiscal": "trib",
+    fiscal: "trib",
+    societario: "soc",
+    "societario empresarial": "soc",
+    empresarial: "soc",
+    "m a": "soc",
+    ma: "soc",
+    holding: "soc",
+    consultoria: "int",
+    internacional: "int",
+    arbitragem: "int",
+    "direito internacional": "int",
+  }
+
+  const areas = PROJECTS.filter((p) => !p.inbox)
+  for (const [i, p] of areas.entries()) {
+    const cor = p.color?.startsWith("#") ? p.color : null
+    await prisma.areaDireito.upsert({
+      where: { chave: p.id },
+      create: { chave: p.id, nome: p.name, cor, ordem: i, ativo: true },
+      update: { nome: p.name, cor, ordem: i },
+    })
+  }
+  console.log(`AreaDireito: ${areas.length} áreas canônicas upserted.`)
+
+  // Normalize legacy Caso.area values
+  const distinct = await prisma.caso.findMany({ select: { area: true }, distinct: ["area"] })
+  const canonicalChaves = new Set<string>(areas.map((p) => p.id))
+  let normed = 0
+  for (const { area } of distinct) {
+    if (!area) continue
+    if (canonicalChaves.has(area)) continue // already a canonical chave
+    const key = normalizar(area).replace(/[^a-z0-9]+/g, " ").trim()
+    const mapped = normalMap[key]
+    if (mapped) {
+      const r = await prisma.caso.updateMany({ where: { area }, data: { area: mapped } })
+      normed += r.count
+    } else {
+      // Create a new AreaDireito from the free-text value and keep the chave
+      const slug = normalizar(area).replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 50) || "area"
+      let chave = slug
+      let attempt = 1
+      while (true) {
+        const exists = await prisma.areaDireito.findUnique({ where: { chave } })
+        if (!exists) break
+        chave = `${slug}_${++attempt}`
+      }
+      await prisma.areaDireito.upsert({
+        where: { chave },
+        create: { chave, nome: area, ordem: 100, ativo: true },
+        update: { nome: area },
+      })
+      canonicalChaves.add(chave)
+      const r = await prisma.caso.updateMany({ where: { area }, data: { area: chave } })
+      normed += r.count
+      console.log(`  → nova área "${area}" → chave "${chave}"`)
+    }
+  }
+  if (normed) console.log(`Casos normalizados: ${normed} registros.`)
+}
+
 async function main() {
   const map = await seedAreas()
   const backfilled = await backfillTarefas(map)
   const tpl = await seedHolding()
+  await seedAreasDireito()
   console.log(`Projetos por área: ${map.size}. Backfill de tarefas: ${backfilled}.`)
   console.log(`Template "${tpl.nome}" pronto com ${tpl.itens} itens.`)
 }

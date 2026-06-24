@@ -16,6 +16,7 @@ import type { AlertaProcesso } from "@/lib/processos/saude"
 import type { CrmDataset, CasoRow } from "@/components/crm/crm-types"
 import type { ProcNav } from "../proc-types"
 import { ProcCNJ, ProcFaseTag, ProcResp, ProcSemaforo, ProcStat } from "../proc-kit"
+import { toAreaOptions, useAreasStore } from "@/lib/areas/store"
 
 const norm = (s: string | null | undefined) =>
   (s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
@@ -113,11 +114,13 @@ function AlertasStrip({ alertas }: { alertas: AlertaProcesso[] }) {
 // ── tipo do caso (consultivo / litígio) + área ────────────────────────────────
 function CasoTipoPill({ tipo, area }: { tipo: CasoRow["tipo"]; area: string | null }) {
   const lit = tipo === "litigio"
+  const storedAreas = useAreasStore((s) => s.areas)
+  const areaLabel = area ? (toAreaOptions(storedAreas).find((a) => a.id === area)?.label ?? area) : null
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
       <CrmBadge tone={lit ? "neg" : "blue"} dot>{lit ? "Litígio" : "Consultivo"}</CrmBadge>
-      {area && (
-        <span style={{ fontSize: 11.5, color: "var(--text-subtle)", whiteSpace: "nowrap" }}>{area}</span>
+      {areaLabel && (
+        <span style={{ fontSize: 11.5, color: "var(--text-subtle)", whiteSpace: "nowrap" }}>{areaLabel}</span>
       )}
     </span>
   )
@@ -164,9 +167,12 @@ export function ProcProcessos({
   alertas: AlertaProcesso[]
 }) {
   const { processos, prazos, responsaveis } = dataset
+  const storedAreas = useAreasStore((s) => s.areas)
+  const areaOpts = useMemo(() => toAreaOptions(storedAreas), [storedAreas])
   const [q, setQ] = useState("")
   const [status, setStatus] = useState<StatusBucket>("ativos")
   const [resp, setResp] = useState("todos")
+  const [areaFilter, setAreaFilter] = useState("todas")
   const [modo, setModo] = useState<"agrupado" | "plano">("agrupado")
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const nq = norm(q.trim())
@@ -229,6 +235,8 @@ export function ProcProcessos({
           const casoRespOk = procs.length === 0 && caso.responsavel === resp
           if (!procRespOk && !casoRespOk) return null
         }
+        // filtro de área
+        if (areaFilter !== "todas" && caso.area !== areaFilter) return null
         // busca: caso casa se o texto bate no caso/cliente OU em algum processo
         const casoTextOk =
           !nq ||
@@ -303,6 +311,13 @@ export function ProcProcessos({
           value={resp === "todos" ? "Todos" : resp}
           onChange={(e) => setResp(e.target.value === "Todos" ? "todos" : e.target.value)}
         />
+        {areaOpts.length > 0 && (
+          <FxSelect
+            options={[{ value: "todas", label: "Todas as áreas" }, ...areaOpts.map((a) => ({ value: a.id, label: a.label }))]}
+            value={areaFilter}
+            onChange={(e) => setAreaFilter(e.target.value)}
+          />
+        )}
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
           {modo === "agrupado" && grupos.length > 0 && (
             <button className="btn btn-ghost" onClick={toggleAll} style={{ height: 32, fontSize: 12 }}>

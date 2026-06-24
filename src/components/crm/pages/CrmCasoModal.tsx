@@ -25,6 +25,7 @@ import { Icon } from "../crm-icons"
 import { fetchCasoDetail, patchCaso, setResponsaveis } from "../crm-api"
 import { crmDate, crmMoney } from "../crm-fmt"
 import type { CasoDetail, CrmDataset, CrmNav, Role } from "../crm-types"
+import { resolveAreaLabel, toAreaOptions, useAreasStore } from "@/lib/areas/store"
 
 interface Props {
   casoId: number
@@ -51,6 +52,7 @@ interface ProcessoForm {
   dataDistribuicao: string
   ultimaMovimentacao: string
   status: string
+  area: string
 }
 
 const reaisToCents = (s: string): number | null => {
@@ -73,6 +75,7 @@ function formFrom(d: CasoDetail): ProcessoForm {
     dataDistribuicao: d.dataDistribuicao?.slice(0, 10) ?? "",
     ultimaMovimentacao: d.ultimaMovimentacao?.slice(0, 10) ?? "",
     status: d.status ?? "ativo",
+    area: d.area ?? "",
   }
 }
 
@@ -229,6 +232,8 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
 // ───────────────────────── modal ─────────────────────────
 export function CrmCasoModal({ casoId, role, dataset, onClose, onRefresh, nav }: Props) {
   const { toast } = useCrmToast()
+  const storedAreas = useAreasStore((s) => s.areas)
+  const areaOpts = toAreaOptions(storedAreas)
   const [detail, setDetail] = useState<CasoDetail | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -300,6 +305,7 @@ export function CrmCasoModal({ casoId, role, dataset, onClose, onRefresh, nav }:
         dataDistribuicao: form.dataDistribuicao || null,
         ultimaMovimentacao: form.ultimaMovimentacao || null,
         status: form.status || null,
+        area: form.area || null,
       })
       toast("Dados do processo salvos")
       setEditing(false)
@@ -411,6 +417,7 @@ export function CrmCasoModal({ casoId, role, dataset, onClose, onRefresh, nav }:
                 <Field label="Distribuição" value={crmDate(detail.dataDistribuicao)} />
                 <Field label="Última movimentação" value={crmDate(detail.ultimaMovimentacao)} />
                 <Field label="Status" value={detail.status === "arquivado" ? "Arquivado" : "Em andamento"} />
+                <Field label="Área" value={resolveAreaLabel(storedAreas, detail.area) || detail.area || "—"} />
               </div>
             ) : (
               <div
@@ -457,6 +464,14 @@ export function CrmCasoModal({ casoId, role, dataset, onClose, onRefresh, nav }:
                 <div>
                   <FxLabel>Status</FxLabel>
                   <FxSelect options={STATUS_OPTS} value={form.status} onChange={(e) => upd({ status: e.target.value })} />
+                </div>
+                <div>
+                  <FxLabel>Área</FxLabel>
+                  <FxSelect
+                    options={[{ value: "", label: "— Nenhuma —" }, ...areaOpts.map((a) => ({ value: a.id, label: a.label }))]}
+                    value={form.area}
+                    onChange={(e) => upd({ area: e.target.value })}
+                  />
                 </div>
               </div>
             )}

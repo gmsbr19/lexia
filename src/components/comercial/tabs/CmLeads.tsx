@@ -6,6 +6,7 @@ import { Icon } from "../cm-icons"
 import { CmEmpty, CmNum, CmOriginChip, CmSelect, CmStagePill } from "../cm-kit"
 import { CM_STAGES, ORIGEM_LABEL, ORIGENS, cmCompact, cmDate, cmDownload, cmLeadsCSV, cmToday } from "../cm-meta"
 import type { CmDataset, CmDatasetLead, LeadEtapa } from "@/lib/comercial/types"
+import { toAreaOptions, useAreasStore } from "@/lib/areas/store"
 
 const PER_PAGE = 12
 
@@ -95,9 +96,12 @@ export function CmLeads({ dataset, injectFilter, lastImport, onNew, onMove, onCo
   dataset: CmDataset; injectFilter: LeadInject | null; lastImport: LastImport | null
   onNew: () => void; onMove: (id: number, k: LeadEtapa) => void; onConvert: (l: CmDatasetLead) => void; onLose: (l: CmDatasetLead) => void; onEdit: (l: CmDatasetLead) => void; onReopen: (id: number) => void; onBulkMove: (ids: number[], k: LeadEtapa) => void; onImport: () => void
 }) {
+  const storedAreas = useAreasStore((s) => s.areas)
+  const areaOpts = useMemo(() => toAreaOptions(storedAreas), [storedAreas])
   const [origem, setOrigem] = useState("")
   const [etapa, setEtapa] = useState("todas")
   const [campId, setCampId] = useState("")
+  const [areaFilter, setAreaFilter] = useState("")
   const [q, setQ] = useState("")
   const [page, setPage] = useState(0)
   const [sel, setSel] = useState<Set<number>>(() => new Set())
@@ -117,12 +121,13 @@ export function CmLeads({ dataset, injectFilter, lastImport, onNew, onMove, onCo
     if (origem && l.origem !== origem) return false
     if (etapa !== "todas" && l.etapa !== etapa) return false
     if (campId && l.campanhaId !== Number(campId)) return false
+    if (areaFilter && l.area !== areaFilter) return false
     if (q) {
       const s = `${l.nome} ${l.contato ?? ""} ${l.cliente ?? ""}`.toLowerCase()
       if (!s.includes(q.toLowerCase())) return false
     }
     return true
-  }), [dataset.leads, origem, etapa, campId, q])
+  }), [dataset.leads, origem, etapa, campId, areaFilter, q])
 
   useEffect(() => { setPage(0) }, [origem, etapa, campId, q])
   const pageCount = Math.max(1, Math.ceil(rows.length / PER_PAGE))
@@ -136,7 +141,7 @@ export function CmLeads({ dataset, injectFilter, lastImport, onNew, onMove, onCo
   const togglePage = () => setSel((p) => { const n = new Set(p); if (pageAllOn) pageRows.forEach((r) => n.delete(r.id)); else pageRows.forEach((r) => n.add(r.id)); return n })
   const clearSel = () => setSel(new Set())
 
-  const hasFilter = !!(origem || etapa !== "todas" || campId || q)
+  const hasFilter = !!(origem || etapa !== "todas" || campId || areaFilter || q)
   const exportSel = () => { const list = sel.size ? rows.filter((r) => sel.has(r.id)) : rows; cmDownload(`lexia-leads-${cmToday()}.csv`, cmLeadsCSV(list, dataset.campaigns), "text/csv") }
 
   return (
@@ -149,7 +154,8 @@ export function CmLeads({ dataset, injectFilter, lastImport, onNew, onMove, onCo
         <div style={{ width: 150 }}><CmSelect value={origem} onChange={(e) => setOrigem(e.target.value)} placeholder="Origem" options={ORIGENS.map((o) => ({ value: o, label: ORIGEM_LABEL[o] }))} /></div>
         <div style={{ width: 168 }}><CmSelect value={etapa} onChange={(e) => setEtapa(e.target.value)} options={[{ value: "todas", label: "Todas as etapas" }, ...CM_STAGES.map((s) => ({ value: s.key, label: s.label })), { value: "perdido", label: "Perdido" }]} /></div>
         <div style={{ width: 188 }}><CmSelect value={campId} onChange={(e) => setCampId(e.target.value)} options={[{ value: "", label: "Todas as campanhas" }, ...dataset.campaigns.map((c) => ({ value: String(c.id), label: c.nome }))]} /></div>
-        {hasFilter && <button className="btn btn-ghost" onClick={() => { setOrigem(""); setEtapa("todas"); setCampId(""); setQ("") }} style={{ height: 34, fontSize: 12 }}>Limpar</button>}
+        {areaOpts.length > 0 && <div style={{ width: 160 }}><CmSelect value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)} options={[{ value: "", label: "Todas as áreas" }, ...areaOpts.map((a) => ({ value: a.id, label: a.label }))]} /></div>}
+        {hasFilter && <button className="btn btn-ghost" onClick={() => { setOrigem(""); setEtapa("todas"); setCampId(""); setAreaFilter(""); setQ("") }} style={{ height: 34, fontSize: 12 }}>Limpar</button>}
         <div style={{ marginLeft: "auto", display: "flex", gap: 9 }}>
           <button className="btn btn-secondary" onClick={onImport} style={{ height: 34, fontSize: 12 }}><Icon name="upload" size={13} />Importar</button>
           <button className="btn btn-secondary" onClick={exportSel} style={{ height: 34, fontSize: 12 }}><Icon name="download" size={13} />Exportar CSV</button>

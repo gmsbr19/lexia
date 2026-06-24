@@ -118,3 +118,14 @@ export const deleteUser = (id: number) => mut(`/api/users/${id}`, "DELETE")
 export const patchMe = (body: unknown) => mut(`/api/users/me`, "PATCH", body)
 export type AuditRow = { id: number; ts: string; actorEmail: string; action: string; entity: string | null; entityId: string | null }
 export const getAudit = (q?: string) => get<AuditRow[]>(`/api/audit${q ? `?q=${encodeURIComponent(q)}` : ""}`)
+
+// ── áreas do direito (admin) ──
+export type AreaComUsoResult = {
+  id: number; chave: string; nome: string; cor: string | null; icone: string | null
+  ordem: number; ativo: boolean; projetos: number; casos: number; leads: number; campanhas: number
+}
+export const listAreasComUso = () => get<AreaComUsoResult[]>(`/api/areas/uso`)
+export const createAreaAdmin = (body: { nome: string; chave?: string; cor?: string | null; icone?: string | null; ordem?: number }) =>
+  mut(`/api/areas`, "POST", body)
+export const patchAreaAdmin = (id: number, body: unknown) => mut(`/api/areas/${id}`, "PATCH", body)
+export const deleteAreaAdmin = (id: number) => mut(`/api/areas/${id}`, "DELETE")

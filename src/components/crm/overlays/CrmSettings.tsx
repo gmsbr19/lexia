@@ -20,6 +20,11 @@ import {
   getEscritorio,
   getImportacao,
   listUsers,
+  listAreasComUso,
+  createAreaAdmin,
+  patchAreaAdmin,
+  deleteAreaAdmin,
+  type AreaComUsoResult,
   patchMe,
   patchUser,
   reenviarConvite,
@@ -27,6 +32,7 @@ import {
   putOrcamentoConsumo,
   type AuditRow,
 } from "../crm-api"
+import { useAreasStore } from "@/lib/areas/store"
 import type {
   CrmDataset,
   EscritorioConfig,
@@ -56,6 +62,7 @@ type SecId =
   | "aparencia"
   | "notificacoes"
   | "usuarios"
+  | "areas"
   | "financeiro"
   | "consumo"
   | "escritorio"
@@ -68,6 +75,7 @@ const SECTIONS: { id: SecId; label: string; icon: CrmIconName; roles: Role[] }[]
   { id: "aparencia", label: "Aparência", icon: "sun", roles: ["admin", "socio", "advogado", "estagiario", "financeiro", "staff"] },
   { id: "notificacoes", label: "Notificações", icon: "bell", roles: ["admin", "socio", "advogado", "estagiario", "financeiro", "staff"] },
   { id: "usuarios", label: "Usuários & permissões", icon: "users", roles: ["admin"] },
+  { id: "areas", label: "Áreas do Direito", icon: "scale", roles: ["admin"] },
   { id: "financeiro", label: "Financeiro", icon: "wallet", roles: ["admin", "socio"] },
   { id: "consumo", label: "Consumo (IA)", icon: "zap", roles: ["admin", "socio"] },
   { id: "escritorio", label: "Escritório & documentos", icon: "building", roles: ["admin"] },
@@ -215,6 +223,7 @@ export function CrmSettings({
             {sec === "aparencia" && <AparenciaSection dark={dark} onToggleTheme={onToggleTheme} />}
             {sec === "notificacoes" && <NotificacoesSection />}
             {sec === "usuarios" && <UsuariosSection />}
+            {sec === "areas" && <AreasSection />}
             {sec === "financeiro" && <FinanceiroSection />}
             {sec === "consumo" && <ConsumoSection />}
             {sec === "escritorio" && <EscritorioSection />}
@@ -871,6 +880,138 @@ export function CrmSettings({
             )}
           </div>
         </div>
+      </div>
+    )
+  }
+
+  // ─────────────────────────── Áreas do Direito ───────────────────────────
+  function AreasSection() {
+    const [areas, setAreas] = useState<AreaComUsoResult[] | null>(null)
+    const [err, setErr] = useState<string | null>(null)
+    const [editing, setEditing] = useState<AreaComUsoResult | null | "new">(null)
+    const [formNome, setFormNome] = useState("")
+    const [formCor, setFormCor] = useState("")
+    const [saving, setSaving] = useState(false)
+    const reloadStore = useAreasStore((s) => s.reload)
+
+    const load = useCallback(async () => {
+      try {
+        setAreas(await listAreasComUso())
+        setErr(null)
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "Erro ao carregar áreas")
+      }
+    }, [])
+
+    useEffect(() => { void load() }, [load])
+
+    const openNew = () => { setFormNome(""); setFormCor(""); setEditing("new") }
+    const openEdit = (a: AreaComUsoResult) => { setFormNome(a.nome); setFormCor(a.cor ?? ""); setEditing(a) }
+    const cancelEdit = () => setEditing(null)
+
+    const save = async () => {
+      const nome = formNome.trim()
+      if (!nome) return
+      setSaving(true)
+      try {
+        if (editing === "new") {
+          await createAreaAdmin({ nome, cor: formCor || null })
+        } else if (editing) {
+          await patchAreaAdmin(editing.id, { nome, cor: formCor || null })
+        }
+        toast(editing === "new" ? "Área criada" : "Área atualizada")
+        setEditing(null)
+        await load()
+        void reloadStore()
+      } catch (e) {
+        toast(e instanceof Error ? e.message : "Erro", { tone: "neg", icon: "alertTriangle" })
+      } finally {
+        setSaving(false)
+      }
+    }
+
+    const del = async (a: AreaComUsoResult) => {
+      if (!window.confirm(`Excluir área "${a.nome}"? Projetos e casos existentes mantêm o vínculo.`)) return
+      try {
+        await deleteAreaAdmin(a.id)
+        toast("Área excluída")
+        await load()
+        void reloadStore()
+      } catch (e) {
+        toast(e instanceof Error ? e.message : "Erro", { tone: "neg", icon: "alertTriangle" })
+      }
+    }
+
+    const COR_PRESETS = ["#1F3A6E", "#2E7D52", "#7C3AED", "#C0392B", "#B45309", "#0E7490", "#374151"]
+
+    return (
+      <div style={{ maxWidth: 600 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+          <div>
+            <SectionTitle>Áreas do Direito</SectionTitle>
+            <SectionSub>Taxonomia de áreas compartilhada por Projetos, Casos, Leads e Campanhas.</SectionSub>
+          </div>
+          {!editing && (
+            <button className="btn btn-primary" onClick={openNew} style={{ height: 32, fontSize: 12 }}>
+              <Icon name="plus" size={13} />Nova área
+            </button>
+          )}
+        </div>
+
+        {err && <div style={{ color: "var(--crit)", fontSize: 12, marginBottom: 12 }}>{err}</div>}
+
+        {editing && (
+          <div className="card" style={{ padding: 16, marginBottom: 16, background: "var(--bg-soft)" }}>
+            <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 12 }}>{editing === "new" ? "Nova área" : `Editar: ${editing ? editing.nome : ""}`}</div>
+            <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
+              <div style={{ flex: "2 1 180px" }}>
+                <FxLabel>Nome</FxLabel>
+                <FxInput value={formNome} onChange={(e) => setFormNome(e.target.value)} placeholder="Ex.: Societário & M&A" autoFocus />
+              </div>
+              <div style={{ flex: "1 1 120px" }}>
+                <FxLabel>Cor (hex)</FxLabel>
+                <FxInput value={formCor} onChange={(e) => setFormCor(e.target.value)} placeholder="#1F3A6E" maxLength={7} style={{ fontFamily: "var(--font-mono)" }} />
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+              {COR_PRESETS.map((c) => (
+                <button key={c} onClick={() => setFormCor(c)} title={c} style={{ width: 22, height: 22, borderRadius: 6, background: c, border: formCor === c ? "2px solid var(--accent)" : "2px solid transparent", cursor: "pointer", padding: 0 }} />
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+              <button className="btn btn-ghost" onClick={cancelEdit} disabled={saving} style={{ height: 30, fontSize: 12 }}>Cancelar</button>
+              <button className="btn btn-primary" onClick={save} disabled={saving || !formNome.trim()} style={{ height: 30, fontSize: 12 }}>{saving ? "Salvando…" : "Salvar"}</button>
+            </div>
+          </div>
+        )}
+
+        {!areas ? (
+          <div style={{ textAlign: "center", padding: "32px 0", color: "var(--text-subtle)", fontSize: 13 }}>Carregando…</div>
+        ) : areas.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "32px 0", color: "var(--text-subtle)", fontSize: 13 }}>Nenhuma área cadastrada. Crie a primeira.</div>
+        ) : (
+          <div className="card" style={{ overflow: "hidden" }}>
+            {areas.map((a, i) => (
+              <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 16px", borderTop: i ? "1px solid var(--border)" : "none" }}>
+                <span style={{ width: 10, height: 10, borderRadius: "50%", background: a.cor ?? "var(--text-muted)", flexShrink: 0 }} />
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{a.nome}</span>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 8, fontFamily: "var(--font-mono)" }}>{a.chave}</span>
+                </span>
+                <div style={{ display: "flex", gap: 14, fontSize: 11, color: "var(--text-subtle)" }}>
+                  {a.projetos > 0 && <span title="Projetos">{a.projetos}p</span>}
+                  {a.casos > 0 && <span title="Casos">{a.casos}c</span>}
+                  {a.leads > 0 && <span title="Leads">{a.leads}l</span>}
+                  {a.campanhas > 0 && <span title="Campanhas">{a.campanhas}cam</span>}
+                  {a.projetos + a.casos + a.leads + a.campanhas === 0 && <span>sem uso</span>}
+                </div>
+                {!a.ativo && <CrmBadge tone="neutral">Inativo</CrmBadge>}
+                <button className="btn btn-ghost" onClick={() => openEdit(a)} style={{ height: 28, fontSize: 12, padding: "0 10px" }}><Icon name="edit" size={13} /></button>
+                <button className="btn btn-ghost" onClick={() => del(a)} style={{ height: 28, fontSize: 12, padding: "0 10px", color: "var(--crit)" }}><Icon name="trash" size={13} /></button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     )
   }

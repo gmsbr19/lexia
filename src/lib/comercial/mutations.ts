@@ -74,6 +74,7 @@ export interface CampanhaCreate {
   externalId?: string | null
   dataInicio?: string | null
   dataFim?: string | null
+  area?: string | null
 }
 
 export async function createCampanha(input: CampanhaCreate) {
@@ -86,6 +87,7 @@ export async function createCampanha(input: CampanhaCreate) {
       externalId: input.externalId?.trim() || null,
       dataInicio: toDate(input.dataInicio),
       dataFim: toDate(input.dataFim),
+      area: input.area?.trim() || null,
       ativo: true,
     },
   })
@@ -100,6 +102,7 @@ export interface CampanhaPatch {
   dataInicio?: string | null
   dataFim?: string | null
   ativo?: boolean
+  area?: string | null
 }
 
 export async function updateCampanha(id: number, patch: CampanhaPatch) {
@@ -114,6 +117,7 @@ export async function updateCampanha(id: number, patch: CampanhaPatch) {
       ...(patch.dataInicio !== undefined ? { dataInicio: toDate(patch.dataInicio) } : {}),
       ...(patch.dataFim !== undefined ? { dataFim: toDate(patch.dataFim) } : {}),
       ...(patch.ativo !== undefined ? { ativo: !!patch.ativo } : {}),
+      ...(patch.area !== undefined ? { area: patch.area?.trim() || null } : {}),
     },
   })
 }
@@ -173,6 +177,7 @@ export interface LeadCreate {
   valorEstimadoCents?: number | null
   dataEntrada?: string | null
   observacoes?: string | null
+  area?: string | null
 }
 
 export async function createLead(input: LeadCreate) {
@@ -189,6 +194,7 @@ export async function createLead(input: LeadCreate) {
       dataEntrada: toDate(input.dataEntrada) ?? new Date(),
       dataConversao: etapa === "ganho" ? new Date() : null,
       observacoes: input.observacoes?.trim() || null,
+      area: input.area?.trim() || null,
     },
   })
 }
@@ -202,6 +208,7 @@ export interface LeadPatch {
   valorEstimadoCents?: number | null
   dataEntrada?: string | null
   observacoes?: string | null
+  area?: string | null
 }
 
 export async function updateLead(id: number, patch: LeadPatch) {
@@ -218,6 +225,7 @@ export async function updateLead(id: number, patch: LeadPatch) {
         : {}),
       ...(patch.dataEntrada !== undefined ? { dataEntrada: toDate(patch.dataEntrada) ?? new Date() } : {}),
       ...(patch.observacoes !== undefined ? { observacoes: patch.observacoes?.trim() || null } : {}),
+      ...(patch.area !== undefined ? { area: patch.area?.trim() || null } : {}),
     },
   })
 }

@@ -20,6 +20,7 @@ function lead(over: Partial<CmDatasetLead>): CmDatasetLead {
     cliente: null,
     caso: null,
     motivoPerda: null,
+    area: null,
     ...over,
   }
 }
