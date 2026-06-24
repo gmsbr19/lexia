@@ -25,7 +25,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="pt-BR" className={inter.variable} suppressHydrationWarning>
-      <body className={unselectable}>
+      <body className={unselectable} suppressHydrationWarning>
         <ThemeProvider>
           <UnifiedShell>{children}</UnifiedShell>
           <Toaster />
