@@ -6,7 +6,35 @@ import type { ProdutividadeDashboard, ProjetoView } from "@/lib/projetos/types"
 import { statusMeta } from "@/lib/tarefas/types"
 import { Icon, type TfIconName } from "@/components/tarefas/tf-icons"
 import { AssigneeAvatar } from "@/components/tarefas/tf-kit"
+import { MO, WD, tParse } from "@/components/tarefas/tf-meta"
+import { resolveAreaLabel, useAreasStore } from "@/lib/areas/store"
 import { CardTitle, ErrorBanner, PageFrame, PageHeader, ProgressBar, SaudeChip } from "./pj-kit"
+
+// One cell of the forward-distribution heatmap: intensity scales with the count.
+function HeatCell({ count, today, weekend, title }: { count: number; today: boolean; weekend: boolean; title: string }) {
+  const intensity = count === 0 ? 0 : Math.min(0.78, 0.2 + (count - 1) * 0.2)
+  const bg = count === 0 ? (weekend ? "transparent" : "var(--bg-sunken)") : `color-mix(in srgb, var(--accent) ${Math.round(intensity * 100)}%, transparent)`
+  return (
+    <div
+      title={title}
+      style={{
+        height: 28,
+        borderRadius: 6,
+        background: bg,
+        border: today ? "1px solid var(--border-gold)" : "1px solid transparent",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: 11,
+        fontWeight: 600,
+        fontFeatureSettings: '"tnum"',
+        color: count === 0 ? "var(--text-subtle)" : intensity > 0.5 ? "#fff" : "var(--text)",
+      }}
+    >
+      {count > 0 ? count : ""}
+    </div>
+  )
+}
 
 function KpiCard({ label, value, icon, sub, tone }: { label: string; value: string | number; icon: TfIconName; sub?: string; tone?: "crit" }) {
   return (
@@ -40,12 +68,13 @@ export function DashboardTab({
   onOpenProject: (id: number) => void
   onOpenTask: (id: number) => void
 }) {
+  const areas = useAreasStore((s) => s.areas)
   const corDe = (id: number) => projetos.find((p) => p.id === id)?.cor || "var(--text-muted)"
 
   if (loading && !data) {
     return (
       <PageFrame>
-        <PageHeader title="Dashboard" sub="Produtividade da equipe nos projetos ativos · últimos 7 dias" />
+        <PageHeader title="Dashboard" sub="Produtividade da equipe nos projetos ativos · histórico e próximos dias" />
         <div style={{ textAlign: "center", padding: "70px 20px", color: "var(--text-subtle)", fontSize: 13 }}>Carregando indicadores…</div>
       </PageFrame>
     )
@@ -62,6 +91,13 @@ export function DashboardTab({
   const k = data.kpis
   const critOverdue = k.tarefasAtrasadas > 0
   const maxCarga = Math.max(8, ...data.carga.map((c) => c.atribuidas))
+  const dias = data.distribuicao.dias
+  const semPrazoTotal = data.distribuicao.linhas.reduce((a, l) => a + l.semPrazo, 0)
+  const heatCols = `132px repeat(${dias.length}, minmax(22px, 1fr)) 52px 46px`
+  const diaTitulo = (iso: string) => {
+    const d = tParse(iso)
+    return `${d.getDate()} ${MO[d.getMonth()]}`
+  }
 
   return (
     <PageFrame>
@@ -80,6 +116,38 @@ export function DashboardTab({
           <span style={{ fontSize: 12.5, color: "var(--text)" }}>
             <strong style={{ fontWeight: 500 }}>{k.tarefasAtrasadas} tarefas atrasadas</strong> em projetos ativos. Priorize a reatribuição ou o reagendamento.
           </span>
+        </div>
+      )}
+
+      {/* Por área */}
+      {data.porArea.length > 0 && (
+        <div className="card" style={{ padding: 16, marginBottom: 16 }}>
+          <CardTitle title="Por área" sub="Projetos ativos e tarefas atrasadas agrupados pela área do direito" />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 10, marginTop: 10 }}>
+            {data.porArea.map((a) => (
+              <div key={a.area} style={{ background: "var(--bg-soft)", borderRadius: 10, padding: "10px 14px", border: "1px solid var(--border)" }}>
+                <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted)", marginBottom: 8, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {resolveAreaLabel(areas, a.area) || a.area}
+                </div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+                  <span style={{ fontSize: 24, fontWeight: 500, fontFeatureSettings: '"tnum"', color: "var(--text)", letterSpacing: "-0.03em" }}>{a.projetosAtivos}</span>
+                  <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>projeto{a.projetosAtivos === 1 ? "" : "s"}</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 6 }}>
+                  {a.tarefasAtrasadas > 0 && (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5, color: "var(--crit)", fontFeatureSettings: '"tnum"' }}>
+                      <Icon name="flame" size={11} strokeWidth={2} />
+                      {a.tarefasAtrasadas} atras.
+                    </span>
+                  )}
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5, color: "var(--ok)", fontFeatureSettings: '"tnum"' }}>
+                    <Icon name="check" size={11} strokeWidth={2.4} />
+                    {a.tarefasConcluidas30d} 30d
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -164,6 +232,55 @@ export function DashboardTab({
             })}
           </div>
         </div>
+      </div>
+
+      {/* Distribuição futura da carga */}
+      <div className="card" style={{ padding: 16, marginTop: 16 }}>
+        <CardTitle title="Distribuição da equipe" sub="Tarefas abertas por dia · próximos 14 dias (hoje em diante)" />
+        {!data.distribuicao.linhas.length ? (
+          <div style={{ padding: "18px 0", textAlign: "center", fontSize: 13, color: "var(--text-subtle)" }}>Nenhuma tarefa futura agendada.</div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <div style={{ minWidth: 620 }}>
+              <div style={{ display: "grid", gridTemplateColumns: heatCols, gap: 4, alignItems: "end", marginBottom: 7 }}>
+                <span />
+                {dias.map((d, i) => {
+                  const dt = tParse(d)
+                  const today = i === 0
+                  const weekend = dt.getDay() === 0 || dt.getDay() === 6
+                  return (
+                    <div key={d} style={{ textAlign: "center", lineHeight: 1.25, fontSize: 10, color: today ? "var(--accent)" : weekend ? "var(--text-subtle)" : "var(--text-muted)", fontWeight: today ? 600 : 500 }}>
+                      <div style={{ textTransform: "uppercase", letterSpacing: "0.02em" }}>{WD[dt.getDay()]}</div>
+                      <div style={{ fontFeatureSettings: '"tnum"' }}>{dt.getDate()}</div>
+                    </div>
+                  )
+                })}
+                <div style={{ textAlign: "center", fontSize: 10, fontWeight: 500, color: "var(--text-subtle)", textTransform: "uppercase", letterSpacing: "0.03em" }}>Depois</div>
+                <div style={{ textAlign: "center", fontSize: 10, fontWeight: 500, color: "var(--text-subtle)", textTransform: "uppercase", letterSpacing: "0.03em" }}>Total</div>
+              </div>
+              {data.distribuicao.linhas.map((l) => (
+                <div key={l.membro.id} style={{ display: "grid", gridTemplateColumns: heatCols, gap: 4, alignItems: "center", marginBottom: 4 }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+                    <AssigneeAvatar id={l.membro.id} size={20} />
+                    <span style={{ fontSize: 12, fontWeight: 500, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.membro.first}</span>
+                  </span>
+                  {l.counts.map((c, i) => {
+                    const dt = tParse(dias[i])
+                    return <HeatCell key={dias[i]} count={c} today={i === 0} weekend={dt.getDay() === 0 || dt.getDay() === 6} title={`${l.membro.first} · ${diaTitulo(dias[i])}: ${c} tarefa${c === 1 ? "" : "s"}`} />
+                  })}
+                  <div style={{ textAlign: "center", fontSize: 12, color: l.depois ? "var(--text-muted)" : "var(--text-subtle)", fontFeatureSettings: '"tnum"' }}>{l.depois || "—"}</div>
+                  <div style={{ textAlign: "center", fontSize: 13, fontWeight: 600, color: "var(--text)", fontFeatureSettings: '"tnum"' }}>{l.total}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {semPrazoTotal > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 12, fontSize: 11.5, color: "var(--text-subtle)" }}>
+            <Icon name="alertCircle" size={13} strokeWidth={1.9} />
+            {semPrazoTotal} tarefa{semPrazoTotal === 1 ? "" : "s"} aberta{semPrazoTotal === 1 ? "" : "s"} sem prazo definido — não aparece{semPrazoTotal === 1 ? "" : "m"} na distribuição.
+          </div>
+        )}
       </div>
 
       {/* Gargalos */}

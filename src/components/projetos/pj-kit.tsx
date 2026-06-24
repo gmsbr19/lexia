@@ -4,8 +4,9 @@
 // projetos-kit.jsx). Built on the Tarefas tokens + tf-kit (Icon / Menu /
 // AssigneeAvatar) and the real ProjetoView model. The acrylic surfaces reuse the
 // app-wide --lex-acrylic* / --lex-blur tokens (same family as the bell/toasts).
-import type { CSSProperties, ReactNode } from "react"
-import { STATUS, type TeamMember } from "@/lib/tarefas/types"
+import { useMemo, type CSSProperties, type ReactNode } from "react"
+import { PROJECTS, STATUS, type TeamMember } from "@/lib/tarefas/types"
+import { useAreasStore, toAreaOptions, resolveAreaLabel } from "@/lib/areas/store"
 import { type ProjetoStatus, type ProjetoView, type SaudeProjeto, saudeMeta, statusProjetoMeta } from "@/lib/projetos/types"
 import { Icon, type TfIconName } from "@/components/tarefas/tf-icons"
 import { AssigneeAvatar, Menu, MenuItem } from "@/components/tarefas/tf-kit"
@@ -151,6 +152,7 @@ export function ProjStatusPill({ status }: { status: ProjetoStatus }) {
 
 // ── tag de área (prática) ─────────────────────────────────────────────────────
 export function AreaTag({ area }: { area: string | null }) {
+  const label = useAreaLabel(area)
   if (!area) return null
   return (
     <span
@@ -167,7 +169,7 @@ export function AreaTag({ area }: { area: string | null }) {
         whiteSpace: "nowrap",
       }}
     >
-      {area}
+      {label}
     </span>
   )
 }
@@ -278,7 +280,8 @@ export function ProjectRailItem({
         borderRadius: 10,
         cursor: "pointer",
         background: active ? "var(--accent-soft)" : "transparent",
-        boxShadow: active ? "inset 2px 0 0 var(--accent)" : "none",
+        outline: active ? "1.5px solid color-mix(in srgb, var(--accent) 35%, transparent)" : "none",
+        outlineOffset: -1,
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
@@ -675,5 +678,29 @@ export const pickerStyle: CSSProperties = {
 }
 export const ICON_CHOICES: TfIconName[] = ["building", "gavel", "handshake", "scale", "briefcase", "fileCheck", "userPlus", "folder"]
 export const COLOR_CHOICES = ["#1F3A6E", "#2E7D6B", "#C0492F", "#5A4F9A", "#9A6B2E", "#9A2E5A", "#7A8699"]
-// Área de prática (a TAG do projeto). Free-form no backend; estas são sugestões.
-export const AREAS = ["Societário", "M&A", "Trabalhista", "Tributário", "Cível", "Interno"]
+// Área de prática (a TAG do projeto). O backend guarda a CHAVE (`soc`, `trab`…),
+// e a UI resolve o rótulo via o store de AreaDireito. O AREA_OPTIONS estático
+// serve de fallback enquanto o store carrega (e é reusado pelo ProjectsTab para
+// agrupar pelo rail — já substituído pelo hook useAreaOptions abaixo).
+export interface AreaOption {
+  id: string
+  label: string
+  cor?: string | null
+}
+/** Fallback estático (seed inicial). O hook useAreaOptions() é preferido na UI. */
+export const AREA_OPTIONS: AreaOption[] = PROJECTS.filter((p) => !p.inbox).map((p) => ({ id: p.id, label: p.name }))
+/** Hook que retorna as áreas ativas do store (reage a reload do admin). */
+export function useAreaOptions(): AreaOption[] {
+  const areas = useAreasStore((s) => s.areas)
+  return useMemo(() => toAreaOptions(areas), [areas])
+}
+/** Rótulo de exibição via store (hook — use em componentes React). */
+export function useAreaLabel(chave: string | null | undefined): string {
+  const areas = useAreasStore((s) => s.areas)
+  return resolveAreaLabel(areas, chave)
+}
+/** Rótulo puro (não-hook) — fallback ao valor cru quando a área não está no store. */
+export const areaLabel = (value: string | null | undefined): string => {
+  if (!value) return ""
+  return AREA_OPTIONS.find((a) => a.id === value)?.label ?? value
+}

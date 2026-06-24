@@ -13,7 +13,6 @@ import { AssigneeAvatar, Menu, MenuItem, PriorityFlag } from "@/components/taref
 import { TODAY } from "@/components/tarefas/tf-meta"
 import { addBizDaysClient, dateFull } from "./pj-meta"
 import {
-  AREAS,
   AreaTag,
   COLOR_CHOICES,
   ICON_CHOICES,
@@ -21,6 +20,7 @@ import {
   Overlay,
   PageFrame,
   PageHeader,
+  useAreaOptions,
   fieldCol,
   fieldLbl,
   pickerStyle,
@@ -62,7 +62,7 @@ const toForm = (tpl: TemplateView | null): TemplateFormValue => ({
   id: tpl?.id,
   nome: tpl?.nome ?? "",
   descricao: tpl?.descricao ?? "",
-  area: tpl?.area ?? "Societário",
+  area: tpl?.area ?? "soc",
   cor: tpl?.cor ?? "#1F3A6E",
   icone: tpl?.icone ?? "folder",
   itens: (tpl?.itens ?? []).map((it) => ({
@@ -271,6 +271,7 @@ function TemplateItemRow({
 
 export function TemplateEditor({ tpl, onClose, onSave }: { tpl: TemplateView | null; onClose: () => void; onSave: (form: TemplateFormValue) => void }) {
   const isNew = !tpl
+  const areaOpts = useAreaOptions()
   const [form, setForm] = useState<TemplateFormValue>(() => toForm(tpl))
   const [dragIdx, setDragIdx] = useState<number | null>(null)
   const set = (patch: Partial<TemplateFormValue>) => setForm((f) => ({ ...f, ...patch }))
@@ -302,8 +303,8 @@ export function TemplateEditor({ tpl, onClose, onSave }: { tpl: TemplateView | n
             </label>
             <label style={{ ...fieldCol, flex: "1 1 160px" }}>
               <span style={fieldLbl}>Área</span>
-              <Menu width={200} trigger={<span className="picker-btn" style={pickerStyle}>{form.area}<Icon name="chevronDown" size={13} /></span>}>
-                {(close) => AREAS.map((a) => <MenuItem key={a} label={a} active={form.area === a} onClick={() => { set({ area: a }); close() }} />)}
+              <Menu width={200} trigger={<span className="picker-btn" style={pickerStyle}>{areaOpts.find((a) => a.id === form.area)?.label ?? form.area ?? "—"}<Icon name="chevronDown" size={13} /></span>}>
+                {(close) => areaOpts.map((a) => <MenuItem key={a.id} label={a.label} active={form.area === a.id} onClick={() => { set({ area: a.id }); close() }} />)}
               </Menu>
             </label>
           </div>

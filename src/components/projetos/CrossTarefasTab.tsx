@@ -125,6 +125,7 @@ export function CrossTarefasTab({
   const [fStatus, setFStatus] = useState<TaskStatus | null>(null)
   const [fAssignee, setFAssignee] = useState<number | null>(null)
   const [onlyMine, setOnlyMine] = useState(true)
+  const [hideDone, setHideDone] = useState(true)
 
   let scoped = onlyMine ? tasks.filter((t) => t.responsavelId === meId) : tasks
   if (fProjetoId === "none") scoped = scoped.filter((t) => t.projetoId == null)
@@ -144,6 +145,16 @@ export function CrossTarefasTab({
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
         <ViewSwitcher view={view} setView={setView} />
         <div style={{ flex: 1 }} />
+        {selectable && (
+          <button
+            onClick={() => setHideDone(!hideDone)}
+            title={hideDone ? "Mostrar tarefas concluídas" : "Ocultar tarefas concluídas"}
+            style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 32, padding: "0 11px", borderRadius: 9, cursor: "pointer", border: `1px solid ${!hideDone ? "var(--accent)" : "var(--border-strong)"}`, background: !hideDone ? "var(--accent-soft)" : "var(--surface)", fontSize: 12, fontWeight: 500, color: !hideDone ? "var(--accent)" : "var(--text-muted)", whiteSpace: "nowrap", fontFamily: "var(--font-sans)" }}
+          >
+            <Icon name={hideDone ? "eyeOff" : "eye"} size={14} strokeWidth={1.85} />
+            Concluídas
+          </button>
+        )}
         {selectable && (
           <button
             onClick={() => setSelectMode(!selectMode)}
@@ -198,7 +209,7 @@ export function CrossTarefasTab({
             </>
           )}
         </Menu>
-        <Menu align="right" width={220} trigger={<FilterBtn active={fAssignee != null} icon="user">{fAssignee != null ? socios.find((m) => m.id === fAssignee)?.first : "Responsável"}</FilterBtn>}>
+        <Menu width={220} trigger={<FilterBtn active={fAssignee != null} icon="user">{fAssignee != null ? socios.find((m) => m.id === fAssignee)?.first : "Responsável"}</FilterBtn>}>
           {(close) => (
             <>
               <MenuItem label="Toda a equipe" active={fAssignee == null} onClick={() => { setFAssignee(null); close() }} />
@@ -208,8 +219,8 @@ export function CrossTarefasTab({
         </Menu>
       </div>
 
-      {view === "hoje" && <HojeView tasks={scoped} {...cb} selectable={selectMode && selectable} selectedIds={selectedIds} onSelect={onSelect} />}
-      {view === "lista" && <ListaView tasks={scoped} groupBy={groupBy} {...cb} selectable={selectMode && selectable} selectedIds={selectedIds} onSelect={onSelect} />}
+      {view === "hoje" && <HojeView tasks={scoped} hideDone={hideDone} {...cb} selectable={selectMode && selectable} selectedIds={selectedIds} onSelect={onSelect} />}
+      {view === "lista" && <ListaView tasks={scoped} groupBy={groupBy} hideDone={hideDone} {...cb} selectable={selectMode && selectable} selectedIds={selectedIds} onSelect={onSelect} />}
       {view === "quadro" && <QuadroView tasks={scoped} onMove={onMove} {...cb} />}
       {view === "calendario" && <CalendarioView tasks={scoped} {...cb} />}
       {view === "agenda" && <AgendaView tasks={scoped} onSchedule={onSchedule} {...cb} />}

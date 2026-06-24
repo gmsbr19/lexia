@@ -4,17 +4,17 @@
 // ProjectModal onto the real backend shape: vínculo → casoId|clienteId, área é
 // uma tag livre. onSave receives a ProjetoFormValue the workspace turns into a
 // POST /api/projetos or PATCH /api/projetos/[id].
-import { useState, type CSSProperties } from "react"
+import { useMemo, useState, type CSSProperties } from "react"
 import type { IdNome, TeamMember } from "@/lib/tarefas/types"
 import { PROJETO_STATUS, type ProjetoStatus, type ProjetoView, statusProjetoMeta } from "@/lib/projetos/types"
 import { Icon } from "@/components/tarefas/tf-icons"
 import { AssigneeAvatar, Menu, MenuItem } from "@/components/tarefas/tf-kit"
 import {
-  AREAS,
   COLOR_CHOICES,
   ICON_CHOICES,
   ModalHeader,
   Overlay,
+  useAreaOptions,
   fieldCol,
   fieldLbl,
   pickerStyle,
@@ -67,13 +67,14 @@ export function ProjectModal({
   onUseTemplate: () => void
 }) {
   const isNew = !projeto
+  const areaOpts = useAreaOptions()
   const [mode, setMode] = useState<"branco" | "template">("branco")
   const [form, setForm] = useState<ProjetoFormValue>(() => ({
     id: projeto?.id,
     nome: projeto?.nome ?? "",
     descricao: projeto?.descricao ?? null,
     status: projeto?.status ?? "ativo",
-    area: projeto?.area ?? "Societário",
+    area: projeto?.area ?? "soc",
     responsavelId: projeto?.responsavel?.id ?? null,
     prazo: projeto?.prazo ?? null,
     cor: projeto?.cor ?? "#1F3A6E",
@@ -148,8 +149,8 @@ export function ProjectModal({
           </label>
           <label style={{ ...fieldCol, flex: "1 1 150px" }}>
             <span style={fieldLbl}>Área</span>
-            <Menu width={180} trigger={<span className="picker-btn" style={pickerStyle}>{form.area || "—"}<Icon name="chevronDown" size={13} /></span>}>
-              {(close) => AREAS.map((a) => <MenuItem key={a} label={a} active={form.area === a} onClick={() => { set({ area: a }); close() }} />)}
+            <Menu width={180} trigger={<span className="picker-btn" style={pickerStyle}>{areaOpts.find((a) => a.id === form.area)?.label ?? form.area ?? "—"}<Icon name="chevronDown" size={13} /></span>}>
+              {(close) => areaOpts.map((a) => <MenuItem key={a.id} label={a.label} active={form.area === a.id} onClick={() => { set({ area: a.id }); close() }} />)}
             </Menu>
           </label>
         </div>

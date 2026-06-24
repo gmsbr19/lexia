@@ -10,7 +10,10 @@ import type { TeamMember, VinculoRef } from "@/lib/tarefas/types"
 import { getUsuariosAtivos } from "@/lib/users/queries"
 import { contarAtrasadas, progressoProjeto, saudeProjeto } from "./template"
 import type {
+  DashAreaResumo,
   DashCargaMembro,
+  DashDistribuicao,
+  DashDistribuicaoLinha,
   DashGargalo,
   DashProjetoSaude,
   ProdutividadeDashboard,
@@ -218,8 +221,9 @@ export async function getProdutividadeDashboard(): Promise<ProdutividadeDashboar
         nome: true,
         status: true,
         prazo: true,
+        area: true,
         responsavelId: true,
-        tarefas: { select: { done: true, prazo: true } },
+        tarefas: { select: { done: true, prazo: true, concluidoEm: true } },
       },
     }),
     prisma.tarefa.findMany({
@@ -281,6 +285,24 @@ export async function getProdutividadeDashboard(): Promise<ProdutividadeDashboar
     })
     .sort((a, b) => b.atribuidas - a.atribuidas)
 
+  // ── Distribuição futura: tarefas abertas (com prazo) por dia, por pessoa ──
+  const HORIZONTE = 14
+  const dias = Array.from({ length: HORIZONTE }, (_, i) => addDiasISO(hoje, i))
+  const fimHorizonte = dias[dias.length - 1]
+  const linhas: DashDistribuicaoLinha[] = socios
+    .map((m) => {
+      const abertas = tarefas.filter((t) => t.responsavelId === m.id && !t.done)
+      const comPrazo = abertas.filter((t) => t.prazo)
+      const counts = dias.map((d) => comPrazo.filter((t) => dISO(t.prazo) === d).length)
+      const depois = comPrazo.filter((t) => dISO(t.prazo)! > fimHorizonte).length
+      const semPrazo = abertas.length - comPrazo.length
+      const total = counts.reduce((a, b) => a + b, 0) + depois
+      return { membro: m, counts, depois, semPrazo, total }
+    })
+    .filter((l) => l.total > 0 || l.semPrazo > 0)
+    .sort((a, b) => b.total - a.total)
+  const distribuicao: DashDistribuicao = { dias, linhas }
+
   // ── Gargalos: tarefas paradas em doing/review (proxy: dias desde a última alteração) ──
   const gargalos: DashGargalo[] = tarefas
     .filter((t) => !t.done && (t.status === "doing" || t.status === "review"))
@@ -295,10 +317,25 @@ export async function getProdutividadeDashboard(): Promise<ProdutividadeDashboar
     .sort((a, b) => b.diasParado - a.diasParado)
     .slice(0, 10)
 
+  // ── Por área ──
+  const areaSet = new Set(projetos.map((p) => p.area).filter((a): a is string => !!a))
+  const porArea: DashAreaResumo[] = [...areaSet].map((area) => {
+    const pp = projetos.filter((p) => p.area === area)
+    const tt = pp.flatMap((p) => p.tarefas)
+    return {
+      area,
+      projetosAtivos: pp.filter((p) => p.status === "ativo").length,
+      tarefasAtrasadas: tt.filter((t) => !t.done && dISO(t.prazo) && dISO(t.prazo)! < hoje).length,
+      tarefasConcluidas30d: tt.filter((t) => t.done && t.concluidoEm && dISO(t.concluidoEm)! >= trintaAtras).length,
+    }
+  }).sort((a, b) => b.projetosAtivos - a.projetosAtivos || b.tarefasAtrasadas - a.tarefasAtrasadas)
+
   return {
     kpis: { projetosAtivos, tarefasAtrasadas, taxaNoPrazoPct, cycleTimeDias },
     projetos: projSaude,
     carga,
+    distribuicao,
     gargalos,
+    porArea,
   }
 }

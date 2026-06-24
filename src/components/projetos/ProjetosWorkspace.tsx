@@ -476,13 +476,6 @@ export function ProjetosWorkspace({
       <TarefasProvider socios={socios} casos={casos} clientes={clientes}>
         <div className="pj-tabbar">
           <ModuleTabs active={tab} onChange={setTab} counts={counts} />
-          <div style={{ flex: 1 }} />
-          {tab === "projetos" && canEdit && (
-            <button className="btn btn-primary" onClick={() => setProjModal({ projeto: null })} style={{ height: 32, fontSize: 12 }}>
-              <Icon name="plus" size={13} strokeWidth={2.2} />
-              Novo projeto
-            </button>
-          )}
         </div>
 
         <div className="pj-body">

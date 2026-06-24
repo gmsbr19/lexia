@@ -25,6 +25,7 @@ import { dateFull, deriveRollup, type LiveRollup } from "./pj-meta"
 import {
   AreaTag,
   FilterBtn,
+  useAreaOptions,
   MiniStat,
   PageFrame,
   ProgressBar,
@@ -44,8 +45,6 @@ const PROJ_STATUS_GROUPS: { id: ProjetoView["status"]; label: string }[] = [
   { id: "concluido", label: "Concluído" },
   { id: "arquivado", label: "Arquivado" },
 ]
-const AREAS = ["Societário", "M&A", "Trabalhista", "Tributário", "Cível", "Interno"]
-
 const railGroupLbl: React.CSSProperties = { display: "flex", alignItems: "center", gap: 6, padding: "6px 10px 5px", fontSize: 11, fontWeight: 500, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }
 const miniSeg = (on: boolean): React.CSSProperties => ({ height: 24, padding: "0 10px", borderRadius: 6, border: "none", cursor: "pointer", background: on ? "var(--surface)" : "transparent", color: on ? "var(--text)" : "var(--text-muted)", fontSize: 11.5, fontWeight: 500, boxShadow: on ? "var(--shadow-sm)" : "none", fontFamily: "var(--font-sans)" })
 
@@ -73,16 +72,18 @@ function ProjectRail({
 }) {
   const [q, setQ] = useState("")
   const [groupBy, setGroupBy] = useState<RailGroupBy>("area")
+  const areaOpts = useAreaOptions()
   const list = projetos.filter((p) => p.nome.toLowerCase().includes(q.toLowerCase()))
   const favs = list.filter((p) => p.favorito)
 
   const groups: { key: string; label: string; items: ProjetoView[] }[] = []
   if (groupBy === "area") {
-    AREAS.forEach((a) => {
-      const items = list.filter((p) => p.area === a)
-      if (items.length) groups.push({ key: a, label: a, items })
+    areaOpts.forEach((a) => {
+      const items = list.filter((p) => p.area === a.id)
+      if (items.length) groups.push({ key: a.id, label: a.label, items })
     })
-    const sem = list.filter((p) => !p.area || !AREAS.includes(p.area))
+    const known = new Set(areaOpts.map((a) => a.id))
+    const sem = list.filter((p) => !p.area || !known.has(p.area))
     if (sem.length) groups.push({ key: "sem", label: "Outros", items: sem })
   } else {
     PROJ_STATUS_GROUPS.forEach((s) => {
@@ -253,6 +254,7 @@ interface CanvasUi {
   fStatus: TaskStatus | null
   fAssignee: number | null
   onlyMine: boolean
+  hideDone: boolean
 }
 
 function ProjectCanvas({
@@ -293,7 +295,7 @@ function ProjectCanvas({
   onSelect: (id: number) => void
 }) {
   const { meId, socios } = useTarefasCtx()
-  const [ui, setUi] = useState<CanvasUi>({ view: "lista", groupBy: "prazo", fStatus: null, fAssignee: null, onlyMine: false })
+  const [ui, setUi] = useState<CanvasUi>({ view: "lista", groupBy: "prazo", fStatus: null, fAssignee: null, onlyMine: false, hideDone: true })
   const set = <K extends keyof CanvasUi>(k: K, v: CanvasUi[K]) => setUi((u) => ({ ...u, [k]: v }))
 
   const all = tasks.filter((t) => t.projetoId === proj.id)
@@ -330,7 +332,7 @@ function ProjectCanvas({
               </>
             )}
           </Menu>
-          <Menu align="right" width={220} trigger={<FilterBtn active={ui.fAssignee != null} icon="user">{ui.fAssignee != null ? socios.find((m) => m.id === ui.fAssignee)?.first : "Responsável"}</FilterBtn>}>
+          <Menu width={220} trigger={<FilterBtn active={ui.fAssignee != null} icon="user">{ui.fAssignee != null ? socios.find((m) => m.id === ui.fAssignee)?.first : "Responsável"}</FilterBtn>}>
             {(close) => (
               <>
                 <MenuItem label="Toda a equipe" active={ui.fAssignee == null} onClick={() => { set("fAssignee", null); close() }} />
@@ -345,6 +347,16 @@ function ProjectCanvas({
             <Icon name="user" size={14} strokeWidth={1.85} />
             Só minhas
           </button>
+          {(ui.view === "lista" || ui.view === "hoje") && (
+            <button
+              onClick={() => set("hideDone", !ui.hideDone)}
+              title={ui.hideDone ? "Mostrar tarefas concluídas" : "Ocultar tarefas concluídas"}
+              style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 32, padding: "0 11px", borderRadius: 9, cursor: "pointer", border: `1px solid ${!ui.hideDone ? "var(--accent)" : "var(--border-strong)"}`, background: !ui.hideDone ? "var(--accent-soft)" : "var(--surface)", fontSize: 12, fontWeight: 500, color: !ui.hideDone ? "var(--accent)" : "var(--text-muted)", whiteSpace: "nowrap", fontFamily: "var(--font-sans)" }}
+            >
+              <Icon name={ui.hideDone ? "eyeOff" : "eye"} size={14} strokeWidth={1.85} />
+              Concluídas
+            </button>
+          )}
           {(ui.view === "lista" || ui.view === "hoje") && (
             <button
               onClick={() => setSelectMode(!selectMode)}
@@ -366,8 +378,8 @@ function ProjectCanvas({
           <ProjectEmptyState proj={proj} canEdit={canEdit} onNewTask={onNewTask} />
         ) : (
           <>
-            {ui.view === "hoje" && <HojeView tasks={projTasks} {...cb} selectable={selectable} selectedIds={selectedIds} onSelect={onSelect} />}
-            {ui.view === "lista" && <ListaView tasks={projTasks} groupBy={ui.groupBy} {...cb} selectable={selectable} selectedIds={selectedIds} onSelect={onSelect} />}
+            {ui.view === "hoje" && <HojeView tasks={projTasks} hideDone={ui.hideDone} {...cb} selectable={selectable} selectedIds={selectedIds} onSelect={onSelect} />}
+            {ui.view === "lista" && <ListaView tasks={projTasks} groupBy={ui.groupBy} hideDone={ui.hideDone} {...cb} selectable={selectable} selectedIds={selectedIds} onSelect={onSelect} />}
             {ui.view === "quadro" && <QuadroView tasks={projTasks} onMove={onMove} {...cb} />}
             {ui.view === "calendario" && <CalendarioView tasks={projTasks} {...cb} />}
             {ui.view === "agenda" && <AgendaView tasks={projTasks} onSchedule={onSchedule} {...cb} />}

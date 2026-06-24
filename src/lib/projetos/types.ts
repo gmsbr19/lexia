@@ -135,9 +135,29 @@ export interface DashGargalo {
   diasParado: number // proxy: dias desde a última alteração (sem histórico de status)
   responsavel: TeamMember | null
 }
+/** Distribuição FUTURA da carga: tarefas abertas por dia, por pessoa. */
+export interface DashDistribuicaoLinha {
+  membro: TeamMember
+  counts: number[] // tarefas abertas com prazo em cada dia de `dias` (alinhado por índice)
+  depois: number // tarefas abertas com prazo além do horizonte
+  semPrazo: number // tarefas abertas sem prazo definido
+  total: number // soma de counts + depois (tarefas futuras com prazo)
+}
+export interface DashDistribuicao {
+  dias: string[] // ISO "YYYY-MM-DD", próximos N dias começando hoje
+  linhas: DashDistribuicaoLinha[]
+}
+export interface DashAreaResumo {
+  area: string // chave
+  projetosAtivos: number
+  tarefasAtrasadas: number
+  tarefasConcluidas30d: number
+}
 export interface ProdutividadeDashboard {
   kpis: DashKpis
   projetos: DashProjetoSaude[]
   carga: DashCargaMembro[]
+  distribuicao: DashDistribuicao
   gargalos: DashGargalo[]
+  porArea: DashAreaResumo[]
 }
