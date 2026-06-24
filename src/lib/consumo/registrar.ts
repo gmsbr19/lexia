@@ -5,7 +5,7 @@ import type Anthropic from "@anthropic-ai/sdk"
 import { prisma } from "@/lib/db"
 import { log } from "@/lib/log"
 
-export type RecursoUso = "chat" | "briefing" | "triagem" | "resumo" | "vinculo" | "criterios" | "doc-suggest"
+export type RecursoUso = "chat" | "briefing" | "triagem" | "resumo" | "vinculo" | "criterios" | "doc-suggest" | "doc-campos"
 
 /** Record one Anthropic call's token usage. Never throws. */
 export async function registrarUso(args: {

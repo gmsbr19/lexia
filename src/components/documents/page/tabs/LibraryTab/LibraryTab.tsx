@@ -2,14 +2,13 @@
 
 import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Filter, FileText, MoreHorizontal, PenLine, Search, Trash2, CheckCircle2, FolderOpen } from "lucide-react"
+import { Filter, FileText, MoreHorizontal, Search, Trash2, FolderOpen } from "lucide-react"
 import { btn } from "@/styles/components.css"
 import { tokens } from "@/styles/tokens.css"
 import { apiSend, ApiError } from "@/lib/client/api"
 import { toast } from "@/lib/client/toast"
 import type { DocumentoRow, DocumentoStatus } from "@/lib/documentos/types"
 import { DOCUMENTO_STATUS_LABEL } from "@/lib/documentos/types"
-import { templateEditorPath } from "@/lib/documents/registry"
 import { useDocumentFilter } from "../../hooks/useDocumentFilter"
 import { scrollArea, pageFrame, toolbarSpacer, compactSecondaryButton, documentTypeText, documentIconBar } from "../../documents-page.css"
 import {
@@ -73,8 +72,8 @@ function statusTone(status: DocumentoStatus): { background: string; color: strin
 }
 
 function documentoHref(doc: DocumentoRow): string {
-  if (doc.status === "rascunho") return `${templateEditorPath(doc.template)}?documento=${doc.id}`
-  return `/documents/preview?documento=${doc.id}`
+  // Every document opens in the WYSIWYG (rich-text) editor at /documents/doc/[id].
+  return `/documents/doc/${doc.id}`
 }
 
 function RowMenu({ doc }: { doc: DocumentoRow }) {
@@ -98,10 +97,6 @@ function RowMenu({ doc }: { doc: DocumentoRow }) {
       document.removeEventListener("keydown", onKey)
     }
   }, [open])
-
-  const isContrato = categoriaDoTemplate(doc.template) === "Contrato"
-  const canEnviar = doc.status === "finalizado"
-  const canFechar = (doc.status === "finalizado" || doc.status === "enviado") && isContrato
 
   async function run(label: string, fn: () => Promise<unknown>) {
     if (busy) return
@@ -138,28 +133,6 @@ function RowMenu({ doc }: { doc: DocumentoRow }) {
             <FolderOpen size={14} />
             Abrir
           </button>
-          {canEnviar && (
-            <button
-              type="button"
-              className={rowMenuItem}
-              disabled={busy}
-              onClick={() => run("Documento enviado para assinatura", () => apiSend(`/api/documentos/${doc.id}/enviar`, "POST"))}
-            >
-              <PenLine size={14} />
-              Enviar para assinatura
-            </button>
-          )}
-          {canFechar && (
-            <button
-              type="button"
-              className={rowMenuItem}
-              disabled={busy}
-              onClick={() => run("Contrato fechado — honorários lançados", () => apiSend(`/api/documentos/${doc.id}/fechar`, "POST"))}
-            >
-              <CheckCircle2 size={14} />
-              Contrato fechado
-            </button>
-          )}
           <div className={rowMenuDivider} />
           <button
             type="button"
@@ -202,13 +175,13 @@ export function DocumentsLibraryTab({ documentos }: { documentos: DocumentoRow[]
               </div>
               <div className={emptyTitle}>Você ainda não gerou documentos</div>
               <p className={emptyDesc}>
-                Crie um contrato de honorários — a LexIA escolhe o modelo e preenche para você. Os documentos gerados aparecem aqui.
+                Comece um documento em branco, importe um .docx ou use um modelo — a LexIA ajuda a redigir. Os documentos criados aparecem aqui.
               </p>
               <button
                 type="button"
                 className={btn({ variant: "secondary" })}
                 style={{ height: 34 }}
-                onClick={() => router.push(templateEditorPath("contrato-honorarios"))}
+                onClick={() => router.push("/documents/novo")}
               >
                 Criar primeiro documento
               </button>

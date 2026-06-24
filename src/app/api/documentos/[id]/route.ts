@@ -27,7 +27,7 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
     action: "documento.editar",
     entity: "Documento",
     entityId: id,
-    payload: { ...body, payload: undefined },
+    payload: { ...body, payload: undefined, conteudo: undefined }, // form/rich-text bodies stay out of the audit snapshot
   })
 }
 

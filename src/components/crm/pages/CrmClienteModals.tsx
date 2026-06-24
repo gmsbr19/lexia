@@ -6,6 +6,7 @@
 // the change). Tarefa supports create + edit + delete; the others are creates.
 import { useState } from "react"
 import { parseBRLToCents } from "@/lib/finance/money"
+import { emptyDoc } from "@/lib/documents/model/types"
 import { FxInput, FxLabel, FxModal, FxSegmented, FxSelect, FxTextarea, useCrmToast } from "../crm-kit"
 import { Icon } from "../crm-icons"
 import {
@@ -341,12 +342,6 @@ export function CrmEventoModal({
 }
 
 // ───────────────────────── Documento (create rascunho, pre-linked) ─────────────────────────
-const TEMPLATE_OPTS = [{ value: "contrato-honorarios", label: "Contrato de Honorários" }]
-const FORMATO_OPTS = [
-  { value: "pdf", label: "PDF" },
-  { value: "docx", label: "DOCX" },
-]
-
 export function CrmDocumentoModal({
   clienteId,
   onClose,
@@ -357,20 +352,24 @@ export function CrmDocumentoModal({
   onSaved: () => void
 }) {
   const { toast } = useCrmToast()
-  const [nome, setNome] = useState("Contrato de Honorários Advocatícios")
-  const [template, setTemplate] = useState("contrato-honorarios")
-  const [formato, setFormato] = useState("pdf")
+  const [nome, setNome] = useState("Documento sem título")
   const [busy, setBusy] = useState(false)
 
   const save = async (openEditor: boolean) => {
     if (!nome.trim()) return toast("Informe o nome", { tone: "neg", icon: "alertTriangle" })
     setBusy(true)
     try {
-      await createDocumento({ nome: nome.trim(), template, formato, status: "rascunho", clienteId })
+      const created = (await createDocumento({
+        nome: nome.trim(),
+        template: "livre",
+        status: "rascunho",
+        conteudo: emptyDoc(),
+        clienteId,
+      })) as { id: number }
       toast("Documento criado (rascunho)")
       onSaved()
       onClose()
-      if (openEditor) window.open(`/documents/editor/${template}`, "_blank")
+      if (openEditor) window.open(`/documents/doc/${created.id}`, "_blank")
     } catch (e) {
       toast(errMsg(e), { tone: "neg", icon: "alertTriangle" })
     } finally {
@@ -381,7 +380,7 @@ export function CrmDocumentoModal({
   return (
     <FxModal
       title="Novo documento"
-      sub="Cria um rascunho vinculado ao cliente; o conteúdo é preenchido no editor."
+      sub="Cria um rascunho em branco vinculado ao cliente; o conteúdo é escrito no editor."
       onClose={onClose}
       width={500}
       footer={
@@ -396,10 +395,6 @@ export function CrmDocumentoModal({
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <div><FxLabel>Nome</FxLabel><FxInput value={nome} onChange={(e) => setNome(e.target.value)} autoFocus /></div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <div><FxLabel>Modelo</FxLabel><FxSelect options={TEMPLATE_OPTS} value={template} onChange={(e) => setTemplate(e.target.value)} /></div>
-          <div><FxLabel>Formato</FxLabel><FxSelect options={FORMATO_OPTS} value={formato} onChange={(e) => setFormato(e.target.value)} /></div>
-        </div>
       </div>
     </FxModal>
   )

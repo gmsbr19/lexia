@@ -37,17 +37,37 @@ export const templateChipRow = style({
 })
 
 export const templateChip = recipe({
-  base: pillBase,
+  base: [
+    pillBase,
+    {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 7,
+      height: 32,
+      padding: "0 13px",
+      borderRadius: 8,
+      fontSize: 13,
+      fontWeight: 500,
+      letterSpacing: "-0.01em",
+    },
+  ],
   variants: {
     active: {
       true: {
-        borderColor: tokens.color.accent,
+        borderColor: tokens.color.borderGold,
         background: tokens.color.accentSoft,
         color: tokens.color.accent,
         fontWeight: 500,
       },
     },
   },
+})
+
+export const templateChipCount = style({
+  fontSize: 11,
+  color: "inherit",
+  opacity: 0.7,
+  fontVariantNumeric: "tabular-nums",
 })
 
 export const templatesGrid = style({

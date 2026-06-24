@@ -510,17 +510,23 @@ model Evento {
 model Documento {
   id        Int      @id @default(autoincrement())
   nome      String
-  template  String // generator key, e.g. 'contrato-honorarios'
+  template  String // generator key, e.g. 'contrato-honorarios' (or a DocumentoTemplate.chave / 'livre')
   tipo      String? // 'peticao' | 'contrato' | 'procuracao' | 'prova' | 'outro'
   formato   String? // 'docx' | 'pdf' — last generated format (null while rascunho)
   status    String   @default("rascunho") // 'rascunho' | 'finalizado' | 'enviado' | 'fechado'
-  payload   String? // JSON form data (ContratoHonorariosData etc.)
+  payload   String? // JSON form data of the legacy STRUCTURED contract (ContratoHonorariosData)
+  conteudo  String? // LexDoc (ProseMirror) JSON — rich-text body for flexible templates (null for legacy structured docs)
+  valores   String? // JSON: Record<string,string> — placeholder values
   clienteId Int?
   cliente   Cliente? @relation(fields: [clienteId], references: [id])
   casoId    Int?
   caso      Caso?    @relation(fields: [casoId], references: [id])
   processoId Int?
   processo  Processo? @relation(fields: [processoId], references: [id])
+  templateId Int?
+  templateRef DocumentoTemplate? @relation(fields: [templateId], references: [id])
+  timbradoId Int?
+  timbrado  Timbrado? @relation(fields: [timbradoId], references: [id])
   criadoPor String? // actor e-mail
   versoes   DocumentoVersao[]
   createdAt DateTime @default(now())
@@ -530,6 +536,62 @@ model Documento {
   @@index([casoId])
   @@index([status])
   @@index([processoId])
+  @@index([templateId])
+}
+
+// Reusable document template — the DB-backed replacement for the hardcoded
+// registry. `conteudo` is a LexDoc (ProseMirror) JSON body and `placeholders` is
+// the declared merge-field schema (PlaceholderDecl[]). `tipoEstruturado` marks a
+// "smart" template (e.g. the contrato de honorários) that still drives typed
+// fields + finance automation through its own structured path.
+model DocumentoTemplate {
+  id              Int       @id @default(autoincrement())
+  chave           String?   @unique // stable seed key, e.g. 'contrato-honorarios'
+  nome            String
+  categoria       String    @default("Outro") // Contrato | Procuração | Proposta | Parecer Jurídico | Outro
+  descricao       String?
+  conteudo        String? // LexDoc JSON (null for the legacy structured contract)
+  placeholders    String    @default("[]") // JSON: PlaceholderDecl[]
+  tipoEstruturado String? // e.g. 'contrato-honorarios' — typed fields + automations
+  timbradoId      Int?
+  timbrado        Timbrado? @relation(fields: [timbradoId], references: [id])
+  icone           String?
+  destaque        Boolean   @default(false)
+  ativo           Boolean   @default(true)
+  usoCount        Int       @default(0)
+  ordem           Int       @default(0)
+  criadoPor       String?
+  excluidoEm      DateTime?
+  documentos      Documento[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([categoria])
+  @@index([ativo])
+  @@index([excluidoEm])
+}
+
+// Letterhead asset (papel timbrado): full-page art + the content safe-margins
+// (mm) so text never collides with the printed letterhead. `imagem` is a data
+// URL for now (storage can move to OneDrive later, mirroring DocumentoVersao).
+model Timbrado {
+  id           Int                 @id @default(autoincrement())
+  nome         String
+  imagem       String // data URL "data:image/png;base64,…"
+  mimeType     String? // 'image/png' | 'image/jpeg'
+  margemTop    Int                 @default(30) // mm
+  margemRight  Int                 @default(25)
+  margemBottom Int                 @default(30)
+  margemLeft   Int                 @default(25)
+  padrao       Boolean             @default(false) // default letterhead for new documents
+  criadoPor    String?
+  excluidoEm   DateTime?
+  templates    DocumentoTemplate[]
+  documentos   Documento[]
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@index([excluidoEm])
 }
 
 // Key-value app settings (JSON values), e.g. key 'escritorio' = office data used

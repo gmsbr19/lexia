@@ -1,28 +1,141 @@
 import { style } from "@vanilla-extract/css"
+import { recipe } from "@vanilla-extract/recipes"
 import { tokens } from "@/styles/tokens.css"
 import { interactiveSurface, pillBase } from "../../documents-page.css"
 
 export const pageFrameCreate = style({
-    padding: "32px 40px 48px",
+    padding: "26px 36px 36px",
 })
 
 export const section = style({
-    marginBottom: 36,
+    marginBottom: 32,
 })
 
 export const heroTitle = style({
     margin: 0,
-    fontSize: 25,
+    fontSize: 30,
     fontWeight: 500,
-    letterSpacing: "-0.025em",
+    letterSpacing: "-0.03em",
     color: tokens.color.text,
 })
 
 export const heroLead = style({
-    margin: "6px 0 20px",
-    fontSize: 14,
+    margin: "7px 0 22px",
+    fontSize: 14.5,
     color: tokens.color.textMuted,
     letterSpacing: "-0.005em",
+})
+
+// ── "Começar em branco" + upload row ────────────────────────────────────────
+export const createRow = style({
+    display: "grid",
+    gridTemplateColumns: "minmax(260px, 360px) 1fr",
+    gap: 14,
+    "@media": {
+        "(max-width: 860px)": { gridTemplateColumns: "1fr" },
+    },
+})
+
+export const blankCard = style({
+    display: "flex",
+    alignItems: "center",
+    gap: 13,
+    textAlign: "left",
+    cursor: "pointer",
+    fontFamily: tokens.font.sans,
+    background: tokens.color.accentSoft,
+    border: `1px solid ${tokens.color.borderGold}`,
+    borderRadius: 14,
+    padding: "15px 18px",
+    transition: "background .15s ease, transform .15s ease",
+    selectors: {
+        "&:hover": { transform: "translateY(-1px)" },
+        "&:disabled": { opacity: 0.55, cursor: "default", transform: "none" },
+    },
+})
+
+export const blankIcon = style({
+    width: 40,
+    height: 40,
+    borderRadius: 11,
+    flexShrink: 0,
+    display: "grid",
+    placeItems: "center",
+    background: tokens.brand.gold,
+    color: tokens.brand.navy,
+})
+
+export const blankBody = style({ minWidth: 0 })
+
+export const blankTitle = style({
+    display: "block",
+    fontSize: 14,
+    fontWeight: 500,
+    color: tokens.color.text,
+    letterSpacing: "-0.01em",
+})
+
+export const blankSub = style({
+    display: "block",
+    fontSize: 12.5,
+    color: tokens.color.textMuted,
+    marginTop: 1,
+})
+
+export const uploadButton = recipe({
+    base: {
+        display: "flex",
+        alignItems: "center",
+        gap: 13,
+        width: "100%",
+        textAlign: "left",
+        cursor: "pointer",
+        fontFamily: tokens.font.sans,
+        padding: "15px 18px",
+        borderRadius: 14,
+        border: `1.5px dashed ${tokens.color.borderStrong}`,
+        background: tokens.color.surface,
+        transition: "background .15s ease, border-color .15s ease",
+        selectors: { "&:disabled": { opacity: 0.55, cursor: "default" } },
+    },
+    variants: {
+        drag: {
+            true: { borderColor: tokens.color.borderGold, background: tokens.color.accentSoft },
+        },
+    },
+})
+
+export const uploadIcon = style({
+    width: 40,
+    height: 40,
+    borderRadius: 11,
+    flexShrink: 0,
+    display: "grid",
+    placeItems: "center",
+    background: tokens.color.accentSoft,
+    color: tokens.color.accent,
+})
+
+export const uploadBody = style({ minWidth: 0, flex: 1 })
+
+export const uploadTitle = style({
+    display: "block",
+    fontSize: 14,
+    fontWeight: 500,
+    color: tokens.color.text,
+    letterSpacing: "-0.01em",
+})
+
+export const uploadSub = style({
+    display: "block",
+    fontSize: 12.5,
+    color: tokens.color.textMuted,
+    marginTop: 1,
+})
+
+export const uploadCode = style({
+    fontFamily: tokens.font.mono,
+    fontSize: 11.5,
 })
 
 export const composerCard = style({
@@ -227,7 +340,7 @@ export const draftIcon = style({
 })
 
 export const draftTitle = style({
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: 500,
     color: tokens.color.text,
     letterSpacing: "-0.015em",

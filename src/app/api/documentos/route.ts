@@ -26,6 +26,6 @@ export async function POST(req: Request) {
   return runMutation(() => createDocumento({ ...parseBody(documentoCreateSchema, body), criadoPor }), {
     action: "documento.criar",
     entity: "Documento",
-    payload: { ...body, payload: undefined }, // form data stays out of the audit snapshot
+    payload: { ...body, payload: undefined, conteudo: undefined }, // form/rich-text bodies stay out of the audit snapshot
   })
 }

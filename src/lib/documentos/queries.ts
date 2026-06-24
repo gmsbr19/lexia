@@ -50,17 +50,31 @@ export async function getDocumentos(filtro: DocumentoFiltro = {}): Promise<Docum
   return rows.map(toRow)
 }
 
-/** Detail incl. the parsed `payload` (form data) so the editor can re-open it. */
-export async function getDocumento(id: number): Promise<DocumentoDetail | null> {
-  const r = await prisma.documento.findUnique({ where: { id }, select: { ...DOC_SELECT, payload: true } })
-  if (!r) return null
-  let payload: unknown | null = null
-  if (r.payload) {
-    try {
-      payload = JSON.parse(r.payload)
-    } catch {
-      payload = null
-    }
+function parseJson<T>(s: string | null): T | null {
+  if (!s) return null
+  try {
+    return JSON.parse(s) as T
+  } catch {
+    return null
   }
-  return { ...toRow(r), payload }
+}
+
+/**
+ * Detail incl. the parsed structured `payload` AND the flexible `conteudo`
+ * (LexDoc) + `valores` so the editor can re-open either kind of document.
+ */
+export async function getDocumento(id: number): Promise<DocumentoDetail | null> {
+  const r = await prisma.documento.findUnique({
+    where: { id },
+    select: { ...DOC_SELECT, payload: true, conteudo: true, valores: true, templateId: true, timbradoId: true },
+  })
+  if (!r) return null
+  return {
+    ...toRow(r),
+    payload: parseJson(r.payload),
+    conteudo: parseJson(r.conteudo),
+    valores: parseJson<Record<string, string>>(r.valores),
+    templateId: r.templateId,
+    timbradoId: r.timbradoId,
+  }
 }

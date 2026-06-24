@@ -4,13 +4,13 @@ import { Suspense } from "react"
 import Link from "next/link"
 import { Plus } from "lucide-react"
 import { btn } from "@/styles/components.css"
-import { templateEditorPath } from "@/lib/documents/registry"
 import type { DocumentoRow } from "@/lib/documentos/types"
 import { DocumentsTabStrip } from "./tabs/TabStrip"
 import { useTabRouting } from "./hooks/useTabRouting"
 import { DocumentsCreateTab } from "./tabs/CreateTab/CreateTab"
 import { DocumentsTemplatesTab } from "./tabs/TemplatesTab/TemplatesTab"
 import { DocumentsLibraryTab } from "./tabs/LibraryTab/LibraryTab"
+import { TimbradosManager } from "../timbrados/TimbradosManager"
 import { pageShell, tabPanel, compactSecondaryButton, loadingState } from "./documents-page.css"
 
 function DocumentsPageFallback() {
@@ -24,9 +24,11 @@ function DocumentsContent({ documentos }: { documentos: DocumentoRow[] }) {
 
   const tabActions =
     activeTab === "meus-documentos" ? (
-      <Link href={templateEditorPath("contrato-honorarios")} className={`${btn({ variant: "primary" })} ${compactSecondaryButton}`}>
-        <Plus size={13} />Novo documento
-      </Link>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <Link href="/documents/novo" className={`${btn({ variant: "primary" })} ${compactSecondaryButton}`}>
+          <Plus size={13} />Novo documento
+        </Link>
+      </div>
     ) : undefined
 
   return (
@@ -48,6 +50,7 @@ function DocumentsContent({ documentos }: { documentos: DocumentoRow[] }) {
           )}
           {activeTab === "meus-documentos" && <DocumentsLibraryTab documentos={documentos} />}
           {activeTab === "modelos" && <DocumentsTemplatesTab initialFilter={modelosFilter} />}
+          {activeTab === "timbrados" && <TimbradosManager embedded />}
         </div>
       </div>
     </>

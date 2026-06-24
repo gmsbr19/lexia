@@ -101,7 +101,3 @@ export function getFeaturedTemplates(): DocumentTemplate[] {
     .filter(t => t.featured && t.available)
     .sort((a, b) => b.usageCount - a.usageCount)
 }
-
-export function templateEditorPath(id: string): string {
-  return `/documents/editor/${id}`
-}

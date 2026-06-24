@@ -1,6 +1,7 @@
 import { style } from "@vanilla-extract/css"
 import { recipe } from "@vanilla-extract/recipes"
 import { tokens } from "@/styles/tokens.css"
+import { pillBase } from "../../documents-page.css"
 
 export const pageFrameLibrary = style({
   padding: "28px 40px 40px",
@@ -55,7 +56,7 @@ export const searchIcon = style({
 
 export const searchInput = style({
   width: "100%",
-  height: 34,
+  height: 38,
   paddingLeft: 36,
   paddingRight: 12,
   paddingTop: 0,
@@ -71,32 +72,30 @@ export const searchInput = style({
 
 export const segmentedGroup = style({
   display: "flex",
-  gap: 4,
-  background: tokens.color.bgSoft,
-  borderRadius: 8,
-  padding: 3,
+  alignItems: "center",
+  gap: 6,
+  flexWrap: "wrap",
 })
 
 export const segmentedButton = recipe({
-  base: {
-    height: 26,
-    padding: "0 10px",
-    borderRadius: 6,
-    border: "none",
-    background: "transparent",
-    color: tokens.color.textMuted,
-    fontSize: "12px",
-    fontWeight: 500,
-    cursor: "pointer",
-    boxShadow: "none",
-    fontFamily: tokens.font.sans,
-  },
+  base: [
+    pillBase,
+    {
+      height: 32,
+      padding: "0 13px",
+      borderRadius: 8,
+      fontSize: 13,
+      fontWeight: 500,
+      letterSpacing: "-0.01em",
+      color: tokens.color.textMuted,
+    },
+  ],
   variants: {
     active: {
       true: {
-        background: tokens.color.surface,
-        color: tokens.color.text,
-        boxShadow: tokens.color.shadowSm,
+        borderColor: tokens.color.borderGold,
+        background: tokens.color.accentSoft,
+        color: tokens.color.accent,
       },
     },
   },

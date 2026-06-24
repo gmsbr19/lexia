@@ -731,7 +731,7 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
                     </div>
                   </div>
                   <CrmBadge tone={d.status === "finalizado" ? "pos" : "gold"} dot>{d.status === "finalizado" ? "Finalizado" : "Rascunho"}</CrmBadge>
-                  <button className="btn btn-ghost" onClick={() => window.open(`/documents/editor/${d.template}`, "_blank")} style={{ width: 30, height: 30, padding: 0 }} title="Abrir no editor">
+                  <button className="btn btn-ghost" onClick={() => window.open(`/documents/doc/${d.id}`, "_blank")} style={{ width: 30, height: 30, padding: 0 }} title="Abrir no editor">
                     <Icon name="externalLink" size={15} />
                   </button>
                 </div>

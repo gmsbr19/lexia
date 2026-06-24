@@ -1,10 +1,14 @@
 "use client"
 
+import { useRef, useState } from "react"
 import Link from "next/link"
-import { ArrowRight, Briefcase, FileText, Feather, Scale, Sparkles } from "lucide-react"
-import { DOC_CATEGORIES, DOCUMENT_TEMPLATES, getFeaturedTemplates, templateEditorPath } from "@/lib/documents/registry"
+import { useRouter } from "next/navigation"
+import { ArrowRight, Briefcase, FileText, Feather, Plus, Scale, Sparkles, Upload } from "lucide-react"
+import { DOC_CATEGORIES, DOCUMENT_TEMPLATES } from "@/lib/documents/registry"
 import type { DocCategory } from "@/lib/documents/registry"
 import type { DocumentoRow } from "@/lib/documentos/types"
+import { apiSend } from "@/lib/client/api"
+import { emptyDoc } from "@/lib/documents/model/types"
 import { abreviaturaDoTemplate, categoriaDoTemplate, dataRelativa } from "../../documents-page.data"
 import { DocumentsSectionHeader } from "../SectionHeader"
 import { sectionHeader, sectionTitle, sectionHint } from "../SectionHeader.css"
@@ -14,6 +18,18 @@ import {
   section,
   heroTitle,
   heroLead,
+  createRow,
+  blankCard,
+  blankIcon,
+  blankBody,
+  blankTitle,
+  blankSub,
+  uploadButton,
+  uploadIcon,
+  uploadBody,
+  uploadTitle,
+  uploadSub,
+  uploadCode,
   draftGrid,
   draftLink,
   draftHeaderRow,
@@ -24,15 +40,6 @@ import {
   draftBody,
   draftTitle,
   draftClientLine,
-  featuredGrid,
-  featuredCard,
-  quickTemplateIcon,
-  quickTemplateCode,
-  quickTemplateBar,
-  quickTemplateBody,
-  quickTemplateTitle,
-  quickTemplateSubtitle,
-  quickTemplateArrow,
   cardFooter,
   categoryGrid,
   categoryCard,
@@ -56,7 +63,42 @@ export function DocumentsCreateTab({
   onNavigateToModelos: (filter?: DocCategory) => void
   onOpenDocuments: () => void
 }) {
-  const featuredTemplates = getFeaturedTemplates()
+  const router = useRouter()
+  const [busy, setBusy] = useState(false)
+  const [drag, setDrag] = useState(false)
+  const importRef = useRef<HTMLInputElement>(null)
+
+  const novoEmBranco = async () => {
+    if (busy) return
+    setBusy(true)
+    try {
+      const res = await apiSend<{ ok: boolean; result: { id: number } }>("/api/documentos", "POST", {
+        nome: "Documento sem título",
+        template: "livre",
+        status: "rascunho",
+        conteudo: emptyDoc(),
+      })
+      router.push(`/documents/doc/${res.result.id}`)
+    } catch {
+      setBusy(false)
+    }
+  }
+
+  const onImport = async (file: File | undefined) => {
+    if (!file || busy) return
+    setBusy(true)
+    try {
+      const fd = new FormData()
+      fd.append("file", file)
+      const res = await fetch("/api/documentos/importar-docx", { method: "POST", body: fd })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data?.result?.id) throw new Error(data?.error || "Falha ao importar")
+      router.push(`/documents/doc/${data.result.id}`)
+    } catch (e) {
+      setBusy(false)
+      window.alert(e instanceof Error ? e.message : "Falha ao importar o .docx")
+    }
+  }
 
   return (
     <div className={scrollArea}>
@@ -65,6 +107,52 @@ export function DocumentsCreateTab({
         <div className={section}>
           <h1 className={heroTitle}>O que vamos criar?</h1>
           <p className={heroLead}>Escolha um modelo abaixo ou descreva o documento na barra da LexIA.</p>
+
+          <div className={createRow}>
+            <button type="button" disabled={busy} onClick={() => void novoEmBranco()} className={blankCard}>
+              <span className={blankIcon}>
+                <Plus size={20} strokeWidth={2.2} />
+              </span>
+              <span className={blankBody}>
+                <span className={blankTitle}>Começar em branco</span>
+                <span className={blankSub}>Folha em branco sobre o papel timbrado padrão</span>
+              </span>
+            </button>
+
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => importRef.current?.click()}
+              onDragOver={(e) => {
+                e.preventDefault()
+                setDrag(true)
+              }}
+              onDragLeave={() => setDrag(false)}
+              onDrop={(e) => {
+                e.preventDefault()
+                setDrag(false)
+                void onImport(e.dataTransfer.files?.[0])
+              }}
+              className={uploadButton({ drag })}
+            >
+              <span className={uploadIcon}>
+                <Upload size={19} />
+              </span>
+              <span className={uploadBody}>
+                <span className={uploadTitle}>Importar documento</span>
+                <span className={uploadSub}>
+                  Arraste um <code className={uploadCode}>.docx</code> aqui ou clique para enviar — a LexIA marca os campos.
+                </span>
+              </span>
+            </button>
+            <input
+              ref={importRef}
+              type="file"
+              accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              style={{ display: "none" }}
+              onChange={(e) => void onImport(e.target.files?.[0] ?? undefined)}
+            />
+          </div>
         </div>
 
         {rascunhos.length > 0 && (
@@ -79,7 +167,7 @@ export function DocumentsCreateTab({
               {rascunhos.slice(0, 6).map((draft) => (
                 <Link
                   key={draft.id}
-                  href={`${templateEditorPath(draft.template)}?documento=${draft.id}`}
+                  href={`/documents/doc/${draft.id}`}
                   className={draftLink}
                 >
                   <div className={draftHeaderRow}>
@@ -106,27 +194,6 @@ export function DocumentsCreateTab({
             </div>
           </section>
         )}
-
-        <section className={section}>
-          <DocumentsSectionHeader title="Atalhos do escritório" subtitle="Modelos prontos para começar" action="Ver biblioteca" onAction={() => onNavigateToModelos()} />
-          <div className={featuredGrid}>
-            {featuredTemplates.map((template) => (
-              <Link key={template.id} href={templateEditorPath(template.id)} className={featuredCard}>
-                <div className={quickTemplateIcon}>
-                  <span className={quickTemplateCode}>
-                    {template.category === "Contrato" ? "CT" : template.category === "Procuração" ? "PR" : template.category === "Proposta" ? "PP" : "PJ"}
-                  </span>
-                  <span className={quickTemplateBar} />
-                </div>
-                <div className={quickTemplateBody}>
-                  <div className={quickTemplateTitle}>{template.name}</div>
-                  <div className={quickTemplateSubtitle}>{template.category}</div>
-                </div>
-                <ArrowRight className={quickTemplateArrow} size={14} />
-              </Link>
-            ))}
-          </div>
-        </section>
 
         <section>
           <div className={sectionHeader}>

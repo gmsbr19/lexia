@@ -4,7 +4,7 @@ import type { DocumentsTab } from "../tabs/TabStrip"
 import type { DocCategory } from "@/lib/documents/registry"
 
 function normalizeTab(value: string | null): DocumentsTab {
-  if (value === "meus-documentos" || value === "modelos") return value
+  if (value === "meus-documentos" || value === "modelos" || value === "timbrados") return value
   return "criar"
 }
 
