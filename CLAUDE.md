@@ -145,7 +145,113 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
-- **LexIA — REDESIGN do assistente: 3 superfícies (orbe + Spotlight ⌘K + Chat flutuante) + prefs (this
+- **LexIA do editor de Documentos = a MESMA da global + edição por seleção (Copilot) (this session, VERIFIED
+  tsc 0, 303/303 testes)** (memories `project_documents_module`, `project_lexia_bar`, `project_lexia_agent`).
+  O chat do editor era próprio e inferior (`DocLexiaChat`: single-shot a `/api/documentos/editar-ia`, **sem
+  streaming/memória/modos/anexos**, ops por 1ª-ocorrência → "travada e medíocre"). Agora o editor reusa a
+  **stack global** (`useLexiaStream` + `/api/lexia/chat` + loop do agente + a UI `LexiaChat`), tornada
+  *document-aware* — revivido o padrão **doc-patch** deletado em `aaf534d`, generalizado p/ o `LexDoc` livre +
+  **ops por posição** (seleção). Decisões do usuário: (1) **conversa separada por documento**; (2) **acesso de
+  LEITURA** a clientes/dados (preenche campos com dados reais), **mutações de CRM bloqueadas**; (3) seleção =
+  **botão flutuante "Editar com a LexIA" + chip "Trecho" no composer**. **Como:** em vez de extrair um
+  `LexiaChatSurface`, adicionei um **modo `embedded`** à própria [LexiaChat.tsx](src/components/lexia/LexiaChat.tsx)
+  (mesmo composer/anexos/Configurações/seletor-de-modelo/personas — paridade garantida; só o cabeçalho/sugestões/
+  chip-de-seleção/fiação mudam sob `embedded`). A [doc/[id]/page.tsx](src/app/documents/doc/[id]/page.tsx)
+  renderiza `memo(LexiaChat)` com props estáveis (digitar não re-renderiza o chat). **Backend:** `AgentCtx.doc`
+  + clientEvent **"doc-patch"** ([agent/types.ts](src/lib/lexia/agent/types.ts)); `documento` no
+  [lexiaChatSchema](src/lib/lexia/schemas.ts) (texto≤40k, campos, valores, selecao{texto,from,to}); a
+  [route](src/app/api/lexia/chat/route.ts) injeta `contextoDocumento` (bloco **volátil**, CORE intacto → cache
+  1h preservado; seleção → texto truncado +8k, manda a seleção verbatim ⇒ menos tokens) e **guarda o .docx**
+  dentro do editor (`docx && !body.documento` → aviso, não importa outro). 2 tools client em
+  [tools/documentos.ts](src/lib/lexia/agent/tools/documentos.ts): **`editar_documento_aberto`** (ops; o `run`
+  FIXA from/to/de das ops de seleção na seleção REAL do contexto — o modelo nunca inventa posições) e
+  **`detectar_campos_documento`** (chama o `detectarCampos` testado). `toApiTools(role,mode,docMode)` em
+  [registry.ts](src/lib/lexia/agent/registry.ts): no editor expõe SÓ leitura + as 2 de doc (sem mutações de
+  CRM/navegação); fora do editor as 2 somem; em "pergunta" elas também somem. O [loop.ts](src/lib/lexia/agent/loop.ts)
+  ganhou o ramo client `doc-patch` (emite `{ops,campos}`; doc-edits são **client**, aplicadas no editor VIVO,
+  reversíveis por desfazer — não tocam o banco). **Seleção (Copilot):** [DocEditor.tsx](src/components/documents/editor2/DocEditor.tsx)
+  virou `forwardRef` com handle (`getSelection`/`coordsOf`/`applyPosOp`/`getDoc`) + `onSelectionChange`
+  (`selectionUpdate`); `substituir_selecao`/`inserir_apos_selecao` aplicam por POSIÇÃO no editor vivo
+  (sem remontar, com **verify-or-fallback** anti-stale: se o intervalo mudou, cai p/ `substituir_texto`
+  buscando o `de`). `partitionOps` ([model/ops.ts](src/lib/documents/model/ops.ts)) separa ops JSON (aplicarOps
+  + remontagem) das de posição; passes separados (posição primeiro, sobre o doc fresco do editor). **Card**
+  revivido [DocPatchCard.tsx](src/components/lexia/DocPatchCard.tsx) (Aplicar/Aplicar-todos) renderizado por
+  `LexiaBubble` (`onDocAccept`). **Prompt** melhor em `<instrucoes_doc>` (editor jurídico, as 5 ops, "prefira a
+  seleção", preencher com dados reais, ser cirúrgico). **DELETADOS:** `editor2/DocLexiaChat.tsx` + `doc-chat.css.ts`,
+  `lib/documents/editar-ia.ts`, rotas `api/documentos/{editar-ia,detectar-campos}` (a lib `detectar-campos.ts`
+  fica, usada pela tool). **Anexos** (imagem/PDF → visão) funcionam no editor; `.docx` dentro do editor só avisa.
+  **Verificado: `npx tsc --noEmit` 0 erros; 303/303 testes** (novos: gating `docMode` em `lexia-agent`, `partitionOps`
+  + ops de posição em `documents-ops`). **Sem migração.** **User action:** visual em `/documents/doc/[id]` →
+  abrir o orbe → chat **idêntico à LexIA global** (Orb/composer/⚙ modos Agente·Pergunta·Plano/auto/seletor de
+  modelo/anexos/Personalizar); anexar PDF e pedir p/ preencher campos; "preencha o CPF do cliente João" (usa
+  buscar/detalhe_cliente → card Aplicar); **selecionar um trecho** → botão flutuante "Editar com a LexIA" → chip
+  no composer → "deixe mais formal" → troca SÓ o trecho; "detecte os campos" → card; Plano pede aprovação,
+  Auto-mode aplica direto.
+  - **Fix (mesma sessão): "clico em Aplicar e nada muda".** Causa: `substituirTexto`/`replaceInline`
+    ([model/ops.ts](src/lib/documents/model/ops.ts)) só casava DENTRO de UM nó de texto — qualquer formatação
+    (negrito/itálico) ou placeholder divide a frase em vários nós, então o `de` que o modelo copia do texto
+    JUNTADO do bloco cruzava a fronteira e nunca casava. Reescrito p/ buscar sobre RUNS de nós de texto
+    consecutivos (casa "São **Paulo**"), parando em nós não-texto (placeholders/quebras nunca são cruzados/
+    apagados) + `mergeText` junta nós adjacentes de mesma marca. `applyPosOp` ([DocEditor.tsx](src/components/documents/editor2/DocEditor.tsx))
+    passou a inserir NÓ de texto (não string → sem parse de HTML que estragaria `<`/`&`) e a deletar o trecho
+    quando o substituto é vazio. **Verificado: tsc 0; 305/305 testes** (2 novos: match cross-marks + seguro
+    contra placeholder). NOTA: `preencher_campo` atualiza o painel **Campos** (valor entra no PDF/export); o
+    corpo do editor segue mostrando o **chip** `{{…}}` — se o usuário esperava ver o valor no corpo, é o
+    comportamento atual do "page view" (chips), não um bug.
+  - **Fix (mesma sessão): formatação (negrito) virava `**asteriscos`** + **seleção ignorada (editava o doc
+    inteiro)**. (1) As ops só mexiam em TEXTO — pedir "negrito" fazia o modelo inserir markdown `**palavra**`
+    (literal no editor). Adicionadas ops de FORMATAÇÃO REAL: **`formatar_texto`** (`de`+`marca` bold|italic|
+    underline|strike → `aplicarMarca` em [model/ops.ts](src/lib/documents/model/ops.ts), aplica a MARCA aos
+    nós, cross-marks, sem cruzar placeholder) e **`formatar_selecao`** (posição → `applyPosOp` em
+    [DocEditor.tsx](src/components/documents/editor2/DocEditor.tsx) faz `setMark`/`unsetMark` no intervalo). O
+    prompt ([prompt.ts](src/lib/lexia/agent/prompt.ts)) agora PROÍBE markdown e manda usar essas ops. (2)
+    Escopo da seleção: o prompt reforça "havendo <selecao>, TODAS as ops ficam DENTRO dela" **+ uma GUARDA no
+    `run`** de `editar_documento_aberto` ([tools/documentos.ts](src/lib/lexia/agent/tools/documentos.ts))
+    descarta ops `substituir_texto`/`formatar_texto` cujo `de` NÃO está dentro de `sel.texto` — impede a IA de
+    formatar o documento inteiro ignorando a seleção. Card/labels ([DocPatchCard.tsx](src/components/lexia/DocPatchCard.tsx))
+    + fallback de `formatar_selecao`→`formatar_texto` na page. **Verificado: tsc 0; 309/309 testes** (4 novos:
+    aplicarMarca aplica/remove marca real, aplicarOps roteia formatar_texto, formatar_selecao é op de posição).
+  - **Fix (mesma sessão): auto-mode não auto-aplicava + "concluiu" antes de aplicar.** Doc-edits são `client`
+    (não passam pelo auto-mode do servidor); faltava o auto-apply no CLIENTE. (1) `DocPatchCard`
+    ([DocPatchCard.tsx](src/components/lexia/DocPatchCard.tsx)) ganhou `autoApply` → `useEffect` aplica TODAS
+    as ops/campos ao montar (uma vez). Threaded `autoApplyDoc = embedded && autoMode && agentMode!=="plano"`
+    por LexiaThread→LexiaBubble→card (em **plano** ainda mostra o card). (2) A notificação "LexIA concluiu"
+    deixava de considerar as propostas pendentes: `useLexiaStream` agora passa `docPatch` no `onComplete`
+    (turno deixou bloco doc-patch) e o gate virou `if (pendente || docPatch || watchingRef.current) return` —
+    não avisa "concluído" enquanto houver edições a aplicar (nem ao minimizar). **Verificado: tsc 0; 309/309.**
+  - **Layout (mesma sessão): LexIA virou painel DOCADO fixo à direita (sempre aberta) + toggle do timbrado
+    movido.** Antes a LexIA era uma janela flutuante (fixed bottom-right) que sobrepunha o editor. Agora o
+    modo `embedded` de [LexiaChat.tsx](src/components/lexia/LexiaChat.tsx) renderiza um painel SÓLIDO docado
+    (`position:relative; 100%×100%`, sem acrílico/sombra, sem botão fechar) e a
+    [page](src/app/documents/doc/[id]/page.tsx) o coloca numa **`<aside>` de 384px à direita** (borderLeft) —
+    o editor reflui no espaço restante, sem sobreposição. Removidos: `chatOpen`/orbe-lançador/botão flutuante
+    de seleção (a LexIA está sempre aberta; a seleção vira o chip "Trecho" no composer automaticamente). O
+    **toggle do painel Campos & timbrado** saiu de junto das ações (DOCX/PDF) e virou um `PanelLeft` **à
+    esquerda do cabeçalho** (logo após o voltar), associado ao painel que controla; o painel de campos agora
+    começa **oculto** por padrão (a LexIA ocupa a direita). **Verificado: tsc 0; 309/309 testes.**
+  - **Toggle da LexIA + zoom no editor (mesma sessão).** (1) Toggle do painel da LexIA: `lexiaOpen` (default
+    true) + botão `PanelRight` no cabeçalho (direita, dourado quando aberto) → a `<aside>` da LexIA renderiza
+    só quando aberta (recolher dá tela cheia ao editor). (2) Zoom: `DocEditor`
+    ([DocEditor.tsx](src/components/documents/editor2/DocEditor.tsx)) ganhou estado `zoom` (0.5–2.0, passo
+    0.1) aplicado via **CSS `zoom`** na folha (escala de LAYOUT → a paginação, que compara
+    `paper.clientWidth` × `getBoundingClientRect`, fica consistente em qualquer zoom; `transform:scale`
+    quebraria isso) + dispatch de `recompute` da paginação ao mudar o zoom (deps do useEffect de margens).
+    Controle flutuante no canto inferior direito do editor (− / 100% / +; clicar no % reseta). **Verificado:
+    tsc 0; 309/309 testes.**
+  - **Fix (mesma sessão): zoom bagunçava o texto/timbrado.** A premissa de que o CSS `zoom` mantinha a
+    paginação consistente estava ERRADA: o `zoom` escala `getBoundingClientRect()` (alturas dos blocos) mas
+    NÃO as APIs de LAYOUT (`clientWidth` + `getComputedStyle` de padding/margens) → blocos "curtos" demais →
+    poucas quebras → texto invadindo o rodapé do timbrado. **Correção final (minimal e principled) na
+    [pagination.ts](src/components/documents/editor2/pagination.ts):** `getBoundingClientRect` é a ÚNICA API
+    no espaço RENDERIZADO; `clientWidth`/`getComputedStyle` ficam no espaço de LAYOUT juntos. Então detecta
+    `z = paperRect.width / clientWidth` e divide SÓ as leituras de rect (alturas dos blocos `/z`) — padding/
+    margens/pageH ficam intocados (layout). Os spacers/minHeight (px) e o tile do timbrado (mm) são layout, e
+    o `zoom` escala o render uniformemente. Em `z==1` (sem zoom) é `alturas/1` → **byte-idêntico ao código
+    pré-zoom** (sem regressão a 100%); auto-ajustável (se `clientWidth` também fosse escalado, `z=1` e o
+    caminho original já seria consistente). NOTA: a 1ª tentativa com `gcsScale = geomTop/gcsTop` foi REVERTIDA
+    — o margin-collapse do 1º bloco fazia `geomTop ≠ gcsTop`, escalando TODAS as margens errado → o texto
+    desrespeitava a margem superior acumulando pelas páginas. **Verificado: tsc 0; 309/309 testes.**
+- **LexIA — REDESIGN do assistente: 3 superfícies (orbe + Spotlight ⌘K + Chat flutuante) + prefs (prev
   session, tsc 0, 299/300 testes)** (memories `project_lexia_bar`, `project_lexia_agent`). Implementado o
   handoff "LexIA - Assistente" (`~/Downloads/lexia-handoff(1).zip`, prompt + `src/ai/asst-*.jsx`). Decisões
   do usuário: (a) **reconstruir fiel** as 3 superfícies (substitui a `LexiaBar` única, agora DELETADA); (b)
