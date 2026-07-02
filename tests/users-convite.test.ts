@@ -2,13 +2,12 @@ import { describe, expect, it, vi } from "vitest"
 import { conviteExpirado, gerarToken, hashToken, linkConvite } from "@/lib/users/convite"
 import { renderEmailConvite } from "@/lib/users/convite-email"
 
-// linkConvite resolve baseUrl() (APP_BASE_URL/AUTH_URL do ambiente) ANTES de cair
-// no `origem`. Como o .env de desenvolvimento pode ter APP_BASE_URL setado (e o
-// Vitest carrega o .env), forçamos baseUrl()=null para manter este teste de
-// helpers PUROS hermético — exercitando o caminho de fallback pela `origem`.
+// linkConvite now passes `origem` into baseUrl() instead of using it as a
+// post-hoc fallback. Simulate the production behaviour when APP_BASE_URL and
+// AUTH_URL are absent: the only non-null source is the `origin` argument itself.
 vi.mock("@/lib/notificacoes/email/mailer", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/notificacoes/email/mailer")>()),
-  baseUrl: () => null,
+  baseUrl: (origin?: string | null) => origin ?? null,
 }))
 
 describe("convite — helpers puros", () => {

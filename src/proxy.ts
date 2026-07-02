@@ -14,6 +14,8 @@ export const proxy = auth((req) => {
 
   // Cheap CSRF belt: reject cross-origin non-GET API calls (Auth.js session
   // cookies are already httpOnly + SameSite=Lax; this covers the rest).
+  // Behind a reverse proxy (ngrok, Caddy) the internal nextUrl.host is
+  // localhost:3000; use x-forwarded-host to get the real external host.
   if (isApi && req.method !== "GET") {
     const origin = req.headers.get("origin")
     if (origin) {
@@ -23,7 +25,8 @@ export const proxy = auth((req) => {
       } catch {
         /* malformed Origin → reject below */
       }
-      if (!originHost || originHost !== nextUrl.host) {
+      const effectiveHost = req.headers.get("x-forwarded-host") ?? nextUrl.host
+      if (!originHost || originHost !== effectiveHost) {
         return NextResponse.json({ error: "Origem inválida" }, { status: 403 })
       }
     }

@@ -5,6 +5,8 @@ import type Anthropic from "@anthropic-ai/sdk"
 const EPHEMERAL = { type: "ephemeral" as const }
 // Block kinds that accept cache_control (thinking/redacted_thinking do NOT).
 const CACHEAVEL = new Set(["text", "tool_result", "tool_use", "image", "document"])
+// Subset of ContentBlockParam that actually accepts cache_control.
+type CacheableBlock = Exclude<Anthropic.ContentBlockParam, { type: "thinking" } | { type: "redacted_thinking" }>
 
 /**
  * Return a shallow-cloned `messages` array with cache breakpoints on the recent
@@ -33,7 +35,7 @@ export function comCacheBreakpoints(messages: Anthropic.MessageParam[]): Anthrop
     const blocks = m.content.slice()
     // i points at a CACHEAVEL block (text/tool_result/tool_use/image/document) — all
     // accept cache_control; the cast bypasses the union's thinking-block members.
-    blocks[i] = { ...(blocks[i] as Anthropic.ContentBlockParam), cache_control: EPHEMERAL } as Anthropic.ContentBlockParam
+    blocks[i] = { ...(blocks[i] as CacheableBlock), cache_control: EPHEMERAL }
     out[idx] = { ...m, content: blocks }
   }
 

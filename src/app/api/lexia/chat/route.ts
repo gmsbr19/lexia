@@ -1,4 +1,4 @@
-// POST /api/lexia/chat — one agent turn, streamed as SSE. Body { conversaId?,
+﻿// POST /api/lexia/chat — one agent turn, streamed as SSE. Body { conversaId?,
 // mensagem, pagina? }. Drives the LexIA agent loop: text deltas, tool activity,
 // navigation, and confirmation cards. Not audited (private content); confirmed
 // mutations are audited downstream as 'lexia.*'. Own rate bucket (10/min).
@@ -23,6 +23,7 @@ import { sseResponse } from "@/lib/lexia/agent/sse"
 import { MIME_DOCX, validarAnexos } from "@/lib/lexia/anexos/validacao"
 import { importarDocxComoDocumento } from "@/lib/documents/importar"
 import type { AgentCtx, UiBlock } from "@/lib/lexia/agent/types"
+import { withRequestOrigin, resolveRequestOrigin } from "@/lib/request-origin"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -58,7 +59,7 @@ export async function POST(req: Request) {
   const mensagemRaw = body.mensagem.trim()
   const tituloSeed = mensagemRaw || "Documento anexado"
   const instrucao = mensagemRaw || "Leia o(s) documento(s) anexado(s) e me ajude com base nele(s)."
-  return sseResponse(async (emit) => {
+  return withRequestOrigin(resolveRequestOrigin(req), () => sseResponse(async (emit) => {
     try {
       const conversaId = await ensureConversa(sessionUser.email, body.conversaId ?? null, tituloSeed)
       const { messages: prior, lastModel } = await carregarHistorico(conversaId)
@@ -163,5 +164,5 @@ export async function POST(req: Request) {
       }
       emit({ type: "error", mensagem: mensagemErro(e) })
     }
-  })
+  }))
 }

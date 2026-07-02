@@ -39,6 +39,7 @@ import type {
   EventoRow,
   EventoTipo,
   Role,
+  SocioConta,
 } from "../crm-types"
 
 interface Props {
@@ -159,12 +160,14 @@ function CrmEvtChip({
 function CrmEventoModal({
   form,
   dataset,
+  socios,
   onClose,
   onSave,
   onDelete,
 }: {
   form: EvtForm
   dataset: CrmDataset
+  socios: SocioConta[]
   onClose: () => void
   onSave: (f: EvtForm) => void | Promise<void>
   onDelete?: () => void | Promise<void>
@@ -174,7 +177,7 @@ function CrmEventoModal({
   const editing = form.id != null
   const clienteOpts = [{ value: "", label: "—" }, ...dataset.clienteOptions.map((c) => ({ value: String(c.id), label: c.nome }))]
   const casoOpts = [{ value: "", label: "—" }, ...dataset.casoOptions.map((k) => ({ value: String(k.id), label: k.nome }))]
-  const respOpts = [{ value: "", label: "—" }, ...dataset.socios.map((s) => ({ value: String(s.id), label: s.nome }))]
+  const respOpts = [{ value: "", label: "—" }, ...socios.map((s) => ({ value: String(s.id), label: s.nome }))]
 
   return (
     <FxModal
@@ -298,7 +301,7 @@ export function CrmAgendaPage({ dataset, role: _role, nav }: Props) {
   const [data, setData] = useState<AgendaDataset>({
     eventos: [],
     tarefas: [],
-    socios: dataset.socios,
+    socios: [],
     clientes: dataset.clienteOptions,
     casos: dataset.casoOptions,
   })
@@ -395,7 +398,7 @@ export function CrmAgendaPage({ dataset, role: _role, nav }: Props) {
       hIni: hIni || "09:00",
       hFim: hIni ? minToHour(hourToMin(hIni) + 60) : "10:00",
       allDay: false,
-      responsavelId: dataset.socios[0]?.id ?? null,
+      responsavelId: data.socios[0]?.id ?? null,
       local: "",
       descricao: "",
       clienteId: null,
@@ -810,7 +813,7 @@ export function CrmAgendaPage({ dataset, role: _role, nav }: Props) {
           />
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
             <FxSelect
-              options={[{ value: "todos", label: "Todos" }, ...dataset.socios.map((s) => ({ value: String(s.id), label: s.nome }))]}
+              options={[{ value: "todos", label: "Todos" }, ...data.socios.map((s) => ({ value: String(s.id), label: s.nome }))]}
               value={fResp === "todos" ? "todos" : String(fResp)}
               onChange={(e) => setFResp(e.target.value === "todos" ? "todos" : Number(e.target.value))}
             />
@@ -850,6 +853,7 @@ export function CrmAgendaPage({ dataset, role: _role, nav }: Props) {
         <CrmEventoModal
           form={modal}
           dataset={dataset}
+          socios={data.socios}
           onClose={() => setModal(null)}
           onSave={saveEvt}
           onDelete={modal.id != null ? () => removeEvt(modal.id as number) : undefined}
