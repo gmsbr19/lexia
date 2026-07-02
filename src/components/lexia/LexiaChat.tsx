@@ -28,6 +28,11 @@ import { AnexoChips } from "./AnexoChips"
 import { arquivosDoClipboard, lerArquivos, type ClientAnexo } from "./anexos"
 import { Orb, SparkleChip, AutoTextarea, MenuPanel, ACRYLIC } from "./LexiaKit"
 import { LexiaSettingsMenu, LexiaPersonalizeModal } from "./LexiaSettings"
+import type { DocPatchPayload } from "./DocPatchCard"
+import type { DocSelecao, DocumentoContexto } from "./types"
+
+// Sugestões de boas-vindas no modo embutido (editor de documentos).
+const DOC_SUGGESTIONS = ["Detecte os campos deste documento", "Revise as cláusulas e a linguagem", "Deixe o texto mais formal e claro"]
 
 const GOLD = "var(--brand-gold)"
 const TOPBAR_H = 56
@@ -57,8 +62,8 @@ export interface LexiaChatProps {
   greetingName: string
   page: string
   clienteId?: number
-  nav: CrmNav
-  onNavigate: (href: string) => void
+  nav?: CrmNav
+  onNavigate?: (href: string) => void
   mode: "float" | "sidebar" | "full"
   onModeChange: (m: "float" | "sidebar" | "full") => void
   /** texto/conversa a abrir; quando askSeq muda e está aberto, dispara o efeito */
@@ -68,16 +73,32 @@ export interface LexiaChatProps {
   /** altura de uma barra inferior fixa na página — o chat flutuante sobe acima dela */
   bottomInset?: number
   onMinimize: () => void
+  /**
+   * Modo EMBUTIDO no editor de documentos: mesma superfície (composer/thread/
+   * configurações/anexos), porém focada no documento aberto — cabeçalho simplificado,
+   * sempre flutuante, sugestões de doc, chip de seleção e fiação de edição (docContext
+   * → enviado por turno; onDocAccept → aplica as ops no editor vivo).
+   */
+  embedded?: boolean
+  /** Getter LAZY do contexto do doc (texto/campos/valores/seleção), lido no envio. */
+  docContext?: () => DocumentoContexto | null
+  /** Aplica as edições propostas (ops/campos) no editor. */
+  onDocAccept?: (payload: DocPatchPayload) => void
+  /** Seleção atual no editor → vira o chip "Trecho selecionado" no composer. */
+  selection?: DocSelecao | null
+  onClearSelection?: () => void
 }
 
-export function LexiaChat({ open, greetingName, page, clienteId, nav, onNavigate, mode, onModeChange, askText, askConversaId, askSeq, bottomInset = 0, onMinimize }: LexiaChatProps) {
+export function LexiaChat({ open, greetingName, page, clienteId, nav, onNavigate, mode, onModeChange, askText, askConversaId, askSeq, bottomInset = 0, onMinimize, embedded = false, docContext, onDocAccept, selection, onClearSelection }: LexiaChatProps) {
   // "Olhando" = chat aberto; ref p/ o callback de conclusão ler o estado fresco.
   const watchingRef = useRef(open)
   watchingRef.current = open
   const { messages, streaming, conversaId, send, decide, reset, hydrate } = useLexiaStream(null, {
-    // Conclusão em segundo plano (bar fechada): avisa via notificação "ia".
-    onComplete: ({ conversaId: cid, prompt, pendente }) => {
-      if (pendente || watchingRef.current) return
+    // Conclusão em segundo plano (bar fechada): avisa via notificação "ia". NÃO avisa
+    // se o turno deixou uma confirmação OU edições de documento a aplicar (`docPatch`)
+    // — não é "concluído" enquanto o usuário ainda precisa agir.
+    onComplete: ({ conversaId: cid, prompt, pendente, docPatch }) => {
+      if (pendente || docPatch || watchingRef.current) return
       const resumo = prompt.length > 120 ? `${prompt.slice(0, 117)}…` : prompt
       void apiSend("/api/lexia/notificar-conclusao", "POST", { conversaId: cid, resumo }).catch(() => {})
     },
@@ -111,8 +132,10 @@ export function LexiaChat({ open, greetingName, page, clienteId, nav, onNavigate
   const [prefsLoaded, setPrefsLoaded] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const isFull = mode === "full"
-  const isSidebar = mode === "sidebar"
+  // No modo embutido o painel é SEMPRE flutuante (não há barra lateral/tela cheia
+  // — elas cobririam o documento que está sendo editado).
+  const isFull = !embedded && mode === "full"
+  const isSidebar = !embedded && mode === "sidebar"
   const empty = messages.length === 0
 
   // carrega prefs + conversas ao montar
@@ -152,9 +175,12 @@ export function LexiaChat({ open, greetingName, page, clienteId, nav, onNavigate
       setInput("")
       setAnexos([])
       // Antes das prefs carregarem, omite as seleções (deixa a rota usar o banco).
-      send(t, page, ax.length ? ax : undefined, prefsLoaded ? { modelo, agentMode, autoMode } : {})
+      // No editor, anexa SEMPRE o contexto do documento aberto (lido lazy no envio).
+      const base = prefsLoaded ? { modelo, agentMode, autoMode } : {}
+      const opts = embedded ? { ...base, documento: docContext?.() ?? undefined } : base
+      send(t, page, ax.length ? ax : undefined, opts)
     },
-    [anexos, send, page, prefsLoaded, modelo, agentMode, autoMode],
+    [anexos, send, page, prefsLoaded, modelo, agentMode, autoMode, embedded, docContext],
   )
 
   // dispara prompt/abertura de conversa quando a shell pede (askSeq muda)
@@ -227,17 +253,19 @@ export function LexiaChat({ open, greetingName, page, clienteId, nav, onNavigate
   if (!open) return null
 
   const PAD = 12
-  const acrylicSurface = isFull
-    ? { background: "var(--bg)" }
-    : ACRYLIC
-  const shell: CSSProperties = isFull
-    ? { position: "fixed", inset: 0, zIndex: 1310, borderRadius: 0 }
-    : isSidebar
-      ? { position: "fixed", top: TOPBAR_H, right: 0, bottom: 0, width: 412, zIndex: 1200, borderLeft: "1px solid var(--lex-acrylic-border)" }
-      : { position: "fixed", bottom: bottomInset > 0 ? bottomInset + 16 : 24, right: 24, width: 452, height: `min(672px, calc(100dvh - ${bottomInset + 120}px))`, zIndex: 1305, borderRadius: 18, border: "1px solid var(--lex-acrylic-border)" }
+  // Embutido (editor de documentos) = painel DOCADO sólido que preenche a coluna
+  // (sem flutuar/sobrepor o editor); os demais modos seguem flutuantes/acrílicos.
+  const acrylicSurface = embedded || isFull ? { background: "var(--bg)" } : ACRYLIC
+  const shell: CSSProperties = embedded
+    ? { position: "relative", width: "100%", height: "100%" }
+    : isFull
+      ? { position: "fixed", inset: 0, zIndex: 1310, borderRadius: 0 }
+      : isSidebar
+        ? { position: "fixed", top: TOPBAR_H, right: 0, bottom: 0, width: 412, zIndex: 1200, borderLeft: "1px solid var(--lex-acrylic-border)" }
+        : { position: "fixed", bottom: bottomInset > 0 ? bottomInset + 16 : 24, right: 24, width: 452, height: `min(672px, calc(100dvh - ${bottomInset + 120}px))`, zIndex: 1305, borderRadius: 18, border: "1px solid var(--lex-acrylic-border)" }
 
   const modelName = MODELS.find((m) => m.id === modelo)?.name ?? "Automático"
-  const sugestoes = contextChips(page, clienteId != null).slice(0, 3)
+  const sugestoes = embedded ? DOC_SUGGESTIONS : contextChips(page, clienteId != null).slice(0, 3)
 
   const headInnerStyle: CSSProperties = { maxWidth: isFull ? 860 : "none", margin: isFull ? "0 auto" : 0, width: isFull ? "100%" : "auto" }
   // --lx-pad = 12 no composer/cabeçalho; corpo = lx-pad + 13 (borda+padding do
@@ -247,7 +275,7 @@ export function LexiaChat({ open, greetingName, page, clienteId, nav, onNavigate
   return (
     <>
       <div
-        className={"crm-scope " + (mode === "float" ? "crm-lexia-in" : "lex-back")}
+        className={"crm-scope " + (embedded ? "" : mode === "float" ? "crm-lexia-in" : "lex-back")}
         {...dragSurface}
         style={{
           ...shell,
@@ -255,12 +283,25 @@ export function LexiaChat({ open, greetingName, page, clienteId, nav, onNavigate
           flexDirection: "column",
           overflow: "hidden",
           ...acrylicSurface,
-          backdropFilter: isFull ? undefined : "var(--lex-blur)",
-          WebkitBackdropFilter: isFull ? undefined : "var(--lex-blur)",
-          boxShadow: isFull ? "none" : "0 32px 90px rgba(2,13,37,0.5), 0 8px 24px rgba(2,13,37,0.3), inset 0 1px 0 rgba(255,255,255,0.1)",
+          backdropFilter: embedded || isFull ? undefined : "var(--lex-blur)",
+          WebkitBackdropFilter: embedded || isFull ? undefined : "var(--lex-blur)",
+          boxShadow: embedded || isFull ? "none" : "0 32px 90px rgba(2,13,37,0.5), 0 8px 24px rgba(2,13,37,0.3), inset 0 1px 0 rgba(255,255,255,0.1)",
         }}
       >
         {/* cabeçalho */}
+        {embedded ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: `12px ${PAD}px`, borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+            <Orb size={26} />
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 500, color: "var(--text)", letterSpacing: "-0.01em" }}>LexIA</div>
+              <div style={{ fontSize: 11, color: "var(--text-subtle)", display: "flex", alignItems: "center", gap: 5 }}>
+                <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--ok, #2F9E68)" }} />
+                Editando este documento
+              </div>
+            </div>
+            <button onClick={novoChat} title="Novo chat" className="btn btn-ghost" style={{ width: 30, height: 30, padding: 0, borderRadius: 8 }}><Icon name="edit" size={16} /></button>
+          </div>
+        ) : (
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: `14px ${PAD}px 14px ${PAD + 3}px`, borderBottom: "1px solid var(--border)", flexShrink: 0, ...headInnerStyle }}>
           <div style={{ position: "relative" }}>
             <button
@@ -313,6 +354,7 @@ export function LexiaChat({ open, greetingName, page, clienteId, nav, onNavigate
             )}
           </div>
         </div>
+        )}
 
         {/* corpo */}
         {empty ? (
@@ -321,8 +363,12 @@ export function LexiaChat({ open, greetingName, page, clienteId, nav, onNavigate
               <div style={{ display: "flex", justifyContent: isFull ? "center" : "flex-start", marginBottom: 18 }}>
                 <Orb size={isFull ? 60 : 48} glow />
               </div>
-              <h2 style={{ margin: 0, fontSize: 22, fontWeight: 500, letterSpacing: "-0.025em", color: "var(--text)", lineHeight: 1.15 }}>Como posso ajudar, {greetingName}?</h2>
-              {isFull && <p style={{ margin: "10px 0 0", fontSize: 15, color: "var(--text-muted)", lineHeight: 1.5 }}>Conectada aos seus clientes, casos, contratos e financeiro.</p>}
+              <h2 style={{ margin: 0, fontSize: 22, fontWeight: 500, letterSpacing: "-0.025em", color: "var(--text)", lineHeight: 1.15 }}>{embedded ? "Vamos editar este documento" : `Como posso ajudar, ${greetingName}?`}</h2>
+              {embedded ? (
+                <p style={{ margin: "10px 0 0", fontSize: 14, color: "var(--text-muted)", lineHeight: 1.5 }}>Detecto campos, preencho com dados reais e ajusto cláusulas — direto no papel. Selecione um trecho para editar só ele.</p>
+              ) : (
+                isFull && <p style={{ margin: "10px 0 0", fontSize: 15, color: "var(--text-muted)", lineHeight: 1.5 }}>Conectada aos seus clientes, casos, contratos e financeiro.</p>
+              )}
               <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 24, marginInline: -12 }}>
                 {sugestoes.map((s) => (
                   <button key={s} onClick={() => enviar(s)} className="lx-sugg" style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", textAlign: "left", padding: "11px 12px", border: "none", background: "transparent", borderRadius: 10, cursor: "pointer", fontFamily: "var(--font-sans)", fontSize: 14, fontWeight: 500, color: "var(--text)", letterSpacing: "-0.01em" }}>
@@ -337,7 +383,7 @@ export function LexiaChat({ open, greetingName, page, clienteId, nav, onNavigate
         ) : (
           <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
             <div style={{ width: "100%", maxWidth: isFull ? 720 : "100%", margin: isFull ? "0 auto" : 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
-              <LexiaThread messages={messages} streaming={streaming} onDecide={decide} padding={`24px ${bodyPadX}px 8px`} />
+              <LexiaThread messages={messages} streaming={streaming} onDecide={decide} onDocAccept={onDocAccept} autoApplyDoc={embedded && autoMode && agentMode !== "plano"} padding={`24px ${bodyPadX}px 8px`} />
             </div>
           </div>
         )}
@@ -350,21 +396,33 @@ export function LexiaChat({ open, greetingName, page, clienteId, nav, onNavigate
                 <AnexoChips anexos={anexos} onRemove={(i) => setAnexos((prev) => prev.filter((_, j) => j !== i))} />
               </div>
             )}
-            {contexts.length > 0 && (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 9 }}>
-                {contexts.map((c) => (
-                  <span key={c.label} style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 26, padding: "0 5px 0 9px", borderRadius: 7, background: "var(--bg-sunken)", border: "1px solid var(--border)", fontSize: 12, fontWeight: 500, color: "var(--text-muted)" }}>
-                    <Icon name={c.icon} size={13} style={{ color: "var(--accent)" }} /> {c.label}
-                    <button onClick={() => setContexts((p) => p.filter((x) => x.label !== c.label))} title="Remover" className="btn btn-ghost" style={{ width: 18, height: 18, padding: 0, borderRadius: 5, color: "var(--text-subtle)" }}><Icon name="x" size={12} /></button>
+            {embedded ? (
+              selection ? (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 9 }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6, maxWidth: "100%", height: 26, padding: "0 5px 0 9px", borderRadius: 7, background: "var(--accent-soft)", border: "1px solid var(--border-gold, var(--accent))", fontSize: 12, fontWeight: 500, color: "var(--accent)" }}>
+                    <Icon name="wand" size={13} style={{ flexShrink: 0 }} />
+                    <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 230 }}>Trecho: “{selection.texto.slice(0, 40)}{selection.texto.length > 40 ? "…" : ""}”</span>
+                    <button onClick={() => onClearSelection?.()} title="Remover seleção" className="btn btn-ghost" style={{ width: 18, height: 18, padding: 0, borderRadius: 5, color: "var(--accent)" }}><Icon name="x" size={12} /></button>
                   </span>
-                ))}
-              </div>
+                </div>
+              ) : null
+            ) : (
+              contexts.length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 9 }}>
+                  {contexts.map((c) => (
+                    <span key={c.label} style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 26, padding: "0 5px 0 9px", borderRadius: 7, background: "var(--bg-sunken)", border: "1px solid var(--border)", fontSize: 12, fontWeight: 500, color: "var(--text-muted)" }}>
+                      <Icon name={c.icon} size={13} style={{ color: "var(--accent)" }} /> {c.label}
+                      <button onClick={() => setContexts((p) => p.filter((x) => x.label !== c.label))} title="Remover" className="btn btn-ghost" style={{ width: 18, height: 18, padding: 0, borderRadius: 5, color: "var(--text-subtle)" }}><Icon name="x" size={12} /></button>
+                    </span>
+                  ))}
+                </div>
+              )
             )}
             <AutoTextarea
               value={input}
               onChange={setInput}
               onSubmit={() => enviar(input)}
-              placeholder="Peça qualquer coisa à LexIA…"
+              placeholder={embedded ? "Edite o documento, preencha campos, revise cláusulas…" : "Peça qualquer coisa à LexIA…"}
               maxHeight={150}
               style={{ width: "100%", border: "none", outline: "none", resize: "none", background: "transparent", fontFamily: "var(--font-sans)", fontSize: 14, color: "var(--text)", lineHeight: 1.5, padding: 2, letterSpacing: "-0.01em", display: "block" }}
             />
@@ -381,10 +439,12 @@ export function LexiaChat({ open, greetingName, page, clienteId, nav, onNavigate
                         <Icon name="paperclip" size={16} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
                         <span>Adicionar imagens, PDFs ou arquivos</span>
                       </button>
-                      <button className="fx-menu-item" onClick={() => { const c = PAGE_CTX[page]; if (c) setContexts((p) => (p.some((x) => x.label === c.label) ? p : [...p, c])); setCtxMenu(false) }}>
-                        <Icon name="at" size={16} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
-                        <span>Mencione páginas ou pessoas</span>
-                      </button>
+                      {!embedded && (
+                        <button className="fx-menu-item" onClick={() => { const c = PAGE_CTX[page]; if (c) setContexts((p) => (p.some((x) => x.label === c.label) ? p : [...p, c])); setCtxMenu(false) }}>
+                          <Icon name="at" size={16} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+                          <span>Mencione páginas ou pessoas</span>
+                        </button>
+                      )}
                     </MenuPanel>
                   </>
                 )}

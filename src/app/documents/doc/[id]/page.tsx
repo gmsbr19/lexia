@@ -1,19 +1,25 @@
 "use client"
 
-import { use, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { memo, use, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Braces, Check, ChevronLeft, FileDown, FileText, PanelRight, Save } from "lucide-react"
+import { Braces, Check, ChevronLeft, FileDown, FileText, PanelLeft, PanelRight, Save } from "lucide-react"
 import { apiSend } from "@/lib/client/api"
-import { Icon } from "@/components/crm/crm-icons"
-import { DocEditor } from "@/components/documents/editor2/DocEditor"
-import { DocLexiaChat } from "@/components/documents/editor2/DocLexiaChat"
+import { DocEditor, type DocEditorHandle, type DocSelecao } from "@/components/documents/editor2/DocEditor"
+import { LexiaChat } from "@/components/lexia/LexiaChat"
+import type { DocPatchPayload } from "@/components/lexia/DocPatchCard"
+import type { DocumentoContexto } from "@/components/lexia/types"
 import { extractPlaceholders } from "@/lib/documents/model/placeholders"
 import { aplicarCampos, lexDocText, type CampoDetectado } from "@/lib/documents/model/campos"
-import { aplicarOps, type DocOp } from "@/lib/documents/model/ops"
+import { aplicarOps, partitionOps, type DocOp } from "@/lib/documents/model/ops"
 import { DEFAULT_MARGINS_MM, emptyDoc, type LexDoc, type MarginsMm } from "@/lib/documents/model/types"
 import type { DocumentoDetail, TimbradoDetail, TimbradoRow } from "@/lib/documentos/types"
 import { btn } from "@/styles/components.css"
 import { tokens } from "@/styles/tokens.css"
+
+// Memoizado: digitar no editor re-renderiza a page, mas com props estáveis o chat
+// (mesma superfície da LexIA global) NÃO re-renderiza a cada tecla.
+const EmbeddedLexiaChat = memo(LexiaChat)
+const NOOP = () => {}
 
 interface Props {
   params: Promise<{ id: string }>
@@ -35,10 +41,15 @@ export default function DocFlexEditorPage({ params }: Props) {
   // editorKey bumps to remount the editor when the doc is mutated EXTERNALLY
   // (applying detected fields / LexIA ops) so the chips show up; typing never bumps it.
   const [editorKey, setEditorKey] = useState(0)
-  const [opus, setOpus] = useState(false)
   const [salvandoModelo, setSalvandoModelo] = useState(false)
-  const [panelOpen, setPanelOpen] = useState(true)
-  const [chatOpen, setChatOpen] = useState(true)
+  // Painel de campos & timbrado começa OCULTO (a LexIA ocupa a direita fixa); o
+  // usuário o abre pelo toggle quando vai preencher campos.
+  const [panelOpen, setPanelOpen] = useState(false)
+  // Painel da LexIA (direita): aberto por padrão, com toggle para recolher.
+  const [lexiaOpen, setLexiaOpen] = useState(true)
+  // Seleção de texto no editor → chip "Trecho" no composer da LexIA (painel docado).
+  const [selection, setSelection] = useState<DocSelecao | null>(null)
+  const editorRef = useRef<DocEditorHandle>(null)
 
   // ── load the document ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -144,23 +155,55 @@ export default function DocFlexEditorPage({ params }: Props) {
     setDoc((d) => aplicarCampos(d, campos))
     setEditorKey((k) => k + 1)
   }, [])
-  const onApplyOps = useCallback((ops: DocOp[]) => {
-    const res = aplicarOps(stateRef.current.doc, stateRef.current.valores, ops)
-    setDoc(res.doc)
-    setValores(res.valores)
-    setEditorKey((k) => k + 1)
-  }, [])
-  const closeChat = useCallback(() => setChatOpen(false), [])
 
-  // The chat reads the doc text / fields / values LAZILY at send time (stable getter),
-  // so typing body text doesn't re-render the memoized chat.
+  // Aplica as edições propostas pela LexIA (card "Aplicar"). Ops por POSIÇÃO (seleção)
+  // vão pelo editor VIVO (sem remontar, preservam undo); se o intervalo ficou obsoleto,
+  // caem p/ busca textual (op.de). Ops de texto/campo vão por aplicarOps + remontagem
+  // (p/ os chips aparecerem). Passes separados — posição primeiro, sobre o doc fresco
+  // do editor (senão a remontagem descartaria a edição cirúrgica já aplicada).
+  const onDocAccept = useCallback(
+    (payload: DocPatchPayload) => {
+      if (payload.campos?.length) {
+        onApplyCampos(payload.campos)
+        return
+      }
+      const ops = payload.ops ?? []
+      if (!ops.length) return
+      const { jsonOps, posOps } = partitionOps(ops)
+      const fallback: DocOp[] = []
+      let anyPos = false
+      for (const op of posOps) {
+        if (editorRef.current?.applyPosOp(op)) anyPos = true
+        else if (op.tipo === "substituir_selecao" && op.de) fallback.push({ tipo: "substituir_texto", de: op.de, para: op.para ?? "" })
+        else if (op.tipo === "inserir_apos_selecao" && op.texto?.trim()) fallback.push({ tipo: "inserir_paragrafo", texto: op.texto })
+        else if (op.tipo === "formatar_selecao" && op.de && op.marca) fallback.push({ tipo: "formatar_texto", de: op.de, marca: op.marca, remover: op.remover })
+      }
+      const allJson = [...jsonOps, ...fallback]
+      if (allJson.length) {
+        const base = anyPos && editorRef.current ? editorRef.current.getDoc() : stateRef.current.doc
+        const res = aplicarOps(base, stateRef.current.valores, allJson)
+        setDoc(res.doc)
+        setValores(res.valores)
+        setEditorKey((k) => k + 1)
+      }
+      setSelection(null)
+    },
+    [onApplyCampos],
+  )
+
+  const clearSelection = useCallback(() => setSelection(null), [])
+
+  // O chat lê texto/campos/valores/seleção LAZILY no envio (getter estável), então
+  // digitar o corpo não re-renderiza o chat memoizado.
   const getChatContext = useCallback(
-    () => ({
+    (): DocumentoContexto => ({
+      id: docId,
       texto: lexDocText(stateRef.current.doc),
       campos: extractPlaceholders(stateRef.current.doc).map((p) => ({ name: p.name, label: p.label })),
       valores: stateRef.current.valores,
+      selecao: editorRef.current?.getSelection() ?? undefined,
     }),
-    [],
+    [docId],
   )
 
   const salvarModelo = async () => {
@@ -209,6 +252,14 @@ export default function DocFlexEditorPage({ params }: Props) {
         >
           <ChevronLeft size={18} />
         </button>
+        <button
+          onClick={() => setPanelOpen((o) => !o)}
+          className={btn({ variant: "ghost" })}
+          style={{ width: 34, height: 34, padding: 0, borderRadius: 9, flexShrink: 0, color: panelOpen ? tokens.color.accent : tokens.color.textMuted }}
+          title="Mostrar/ocultar campos & papel timbrado"
+        >
+          <PanelLeft size={17} />
+        </button>
         <span style={{ width: 30, height: 30, borderRadius: 8, display: "grid", placeItems: "center", background: tokens.color.bgSunken, color: tokens.color.textMuted, flexShrink: 0 }}>
           <FileText size={16} />
         </span>
@@ -236,10 +287,10 @@ export default function DocFlexEditorPage({ params }: Props) {
         <span style={{ flex: 1 }} />
 
         <button
-          onClick={() => setPanelOpen((o) => !o)}
+          onClick={() => setLexiaOpen((o) => !o)}
           className={btn({ variant: "ghost" })}
-          style={{ width: 34, height: 34, padding: 0, borderRadius: 9 }}
-          title="Campos & timbrado"
+          style={{ width: 34, height: 34, padding: 0, borderRadius: 9, flexShrink: 0, color: lexiaOpen ? tokens.color.accent : tokens.color.textMuted }}
+          title="Mostrar/ocultar a LexIA"
         >
           <PanelRight size={17} />
         </button>
@@ -254,8 +305,8 @@ export default function DocFlexEditorPage({ params }: Props) {
         </button>
       </div>
 
-      {/* Body: fields panel | editor | preview, with a floating LexIA chat */}
-      <div style={{ display: "flex", flex: 1, minHeight: 0, position: "relative" }}>
+      {/* Body: campos (esq, toggle) | editor | LexIA (dir, sempre aberta, docada) */}
+      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
         {/* Fields & letterhead panel */}
         {panelOpen && (
           <aside style={{ width: 264, flexShrink: 0, overflowY: "auto", padding: 16, background: tokens.color.bgSoft, borderRight: `1px solid ${tokens.color.border}` }}>
@@ -321,59 +372,34 @@ export default function DocFlexEditorPage({ params }: Props) {
         {/* Editor — Word-style A4 page view with the letterhead behind the text */}
         <section style={{ flex: "1 1 0", minWidth: 0 }}>
           {hydrated ? (
-            <DocEditor key={editorKey} initialDoc={doc} onChange={setDoc} letterheadDataUrl={timbrado?.imagem ?? null} marginsMm={margins} />
+            <DocEditor key={editorKey} ref={editorRef} initialDoc={doc} onChange={setDoc} letterheadDataUrl={timbrado?.imagem ?? null} marginsMm={margins} onSelectionChange={setSelection} />
           ) : (
             <div style={{ padding: 24, color: tokens.color.textMuted, fontSize: 14 }}>Carregando…</div>
           )}
         </section>
 
-        {/* Floating LexIA chat */}
-        {chatOpen ? (
-          <DocLexiaChat
-            getContext={getChatContext}
-            opus={opus}
-            setOpus={setOpus}
-            onApplyCampos={onApplyCampos}
-            onApplyOps={onApplyOps}
-            onClose={closeChat}
-          />
-        ) : (
-          <button
-            onClick={() => setChatOpen(true)}
-            aria-label="Abrir LexIA"
-            title="Abrir LexIA"
-            className="crm-scope lex-aura-edge"
-            style={{
-              position: "absolute",
-              bottom: 22,
-              right: 22,
-              zIndex: 60,
-              width: 58,
-              height: 58,
-              padding: 0,
-              cursor: "pointer",
-              borderRadius: "50%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "var(--accent)",
-              // tinted-glass launcher orb: sheen over the acrylic pill tint +
-              // rotating gold aura (the doc editor's own chat surface).
-              background:
-                "linear-gradient(145deg, rgba(255,255,255,0.18), rgba(255,255,255,0.02) 52%, rgba(255,255,255,0) 72%), var(--lex-acrylic-pill)",
-              backdropFilter: "blur(34px) saturate(1.7)",
-              WebkitBackdropFilter: "blur(34px) saturate(1.7)",
-              border: "1px solid var(--lex-acrylic-border)",
-              boxShadow: "0 12px 28px rgba(2,13,37,0.34), 0 2px 6px rgba(2,13,37,0.22), inset 0 1px 0 rgba(255,255,255,0.2)",
-              transition: "transform .42s cubic-bezier(.34,1.3,.5,1)",
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.08)" }}
-            onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)" }}
-          >
-            <span aria-hidden="true" className="lex-icon-glow" style={{ position: "absolute", inset: "20%", borderRadius: "50%", background: "radial-gradient(circle, rgba(192,161,71,0.85), rgba(192,161,71,0) 70%)", filter: "blur(5px)", pointerEvents: "none" }} />
-            <Icon name="sparkles" size={26} strokeWidth={2} style={{ position: "relative", zIndex: 1 }} />
-          </button>
+        {/* LexIA — painel DOCADO à direita (mesma superfície da global; não sobrepõe o
+            editor, que reflui no espaço restante). Recolhível pelo toggle do cabeçalho. */}
+        {lexiaOpen && (
+          <aside style={{ width: 384, flexShrink: 0, minWidth: 0, borderLeft: `1px solid ${tokens.color.border}`, overflow: "hidden" }}>
+            <EmbeddedLexiaChat
+              open
+              embedded
+              greetingName=""
+              page="documents"
+              mode="float"
+              onModeChange={NOOP}
+              askSeq={0}
+              bottomInset={0}
+              onMinimize={NOOP}
+              docContext={getChatContext}
+              onDocAccept={onDocAccept}
+              selection={selection}
+              onClearSelection={clearSelection}
+            />
+          </aside>
         )}
+
       </div>
     </div>
   )

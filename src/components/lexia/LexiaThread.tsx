@@ -5,18 +5,23 @@
 import { useEffect, useRef, type ReactNode } from "react"
 import "./lexia.css"
 import { LexiaBubble } from "./LexiaBubble"
+import type { DocPatchPayload } from "./DocPatchCard"
 import type { ChatMsg } from "./types"
 
 export function LexiaThread({
   messages,
   streaming,
   onDecide,
+  onDocAccept,
+  autoApplyDoc,
   empty,
   padding = "18px 16px",
 }: {
   messages: ChatMsg[]
   streaming: boolean
   onDecide: (acaoId: number, decisao: "confirmar" | "recusar") => void
+  onDocAccept?: (payload: DocPatchPayload) => void
+  autoApplyDoc?: boolean
   empty?: ReactNode
   padding?: string
 }) {
@@ -31,7 +36,7 @@ export function LexiaThread({
       {messages.length === 0 && empty ? (
         <div style={{ margin: "auto 0" }}>{empty}</div>
       ) : (
-        messages.map((m) => <LexiaBubble key={m.id} msg={m} streaming={streaming} onDecide={onDecide} />)
+        messages.map((m) => <LexiaBubble key={m.id} msg={m} streaming={streaming} onDecide={onDecide} onDocAccept={onDocAccept} autoApplyDoc={autoApplyDoc} />)
       )}
     </div>
   )

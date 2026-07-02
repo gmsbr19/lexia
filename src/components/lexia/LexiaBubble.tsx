@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation"
 import { Icon } from "@/components/crm/crm-icons"
 import { AnexoChips } from "./AnexoChips"
 import { ConfirmCard } from "./ConfirmCard"
+import { DocPatchCard, type DocPatchPayload } from "./DocPatchCard"
 import { Markdown } from "./Markdown"
 import { ToolChip } from "./ToolChip"
 import { Orb } from "./LexiaKit"
@@ -30,10 +31,16 @@ export function LexiaBubble({
   msg,
   streaming,
   onDecide,
+  onDocAccept,
+  autoApplyDoc,
 }: {
   msg: ChatMsg
   streaming: boolean
   onDecide: (acaoId: number, decisao: "confirmar" | "recusar") => void
+  /** Aplica edições propostas ao documento aberto (só no painel do editor). */
+  onDocAccept?: (payload: DocPatchPayload) => void
+  /** Modo automático: aplica as edições propostas sem clicar em "Aplicar". */
+  autoApplyDoc?: boolean
 }) {
   const router = useRouter()
   if (msg.role === "user") {
@@ -87,6 +94,8 @@ export function LexiaBubble({
                 return <ToolChip key={i} block={b} />
               case "confirm":
                 return <ConfirmCard key={i} block={b} onDecide={onDecide} busy={streaming} />
+              case "doc-patch":
+                return onDocAccept ? <DocPatchCard key={i} block={b} onAccept={onDocAccept} autoApply={autoApplyDoc} /> : null
               case "navigate":
                 return (
                   <div key={i} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-subtle)", alignSelf: "flex-start" }}>

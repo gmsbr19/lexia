@@ -10,7 +10,7 @@ import type { LexiaMensagemRow } from "@/lib/lexia/types"
 import { streamLexia, LexiaStreamError } from "./sse-client"
 import type { ClientAnexo } from "./anexos"
 import type { LexiaAgentMode, LexiaModelo } from "@/lib/lexia/preferencias-core"
-import type { ChatBlock, ChatMsg } from "./types"
+import type { ChatBlock, ChatMsg, DocumentoContexto } from "./types"
 
 let seq = 0
 const nextId = () => `m${++seq}`
@@ -22,6 +22,8 @@ export interface SendOpts {
   modelo?: LexiaModelo
   agentMode?: LexiaAgentMode
   autoMode?: boolean
+  /** Contexto do documento aberto (só no painel embutido no editor flexível). */
+  documento?: DocumentoContexto
 }
 
 export interface UseLexia {
@@ -38,7 +40,7 @@ export interface UseLexia {
 /** Disparado quando um turno termina (evento `done`) — NÃO em aborto/erro. Usado
  *  pela barra para avisar o usuário quando ela conclui em segundo plano. */
 export interface UseLexiaOpts {
-  onComplete?: (info: { conversaId: number | null; prompt: string; pendente: boolean }) => void
+  onComplete?: (info: { conversaId: number | null; prompt: string; pendente: boolean; docPatch: boolean }) => void
 }
 
 export function useLexiaStream(initialConversaId: number | null = null, opts: UseLexiaOpts = {}): UseLexia {
@@ -143,17 +145,25 @@ export function useLexiaStream(initialConversaId: number | null = null, opts: Us
             })
             flush()
             break
+          case "doc-patch":
+            // Edições propostas ao documento aberto — o card "Aplicar" no painel do
+            // editor aplica no editor vivo (a aplicação não acontece aqui).
+            blocks.push({ type: "doc-patch", ops: ev.ops, campos: ev.campos })
+            flush()
+            break
           case "error":
             blocks.push({ type: "notice", text: ev.mensagem })
             flush()
             break
           case "done":
             // Conclusão limpa do turno (não dispara em aborto/erro). `pendente`
-            // truthy = pausou esperando confirmação (o usuário ainda precisa agir).
+            // truthy = pausou esperando confirmação; `docPatch` = propôs edições ao
+            // documento que o usuário ainda precisa aplicar (ambos = "ainda há ação").
             onCompleteRef.current?.({
               conversaId: convRef.current,
               prompt: lastPromptRef.current,
               pendente: ev.pendente != null,
+              docPatch: blocks.some((b) => b.type === "doc-patch"),
             })
             break
         }
@@ -197,6 +207,7 @@ export function useLexiaStream(initialConversaId: number | null = null, opts: Us
           modelo: opts?.modelo,
           agentMode: opts?.agentMode,
           autoMode: opts?.autoMode,
+          documento: opts?.documento,
         },
         assistantId,
       )

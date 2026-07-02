@@ -1,6 +1,8 @@
 // Client-side render model for the LexIA chat kit. Mirrors the server UiBlock,
 // but tool chips carry a transient "run" state (and an id) while streaming.
 import type { AnexoMeta, ConfirmDetalhe, UiBlock } from "@/lib/lexia/types"
+import type { DocOp } from "@/lib/documents/model/ops"
+import type { CampoDetectado } from "@/lib/documents/model/campos"
 
 // Anexo no balão do usuário. dataBase64 está presente só no turno recém-enviado
 // (permite preview de imagem na hora); ao reabrir a conversa vem só o metadado.
@@ -22,12 +24,29 @@ export type ChatBlock =
       detalhes?: ConfirmDetalhe[]
       status: "pendente" | "confirmada" | "recusada" | "expirada"
     }
+  | { type: "doc-patch"; ops: DocOp[]; campos?: CampoDetectado[] }
   | { type: "notice"; text: string }
 
 // A persisted UiBlock is a valid ChatBlock (tool.status ok|erro ⊂ run|ok|erro).
 export type ChatMsg =
   | { id: string; role: "user"; text: string; anexos?: ChatAnexo[] }
   | { id: string; role: "assistant"; blocks: ChatBlock[] }
+
+/** Seleção de texto no editor (posições ProseMirror) — base da edição cirúrgica. */
+export interface DocSelecao {
+  texto: string
+  from: number
+  to: number
+}
+
+/** Contexto do documento aberto, enviado por turno pelo painel embutido no editor. */
+export interface DocumentoContexto {
+  id: number | null
+  texto: string
+  campos: { name: string; label: string }[]
+  valores?: Record<string, string>
+  selecao?: DocSelecao
+}
 
 /** Persisted blocks → render blocks (identity, but widens the tool status type). */
 export function toChatBlocks(blocks: UiBlock[]): ChatBlock[] {
