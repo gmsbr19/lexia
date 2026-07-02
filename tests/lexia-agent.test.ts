@@ -97,13 +97,40 @@ describe("registry — deterministic, valid tool schemas", () => {
     for (const t of TOOLS) if (t.kind === "mutation") expect(typeof t.resumo).toBe("function")
   })
 
-  it("generates object-typed JSON schemas for every tool (admin sees all)", () => {
+  const DOC_ONLY = ["editar_documento_aberto", "detectar_campos_documento"]
+
+  it("generates object-typed JSON schemas for every tool (admin sees all but the doc-only tools off-editor)", () => {
     const api = toApiTools("admin")
-    expect(api.length).toBe(TOOLS.length)
+    // as ferramentas de edição de documento só aparecem dentro do editor (docMode)
+    expect(api.length).toBe(TOOLS.length - DOC_ONLY.length)
+    for (const n of DOC_ONLY) expect(api.some((t) => t.name === n), n).toBe(false)
     for (const t of api) {
       expect(t.input_schema.type).toBe("object")
       expect((t.description ?? "").length).toBeGreaterThan(0)
     }
+  })
+
+  it("docMode (editor) expõe leitura + as ferramentas de documento, e remove mutações/navegação de CRM", () => {
+    const doc = new Set(toApiTools("admin", "agente", true).map((t) => t.name))
+    // as 2 ferramentas de documento aparecem SÓ com um doc aberto
+    for (const n of DOC_ONLY) expect(doc.has(n), n).toBe(true)
+    // leitura p/ preencher campos com dados reais do escritório
+    expect(doc.has("buscar")).toBe(true)
+    expect(doc.has("detalhe_cliente")).toBe(true)
+    // mutações de CRM, navegação e rascunhar somem (foco em editar o doc aberto)
+    for (const n of ["criar_tarefa", "criar_cliente", "navegar", "rascunhar_documento"]) expect(doc.has(n), n).toBe(false)
+    // tudo no docMode é leitura OU uma das 2 de documento
+    const docSet = new Set(DOC_ONLY)
+    for (const t of toApiTools("admin", "agente", true)) {
+      const tool = TOOLS_BY_NAME.get(t.name)!
+      expect(tool.kind === "readonly" || docSet.has(t.name), t.name).toBe(true)
+    }
+    // fora do editor as ferramentas de documento NÃO existem
+    const global = new Set(toApiTools("admin").map((t) => t.name))
+    for (const n of DOC_ONLY) expect(global.has(n), n).toBe(false)
+    // docMode + "pergunta": o agente só consulta — sem editar o documento
+    const docPergunta = new Set(toApiTools("admin", "pergunta", true).map((t) => t.name))
+    for (const n of DOC_ONLY) expect(docPergunta.has(n), n).toBe(false)
   })
 
   it("hides financial tools from the 'Equipe' (non-finance roles), keeps them for sócio/financeiro", () => {

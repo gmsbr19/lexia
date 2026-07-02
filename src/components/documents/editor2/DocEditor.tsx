@@ -1,10 +1,11 @@
 "use client"
 
-import { useEffect } from "react"
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react"
 import { EditorContent, useEditor, type Editor } from "@tiptap/react"
 import clsx from "clsx"
 import { editorExtensions } from "@/lib/documents/editor-schema"
 import { DEFAULT_MARGINS_MM, type MarginsMm } from "@/lib/documents/model/types"
+import type { DocOp } from "@/lib/documents/model/ops"
 import { Pagination, paginationKey } from "./pagination"
 import {
   AlignCenter,
@@ -22,6 +23,8 @@ import {
   SeparatorHorizontal,
   Strikethrough,
   Underline as UnderlineIcon,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react"
 import { lexToProseMirror, proseMirrorToLex, type PMNode } from "@/lib/documents/model/tiptap"
 import type { LexDoc } from "@/lib/documents/model/types"
@@ -148,23 +151,123 @@ function Toolbar({ editor }: { editor: Editor }) {
 // exported PDF remains the exact paginated truth.
 const PAGE_GUIDE = "linear-gradient(to bottom, transparent calc(100% - 1.5px), rgba(2,13,37,0.10) calc(100% - 1.5px))"
 
-export function DocEditor({
-  initialDoc,
-  onChange,
-  letterheadDataUrl,
-  marginsMm,
-}: {
+// Char usado como "leaf text" das folhas/atoms (placeholders) ao ler a seleção —
+// mantém os offsets coerentes com o que vai no contexto da LexIA.
+const LEAF = "￼"
+
+export interface DocSelecao {
+  texto: string
+  from: number
+  to: number
+}
+
+// Handle imperativo: a LexIA edita o trecho selecionado de forma CIRÚRGICA (por
+// posição) através do editor vivo (mantém undo/redo, sem remontar). As ops por
+// posição carregam `de` (texto original da seleção) p/ verificação anti-stale.
+export interface DocEditorHandle {
+  getSelection: () => DocSelecao | null
+  coordsOf: (pos: number) => { left: number; top: number; bottom: number } | null
+  /** Aplica uma op de POSIÇÃO; devolve false se o intervalo ficou obsoleto (o page faz fallback). */
+  applyPosOp: (op: DocOp) => boolean
+  /** LexDoc atual do editor (após as ops por posição) — base p/ aplicar as ops em JSON. */
+  getDoc: () => LexDoc
+}
+
+export const DocEditor = forwardRef<DocEditorHandle, {
   initialDoc: LexDoc
   onChange: (doc: LexDoc) => void
   letterheadDataUrl?: string | null
   marginsMm?: MarginsMm
-}) {
+  onSelectionChange?: (sel: DocSelecao | null) => void
+}>(function DocEditor({ initialDoc, onChange, letterheadDataUrl, marginsMm, onSelectionChange }, ref) {
+  // Ref p/ o callback de seleção sempre fresco (o useEditor captura a closure só na criação).
+  const onSelRef = useRef(onSelectionChange)
+  onSelRef.current = onSelectionChange
+
+  // Zoom da folha (0.5–2.0). Aplicado via CSS `zoom` (escala de LAYOUT) — a paginação
+  // compara clientWidth × getBoundingClientRect, ambos no mesmo espaço escalado, então
+  // os cálculos de quebra continuam consistentes em qualquer zoom.
+  const [zoom, setZoom] = useState(1)
+  const zoomIn = () => setZoom((z) => Math.min(2, Math.round((z + 0.1) * 100) / 100))
+  const zoomOut = () => setZoom((z) => Math.max(0.5, Math.round((z - 0.1) * 100) / 100))
+
   const editor = useEditor({
     immediatelyRender: false, // SSR-safe in the App Router
     extensions: [...editorExtensions, Pagination],
     content: lexToProseMirror(initialDoc),
     onUpdate: ({ editor }) => onChange(proseMirrorToLex(editor.getJSON() as unknown as PMNode)),
+    onSelectionUpdate: ({ editor }) => {
+      const { from, to } = editor.state.selection
+      if (from === to) {
+        onSelRef.current?.(null)
+        return
+      }
+      const texto = editor.state.doc.textBetween(from, to, "\n", LEAF)
+      onSelRef.current?.(texto.trim() ? { texto, from, to } : null)
+    },
   })
+
+  // API imperativa p/ a edição por seleção (estilo Copilot). Aplicar pelo editor
+  // VIVO (não remontar) preserva posições e o undo nativo do ProseMirror.
+  useImperativeHandle(
+    ref,
+    (): DocEditorHandle => ({
+      getSelection: () => {
+        if (!editor) return null
+        const { from, to } = editor.state.selection
+        if (from === to) return null
+        const texto = editor.state.doc.textBetween(from, to, "\n", LEAF)
+        return texto.trim() ? { texto, from, to } : null
+      },
+      coordsOf: (pos) => {
+        if (!editor) return null
+        try {
+          const p = Math.max(0, Math.min(pos, editor.state.doc.content.size))
+          const c = editor.view.coordsAtPos(p)
+          return { left: c.left, top: c.top, bottom: c.bottom }
+        } catch {
+          return null
+        }
+      },
+      applyPosOp: (op) => {
+        if (!editor) return false
+        const size = editor.state.doc.content.size
+        const from = op.from ?? -1
+        const to = op.to ?? -1
+        if (from < 0 || to < from || to > size) return false
+        // Verificação anti-stale: o intervalo ainda contém o texto original (`de`)?
+        if (op.de != null && editor.state.doc.textBetween(from, to, "\n", LEAF) !== op.de) return false
+        if (op.tipo === "substituir_selecao") {
+          const para = op.para ?? ""
+          const chain = editor.chain().focus()
+          // Insere como NÓ de texto (não string → sem parse de HTML que estragaria
+          // "<"/"&" em texto jurídico). Vazio = deleta o trecho.
+          if (para) chain.insertContentAt({ from, to }, { type: "text", text: para })
+          else chain.deleteRange({ from, to })
+          chain.run()
+          return true
+        }
+        if (op.tipo === "inserir_apos_selecao") {
+          const t = (op.texto ?? "").trim()
+          if (!t) return false
+          editor.chain().focus().insertContentAt(to, { type: "text", text: ` ${t}` }).run()
+          return true
+        }
+        if (op.tipo === "formatar_selecao") {
+          // Aplica/remove uma MARCA real (negrito/itálico/…) no intervalo selecionado.
+          const name = op.marca ?? "bold"
+          const chain = editor.chain().focus().setTextSelection({ from, to })
+          if (op.remover) chain.unsetMark(name)
+          else chain.setMark(name)
+          chain.run()
+          return true
+        }
+        return false
+      },
+      getDoc: () => (editor ? proseMirrorToLex(editor.getJSON() as unknown as PMNode) : initialDoc),
+    }),
+    [editor, initialDoc],
+  )
 
   const m = marginsMm ?? DEFAULT_MARGINS_MM
 
@@ -174,14 +277,14 @@ export function DocEditor({
   useEffect(() => {
     if (!editor) return
     editor.view.dispatch(editor.state.tr.setMeta(paginationKey, "recompute"))
-  }, [editor, m.top, m.right, m.bottom, m.left])
+  }, [editor, m.top, m.right, m.bottom, m.left, zoom])
 
   if (!editor) return <div className={s.editorWrap} />
 
   const backgroundImage = letterheadDataUrl ? `${PAGE_GUIDE}, url("${letterheadDataUrl}")` : PAGE_GUIDE
 
   return (
-    <div className={s.editorWrap}>
+    <div className={s.editorWrap} style={{ position: "relative" }}>
       <Toolbar editor={editor} />
       <div className={s.editorScroll}>
         <div
@@ -193,11 +296,46 @@ export function DocEditor({
             paddingBottom: `${m.bottom}mm`,
             paddingLeft: `${m.left}mm`,
             backgroundImage,
+            zoom,
           }}
         >
           <EditorContent editor={editor} />
         </div>
       </div>
+
+      {/* Controle de zoom flutuante (canto inferior direito do editor) */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: 16,
+          right: 16,
+          zIndex: 5,
+          display: "flex",
+          alignItems: "center",
+          gap: 2,
+          padding: 3,
+          borderRadius: 11,
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          boxShadow: "0 6px 20px rgba(2,13,37,0.16)",
+        }}
+      >
+        <button type="button" className={s.tbtn} title="Diminuir zoom" onClick={zoomOut} disabled={zoom <= 0.5}>
+          <ZoomOut size={15} />
+        </button>
+        <button
+          type="button"
+          className={s.tbtn}
+          title="Restaurar zoom (100%)"
+          onClick={() => setZoom(1)}
+          style={{ minWidth: 48, fontVariantNumeric: "tabular-nums", fontWeight: 500 }}
+        >
+          {Math.round(zoom * 100)}%
+        </button>
+        <button type="button" className={s.tbtn} title="Aumentar zoom" onClick={zoomIn} disabled={zoom >= 2}>
+          <ZoomIn size={15} />
+        </button>
+      </div>
     </div>
   )
-}
+})

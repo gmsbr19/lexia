@@ -16,6 +16,22 @@ export const anexoSchema = z.object({
 export const lexiaAgentModeSchema = z.enum(["agente", "pergunta", "plano"])
 export const lexiaModeloSchema = z.enum(["auto", "rapido", "avancado"])
 
+// Contexto do documento aberto no editor flexível (`/documents/doc/[id]`). Enviado
+// SÓ pelo painel embutido; habilita as ferramentas de edição de documento e injeta
+// texto/campos/seleção na mensagem volátil. `selecao.from/to` = posições ProseMirror.
+export const documentoSelecaoSchema = z.object({
+  texto: z.string().max(8000),
+  from: z.number().int().nonnegative(),
+  to: z.number().int().nonnegative(),
+})
+export const documentoContextoSchema = z.object({
+  id: idOpt,
+  texto: z.string().max(40000),
+  campos: z.array(z.object({ name: z.string().max(60), label: z.string().max(160) })).max(120),
+  valores: z.record(z.string(), z.string()).optional(),
+  selecao: documentoSelecaoSchema.optional(),
+})
+
 export const lexiaChatSchema = z
   .object({
     conversaId: idOpt,
@@ -26,6 +42,7 @@ export const lexiaChatSchema = z
     modelo: lexiaModeloSchema.optional(), // seletor de modelo da barra (auto|rapido|avancado)
     agentMode: lexiaAgentModeSchema.optional(), // modo vivo do composer
     autoMode: z.boolean().optional(), // ligado: executa mutações sem confirmar
+    documento: documentoContextoSchema.optional(), // contexto do editor flexível
   })
   // Permite enviar só anexo (sem legenda), mas não uma mensagem totalmente vazia.
   .refine((b) => b.mensagem.trim().length > 0 || (b.anexos?.length ?? 0) > 0, {

@@ -1,5 +1,7 @@
 // LexIA chat — view-model shapes for the floating popup. Conversations are
 // per-user (scoped by session e-mail). Pure module — safe on client and server.
+import type { DocOp } from "@/lib/documents/model/ops"
+import type { CampoDetectado } from "@/lib/documents/model/campos"
 
 export type LexiaMsgRole = "user" | "assistant"
 
@@ -21,6 +23,9 @@ export type UiBlock =
       detalhes?: ConfirmDetalhe[]
       status: "pendente" | "confirmada" | "recusada" | "expirada"
     }
+  // edições propostas ao documento aberto (só no editor flexível); o card
+  // "Aplicar/Aplicar todos" aplica `ops`/`campos` no editor vivo.
+  | { type: "doc-patch"; ops: DocOp[]; campos?: CampoDetectado[] }
   | { type: "notice"; text: string }
 
 /** Uma linha do cartão de confirmação, já formatada para humanos. */
@@ -37,6 +42,7 @@ export type SseEvent =
   | { type: "navigate"; rota: string }
   | { type: "link"; rota: string; label: string }
   | { type: "confirm"; acaoId: number; toolName: string; resumo: string; payload: unknown; detalhes?: ConfirmDetalhe[] }
+  | { type: "doc-patch"; ops: DocOp[]; campos?: CampoDetectado[] }
   | { type: "done"; mensagemId?: number; model: string; inputTokens: number; outputTokens: number; pendente?: number }
   | { type: "error"; mensagem: string }
 
