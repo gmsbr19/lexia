@@ -16,6 +16,8 @@ import { getTool, toApiTools } from "./registry"
 import { rotuloTool } from "./rotulos"
 import type { RouteDecision } from "./router"
 import type { AgentCtx, Emit, UiBlock } from "./types"
+import type { DocOp } from "@/lib/documents/model/ops"
+import type { CampoDetectado } from "@/lib/documents/model/campos"
 
 const MAX_ITER = 8
 
@@ -42,7 +44,8 @@ export async function runAgentTurn(
 ): Promise<TurnResult> {
   const anthropic = getAnthropic()
   // "pergunta" mode drops the mutation tools entirely (read-only assistant).
-  const tools = decision.useTools ? toApiTools(ctx.user.role, ctx.mode) : undefined
+  // docMode (chat embutido no editor) foca o surface em leitura + edição de doc.
+  const tools = decision.useTools ? toApiTools(ctx.user.role, ctx.mode, !!ctx.doc) : undefined
   const system = systemPrompt()
 
   const blocks: UiBlock[] = []
@@ -198,7 +201,18 @@ export async function runAgentTurn(
       emit({ type: "tool", id: tu.id, name: tu.name, label, status: "run" })
       try {
         const out = await tool.run!(ctx, input)
-        if (tool.kind === "client") {
+        if (tool.kind === "client" && tool.clientEvent === "doc-patch") {
+          // Edições propostas ao documento aberto — aplicadas no editor VIVO pelo
+          // cliente (reversível por desfazer); nunca tocam o banco.
+          const payload = (out ?? {}) as { ops?: DocOp[]; campos?: CampoDetectado[] }
+          const ops = payload.ops ?? []
+          const campos = payload.campos
+          const n = ops.length + (campos?.length ?? 0)
+          emit({ type: "doc-patch", ops, campos })
+          blocks.push({ type: "doc-patch", ops, campos })
+          resolved.push({ type: "tool_result", tool_use_id: tu.id, content: `ok — propus ${n} alteração(ões) ao documento aberto` })
+          emit({ type: "tool", id: tu.id, name: tu.name, label, status: "ok" })
+        } else if (tool.kind === "client") {
           const rota = String(out)
           emit({ type: "navigate", rota })
           blocks.push({ type: "navigate", rota })

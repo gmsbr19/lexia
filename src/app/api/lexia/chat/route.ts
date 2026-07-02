@@ -14,7 +14,7 @@ import { lexiaChatSchema } from "@/lib/lexia/schemas"
 import { carregarHistorico, ensureConversa, persistAssistantMsg, persistUserMsg } from "@/lib/lexia/mutations"
 import { mensagemErro } from "@/lib/lexia/agent/client"
 import { construirConteudo } from "@/lib/lexia/agent/anexos"
-import { contextoLinha } from "@/lib/lexia/agent/prompt"
+import { contextoDocumento, contextoLinha } from "@/lib/lexia/agent/prompt"
 import { getLexiaPrefsRaw } from "@/lib/lexia/preferencias"
 import { decidirModelo } from "@/lib/lexia/agent/router"
 import { aplicarTeto, MODO_ECONOMICO_AVISO } from "@/lib/consumo/guard"
@@ -69,6 +69,17 @@ export async function POST(req: Request) {
       // server-side (mammoth → LexDoc → draft Documento) and open the editor
       // directly. No model call this turn (deterministic, zero tokens).
       const docx = body.anexos?.find((a) => a.mimeType === MIME_DOCX)
+      // …mas DENTRO do editor (body.documento) NÃO importamos outro doc (criaria um
+      // novo e navegaria para fora do que o usuário está editando): só avisamos.
+      if (docx && body.documento) {
+        const txt =
+          "Você já está editando um documento aqui. Para importar outro arquivo Word (.docx), feche este editor e anexe-o pela LexIA principal."
+        emit({ type: "text", delta: txt })
+        const blocks: UiBlock[] = [{ type: "text", text: txt }]
+        const saved = await persistAssistantMsg(conversaId, { text: txt, blocks, model: "guard", inputTokens: 0, outputTokens: 0 })
+        emit({ type: "done", mensagemId: saved.id, model: "guard", inputTokens: 0, outputTokens: 0 })
+        return
+      }
       if (docx) {
         const nomeDoc = docx.nome.replace(/\.[^.]+$/, "") || "Documento importado"
         let novoId: number
@@ -97,14 +108,33 @@ export async function POST(req: Request) {
       const autoMode = body.autoMode ?? prefs.autoMode ?? false
       const modelo = body.modelo ?? prefs.modelo
 
-      const texto = `${contextoLinha(sessionUser, body.pagina, { ...prefs, agentMode })}\n\n${instrucao}`
+      // Contexto do documento aberto (só no editor flexível) — bloco VOLÁTIL fora do
+      // CORE cacheado; injeta texto/campos/seleção + as instruções de edição.
+      const contextoDoc = body.documento ? contextoDocumento(body.documento) : ""
+      const texto = `${contextoLinha(sessionUser, body.pagina, { ...prefs, agentMode })}${contextoDoc}\n\n${instrucao}`
       const messages: Anthropic.MessageParam[] = [
         ...prior,
         { role: "user", content: construirConteudo(texto, body.anexos) },
       ]
       const teto = await aplicarTeto(decidirModelo(mensagemRaw, lastModel, { temAnexos, forcarOpus: body.opus, modelo }))
       const decision = teto.decision
-      const ctx: AgentCtx = { user: sessionUser, conversaId, page: body.pagina, signal: req.signal, mode: agentMode, autoMode }
+      const ctx: AgentCtx = {
+        user: sessionUser,
+        conversaId,
+        page: body.pagina,
+        signal: req.signal,
+        mode: agentMode,
+        autoMode,
+        doc: body.documento
+          ? {
+              id: body.documento.id ?? null,
+              texto: body.documento.texto,
+              campos: body.documento.campos,
+              valores: body.documento.valores,
+              selecao: body.documento.selecao,
+            }
+          : undefined,
+      }
 
       const result = await runAgentTurn(ctx, messages, decision, emit)
       if (teto.rebaixado) result.blocks.unshift({ type: "notice", text: MODO_ECONOMICO_AVISO })

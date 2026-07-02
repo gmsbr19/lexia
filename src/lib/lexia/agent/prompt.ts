@@ -63,3 +63,40 @@ export function contextoLinha(user: SessionUser, page?: string, prefs?: LexiaPre
   const personalizacao = personalizacaoPrompt(prefs)
   return `<contexto>Hoje é ${dataExtenso()} (${hojeISO()}, America/Sao_Paulo). Usuário: ${user.nome} (${papel}).${onde}${semFinanceiro}</contexto>${personalizacao}`
 }
+
+/** Forma estrutural do contexto do documento aberto (validada no schema da rota). */
+export interface DocumentoContexto {
+  id?: number | null
+  texto: string
+  campos: { name: string; label: string }[]
+  valores?: Record<string, string>
+  selecao?: { texto: string; from: number; to: number }
+}
+
+/**
+ * Contexto do documento ABERTO no editor flexível, anexado à mensagem volátil
+ * (FORA do CORE cacheado — muda a cada edição). Traz o texto do documento, os
+ * campos/valores, a seleção atual (se houver) e as instruções de edição. Quando há
+ * <selecao>, o texto é truncado mais agressivamente e a seleção vai verbatim:
+ * o modelo edita só o trecho (mais preciso, menos tokens).
+ */
+export function contextoDocumento(doc: DocumentoContexto): string {
+  const temSelecao = !!doc.selecao && doc.selecao.texto.trim().length > 0
+  const limite = temSelecao ? 8000 : 24000
+  const corpo = doc.texto.length > limite ? `${doc.texto.slice(0, limite)}\n…(documento truncado)` : doc.texto
+  const camposList = doc.campos.length ? doc.campos.map((c) => `- ${c.name} (${c.label})`).join("\n") : "(nenhum campo ainda)"
+  const valores = doc.valores ?? {}
+  const valoresList = Object.keys(valores).length ? Object.entries(valores).map(([k, v]) => `- ${k} = ${v}`).join("\n") : "(vazio)"
+  const selecaoBloco = temSelecao
+    ? `\n<selecao from="${doc.selecao!.from}" to="${doc.selecao!.to}">\n${doc.selecao!.texto}\n</selecao>`
+    : ""
+  const instrucoes = [
+    "Você está editando um DOCUMENTO JURÍDICO aberto no editor (PT-BR). Aja sobre ele com \"editar_documento_aberto\" (e \"detectar_campos_documento\" para achar campos) — NUNCA reescreva o documento inteiro no chat; proponha apenas as operações necessárias.",
+    "FORMATAÇÃO (negrito/itálico/sublinhado/tachado): use \"formatar_texto\" (de = trecho EXATO + marca) ou \"formatar_selecao\". É ASSIM que se deixa em negrito — NUNCA escreva markdown/asteriscos (**) no texto, eles ficariam literais no documento.",
+    "Se houver <selecao>: TODAS as operações deste turno devem ficar DENTRO do trecho selecionado — não altere nem formate NADA fora dele. \"as partes relevantes\" = as relevantes DENTRO da seleção. Reescrever o trecho inteiro → \"substituir_selecao\"; formatar/trocar partes dele → \"formatar_texto\"/\"substituir_texto\" com `de` que ESTEJA na seleção.",
+    "Sem seleção: \"substituir_texto\" (de = trecho EXATO) para trocas, \"formatar_texto\" para formatar, \"preencher_campo\" para placeholders, \"inserir_paragrafo\" para acrescentar ao fim.",
+    "Preencha placeholders com dados REAIS do cliente — busque com \"buscar\"/\"detalhe_cliente\"; nunca invente CPF, endereço, valores ou datas.",
+    "Preserve a terminologia e a estrutura jurídica. Seja cirúrgico e mínimo.",
+  ].join("\n- ")
+  return `\n<documento_aberto>\n<instrucoes_doc>\n- ${instrucoes}\n</instrucoes_doc>\n<campos>\n${camposList}\n</campos>\n<valores>\n${valoresList}\n</valores>${selecaoBloco}\n<texto>\n${corpo}\n</texto>\n</documento_aberto>`
+}

@@ -37,6 +37,19 @@ export interface AgentCtx {
    * (pede confirmação) — preserva o comportamento atual.
    */
   autoMode?: boolean
+  /**
+   * Documento aberto no editor flexível. Setado SÓ quando o chat está embutido em
+   * `/documents/doc/[id]` — habilita as ferramentas de edição de documento e injeta
+   * o contexto do doc (texto/campos/seleção) na mensagem volátil. Ausente no chat
+   * global. As `from`/`to` da seleção são posições do ProseMirror (edição cirúrgica).
+   */
+  doc?: {
+    id: number | null
+    texto: string
+    campos: { name: string; label: string }[]
+    valores?: Record<string, string>
+    selecao?: { texto: string; from: number; to: number }
+  }
 }
 
 export interface AgentTool {
@@ -47,9 +60,10 @@ export interface AgentTool {
   /**
    * client tools only: which SSE event the loop emits from this tool's output.
    * "navigate" → the run() returns a route string and the browser router.pushes
-   * it. Omit ⇒ "navigate".
+   * it. "doc-patch" → the run() returns `{ ops, campos? }` applied to the open
+   * document editor. Omit ⇒ "navigate".
    */
-  clientEvent?: "navigate"
+  clientEvent?: "navigate" | "doc-patch"
   /** Roles allowed to invoke this tool ('admin' always passes). Omit = any user. */
   roles?: Role[]
   /** Mutation tools: PT-BR one-line summary for the confirmation card (sync fallback). */
@@ -73,7 +87,7 @@ export function defineTool<S extends z.ZodType>(def: {
   description: string
   schema: S
   kind: ToolKind
-  clientEvent?: "navigate"
+  clientEvent?: "navigate" | "doc-patch"
   roles?: Role[]
   resumo?: (input: z.infer<S>) => string
   montarConfirmacao?: (ctx: AgentCtx, input: z.infer<S>) => Promise<Confirmacao>
