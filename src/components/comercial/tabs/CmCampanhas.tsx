@@ -7,6 +7,8 @@ import { CmCardTitle, CmEmpty, CmFrame, CmNum, CmSegmented, CmStatusChip, CmTh }
 import { cmCampaignStats, cmCompact, cmInt, cmRoas, type CampaignStat, type CmRef, type CmScope, type Periodo } from "../cm-meta"
 import type { CampanhaStatus, CmDataset, CmDatasetCampaign, Plataforma } from "@/lib/comercial/types"
 import { toAreaOptions, useAreasStore } from "@/lib/areas/store"
+import { lexGlassStrong } from "@/styles/glass.css"
+import { glassElevation } from "@/styles/glass"
 
 function CampRow({ c, verFin, onGasto, onLeads, onEdit }: { c: CampaignStat; verFin: boolean; onGasto: (c: CmDatasetCampaign) => void; onLeads: (c: CmDatasetCampaign) => void; onEdit: (c: CmDatasetCampaign) => void }) {
   const [menu, setMenu] = useState(false)
@@ -42,7 +44,7 @@ function CampRow({ c, verFin, onGasto, onLeads, onEdit }: { c: CampaignStat; ver
           {menu && (
             <>
               <div onClick={() => setMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
-              <div className="card" style={{ position: "absolute", right: 0, top: 32, zIndex: 41, minWidth: 184, padding: 6, background: "var(--lex-acrylic-strong)", backdropFilter: "var(--lex-blur)", WebkitBackdropFilter: "var(--lex-blur)", border: "1px solid var(--lex-acrylic-border)", boxShadow: "var(--lex-glass-shadow), 0 12px 28px rgba(2,13,37,0.16), inset 0 1px 0 rgba(255,255,255,0.16)" }}>
+              <div className={`card ${lexGlassStrong}`} style={{ position: "absolute", right: 0, top: 32, zIndex: 41, minWidth: 184, padding: 6, ...glassElevation("0 12px 28px rgba(2,13,37,0.16)") }}>
                 <button className="cm-menu-item" onClick={() => { setMenu(false); onGasto(c) }}><Icon name="coins" size={13} />Registrar gasto</button>
                 <button className="cm-menu-item" onClick={() => { setMenu(false); onLeads(c) }}><Icon name="users" size={13} />Ver leads da campanha</button>
                 <button className="cm-menu-item" onClick={() => { setMenu(false); onEdit(c) }}><Icon name="edit" size={13} />Editar campanha</button>

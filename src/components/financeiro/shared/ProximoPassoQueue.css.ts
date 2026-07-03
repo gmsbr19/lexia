@@ -1,6 +1,7 @@
 import { style } from "@vanilla-extract/css"
 import { recipe } from "@vanilla-extract/recipes"
 import { tokens } from "@/styles/tokens.css"
+import { lexGlassStrong } from "@/styles/glass.css"
 
 export const card = style({
   background: tokens.color.surface,
@@ -91,18 +92,16 @@ export const dismissBtn = style({
   selectors: { "&:hover": { background: tokens.color.bgSunken, color: tokens.color.text } },
 })
 
-export const menu = style({
-  minWidth: 200,
-  background: "var(--lex-acrylic-strong)",
-  backdropFilter: "var(--lex-blur)",
-  WebkitBackdropFilter: "var(--lex-blur)",
-  border: "1px solid var(--lex-acrylic-border)",
-  borderRadius: 10,
-  boxShadow:
-    "var(--lex-glass-shadow), 0 12px 28px rgba(2,13,37,0.16), inset 0 1px 0 rgba(255,255,255,0.16)",
-  padding: 6,
-  zIndex: 60,
-})
+export const menu = style([
+  lexGlassStrong,
+  {
+    minWidth: 200,
+    borderRadius: 10,
+    padding: 6,
+    zIndex: 60,
+    vars: { "--lex-elevation": "0 12px 28px rgba(2,13,37,0.16)" },
+  },
+])
 
 export const menuItem = style({
   fontSize: 12.5,

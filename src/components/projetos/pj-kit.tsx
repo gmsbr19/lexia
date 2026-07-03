@@ -8,6 +8,8 @@ import { useMemo, type CSSProperties, type ReactNode } from "react"
 import { PROJECTS, STATUS, type TeamMember } from "@/lib/tarefas/types"
 import { useAreasStore, toAreaOptions, resolveAreaLabel } from "@/lib/areas/store"
 import { type ProjetoStatus, type ProjetoView, type SaudeProjeto, saudeMeta, statusProjetoMeta } from "@/lib/projetos/types"
+import { lexGlassStrong } from "@/styles/glass.css"
+import { glassElevation } from "@/styles/glass"
 import { Icon, type TfIconName } from "@/components/tarefas/tf-icons"
 import { AssigneeAvatar, Menu, MenuItem } from "@/components/tarefas/tf-kit"
 import { TODAY } from "@/components/tarefas/tf-meta"
@@ -448,7 +450,7 @@ export function BulkBar({
   )
   return (
     <div
-      className="bulk-bar"
+      className={`bulk-bar ${lexGlassStrong}`}
       style={{
         position: "fixed",
         bottom: 22,
@@ -460,13 +462,9 @@ export function BulkBar({
         gap: 4,
         padding: "8px 10px 8px 14px",
         borderRadius: 14,
-        background: "var(--lex-acrylic-strong)",
-        backdropFilter: "var(--lex-blur)",
-        WebkitBackdropFilter: "var(--lex-blur)",
-        border: "1px solid var(--lex-acrylic-border)",
-        boxShadow: "var(--lex-glass-shadow), 0 12px 32px rgba(2,13,37,0.18), inset 0 1px 0 rgba(255,255,255,0.16)",
         maxWidth: "calc(100% - 32px)",
         flexWrap: "wrap",
+        ...glassElevation("0 12px 32px rgba(2,13,37,0.18)"),
       }}
     >
       <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 500, color: "var(--text)", paddingRight: 6 }}>
@@ -619,13 +617,8 @@ export function Overlay({ children, onClose, wide }: { children: ReactNode; onCl
     maxHeight: "100%",
     display: "flex",
     flexDirection: "column",
-    background: "var(--lex-acrylic-strong)",
-    backdropFilter: "var(--lex-blur)",
-    WebkitBackdropFilter: "var(--lex-blur)",
-    border: "1px solid var(--lex-acrylic-border)",
     borderRadius: 16,
-    boxShadow: "var(--lex-glass-shadow), 0 24px 60px rgba(2,13,37,0.28), inset 0 1px 0 rgba(255,255,255,0.16)",
-    overflow: "hidden",
+    ...glassElevation("0 24px 60px rgba(2,13,37,0.28)"),
   }
   return (
     <div
@@ -633,7 +626,7 @@ export function Overlay({ children, onClose, wide }: { children: ReactNode; onCl
       className="overlay-scrim"
       style={{ position: "fixed", inset: 0, zIndex: 120, background: "var(--overlay)", display: "flex", alignItems: "center", justifyContent: "center", padding: 28, backdropFilter: "blur(2px)" }}
     >
-      <div onClick={(e) => e.stopPropagation()} style={panel}>
+      <div onClick={(e) => e.stopPropagation()} className={lexGlassStrong} style={panel}>
         {children}
       </div>
     </div>

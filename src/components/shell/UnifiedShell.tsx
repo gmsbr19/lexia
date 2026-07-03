@@ -20,11 +20,14 @@ import { CrmSettings } from "@/components/crm/overlays/CrmSettings"
 import { LexiaChat } from "@/components/lexia/LexiaChat"
 import { LexiaSpotlight } from "@/components/lexia/LexiaSpotlight"
 import { Orb } from "@/components/lexia/LexiaKit"
+import { lexGlassStrong } from "@/styles/glass.css"
+import { glassElevation } from "@/styles/glass"
 import { NotificacoesBell } from "./NotificacoesBell"
 import { NotificacoesStream } from "./NotificacoesStream"
 import { NotificacoesToasts } from "./NotificacoesToasts"
 import { CrmAnonimizar } from "@/components/crm/pages/CrmQuickModals"
 import { verFinanceiro } from "@/lib/users/types"
+import { useModulosStore, processosHabilitado } from "@/lib/modulos/store"
 import type { ClienteRow } from "@/lib/finance/types"
 import type { CrmDataset, CrmNav, CrmPage, Role } from "@/components/crm/crm-types"
 import { useTabs } from "./tabs-store"
@@ -43,6 +46,7 @@ function Sidebar({
   collapsed,
   activeId,
   role,
+  processosOk,
   onNav,
   onOpenBar,
   onOpenSettings,
@@ -53,6 +57,7 @@ function Sidebar({
 }: {
   collapsed: boolean
   activeId: string
+  processosOk: boolean
   role: Role
   onNav: (href: string, newTab: boolean) => void
   onOpenBar: () => void
@@ -89,7 +94,7 @@ function Sidebar({
       )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        {SIDEBAR.filter((n) => !(n.socioPlus && !verFinanceiro(role))).map((n) => {
+        {SIDEBAR.filter((n) => !(n.socioPlus && !verFinanceiro(role)) && !(n.id === "processos" && !processosOk)).map((n) => {
           const active = activeId === n.id
           return (
             <button
@@ -175,7 +180,7 @@ function SidebarUser({ name, email, role, dark, collapsed, onToggleTheme }: { na
       {open && (
         <>
           <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 1190 }} />
-          <div className="card" style={{ position: "absolute", bottom: "100%", left: 0, marginBottom: 8, zIndex: 1191, width: 232, padding: 6, background: "var(--lex-acrylic-strong)", backdropFilter: "var(--lex-blur)", WebkitBackdropFilter: "var(--lex-blur)", border: "1px solid var(--lex-acrylic-border)", boxShadow: "var(--lex-glass-shadow), 0 12px 28px rgba(2,13,37,0.16), inset 0 1px 0 rgba(255,255,255,0.16)" }}>
+          <div className={`card ${lexGlassStrong}`} style={{ position: "absolute", bottom: "100%", left: 0, marginBottom: 8, zIndex: 1191, width: 232, padding: 6, ...glassElevation("0 12px 28px rgba(2,13,37,0.16)") }}>
             <div style={{ padding: "8px 10px 10px" }}>
               <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{name || "Usuário"}</div>
               {email && <div style={{ fontSize: 12, color: "var(--text-subtle)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{email}</div>}
@@ -257,6 +262,11 @@ export function UnifiedShell({ children }: { children: ReactNode }) {
 
   const loadAreas = useAreasStore((s) => s.load)
   useEffect(() => { if (!isLogin) void loadAreas() }, [isLogin, loadAreas])
+
+  const modulos = useModulosStore((s) => s.modulos)
+  const loadModulos = useModulosStore((s) => s.load)
+  useEffect(() => { if (!isLogin) void loadModulos() }, [isLogin, loadModulos])
+  const processosOk = processosHabilitado(modulos)
 
   // ⌘K toggles the Spotlight (the command palette)
   useEffect(() => {
@@ -352,6 +362,7 @@ export function UnifiedShell({ children }: { children: ReactNode }) {
           collapsed={collapsed}
           activeId={activeNavId(pathname)}
           role={role}
+          processosOk={processosOk}
           onNav={onNav}
           onOpenBar={() => openSpotlight()}
           onOpenSettings={openSettings}

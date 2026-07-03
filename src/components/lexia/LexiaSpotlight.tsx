@@ -11,7 +11,9 @@ import { crmMoney, crmDate } from "@/components/crm/crm-fmt"
 import { searchAll, lexiaConversas } from "@/components/crm/crm-api"
 import type { CrmNav, LexiaConversaRow, SearchResults } from "@/components/crm/crm-types"
 import { contextChips, contextPlaceholder } from "./Suggestions"
-import { AutoTextarea, Sparkle, SparkleChip, ACRYLIC } from "./LexiaKit"
+import { AutoTextarea, Sparkle, SparkleChip } from "./LexiaKit"
+import { lexGlass } from "@/styles/glass.css"
+import { glassElevation } from "@/styles/glass"
 
 const norm = (s: string) => (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
 const EMPTY: SearchResults = { q: "", clientes: [], casos: [], processos: [], partes: [], contratos: [], tarefas: [], lancamentos: [] }
@@ -219,13 +221,13 @@ export function LexiaSpotlight({ seed = "", page, clienteId, nav, onNavigate, on
       style={{ position: "fixed", inset: 0, zIndex: 1400, display: "flex", alignItems: "flex-start", justifyContent: "center", paddingTop: "11vh", background: "var(--overlay)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)" }}
     >
       <div
-        className="crm-pop-in"
+        className={`crm-pop-in ${lexGlass}`}
         onMouseDown={(e) => e.stopPropagation()}
         style={{
-          width: 640, maxWidth: "92%", maxHeight: "72vh", display: "flex", flexDirection: "column", overflow: "hidden",
-          borderRadius: 18, border: "1px solid var(--lex-acrylic-border)",
-          boxShadow: "0 40px 100px rgba(2,13,37,0.5), 0 10px 30px rgba(2,13,37,0.34), inset 0 1px 0 rgba(255,255,255,0.12)",
-          transformOrigin: "center top", ...ACRYLIC,
+          width: 640, maxWidth: "92%", maxHeight: "72vh", display: "flex", flexDirection: "column",
+          borderRadius: 18,
+          transformOrigin: "center top",
+          ...glassElevation("0 40px 100px rgba(2,13,37,0.5), 0 10px 30px rgba(2,13,37,0.34)"),
         }}
       >
         {/* input */}

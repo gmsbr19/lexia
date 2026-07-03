@@ -38,6 +38,12 @@ export interface AgentCtx {
    */
   autoMode?: boolean
   /**
+   * Módulo Casos & Processos habilitado (Configurações → Módulos). Default true;
+   * o loop remove as ferramentas de casos/processos e o prompt recusa o assunto
+   * quando false. Lido uma vez por request no route handler (settings.ts).
+   */
+  processosHabilitado?: boolean
+  /**
    * Documento aberto no editor flexível. Setado SÓ quando o chat está embutido em
    * `/documents/doc/[id]` — habilita as ferramentas de edição de documento e injeta
    * o contexto do doc (texto/campos/seleção) na mensagem volátil. Ausente no chat

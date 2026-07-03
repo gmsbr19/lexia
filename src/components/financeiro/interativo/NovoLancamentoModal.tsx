@@ -103,17 +103,9 @@ export function NovoLancamentoModal({
 
   return (
     <div className={c.overlay} onMouseDown={onClose}>
-      {/* glass applied inline (same as the other modals) so it never depends on
-          a stale vanilla-extract compile — identical to the LexIA chat surface */}
       <div
         className={c.modalCard}
         onMouseDown={(e) => e.stopPropagation()}
-        style={{
-          background: "var(--lex-acrylic)",
-          backdropFilter: "var(--lex-blur)",
-          WebkitBackdropFilter: "var(--lex-blur)",
-          border: "1px solid var(--lex-acrylic-border)",
-        }}
       >
         <div className={c.modalHead}>
           <div>

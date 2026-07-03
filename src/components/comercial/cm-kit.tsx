@@ -6,6 +6,8 @@
 import { useEffect } from "react"
 import { useModalGuard } from "@/lib/client/modal-guard"
 import { Icon, type CmIconName } from "./cm-icons"
+import { lexGlass } from "@/styles/glass.css"
+import { glassElevation } from "@/styles/glass"
 import {
   CAMP_STATUSES,
   CM_STAGE_MAP,
@@ -254,7 +256,14 @@ export function CmModal({ title, sub, onClose, children, footer, width = 580 }: 
   }, [onClose])
   return (
     <div onMouseDown={onClose} style={{ position: "fixed", inset: 0, zIndex: 1000, display: "flex", alignItems: "stretch", justifyContent: "flex-end", background: "transparent" }}>
-      <div onMouseDown={(e) => e.stopPropagation()} className="cm-slidein" style={{ width, maxWidth: "100%", height: "100%", display: "flex", flexDirection: "column", background: "var(--lex-acrylic)", backdropFilter: "var(--lex-blur)", WebkitBackdropFilter: "var(--lex-blur)", boxShadow: "-14px 0 60px rgba(2,13,37,0.30)", borderLeft: "1px solid var(--lex-acrylic-border)" }}>
+      <div
+        onMouseDown={(e) => e.stopPropagation()}
+        className={`cm-slidein ${lexGlass}`}
+        // docked flush to the viewport's right/top/bottom edges — only the left
+        // edge is a visible separator, so the glass class's all-round border is
+        // zeroed and reapplied on just that side.
+        style={{ width, maxWidth: "100%", height: "100%", display: "flex", flexDirection: "column", border: "none", borderLeft: "1px solid var(--lex-acrylic-border)", ...glassElevation("-14px 0 60px rgba(2,13,37,0.30)") }}
+      >
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, padding: "20px 24px 16px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
           <div>
             <div style={{ fontSize: 16, fontWeight: 500, color: "var(--text)", letterSpacing: "-0.02em" }}>{title}</div>

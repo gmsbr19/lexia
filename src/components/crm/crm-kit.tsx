@@ -16,6 +16,8 @@ import {
 import { crmMoney, crmInitials } from "./crm-fmt"
 import { Icon, type CrmIconName } from "./crm-icons"
 import { useModalGuard } from "@/lib/client/modal-guard"
+import { lexGlass, lexGlassStrong } from "@/styles/glass.css"
+import { glassElevation } from "@/styles/glass"
 
 export const CRM_TODAY = (() => {
   const n = new Date()
@@ -298,13 +300,11 @@ export function FxModal({
     >
       <div
         onMouseDown={(e) => e.stopPropagation()}
-        className="crm-pop-in"
+        className={`crm-pop-in ${lexGlass}`}
         style={{
-          width, maxWidth: "100%", maxHeight: "92%", display: "flex", flexDirection: "column", overflow: "hidden",
+          width, maxWidth: "100%", maxHeight: "92%", display: "flex", flexDirection: "column",
           borderRadius: "var(--r-lg)",
-          background: "var(--lex-acrylic)", backdropFilter: "var(--lex-blur)", WebkitBackdropFilter: "var(--lex-blur)",
-          border: "1px solid var(--lex-acrylic-border)",
-          boxShadow: "0 40px 100px rgba(2,13,37,0.42), 0 12px 32px rgba(2,13,37,0.24), inset 0 1px 0 rgba(255,255,255,0.16)",
+          ...glassElevation("0 40px 100px rgba(2,13,37,0.42), 0 12px 32px rgba(2,13,37,0.24)"),
         }}
       >
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, padding: "20px 24px 16px", borderBottom: "1px solid var(--border)" }}>
@@ -558,23 +558,22 @@ export function CrmToastHost({ children }: { children: ReactNode }) {
       {children}
       {/* Center via flexbox (left:0/right:0 + alignItems), NOT a container
           transform — a transform on this ancestor would become the backdrop
-          root and break each toast card's backdrop-filter (the 34px page frost). */}
+          root and break each toast card's backdrop-filter (the page frost). */}
       <div style={{ position: "fixed", bottom: 22, left: 0, right: 0, zIndex: 1500, display: "flex", flexDirection: "column", gap: 8, alignItems: "center", pointerEvents: "none" }}>
         {items.map((t) => (
           <div
             key={t.id}
-            className="crm-toast"
+            className={`crm-toast ${lexGlassStrong}`}
             onClick={t.onClick}
             role={t.onClick ? "button" : undefined}
             tabIndex={t.onClick ? 0 : undefined}
             onKeyDown={t.onClick ? (e) => (e.key === "Enter" || e.key === " ") && t.onClick?.() : undefined}
             style={{
               display: "flex", alignItems: "center", gap: 9, padding: "10px 16px", borderRadius: 10,
-              background: "var(--lex-acrylic-strong)", backdropFilter: "var(--lex-blur)", WebkitBackdropFilter: "var(--lex-blur)",
-              border: "1px solid var(--lex-acrylic-border)", color: "var(--text)",
-              boxShadow: "var(--lex-glass-shadow), 0 12px 32px rgba(2,13,37,0.18), inset 0 1px 0 rgba(255,255,255,0.16)",
+              color: "var(--text)",
               fontSize: 13, fontWeight: 500, letterSpacing: "-0.01em", maxWidth: 460, pointerEvents: "auto",
               cursor: t.onClick ? "pointer" : "default",
+              ...glassElevation("0 12px 32px rgba(2,13,37,0.18)"),
             }}
           >
             <Icon

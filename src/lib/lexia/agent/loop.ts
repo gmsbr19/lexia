@@ -45,7 +45,7 @@ export async function runAgentTurn(
   const anthropic = getAnthropic()
   // "pergunta" mode drops the mutation tools entirely (read-only assistant).
   // docMode (chat embutido no editor) foca o surface em leitura + edição de doc.
-  const tools = decision.useTools ? toApiTools(ctx.user.role, ctx.mode, !!ctx.doc) : undefined
+  const tools = decision.useTools ? toApiTools(ctx.user.role, ctx.mode, !!ctx.doc, ctx.processosHabilitado ?? true) : undefined
   const system = systemPrompt()
 
   const blocks: UiBlock[] = []

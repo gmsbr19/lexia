@@ -15,6 +15,8 @@ import { useNotificacoesToasts } from "@/lib/notificacoes/toast-store"
 import type { NotificacaoRow } from "@/lib/notificacoes/types"
 import { rotuloModulo, tempoRelativo } from "./notif-ui"
 import { NotifTile } from "./NotifTile"
+import { lexGlassStrong } from "@/styles/glass.css"
+import { glassElevation } from "@/styles/glass"
 
 function marcarLida(n: NotificacaoRow) {
   if (n.lida) return
@@ -59,6 +61,7 @@ export function NotificacoesToasts() {
               transition={{ type: "tween", ease: [0.22, 1, 0.36, 1], duration: 0.26 }}
               whileHover={{ scale: 1.015 }}
               onClick={abrir}
+              className={lexGlassStrong}
               style={{
                 pointerEvents: "auto",
                 display: "flex",
@@ -67,12 +70,8 @@ export function NotificacoesToasts() {
                 padding: 13,
                 borderRadius: 14,
                 cursor: "pointer",
-                background: "var(--lex-acrylic-strong)",
-                backdropFilter: "var(--lex-blur)",
-                WebkitBackdropFilter: "var(--lex-blur)",
-                border: "1px solid var(--lex-acrylic-border)",
-                boxShadow: "var(--lex-glass-shadow), 0 16px 40px rgba(2,13,37,0.20), inset 0 1px 0 rgba(255,255,255,0.16)",
                 color: "var(--text)",
+                ...glassElevation("0 16px 40px rgba(2,13,37,0.20)"),
               }}
             >
               <NotifTile modulo={n.modulo} tipo={n.tipo} prioridade={n.prioridade} size={38} />

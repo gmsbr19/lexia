@@ -292,24 +292,31 @@
   border-radius: 0 3px 3px 0; background: var(--accent-strong);
 }
 
-/* theme-aware frosted glass (css.glass recipe) — very transparent white-tinted
- * fill + ~16px blur + light edge + soft shadow. The blurred backdrop (and the
- * document behind the docked panel) reads clearly through the glass. */
+/* theme-invariant "shine glass" (mirrors the :root/.theme-dark recipe in
+ * theme.css.ts) — near-transparent white fill, real visible white border,
+ * blur(16px), layered inset highlight. Bridged here because .crm-scope
+ * re-tinted these per theme; kept as an override point rather than deleting it. */
 .crm-scope {
   --lex-glass-base: 255, 255, 255;
-  --lex-acrylic: rgba(var(--lex-glass-base), 0.75);
-  --lex-acrylic-pill: rgba(var(--lex-glass-base), 0.80);
-  --lex-acrylic-border: rgba(2, 13, 37, 0.08);
-  --lex-blur: blur(34px) saturate(1.7);
-  --lex-glass-shadow: 0 12px 40px rgba(2, 13, 37, 0.08);
+  --lex-acrylic: rgba(var(--lex-glass-base), 0.05);
+  --lex-acrylic-pill: rgba(var(--lex-glass-base), 0.05);
+  --lex-acrylic-border: rgba(255, 255, 255, 0.3);
+  --lex-blur: blur(16px);
+  --lex-glass-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.1);
 }
 .theme-dark .crm-scope {
-  --lex-glass-base: 18, 32, 62;
-  --lex-acrylic: rgba(var(--lex-glass-base), 0.35);
-  --lex-acrylic-pill: rgba(var(--lex-glass-base), 0.45);
-  --lex-acrylic-border: rgba(255, 255, 255, 0.16);
-  --lex-blur: blur(34px) saturate(1.7);
-  --lex-glass-shadow: 0 4px 30px rgba(0, 0, 0, 0.25);
+  --lex-glass-base: 255, 255, 255;
+  --lex-acrylic: rgba(var(--lex-glass-base), 0.05);
+  --lex-acrylic-pill: rgba(var(--lex-glass-base), 0.05);
+  --lex-acrylic-border: rgba(255, 255, 255, 0.3);
+  --lex-blur: blur(16px);
+  --lex-glass-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.1);
 }
 
 /* right-dock (pinned-to-side) slide-in for the LexIA bar */

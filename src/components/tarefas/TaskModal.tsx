@@ -23,6 +23,8 @@ import { toast } from "@/lib/client/toast"
 import { Icon } from "./tf-icons"
 import { useTarefasCtx } from "./TarefasContext"
 import { AssigneeAvatar, IaBadge, LinkChip, Menu, MenuItem, PrazoChip, TaskCheck } from "./tf-kit"
+import { lexGlass } from "@/styles/glass.css"
+import { glassElevation } from "@/styles/glass"
 
 const subId = (): string =>
   typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `s${Math.random().toString(36).slice(2)}`
@@ -284,11 +286,10 @@ export function TaskModal({
     >
       <div
         onClick={(e) => e.stopPropagation()}
+        className={lexGlass}
         style={{
-          width: 720, maxWidth: "100%", maxHeight: "100%", display: "flex", flexDirection: "column", borderRadius: 14, overflow: "hidden",
-          background: "var(--lex-acrylic)", backdropFilter: "var(--lex-blur)", WebkitBackdropFilter: "var(--lex-blur)",
-          border: "1px solid var(--lex-acrylic-border)",
-          boxShadow: "0 40px 100px rgba(2,13,37,0.42), 0 12px 32px rgba(2,13,37,0.24), inset 0 1px 0 rgba(255,255,255,0.16)",
+          width: 720, maxWidth: "100%", maxHeight: "100%", display: "flex", flexDirection: "column", borderRadius: 14,
+          ...glassElevation("0 40px 100px rgba(2,13,37,0.42), 0 12px 32px rgba(2,13,37,0.24)"),
         }}
       >
         {/* header */}

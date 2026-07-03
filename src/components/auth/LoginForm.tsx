@@ -1,13 +1,12 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import { signIn } from "next-auth/react"
 import { btn, input, label } from "@/styles/components.css"
 import * as css from "./login.css"
 
 export function LoginForm() {
-  const router = useRouter()
   const search = useSearchParams()
   const [email, setEmail] = useState("")
   const [senha, setSenha] = useState("")
@@ -28,8 +27,10 @@ export function LoginForm() {
       const callbackUrl = search.get("callbackUrl")
       // Only same-origin paths — never an absolute URL from the query string.
       const dest = callbackUrl && callbackUrl.startsWith("/") && !callbackUrl.startsWith("//") ? callbackUrl : "/"
-      router.push(dest)
-      router.refresh()
+      // Hard navigation (not router.push): guarantees the destination is fetched
+      // fresh through proxy.ts with the just-set session cookie, instead of
+      // depending on the client router cache picking up the new auth state.
+      window.location.href = dest
     } catch {
       setErro("Não foi possível entrar — tente novamente.")
     } finally {

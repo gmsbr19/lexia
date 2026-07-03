@@ -7,6 +7,8 @@ import { CmEmpty, CmNum, CmOriginChip, CmSelect, CmStagePill } from "../cm-kit"
 import { CM_STAGES, ORIGEM_LABEL, ORIGENS, cmCompact, cmDate, cmDownload, cmLeadsCSV, cmToday } from "../cm-meta"
 import type { CmDataset, CmDatasetLead, LeadEtapa } from "@/lib/comercial/types"
 import { toAreaOptions, useAreasStore } from "@/lib/areas/store"
+import { lexGlassStrong } from "@/styles/glass.css"
+import { glassElevation } from "@/styles/glass"
 
 const PER_PAGE = 12
 
@@ -29,7 +31,7 @@ function StageMenu({ lead, onMove, onConvert, onLose }: { lead: CmDatasetLead; o
       {open && (
         <>
           <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
-          <div className="card" style={{ position: "absolute", left: 0, top: 28, zIndex: 41, minWidth: 178, padding: 6, background: "var(--lex-acrylic-strong)", backdropFilter: "var(--lex-blur)", WebkitBackdropFilter: "var(--lex-blur)", border: "1px solid var(--lex-acrylic-border)", boxShadow: "var(--lex-glass-shadow), 0 12px 28px rgba(2,13,37,0.16), inset 0 1px 0 rgba(255,255,255,0.16)" }}>
+          <div className={`card ${lexGlassStrong}`} style={{ position: "absolute", left: 0, top: 28, zIndex: 41, minWidth: 178, padding: 6, ...glassElevation("0 12px 28px rgba(2,13,37,0.16)") }}>
             <div style={{ fontSize: 11, color: "var(--text-subtle)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 500, padding: "5px 9px 3px" }}>Mover para</div>
             {CM_STAGES.slice(0, 4).map((s) => (
               <button key={s.key} className="cm-menu-item" onClick={() => { setOpen(false); onMove(lead.id, s.key) }}>
@@ -78,7 +80,7 @@ function LeadRow({ l, campMap, selected, onSelect, onMove, onConvert, onLose, on
           {menu && (
             <>
               <div onClick={() => setMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
-              <div className="card" style={{ position: "absolute", right: 0, top: 32, zIndex: 41, minWidth: 178, padding: 6, background: "var(--lex-acrylic-strong)", backdropFilter: "var(--lex-blur)", WebkitBackdropFilter: "var(--lex-blur)", border: "1px solid var(--lex-acrylic-border)", boxShadow: "var(--lex-glass-shadow), 0 12px 28px rgba(2,13,37,0.16), inset 0 1px 0 rgba(255,255,255,0.16)" }}>
+              <div className={`card ${lexGlassStrong}`} style={{ position: "absolute", right: 0, top: 32, zIndex: 41, minWidth: 178, padding: 6, ...glassElevation("0 12px 28px rgba(2,13,37,0.16)") }}>
                 <button className="cm-menu-item" onClick={() => { setMenu(false); onEdit(l) }}><Icon name="edit" size={13} />Editar lead</button>
                 {l.etapa !== "ganho" && <button className="cm-menu-item" onClick={() => { setMenu(false); onConvert(l) }} style={{ color: "#2E9E5B" }}><Icon name="handshake" size={13} />Converter</button>}
                 {l.etapa !== "perdido" && <button className="cm-menu-item" onClick={() => { setMenu(false); onLose(l) }} style={{ color: "var(--cm-neg,#C0492F)" }}><Icon name="x" size={13} />Marcar perdido</button>}

@@ -6,7 +6,7 @@ import { prioridadeRank } from "./types"
 export interface NotifPrefs {
   /** canal in-app (toast/sino/histórico) por módulo — default LIGADO */
   app?: Partial<Record<Modulo, boolean>>
-  /** canal e-mail por módulo — default DESLIGADO (opt-in) */
+  /** canal e-mail por módulo — default LIGADO (opt-out) */
   email?: Partial<Record<Modulo, boolean>>
   /** permissão p/ notificações nativas do navegador (extra) */
   navegador?: boolean
@@ -30,10 +30,10 @@ export function permiteApp(prefs: NotifPrefs, modulo: Modulo | null | undefined)
   return prefs.app?.[modulo] !== false
 }
 
-/** Canal e-mail: default DESLIGADO; precisa de opt-in E atingir o limiar de prioridade. */
+/** Canal e-mail: default LIGADO (só desliga se explicitamente false); precisa atingir o limiar de prioridade. */
 export function permiteEmail(prefs: NotifPrefs, modulo: Modulo | null | undefined, prioridade: Prioridade): boolean {
   if (!modulo) return false
-  if (prefs.email?.[modulo] !== true) return false
+  if (prefs.email?.[modulo] === false) return false
   const min = prefs.emailMinPrioridade ?? "normal"
   return prioridadeRank(prioridade) >= prioridadeRank(min)
 }

@@ -145,6 +145,80 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **Glassmorphism recipe replaced app-wide, 2 iterations (this session, VERIFIED tsc 0 + 310/310 testes,
+  NO migration).** User supplied exact CSS recipes to replace the old frosted-glass look (light/dark-tinted
+  fill, `blur(34px) saturate(1.7)`, hairline border, single top highlight). Because every modal/dropdown/
+  toast/popup already drew from ONE set of global CSS vars (by design, see §5 acrylic memory), both passes
+  were **central-token edits, not per-component rewrites**: `--lex-acrylic{,-pill,-strong}` /
+  `--lex-acrylic-border` / `--lex-blur` / `--lex-glass-shadow` in [theme.css.ts](src/styles/theme.css.ts)
+  (`:root` + `.theme-dark`, now **identical** — theme-invariant, no light/dark split) + the `.crm-scope`
+  bridge in [crm-theme.css](src/components/crm/crm-theme.css). Tiers (`-pill`/`-strong`) collapsed to the
+  same value as `--lex-acrylic` both times (each user spec gives one flat recipe, no tiering). **1st pass**
+  ("gel glass", superseded): `rgba(0,0,0,0.2)` fill, no border, `blur(8px)`, 4-layer *inset* bevel. **2nd/
+  CURRENT pass** ("shine glass"): near-transparent white fill `rgba(255,255,255,0.05)`, a REAL visible white
+  border `rgba(255,255,255,0.3)` (not transparent this time), `blur(16px)`, shadow = soft outer drop
+  `0 8px 32px rgba(0,0,0,.1)` + bright top inset `inset 0 1px 0 rgba(255,255,255,.5)` + faint bottom inset
+  `inset 0 -1px 0 rgba(255,255,255,.1)` (a 4th no-op shadow layer in the user's literal CSS — 0px blur/spread,
+  alpha 0 — was dropped as inert). **NOT implemented**: the reference recipe's `::before`/`::after` top+left
+  1px gradient hairlines — these are pseudo-elements with `content:''`, impossible via the inline `style={}`
+  objects every acrylic surface uses, and there's no single shared className across all ~23 consuming
+  components to hook a global CSS rule to; would need per-component DOM changes, out of scope for a token
+  edit. Surfaces referencing `var(--lex-glass-shadow)` picked up each new recipe automatically (toasts,
+  menus/dropdowns, the bell, most popovers). A handful of "big modal" surfaces hardcode their own outer
+  elevation shadow literal instead of the var (`0 40px 100px rgba(2,13,37,.42), 0 12px 32px
+  rgba(2,13,37,.24), ...`) — in those the trailing single-highlight inset was swapped for
+  `var(--lex-glass-shadow)` once, keeping the outer drop-shadow (needed for floating-above-page depth) but
+  gaining the new recipe: [TaskModal.tsx](src/components/tarefas/TaskModal.tsx),
+  [crm-kit.tsx](src/components/crm/crm-kit.tsx) (generic modal), 3× in
+  [CrmSettings.tsx](src/components/crm/overlays/CrmSettings.tsx) (settings modal + 2 confirm dialogs),
+  `modalCard` in [interativo.css.ts](src/components/financeiro/interativo/interativo.css.ts),
+  [LexiaChat.tsx](src/components/lexia/LexiaChat.tsx), [LexiaSpotlight.tsx](src/components/lexia/LexiaSpotlight.tsx),
+  [LexiaSettings.tsx](src/components/lexia/LexiaSettings.tsx); the comercial slide-in panel
+  ([cm-kit.tsx](src/components/comercial/cm-kit.tsx)) had no inset highlight at all, so the var was appended.
+  Left untouched: surfaces whose boxShadow already reads `"var(--lex-glass-shadow), <elevation>, inset 0 1px 0
+  rgba(255,255,255,0.16)"` (e.g. [LexiaKit.tsx](src/components/lexia/LexiaKit.tsx), `tf-kit.tsx`, `pj-kit.tsx`)
+  keep that now-redundant trailing 1px highlight — same color family, visually negligible, not worth touching
+  ~15 files to strip. **Radius untouched** (design system's 6/8/10/14 scale still applies per component; each
+  spec's own `border-radius`/`width`/`height` were the demo element's, not a directive to change the scale).
+  **Verified both passes: `npx tsc --noEmit` 0 errors; 2nd pass also `npm test` 310/310.** **User action:**
+  visual only — open any modal (Tarefa, Configurações, Novo lançamento), a dropdown/menu (bell, row actions),
+  and a toast: should now show a near-transparent white glass with a clearly visible white edge, blur(16px),
+  and a bright-top/faint-bottom inset sheen. If the missing top/left gradient hairlines from the reference
+  CSS matter, flag it — they'd need a real shared wrapper component, not a token tweak.
+- **Three fixes: login one-click, e-mail notifs default-on, Casos & Processos admin kill-switch (this session,
+  VERIFIED tsc 0, 310/310 testes, NO migration).** (1) **Login**: [LoginForm.tsx](src/components/auth/LoginForm.tsx)
+  already had a `busy` guard + `disabled={busy}`, but the shared `btn` recipe
+  ([components.css.ts](src/styles/components.css.ts)) had no `:disabled` style (added opacity/cursor/
+  `pointerEvents:none` — benefits every disabled button app-wide) and the post-login `router.push+refresh`
+  (client-side, could bounce on router-cache staleness) was replaced with a hard `window.location.href = dest`
+  so the destination always re-hits `proxy.ts` with the fresh cookie. (2) **E-mail default flip**: `permiteEmail`
+  ([preferencias-core.ts](src/lib/notificacoes/preferencias-core.ts)) went from opt-in (`!== true`) to opt-out
+  (`=== false`); `CrmSettings.tsx`'s `emailOn` helper flipped in lockstep (was silently showing "off" for
+  users who'd actually be receiving mail) + copy updated; `emailMinPrioridade` default "normal" unchanged.
+  Existing users with no saved prefs get the new default immediately (computed fresh, not persisted).
+  (3) **Casos & Processos kill-switch**: new `AppSetting` key `modulos` (`ModulosConfig{processos?:boolean}`,
+  `getModulosConfig`/`setModulosConfig`/`processosHabilitado` in [settings.ts](src/lib/settings.ts) — reuses
+  the generic k/v store, **no migration**) + `/api/settings/modulos` (GET any-auth, PUT admin) mirroring
+  `/api/settings/escritorio`. New client store [modulos/store.ts](src/lib/modulos/store.ts) (zustand, mirrors
+  `useAreasStore`) loaded once in `UnifiedShell`; sidebar filter extended (`unified-nav.ts` "processos" entry
+  hidden when off) and `CrmClienteDetail.tsx`'s "Casos & Processos" tab filtered from `TABS` + content guarded.
+  Server-side `redirect("/")` guards (mirroring `verFinanceiro` on `/financeiro`/`/plano-acao`) added to
+  `/processos`, `/processos/[id]`, `/casos` pages — works even via direct URL. **LexIA**: `toApiTools` in
+  [registry.ts](src/lib/lexia/agent/registry.ts) gained a 4th param `processosHabilitado` that drops the whole
+  `casosTools`+`processosTools` name-set; `AgentCtx.processosHabilitado` (types.ts) threaded from a single
+  `getModulosConfig()` read per request in both `/api/lexia/chat` and `/api/lexia/acoes/[id]` routes into
+  `loop.ts`'s `toApiTools` call AND into `prompt.ts`'s `contextoLinha` (new refusal note, mirrors the existing
+  `semFinanceiro` pattern). **Cron**: `gerarNotificacoes` ([processos/notificacoes.ts](src/lib/processos/notificacoes.ts))
+  skips the two prazo-related blocks (pendentes + propostos pela IA) when disabled — tarefas/eventos
+  notifications untouched. **Admin UI**: new "Módulos" section in Configurações (`CrmSettings.tsx`, admin-only,
+  `CrmSwitch` toggle) — toggling PUTs `/api/settings/modulos` then reloads the global `useModulosStore` so
+  sidebar/tabs update live in the same session, no reload needed. New test in `lexia-agent.test.ts`
+  (`processosHabilitado=false` drops the tool set) + `notificacoes-prefs.test.ts` flipped to the new opt-out
+  default. **Verified: tsc 0; 310/310 testes.** **User action:** visual — `/login` click "Entrar" once (button
+  visibly disables, lands on destination in one click, including via a `callbackUrl` redirect); Configurações →
+  Notificações shows e-mail already on for every module for a fresh user; Configurações → Módulos (admin) →
+  toggle Casos & Processos off → sidebar entry + cliente tab disappear, `/processos` redirects, LexIA declines
+  casos/processos questions → toggle back on → everything reappears without a page reload.
 - **LexIA do editor de Documentos = a MESMA da global + edição por seleção (Copilot) (this session, VERIFIED
   tsc 0, 303/303 testes)** (memories `project_documents_module`, `project_lexia_bar`, `project_lexia_agent`).
   O chat do editor era próprio e inferior (`DocLexiaChat`: single-shot a `/api/documentos/editar-ia`, **sem

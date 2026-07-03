@@ -7,6 +7,8 @@
 import { useState } from "react"
 import { Icon, type CrmIconName } from "@/components/crm/crm-icons"
 import { Sparkle, MenuPanel } from "./LexiaKit"
+import { lexGlassStrong } from "@/styles/glass.css"
+import { glassElevation } from "@/styles/glass"
 import type { LexiaAgentMode, LexiaInstrucoes, LexiaPersona } from "@/lib/lexia/preferencias-core"
 
 const AGENT_MODES: { id: LexiaAgentMode; label: string; desc: string }[] = [
@@ -137,13 +139,12 @@ export function LexiaPersonalizeModal({
       style={{ position: "fixed", inset: 0, zIndex: 1450, display: "flex", alignItems: "center", justifyContent: "center", padding: 32, background: "var(--overlay)" }}
     >
       <div
-        className="crm-pop-in"
+        className={`crm-pop-in ${lexGlassStrong}`}
         onMouseDown={(e) => e.stopPropagation()}
         style={{
-          width: 580, maxWidth: "100%", maxHeight: "86%", display: "flex", flexDirection: "column", overflow: "hidden",
-          borderRadius: 18, border: "1px solid var(--lex-acrylic-border)",
-          background: "var(--lex-acrylic-strong)", backdropFilter: "var(--lex-blur)", WebkitBackdropFilter: "var(--lex-blur)",
-          boxShadow: "0 40px 100px rgba(2,13,37,0.5), inset 0 1px 0 rgba(255,255,255,0.12)",
+          width: 580, maxWidth: "100%", maxHeight: "86%", display: "flex", flexDirection: "column",
+          borderRadius: 18,
+          ...glassElevation("0 40px 100px rgba(2,13,37,0.5)"),
         }}
       >
         {/* cabeçalho */}

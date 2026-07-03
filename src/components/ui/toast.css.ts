@@ -1,29 +1,30 @@
 import { style } from "@vanilla-extract/css"
 import { tokens } from "@/styles/tokens.css"
+import { lexGlassStrong } from "@/styles/glass.css"
 
-// Frosted-glass (acrylic) pill, bottom-center, above everything — same recipe as
-// the LexIA bar / modals (theme-aware via the global --lex-acrylic vars).
-export const toast = style({
-  position: "fixed",
-  bottom: 22,
-  left: "50%",
-  transform: "translateX(-50%)",
-  zIndex: 300,
-  display: "flex",
-  alignItems: "center",
-  gap: 10,
-  padding: "11px 16px",
-  borderRadius: 10,
-  background: "var(--lex-acrylic-strong)",
-  backdropFilter: "var(--lex-blur)",
-  WebkitBackdropFilter: "var(--lex-blur)",
-  color: tokens.color.text,
-  boxShadow: "var(--lex-glass-shadow), 0 12px 32px rgba(2,13,37,0.18), inset 0 1px 0 rgba(255,255,255,0.16)",
-  fontSize: 14,
-  fontWeight: 500,
-  border: "1px solid var(--lex-acrylic-border)",
-  maxWidth: "min(560px, calc(100vw - 32px))",
-})
+// Frosted-glass (acrylic) pill, bottom-center, above everything — composes the
+// shared glass recipe (glass.css.ts) with its own position/layout + an extra
+// outer elevation shadow.
+export const toast = style([
+  lexGlassStrong,
+  {
+    position: "fixed",
+    bottom: 22,
+    left: "50%",
+    transform: "translateX(-50%)",
+    zIndex: 300,
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "11px 16px",
+    borderRadius: 10,
+    color: tokens.color.text,
+    fontSize: 14,
+    fontWeight: 500,
+    maxWidth: "min(560px, calc(100vw - 32px))",
+    vars: { "--lex-elevation": "0 12px 32px rgba(2,13,37,0.18)" },
+  },
+])
 
 export const toastError = style({
   borderColor: "var(--fin-neg, #C0492F)",

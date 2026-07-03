@@ -26,7 +26,9 @@ import { LexiaThread } from "./LexiaThread"
 import { contextChips } from "./Suggestions"
 import { AnexoChips } from "./AnexoChips"
 import { arquivosDoClipboard, lerArquivos, type ClientAnexo } from "./anexos"
-import { Orb, SparkleChip, AutoTextarea, MenuPanel, ACRYLIC } from "./LexiaKit"
+import { Orb, SparkleChip, AutoTextarea, MenuPanel } from "./LexiaKit"
+import { lexGlass } from "@/styles/glass.css"
+import { glassElevation } from "@/styles/glass"
 import { LexiaSettingsMenu, LexiaPersonalizeModal } from "./LexiaSettings"
 import type { DocPatchPayload } from "./DocPatchCard"
 import type { DocSelecao, DocumentoContexto } from "./types"
@@ -254,15 +256,22 @@ export function LexiaChat({ open, greetingName, page, clienteId, nav, onNavigate
 
   const PAD = 12
   // Embutido (editor de documentos) = painel DOCADO sólido que preenche a coluna
-  // (sem flutuar/sobrepor o editor); os demais modos seguem flutuantes/acrílicos.
-  const acrylicSurface = embedded || isFull ? { background: "var(--bg)" } : ACRYLIC
+  // (sem flutuar/sobrepor o editor); os demais modos seguem flutuantes/acrílicos
+  // (shared glass class — see glass.css.ts — so isFull/embedded opt out entirely).
+  const glassClass = embedded || isFull ? "" : lexGlass
   const shell: CSSProperties = embedded
-    ? { position: "relative", width: "100%", height: "100%" }
+    ? { position: "relative", width: "100%", height: "100%", background: "var(--bg)" }
     : isFull
-      ? { position: "fixed", inset: 0, zIndex: 1310, borderRadius: 0 }
+      ? { position: "fixed", inset: 0, zIndex: 1310, borderRadius: 0, background: "var(--bg)" }
       : isSidebar
-        ? { position: "fixed", top: TOPBAR_H, right: 0, bottom: 0, width: 412, zIndex: 1200, borderLeft: "1px solid var(--lex-acrylic-border)" }
-        : { position: "fixed", bottom: bottomInset > 0 ? bottomInset + 16 : 24, right: 24, width: 452, height: `min(672px, calc(100dvh - ${bottomInset + 120}px))`, zIndex: 1305, borderRadius: 18, border: "1px solid var(--lex-acrylic-border)" }
+        // painel docado à direita: só a borda esquerda separa (flush nas outras 3
+        // bordas), então zera o `border` do glass antes de reaplicar só a esquerda.
+        ? { position: "fixed", top: TOPBAR_H, right: 0, bottom: 0, width: 412, zIndex: 1200, border: "none", borderLeft: "1px solid var(--lex-acrylic-border)" }
+        : {
+            position: "fixed", bottom: bottomInset > 0 ? bottomInset + 16 : 24, right: 24, width: 452,
+            height: `min(672px, calc(100dvh - ${bottomInset + 120}px))`, zIndex: 1305, borderRadius: 18,
+            ...glassElevation("0 32px 90px rgba(2,13,37,0.5), 0 8px 24px rgba(2,13,37,0.3)"),
+          }
 
   const modelName = MODELS.find((m) => m.id === modelo)?.name ?? "Automático"
   const sugestoes = embedded ? DOC_SUGGESTIONS : contextChips(page, clienteId != null).slice(0, 3)
@@ -275,17 +284,13 @@ export function LexiaChat({ open, greetingName, page, clienteId, nav, onNavigate
   return (
     <>
       <div
-        className={"crm-scope " + (embedded ? "" : mode === "float" ? "crm-lexia-in" : "lex-back")}
+        className={"crm-scope " + (embedded ? "" : mode === "float" ? "crm-lexia-in" : "lex-back") + (glassClass ? " " + glassClass : "")}
         {...dragSurface}
         style={{
           ...shell,
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
-          ...acrylicSurface,
-          backdropFilter: embedded || isFull ? undefined : "var(--lex-blur)",
-          WebkitBackdropFilter: embedded || isFull ? undefined : "var(--lex-blur)",
-          boxShadow: embedded || isFull ? "none" : "0 32px 90px rgba(2,13,37,0.5), 0 8px 24px rgba(2,13,37,0.3), inset 0 1px 0 rgba(255,255,255,0.1)",
         }}
       >
         {/* cabeçalho */}

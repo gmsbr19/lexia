@@ -55,6 +55,27 @@ export async function setEscritorio(cfg: EscritorioConfig): Promise<{ key: strin
   return setSetting(ESCRITORIO_KEY, cfg)
 }
 
+// ── módulos (temporary admin kill-switches) ───────────────────────────────────
+export const modulosSchema = z.object({
+  processos: z.boolean().optional(), // absent/true = enabled; false = disabled
+})
+
+export type ModulosConfig = z.infer<typeof modulosSchema>
+
+const MODULOS_KEY = "modulos"
+
+export async function getModulosConfig(): Promise<ModulosConfig> {
+  return (await getSetting<ModulosConfig>(MODULOS_KEY)) ?? {}
+}
+
+export async function setModulosConfig(cfg: ModulosConfig): Promise<{ key: string }> {
+  return setSetting(MODULOS_KEY, cfg)
+}
+
+export function processosHabilitado(cfg: ModulosConfig): boolean {
+  return cfg.processos !== false
+}
+
 // ── importação status (sourced from the audit trail) ─────────────────────────
 export interface ImportacaoInfo {
   resumo: ImportSummary

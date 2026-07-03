@@ -16,6 +16,7 @@ import { mensagemErro } from "@/lib/lexia/agent/client"
 import { construirConteudo } from "@/lib/lexia/agent/anexos"
 import { contextoDocumento, contextoLinha } from "@/lib/lexia/agent/prompt"
 import { getLexiaPrefsRaw } from "@/lib/lexia/preferencias"
+import { getModulosConfig, processosHabilitado } from "@/lib/settings"
 import { decidirModelo } from "@/lib/lexia/agent/router"
 import { aplicarTeto, MODO_ECONOMICO_AVISO } from "@/lib/consumo/guard"
 import { runAgentTurn } from "@/lib/lexia/agent/loop"
@@ -108,11 +109,12 @@ export async function POST(req: Request) {
       const agentMode = body.agentMode ?? prefs.agentMode ?? "agente"
       const autoMode = body.autoMode ?? prefs.autoMode ?? false
       const modelo = body.modelo ?? prefs.modelo
+      const processosOk = processosHabilitado(await getModulosConfig())
 
       // Contexto do documento aberto (só no editor flexível) — bloco VOLÁTIL fora do
       // CORE cacheado; injeta texto/campos/seleção + as instruções de edição.
       const contextoDoc = body.documento ? contextoDocumento(body.documento) : ""
-      const texto = `${contextoLinha(sessionUser, body.pagina, { ...prefs, agentMode })}${contextoDoc}\n\n${instrucao}`
+      const texto = `${contextoLinha(sessionUser, body.pagina, { ...prefs, agentMode }, processosOk)}${contextoDoc}\n\n${instrucao}`
       const messages: Anthropic.MessageParam[] = [
         ...prior,
         { role: "user", content: construirConteudo(texto, body.anexos) },
@@ -126,6 +128,7 @@ export async function POST(req: Request) {
         signal: req.signal,
         mode: agentMode,
         autoMode,
+        processosHabilitado: processosOk,
         doc: body.documento
           ? {
               id: body.documento.id ?? null,

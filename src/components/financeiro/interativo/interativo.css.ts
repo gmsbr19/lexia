@@ -1,6 +1,7 @@
 import { style, styleVariants } from "@vanilla-extract/css"
 import { recipe } from "@vanilla-extract/recipes"
 import { tokens } from "@/styles/tokens.css"
+import { lexGlass, lexGlassStrong } from "@/styles/glass.css"
 
 // ── page frame ───────────────────────────────────────────────────────────────
 // tabPanel is a bounded block (flex:1 + overflow hidden), so fill it with 100%.
@@ -353,21 +354,20 @@ export const facetRemove = style({
   selectors: { "&:hover": { background: "rgba(192,161,71,0.18)" } },
 })
 export const facetDot = style({ width: 7, height: 7, borderRadius: "50%", flexShrink: 0 })
-export const facetMenu = style({
-  position: "absolute",
-  top: 40,
-  zIndex: 41,
-  minWidth: 192,
-  maxHeight: 320,
-  overflowY: "auto",
-  padding: 6,
-  background: "var(--lex-acrylic-strong)",
-  backdropFilter: "var(--lex-blur)",
-  WebkitBackdropFilter: "var(--lex-blur)",
-  border: "1px solid var(--lex-acrylic-border)",
-  borderRadius: 14,
-  boxShadow: "var(--lex-glass-shadow), 0 12px 28px rgba(2,13,37,0.16), inset 0 1px 0 rgba(255,255,255,0.16)",
-})
+export const facetMenu = style([
+  lexGlassStrong,
+  {
+    position: "absolute",
+    top: 40,
+    zIndex: 41,
+    minWidth: 192,
+    maxHeight: 320,
+    overflowY: "auto",
+    padding: 6,
+    borderRadius: 14,
+    vars: { "--lex-elevation": "0 12px 28px rgba(2,13,37,0.16)" },
+  },
+])
 export const facetMenuItem = style({
   display: "flex",
   alignItems: "center",
@@ -472,20 +472,19 @@ export const emptyRow = style({ padding: "56px 16px", textAlign: "center", color
 
 // ── row action menu ──────────────────────────────────────────────────────────
 export const menuWrap = style({ position: "relative", display: "inline-block" })
-export const menuCard = style({
-  position: "absolute",
-  right: 0,
-  top: 32,
-  zIndex: 41,
-  minWidth: 168,
-  padding: 6,
-  background: "var(--lex-acrylic-strong)",
-  backdropFilter: "var(--lex-blur)",
-  WebkitBackdropFilter: "var(--lex-blur)",
-  border: "1px solid var(--lex-acrylic-border)",
-  borderRadius: 14,
-  boxShadow: "var(--lex-glass-shadow), 0 12px 28px rgba(2,13,37,0.16), inset 0 1px 0 rgba(255,255,255,0.16)",
-})
+export const menuCard = style([
+  lexGlassStrong,
+  {
+    position: "absolute",
+    right: 0,
+    top: 32,
+    zIndex: 41,
+    minWidth: 168,
+    padding: 6,
+    borderRadius: 14,
+    vars: { "--lex-elevation": "0 12px 28px rgba(2,13,37,0.16)" },
+  },
+])
 export const menuScrim = style({ position: "fixed", inset: 0, zIndex: 40 })
 export const menuItem = style({
   display: "flex",
@@ -635,20 +634,18 @@ export const overlay = style({
   background: "transparent",
   padding: 24,
 })
-export const modalCard = style({
-  width: 680,
-  maxWidth: "100%",
-  maxHeight: "92%",
-  display: "flex",
-  flexDirection: "column",
-  background: "var(--lex-acrylic)",
-  backdropFilter: "var(--lex-blur)",
-  WebkitBackdropFilter: "var(--lex-blur)",
-  border: "1px solid var(--lex-acrylic-border)",
-  borderRadius: 14,
-  boxShadow: "0 40px 100px rgba(2,13,37,0.42), 0 12px 32px rgba(2,13,37,0.24), inset 0 1px 0 rgba(255,255,255,0.16)",
-  overflow: "hidden",
-})
+export const modalCard = style([
+  lexGlass,
+  {
+    width: 680,
+    maxWidth: "100%",
+    maxHeight: "92%",
+    display: "flex",
+    flexDirection: "column",
+    borderRadius: 14,
+    vars: { "--lex-elevation": "0 40px 100px rgba(2,13,37,0.42), 0 12px 32px rgba(2,13,37,0.24)" },
+  },
+])
 export const modalHead = style({ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, padding: "20px 24px 16px", borderBottom: `1px solid ${tokens.color.border}` })
 export const modalTitle = style({ fontSize: 16, fontWeight: 500, color: tokens.color.text, letterSpacing: "-0.02em" })
 export const modalSub = style({ fontSize: 12, color: tokens.color.textMuted, marginTop: 3 })

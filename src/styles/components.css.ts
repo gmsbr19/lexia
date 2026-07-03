@@ -23,6 +23,7 @@ export const btn = recipe({
     outline: "none",
     textDecoration: "none",
     ":active": { transform: "translateY(0.5px)" },
+    ":disabled": { opacity: 0.55, cursor: "not-allowed", pointerEvents: "none" },
   },
   variants: {
     variant: {

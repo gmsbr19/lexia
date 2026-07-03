@@ -33,11 +33,11 @@ describe("permiteApp (default LIGADO)", () => {
   })
 })
 
-describe("permiteEmail (default DESLIGADO, opt-in + limiar)", () => {
-  it("exige opt-in explícito do módulo", () => {
-    expect(permiteEmail({}, "tarefas", "normal")).toBe(false)
-    expect(permiteEmail({ email: { tarefas: true } }, "tarefas", "normal")).toBe(true)
-    expect(permiteEmail({ email: { comercial: true } }, "tarefas", "normal")).toBe(false)
+describe("permiteEmail (default LIGADO, opt-out + limiar)", () => {
+  it("liga por padrão; só desliga com false explícito do módulo", () => {
+    expect(permiteEmail({}, "tarefas", "normal")).toBe(true)
+    expect(permiteEmail({ email: { tarefas: false } }, "tarefas", "normal")).toBe(false)
+    expect(permiteEmail({ email: { comercial: false } }, "tarefas", "normal")).toBe(true)
     expect(permiteEmail({ email: { sistema: true } }, null, "normal")).toBe(false)
   })
 

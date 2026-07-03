@@ -49,6 +49,11 @@ function podeUsar(role: string, tool: AgentTool): boolean {
 // dados reais) + estas duas, sem mutações de CRM.
 const DOC_TOOLS = new Set(["editar_documento_aberto", "detectar_campos_documento"])
 
+// Ferramentas do módulo "Casos & Processos" (casos + processos/prazos/publicações).
+// Removidas por inteiro quando o módulo está temporariamente desativado (Configurações
+// → Módulos) — ver processosHabilitado em lib/settings.ts.
+const PROCESSOS_MODULE_TOOLS = new Set([...casosTools, ...processosTools].map((t) => t.name))
+
 /**
  * Build the API `tools` array for this user's role. Tools the role can't use
  * (e.g. as financeiras para a "Equipe") são removidas para que o modelo nem as
@@ -62,10 +67,19 @@ const DOC_TOOLS = new Set(["editar_documento_aberto", "detectar_campos_documento
  * documento (DOC_TOOLS) — mutações de CRM e navegação saem para manter o foco em
  * editar o documento aberto. Fora do editor, DOC_TOOLS são removidas. Resultam
  * dois formatos estáveis de tool-surface (global vs doc) → cache previsível.
+ *
+ * `processosHabilitado` (default true): quando false, remove por inteiro as
+ * ferramentas de Casos & Processos — o módulo foi temporariamente desativado.
  */
-export function toApiTools(role: string, mode?: "agente" | "pergunta" | "plano", docMode?: boolean): Anthropic.Tool[] {
+export function toApiTools(
+  role: string,
+  mode?: "agente" | "pergunta" | "plano",
+  docMode?: boolean,
+  processosHabilitado = true,
+): Anthropic.Tool[] {
   return TOOLS.filter((t) => podeUsar(role, t))
     .filter((t) => (mode === "pergunta" ? t.kind !== "mutation" : true))
+    .filter((t) => processosHabilitado || !PROCESSOS_MODULE_TOOLS.has(t.name))
     .filter((t) => {
       // As ferramentas de documento exigem um doc aberto E um modo que permita editar
       // (no modo "pergunta" o agente só responde/consulta, não propõe alterações).

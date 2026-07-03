@@ -35,6 +35,8 @@ import { DashboardTab } from "./DashboardTab"
 import { TemplatesTab, TemplateEditor, InstantiateWizard, type TemplateFormValue, type InstanciarPayload } from "./TemplatesTab"
 import { ProjectModal, type ProjetoFormValue } from "./ProjectModal"
 import type { QuickAddResult } from "@/components/tarefas/tf-meta"
+import { lexGlassStrong } from "@/styles/glass.css"
+import { glassElevation } from "@/styles/glass"
 
 const send = <T,>(url: string, method = "POST", body?: unknown) => apiSend<T>(url, method, body)
 
@@ -45,6 +47,7 @@ function Toast({ msg }: { msg: string }) {
   if (!msg) return null
   return (
     <div
+      className={lexGlassStrong}
       style={{
         position: "fixed",
         bottom: 22,
@@ -56,14 +59,10 @@ function Toast({ msg }: { msg: string }) {
         gap: 9,
         padding: "11px 16px",
         borderRadius: 10,
-        background: "var(--lex-acrylic-strong)",
-        backdropFilter: "var(--lex-blur)",
-        WebkitBackdropFilter: "var(--lex-blur)",
         color: "var(--text)",
-        boxShadow: "var(--lex-glass-shadow), 0 12px 32px rgba(2,13,37,0.18), inset 0 1px 0 rgba(255,255,255,0.16)",
         fontSize: 12,
         fontWeight: 500,
-        border: "1px solid var(--lex-acrylic-border)",
+        ...glassElevation("0 12px 32px rgba(2,13,37,0.18)"),
       }}
     >
       <Icon name="checkCircle" size={15} strokeWidth={2} style={{ color: "var(--accent)" }} />

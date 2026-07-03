@@ -12,6 +12,7 @@ import { env } from "@/lib/env"
 import { criarNotificacao } from "@/lib/notificacoes/service"
 import { gestorEmails } from "@/lib/notificacoes/recipients"
 import type { Modulo, Prioridade } from "@/lib/notificacoes/types"
+import { getModulosConfig, processosHabilitado } from "@/lib/settings"
 import { addDiasISO, hojeISO } from "./datas"
 
 function noon(isoDate: string): Date {
@@ -39,6 +40,7 @@ export async function gerarNotificacoes(opts?: { hoje?: string; antecedenciaDias
   const hoje = opts?.hoje ?? hojeISO()
   const dias = opts?.antecedenciaDias ?? env.NOTIF_ANTECEDENCIA_DIAS
   const limite = addDiasISO(hoje, dias)
+  const processosOk = processosHabilitado(await getModulosConfig())
 
   let criadas = 0
   let jaExistiam = 0
@@ -69,77 +71,81 @@ export async function gerarNotificacoes(opts?: { hoje?: string; antecedenciaDias
     else jaExistiam++
   }
 
-  // ── Prazos pendentes vencendo (ou vencidos) até o limite, com responsável ──
-  // O advogado responsável é o destinatário primário; os sócios/gestores recebem
-  // uma CÓPIA de cada prazo (responsabilidade é do advogado, supervisão é do gestor).
-  const gestores = await gestorEmails()
-  const prazos = await prisma.prazo.findMany({
-    where: {
-      excluidoEm: null,
-      status: "pendente",
-      dataFatal: { lte: noon(limite) },
-      responsavelUserId: { not: null },
-      processo: { excluidoEm: null },
-    },
-    select: {
-      id: true,
-      descricao: true,
-      dataFatal: true,
-      responsavelUser: { select: { email: true, nome: true } },
-      processo: { select: { id: true, numeroCnj: true } },
-    },
-  })
-  for (const p of prazos) {
-    const email = p.responsavelUser?.email
-    if (!email) continue
-    const fatalISO = iso(p.dataFatal)
-    const vencido = fatalISO < hoje
-    const venc = vencido ? "VENCIDO" : `vence ${fatalISO}`
-    const ref = p.processo?.numeroCnj ? ` (${p.processo.numeroCnj})` : ""
-    const prioridade: Prioridade = vencido ? "alta" : "normal"
-    const processoId = p.processo?.id ?? null
-    await upsert(email, "prazo", "prazo", p.id, fatalISO, `Prazo "${p.descricao}"${ref} — ${venc}`, {
-      modulo: "processos",
-      prioridade,
-      processoId,
+  // ── Prazos (pendentes + propostos pela IA) — puladas por inteiro quando Casos &
+  // Processos está temporariamente desativado (Configurações → Módulos).
+  if (processosOk) {
+    // ── Prazos pendentes vencendo (ou vencidos) até o limite, com responsável ──
+    // O advogado responsável é o destinatário primário; os sócios/gestores recebem
+    // uma CÓPIA de cada prazo (responsabilidade é do advogado, supervisão é do gestor).
+    const gestores = await gestorEmails()
+    const prazos = await prisma.prazo.findMany({
+      where: {
+        excluidoEm: null,
+        status: "pendente",
+        dataFatal: { lte: noon(limite) },
+        responsavelUserId: { not: null },
+        processo: { excluidoEm: null },
+      },
+      select: {
+        id: true,
+        descricao: true,
+        dataFatal: true,
+        responsavelUser: { select: { email: true, nome: true } },
+        processo: { select: { id: true, numeroCnj: true } },
+      },
     })
-    // cópia ao gestor (janela "-g" no dedupeKey p/ não colidir com a do responsável)
-    const resp = p.responsavelUser?.nome ? ` · resp. ${p.responsavelUser.nome}` : ""
-    for (const g of gestores) {
-      if (g === email) continue // o gestor já é o responsável
-      await upsert(g, "prazo", "prazo", p.id, `${fatalISO}-g`, `Prazo "${p.descricao}"${ref} — ${venc}${resp}`, {
+    for (const p of prazos) {
+      const email = p.responsavelUser?.email
+      if (!email) continue
+      const fatalISO = iso(p.dataFatal)
+      const vencido = fatalISO < hoje
+      const venc = vencido ? "VENCIDO" : `vence ${fatalISO}`
+      const ref = p.processo?.numeroCnj ? ` (${p.processo.numeroCnj})` : ""
+      const prioridade: Prioridade = vencido ? "alta" : "normal"
+      const processoId = p.processo?.id ?? null
+      await upsert(email, "prazo", "prazo", p.id, fatalISO, `Prazo "${p.descricao}"${ref} — ${venc}`, {
         modulo: "processos",
         prioridade,
         processoId,
       })
-    }
-  }
-
-  // ── Prazos PROPOSTOS pela IA, aguardando confirmação — só ao advogado responsável ──
-  // (rascunho; NÃO copia o gestor — a cópia ao gestor só vale após confirmar).
-  const propostos = await prisma.prazo.findMany({
-    where: { excluidoEm: null, status: "proposto", processo: { excluidoEm: null } },
-    select: {
-      id: true,
-      descricao: true,
-      responsavelUser: { select: { email: true } },
-      processo: { select: { id: true, numeroCnj: true } },
-    },
-  })
-  for (const p of propostos) {
-    const ref = p.processo?.numeroCnj ? ` (${p.processo.numeroCnj})` : ""
-    const msg = `Prazo proposto pela IA a confirmar: "${p.descricao}"${ref}`
-    const processoId = p.processo?.id ?? null
-    const email = p.responsavelUser?.email
-    if (email) {
-      await upsert(email, "prazo-proposto", "prazo", p.id, "proposto", msg, { modulo: "processos", processoId })
-    } else {
-      // rascunho sem responsável: aciona o gestor para não ficar sem dono e sem alerta
-      for (const g of gestores)
-        await upsert(g, "prazo-proposto", "prazo", p.id, "proposto-g", `${msg} — sem responsável`, {
+      // cópia ao gestor (janela "-g" no dedupeKey p/ não colidir com a do responsável)
+      const resp = p.responsavelUser?.nome ? ` · resp. ${p.responsavelUser.nome}` : ""
+      for (const g of gestores) {
+        if (g === email) continue // o gestor já é o responsável
+        await upsert(g, "prazo", "prazo", p.id, `${fatalISO}-g`, `Prazo "${p.descricao}"${ref} — ${venc}${resp}`, {
           modulo: "processos",
+          prioridade,
           processoId,
         })
+      }
+    }
+
+    // ── Prazos PROPOSTOS pela IA, aguardando confirmação — só ao advogado responsável ──
+    // (rascunho; NÃO copia o gestor — a cópia ao gestor só vale após confirmar).
+    const propostos = await prisma.prazo.findMany({
+      where: { excluidoEm: null, status: "proposto", processo: { excluidoEm: null } },
+      select: {
+        id: true,
+        descricao: true,
+        responsavelUser: { select: { email: true } },
+        processo: { select: { id: true, numeroCnj: true } },
+      },
+    })
+    for (const p of propostos) {
+      const ref = p.processo?.numeroCnj ? ` (${p.processo.numeroCnj})` : ""
+      const msg = `Prazo proposto pela IA a confirmar: "${p.descricao}"${ref}`
+      const processoId = p.processo?.id ?? null
+      const email = p.responsavelUser?.email
+      if (email) {
+        await upsert(email, "prazo-proposto", "prazo", p.id, "proposto", msg, { modulo: "processos", processoId })
+      } else {
+        // rascunho sem responsável: aciona o gestor para não ficar sem dono e sem alerta
+        for (const g of gestores)
+          await upsert(g, "prazo-proposto", "prazo", p.id, "proposto-g", `${msg} — sem responsável`, {
+            modulo: "processos",
+            processoId,
+          })
+      }
     }
   }
 

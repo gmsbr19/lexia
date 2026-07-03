@@ -13,6 +13,8 @@ import { Icon, type CrmIconName } from "@/components/crm/crm-icons"
 import { dispensarSugestao, getSaude } from "../proc-api"
 import { ProcSecTitle } from "../proc-kit"
 import type { SaudeItem, SaudeProcessos } from "@/lib/processos/saude"
+import { lexGlassStrong } from "@/styles/glass.css"
+import { glassElevation } from "@/styles/glass"
 
 export function ProcSaude() {
   const router = useRouter()
@@ -104,7 +106,8 @@ export function ProcSaude() {
                       <DropdownMenu.Content
                         align="end"
                         sideOffset={4}
-                        style={{ minWidth: 200, background: "var(--lex-acrylic-strong)", backdropFilter: "var(--lex-blur)", WebkitBackdropFilter: "var(--lex-blur)", border: "1px solid var(--lex-acrylic-border)", borderRadius: 10, boxShadow: "var(--lex-glass-shadow), 0 12px 28px rgba(2,13,37,0.16), inset 0 1px 0 rgba(255,255,255,0.16)", padding: 6, zIndex: 80 }}
+                        className={lexGlassStrong}
+                        style={{ minWidth: 200, borderRadius: 10, padding: 6, zIndex: 80, ...glassElevation("0 12px 28px rgba(2,13,37,0.16)") }}
                       >
                         <DropdownMenu.Item onSelect={() => void dispensar(it, 30)} style={{ fontSize: 12.5, color: "var(--text)", padding: "8px 10px", borderRadius: 6, cursor: "pointer", outline: "none" }}>
                           Adiar por 30 dias

@@ -7,6 +7,8 @@ import { PRIO, VINCULO_ICON, type SubItem, type TaskPrio, type VinculoRef } from
 import { Icon, type TfIconName } from "./tf-icons"
 import { useTarefasCtx } from "./TarefasContext"
 import { dataLabel, prazoInfo, tDiff } from "./tf-meta"
+import { lexGlassStrong } from "@/styles/glass.css"
+import { glassElevation } from "@/styles/glass"
 
 const prioColor = (prio: number): string => (PRIO[prio as TaskPrio] ?? PRIO[4]).color
 
@@ -289,22 +291,18 @@ export function Menu({
       <div onClick={() => setOpen((o) => !o)}>{trigger}</div>
       {open && (
         <div
+          className={lexGlassStrong}
           style={{
             position: "absolute",
             ...(placement === "up" ? { bottom: "calc(100% + 6px)" } : { top: "calc(100% + 6px)" }),
             ...(align === "right" ? { right: 0 } : { left: 0 }),
             zIndex: 50,
             width,
-            background: "var(--lex-acrylic-strong)",
-            backdropFilter: "var(--lex-blur)",
-            WebkitBackdropFilter: "var(--lex-blur)",
-            border: "1px solid var(--lex-acrylic-border)",
             borderRadius: 10,
-            boxShadow:
-              "var(--lex-glass-shadow), 0 12px 28px rgba(2,13,37,0.16), inset 0 1px 0 rgba(255,255,255,0.16)",
             padding: 6,
             maxHeight: 320,
             overflowY: "auto",
+            ...glassElevation("0 12px 28px rgba(2,13,37,0.16)"),
           }}
         >
           {typeof children === "function" ? children(close) : children}

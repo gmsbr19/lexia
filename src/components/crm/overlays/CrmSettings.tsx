@@ -9,6 +9,8 @@ import { CrmAvatar, CrmBadge, FxInput, FxLabel, useCrmToast } from "../crm-kit"
 import { useModalGuard } from "@/lib/client/modal-guard"
 import { Icon, type CrmIconName } from "../crm-icons"
 import { crmDate, crmMoney, crmTime } from "../crm-fmt"
+import { lexGlass, lexGlassStrong } from "@/styles/glass.css"
+import { glassElevation } from "@/styles/glass"
 import {
   createUser,
   deleteUser,
@@ -19,6 +21,8 @@ import {
   getConsumoInterno,
   getEscritorio,
   getImportacao,
+  getModulosConfig,
+  putModulosConfig,
   listUsers,
   listAreasComUso,
   createAreaAdmin,
@@ -33,10 +37,12 @@ import {
   type AuditRow,
 } from "../crm-api"
 import { useAreasStore } from "@/lib/areas/store"
+import { useModulosStore } from "@/lib/modulos/store"
 import type {
   CrmDataset,
   EscritorioConfig,
   ImportacaoInfo,
+  ModulosConfig,
   Role,
   UserRow,
 } from "../crm-types"
@@ -66,6 +72,7 @@ type SecId =
   | "financeiro"
   | "consumo"
   | "escritorio"
+  | "modulos"
   | "importacao"
   | "lgpd"
   | "debug"
@@ -79,6 +86,7 @@ const SECTIONS: { id: SecId; label: string; icon: CrmIconName; roles: Role[] }[]
   { id: "financeiro", label: "Financeiro", icon: "wallet", roles: ["admin", "socio"] },
   { id: "consumo", label: "Consumo (IA)", icon: "zap", roles: ["admin", "socio"] },
   { id: "escritorio", label: "Escritório & documentos", icon: "building", roles: ["admin"] },
+  { id: "modulos", label: "Módulos", icon: "scale", roles: ["admin"] },
   { id: "importacao", label: "Importação & integrações", icon: "upload", roles: ["admin"] },
   { id: "lgpd", label: "LGPD & Auditoria", icon: "scale", roles: ["admin"] },
   { id: "debug", label: "Debug & simulação", icon: "zap", roles: ["admin"] },
@@ -178,12 +186,11 @@ export function CrmSettings({
     >
       <div
         onMouseDown={(e) => e.stopPropagation()}
-        className="crm-pop-in"
+        className={`crm-pop-in ${lexGlass}`}
         style={{
           width: 820, maxWidth: "100%", height: 580, maxHeight: "92%", display: "flex",
-          background: "var(--lex-acrylic)", backdropFilter: "var(--lex-blur)", WebkitBackdropFilter: "var(--lex-blur)",
-          border: "1px solid var(--lex-acrylic-border)", borderRadius: 14,
-          boxShadow: "0 40px 100px rgba(2,13,37,0.42), 0 12px 32px rgba(2,13,37,0.24), inset 0 1px 0 rgba(255,255,255,0.16)", overflow: "hidden",
+          borderRadius: 14,
+          ...glassElevation("0 40px 100px rgba(2,13,37,0.42), 0 12px 32px rgba(2,13,37,0.24)"),
         }}
       >
         {/* nav */}
@@ -227,6 +234,7 @@ export function CrmSettings({
             {sec === "financeiro" && <FinanceiroSection />}
             {sec === "consumo" && <ConsumoSection />}
             {sec === "escritorio" && <EscritorioSection />}
+            {sec === "modulos" && <ModulosSection />}
             {sec === "importacao" && <ImportacaoSection />}
             {sec === "lgpd" && <LgpdSection onClose={onClose} onAnonimizar={onAnonimizar} />}
             {sec === "debug" && <DebugSection meEmail={userEmail} />}
@@ -338,7 +346,7 @@ export function CrmSettings({
     if (!prefs) return <div style={{ fontSize: 12, color: "var(--text-subtle)" }}>Carregando…</div>
 
     const appOn = (m: Modulo) => prefs.app?.[m] !== false
-    const emailOn = (m: Modulo) => prefs.email?.[m] === true
+    const emailOn = (m: Modulo) => prefs.email?.[m] !== false
     const setApp = (m: Modulo, v: boolean) => setPrefsState((p) => ({ ...(p ?? {}), app: { ...(p?.app ?? {}), [m]: v } }))
     const setEmail = (m: Modulo, v: boolean) => setPrefsState((p) => ({ ...(p ?? {}), email: { ...(p?.email ?? {}), [m]: v } }))
 
@@ -372,7 +380,7 @@ export function CrmSettings({
 
     return (
       <div style={{ maxWidth: 520 }}>
-        <SectionSub>Escolha como cada módulo te avisa. O app (toast + sino) já vem ligado; o e-mail é opcional e vai para {userEmail}.</SectionSub>
+        <SectionSub>Escolha como cada módulo te avisa. O app (toast + sino) e o e-mail (para {userEmail}) já vêm ligados; desative o que não quiser receber.</SectionSub>
         <div className="card" style={{ overflow: "hidden" }}>
           <div style={{ display: "flex", padding: "9px 14px", borderBottom: "1px solid var(--border)", fontSize: 11, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-subtle)" }}>
             <span style={{ flex: 1 }}>Módulo</span>
@@ -666,7 +674,7 @@ export function CrmSettings({
                 <>
                   <div onClick={() => setMenu(null)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
                   <div
-                    className="card"
+                    className={`card ${lexGlassStrong}`}
                     style={{
                       position: "absolute",
                       right: 12,
@@ -674,11 +682,7 @@ export function CrmSettings({
                       zIndex: 50,
                       width: 196,
                       padding: 6,
-                      background: "var(--lex-acrylic-strong)",
-                      backdropFilter: "var(--lex-blur)",
-                      WebkitBackdropFilter: "var(--lex-blur)",
-                      border: "1px solid var(--lex-acrylic-border)",
-                      boxShadow: "var(--lex-glass-shadow), 0 12px 28px rgba(2,13,37,0.16), inset 0 1px 0 rgba(255,255,255,0.16)",
+                      ...glassElevation("0 12px 28px rgba(2,13,37,0.16)"),
                     }}
                   >
                     <UserMenuRow label="Papel" />
@@ -744,7 +748,7 @@ export function CrmSettings({
         className="crm-scope"
         style={{ position: "fixed", inset: 0, zIndex: 1300, display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", padding: 24 }}
       >
-        <div onMouseDown={(e) => e.stopPropagation()} className="crm-pop-in" style={{ width: 420, maxWidth: "100%", background: "var(--lex-acrylic)", backdropFilter: "var(--lex-blur)", WebkitBackdropFilter: "var(--lex-blur)", border: "1px solid var(--lex-acrylic-border)", boxShadow: "0 40px 100px rgba(2,13,37,0.42), 0 12px 32px rgba(2,13,37,0.24), inset 0 1px 0 rgba(255,255,255,0.16)", borderRadius: "var(--r-lg)", overflow: "hidden" }}>
+        <div onMouseDown={(e) => e.stopPropagation()} className={`crm-pop-in ${lexGlass}`} style={{ width: 420, maxWidth: "100%", borderRadius: "var(--r-lg)", ...glassElevation("0 40px 100px rgba(2,13,37,0.42), 0 12px 32px rgba(2,13,37,0.24)") }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 22px 14px", borderBottom: "1px solid var(--border)" }}>
             <div style={{ fontSize: 16, fontWeight: 500, color: "var(--text)", letterSpacing: "-0.02em" }}>Excluir usuário</div>
             <button onClick={onClose} className="btn btn-ghost" style={{ width: 30, height: 30, padding: 0, borderRadius: 8 }}>
@@ -808,7 +812,7 @@ export function CrmSettings({
         className="crm-scope"
         style={{ position: "fixed", inset: 0, zIndex: 1300, display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", padding: 24 }}
       >
-        <div onMouseDown={(e) => e.stopPropagation()} className="crm-pop-in" style={{ width: 420, maxWidth: "100%", background: "var(--lex-acrylic)", backdropFilter: "var(--lex-blur)", WebkitBackdropFilter: "var(--lex-blur)", border: "1px solid var(--lex-acrylic-border)", boxShadow: "0 40px 100px rgba(2,13,37,0.42), 0 12px 32px rgba(2,13,37,0.24), inset 0 1px 0 rgba(255,255,255,0.16)", borderRadius: "var(--r-lg)", overflow: "hidden" }}>
+        <div onMouseDown={(e) => e.stopPropagation()} className={`crm-pop-in ${lexGlass}`} style={{ width: 420, maxWidth: "100%", borderRadius: "var(--r-lg)", ...glassElevation("0 40px 100px rgba(2,13,37,0.42), 0 12px 32px rgba(2,13,37,0.24)") }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 22px 14px", borderBottom: "1px solid var(--border)" }}>
             <div style={{ fontSize: 16, fontWeight: 500, color: "var(--text)", letterSpacing: "-0.02em" }}>Novo usuário</div>
             <button onClick={onClose} className="btn btn-ghost" style={{ width: 30, height: 30, padding: 0, borderRadius: 8 }}>
@@ -1407,6 +1411,61 @@ export function CrmSettings({
           <FxInput value={field("bancoInfo")} onChange={(e) => set("bancoInfo", e.target.value)} placeholder="Itaú · Ag. 0182 · CC 45821-0" />
         </CrmField>
         <button className="btn btn-primary" onClick={save} disabled={busy} style={{ marginTop: 6 }}>Salvar</button>
+      </div>
+    )
+  }
+
+  // ─────────────────────────── Módulos (kill-switches temporários) ───────────────────────────
+  function ModulosSection() {
+    const [cfg, setCfg] = useState<ModulosConfig | null>(null)
+    const [busy, setBusy] = useState(false)
+    const reloadStore = useModulosStore((s) => s.reload)
+
+    useEffect(() => {
+      let alive = true
+      getModulosConfig()
+        .then((c) => { if (alive) setCfg(c ?? {}) })
+        .catch((e) => { if (alive) { setCfg({}); toast(e instanceof Error ? e.message : "Erro", { tone: "neg", icon: "alertTriangle" }) } })
+      return () => { alive = false }
+    }, [])
+
+    if (!cfg) return <div style={{ fontSize: 12, color: "var(--text-subtle)" }}>Carregando…</div>
+
+    const processosOn = cfg.processos !== false
+
+    const save = async (next: ModulosConfig) => {
+      setBusy(true)
+      try {
+        await putModulosConfig(next)
+        await reloadStore()
+        toast(processosOn ? "Módulo desativado" : "Módulo reativado")
+      } catch (e) {
+        setCfg(cfg) // reverte em caso de erro
+        toast(e instanceof Error ? e.message : "Erro", { tone: "neg", icon: "alertTriangle" })
+      } finally {
+        setBusy(false)
+      }
+    }
+
+    const toggle = () => {
+      const next = { ...cfg, processos: !processosOn }
+      setCfg(next)
+      void save(next)
+    }
+
+    return (
+      <div style={{ maxWidth: 520 }}>
+        <SectionSub>Desative temporariamente um módulo: ele some do menu e das telas, e a LexIA deixa de agir sobre ele — reative quando quiser, sem precisar mexer no código.</SectionSub>
+        <div className="card" style={{ overflow: "hidden" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px" }}>
+            <Icon name="scale" size={16} style={{ color: "var(--text-muted)" }} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>Casos & Processos</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Oculta o menu, bloqueia as telas e impede a LexIA de consultar/agir sobre casos e processos.</div>
+            </div>
+            <CrmSwitch on={processosOn} onChange={toggle} disabled={busy} />
+          </div>
+        </div>
       </div>
     )
   }

@@ -169,6 +169,22 @@ describe("registry — deterministic, valid tool schemas", () => {
     expect(pergunta.length).toBe(all.length - mutNames.size)
   })
 
+  it("processosHabilitado=false remove por inteiro as ferramentas de Casos & Processos", () => {
+    const on = new Set(toApiTools("admin").map((t) => t.name))
+    const off = new Set(toApiTools("admin", "agente", false, false).map((t) => t.name))
+    const PROCESSOS_SAMPLE = ["listar_casos", "criar_caso", "listar_processos", "criar_processo", "listar_prazos", "cumprir_prazo"]
+    for (const n of PROCESSOS_SAMPLE) {
+      expect(on.has(n), n).toBe(true)
+      expect(off.has(n), n).toBe(false)
+    }
+    // ferramentas de outros módulos continuam disponíveis
+    expect(off.has("buscar")).toBe(true)
+    expect(off.has("criar_tarefa")).toBe(true)
+    expect(off.size).toBeLessThan(on.size)
+    // default (parâmetro omitido) mantém o módulo habilitado
+    expect(toApiTools("admin").length).toBe(on.size)
+  })
+
   it("expõe as tools de projetos e gateia a escrita (sócio/advogado), mantendo a leitura aberta", () => {
     const nomes = (role: string) => new Set(toApiTools(role).map((t) => t.name))
     // leitura disponível para todos (inclusive estagiário/staff)

@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation"
+import { getModulosConfig, processosHabilitado } from "@/lib/settings"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -10,6 +11,8 @@ export default async function Page({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
+  // Casos & Processos pode ser temporariamente desativado (Configurações → Módulos).
+  if (!processosHabilitado(await getModulosConfig())) redirect("/")
   const sp = await searchParams
   const caso = Array.isArray(sp.caso) ? sp.caso[0] : sp.caso
   redirect(caso ? `/processos?view=processos&caso=${caso}` : "/processos?view=processos")

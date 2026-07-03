@@ -41,6 +41,7 @@ import {
 } from "../crm-api"
 import { crmDate, crmDateLong } from "../crm-fmt"
 import { verFinanceiro } from "@/lib/users/types"
+import { useModulosStore, processosHabilitado } from "@/lib/modulos/store"
 import { CrmDocumentoModal, CrmEventoModal, CrmLancamentoModal, CrmTarefaModal } from "./CrmClienteModals"
 import type {
   ClienteDetail,
@@ -201,6 +202,7 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
   // "Equipe" (não Sócio/Admin/Financeiro) não dá baixa nem cria lançamentos —
   // continua vendo honorários/lançamentos e seus status (pago/pendente).
   const verFin = verFinanceiro(role)
+  const processosOk = processosHabilitado(useModulosStore((s) => s.modulos))
   const [detail, setDetail] = useState<ClienteDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [edit, setEdit] = useState(false)
@@ -364,7 +366,7 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
     { id: "financeiro", label: "Financeiro", icon: "wallet", badge: detail.lancamentos.length || null },
     { id: "cobranca", label: "Cobrança & notas", icon: "handshake", badge: detail.anotacoes.length || null },
     { id: "tarefas", label: "Tarefas", icon: "listChecks", badge: detail.tarefas.length || null },
-    { id: "casos", label: "Casos & Processos", icon: "briefcase", badge: detail.casos.length || null },
+    ...(processosOk ? [{ id: "casos", label: "Casos & Processos", icon: "briefcase", badge: detail.casos.length || null } as FxTabDef] : []),
     { id: "contratos", label: "Contratos", icon: "receipt", badge: detail.honorarios.length || null },
     { id: "eventos", label: "Eventos", icon: "calendar", badge: detail.eventos.length || null },
     { id: "documentos", label: "Documentos", icon: "fileText", badge: detail.documentos.length || null },
@@ -621,7 +623,7 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
           </>
         )}
 
-        {tab === "casos" && (
+        {tab === "casos" && processosOk && (
           <>
             <FxCardTitle title="Casos & Processos" sub={`${detail.casos.length} caso(s)`} />
             {detail.casos.length === 0

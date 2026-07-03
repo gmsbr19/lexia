@@ -1,5 +1,7 @@
+import { redirect } from "next/navigation"
 import { getProcessosDataset } from "@/lib/processos/dataset"
 import { getCrmDataset } from "@/lib/crm/dataset"
+import { getModulosConfig, processosHabilitado } from "@/lib/settings"
 import { ProcessosApp } from "@/components/processos/ProcessosApp"
 import type { ProcView } from "@/components/processos/proc-types"
 
@@ -18,6 +20,8 @@ export default async function Page({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
+  // Casos & Processos pode ser temporariamente desativado (Configurações → Módulos).
+  if (!processosHabilitado(await getModulosConfig())) redirect("/")
   const sp = await searchParams
   const caso = num(sp.caso)
   const raw = Array.isArray(sp.view) ? sp.view[0] : sp.view

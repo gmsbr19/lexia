@@ -56,7 +56,7 @@ createGlobalTheme(":root", tokens, {
     bgSoft: "#FFFFFF",
     surface: "#FFFFFF",
     surfaceHover: "#F2F1EC",
-    border: "rgba(2, 13, 37, 0.08)",
+    border: "#020d2514",
     borderStrong: "rgba(2, 13, 37, 0.16)",
     borderGold: "rgba(154, 127, 46, 0.45)",
     text: "#020D25",
@@ -142,18 +142,19 @@ globalStyle(":root", {
     // GLOBALLY so every floating surface (modals, popups, toasts, the
     // notifications dropdown — many rendered outside .crm-scope via portals)
     // shares the EXACT same look. Translucency = rgba() alpha + backdrop-filter,
-    // NEVER opacity. `--lex-glass-base` is the theme RGB triplet so the tint can
-    // be recolored without touching alpha. Strong blur(34px) is what frosts the
-    // live page into a cohesive field (the design's spec) — no dim backdrop.
-    "--lex-glass-base": "255,255,255",
-    "--lex-acrylic": "rgba(var(--lex-glass-base),0.75)",
-    "--lex-acrylic-pill": "rgba(var(--lex-glass-base),0.80)",
-    // Stronger fill for small surfaces over live content (toasts, menus,
-    // notifications, the pinned panel) — keeps small text legible.
-    "--lex-acrylic-strong": "rgba(var(--lex-glass-base),0.86)",
-    "--lex-acrylic-border": "rgba(2,13,37,0.08)",
-    "--lex-blur": "blur(34px) saturate(1.7)",
-    "--lex-glass-shadow": "0 12px 40px rgba(2,13,37,0.08)",
+    // NEVER opacity. `--lex-glass-base` is the RGB triplet so the tint can be
+    // recolored without touching alpha. This version mirrors the reference
+    // effect, but retinted to navy: a darker glass fill, a more subtle outline,
+    // stronger refraction, blur(22px), and a layered inset highlight on top of a
+    // soft outer drop-shadow for lift.
+    "--lex-glass-base": "2,13,37",
+    "--lex-acrylic": "rgba(var(--lex-glass-base),0.56)",
+    "--lex-acrylic-pill": "rgba(var(--lex-glass-base),0.64)",
+    "--lex-acrylic-strong": "rgba(var(--lex-glass-base),0.72)",
+    "--lex-acrylic-border": "rgba(var(--lex-glass-base),0.14)",
+    "--lex-blur": "blur(22px) saturate(185%)",
+    "--lex-glass-shadow":
+      "0 10px 34px rgba(0,0,0,0.18), inset 0 1px 0 rgba(var(--lex-glass-base),0.24), inset 0 -1px 0 rgba(var(--lex-glass-base),0.08)",
   },
 });
 globalStyle(`.${darkTheme}`, {
@@ -162,12 +163,13 @@ globalStyle(`.${darkTheme}`, {
     "--fin-neg": "#E07A60",
     "--fin-amber": "#E0B257",
     "--lex-glass-base": "18,32,62",
-    "--lex-acrylic": "rgba(var(--lex-glass-base),0.35)",
-    "--lex-acrylic-pill": "rgba(var(--lex-glass-base),0.45)",
-    "--lex-acrylic-strong": "rgba(var(--lex-glass-base),0.80)",
-    "--lex-acrylic-border": "rgba(255,255,255,0.16)",
-    "--lex-blur": "blur(34px) saturate(1.7)",
-    "--lex-glass-shadow": "0 4px 30px rgba(0,0,0,0.25)",
+    "--lex-acrylic": "rgba(var(--lex-glass-base),0.54)",
+    "--lex-acrylic-pill": "rgba(var(--lex-glass-base),0.62)",
+    "--lex-acrylic-strong": "rgba(var(--lex-glass-base),0.70)",
+    "--lex-acrylic-border": "rgba(var(--lex-glass-base),0.12)",
+    "--lex-blur": "blur(22px) saturate(185%)",
+    "--lex-glass-shadow":
+      "0 10px 34px rgba(0,0,0,0.24), inset 0 1px 0 rgba(var(--lex-glass-base),0.18), inset 0 -1px 0 rgba(var(--lex-glass-base),0.06)",
   },
 });
 

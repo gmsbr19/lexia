@@ -50,7 +50,12 @@ export function systemPrompt(): Anthropic.TextBlockParam[] {
  * OUTSIDE the cached CORE so per-user personalization (persona/instruções/modo)
  * can vary without invalidating the shared, byte-identical system prefix.
  */
-export function contextoLinha(user: SessionUser, page?: string, prefs?: LexiaPrefs | null): string {
+export function contextoLinha(
+  user: SessionUser,
+  page?: string,
+  prefs?: LexiaPrefs | null,
+  processosHabilitado = true,
+): string {
   const papel = user.role === "admin" ? "administrador" : user.role === "socio" ? "sócio" : "equipe"
   const onde = page ? ` Página atual: ${page}.` : ""
   // A "Equipe" não tem acesso ao financeiro: o modelo nem recebe as ferramentas
@@ -59,9 +64,14 @@ export function contextoLinha(user: SessionUser, page?: string, prefs?: LexiaPre
   const semFinanceiro = verFinanceiro(user.role)
     ? ""
     : " Este usuário NÃO tem acesso a informações financeiras: nunca revele valores, receita, faturamento, honorários, inadimplência, rateio ou qualquer dado do Financeiro; se for perguntado, diga que ele não tem acesso a essa informação."
+  // Módulo desativado (Configurações → Módulos): as ferramentas já saem do
+  // toApiTools, mas reforçamos a recusa textual para o modelo não fingir agir.
+  const semProcessos = processosHabilitado
+    ? ""
+    : " O módulo Casos & Processos está TEMPORARIAMENTE DESATIVADO neste escritório: você não tem ferramentas de casos/processos/prazos/publicações disponíveis; se pedirem algo relacionado, informe que o módulo está desativado no momento."
   // Estilo/instruções/modo definidos pelo usuário (modal Personalizar + composer).
   const personalizacao = personalizacaoPrompt(prefs)
-  return `<contexto>Hoje é ${dataExtenso()} (${hojeISO()}, America/Sao_Paulo). Usuário: ${user.nome} (${papel}).${onde}${semFinanceiro}</contexto>${personalizacao}`
+  return `<contexto>Hoje é ${dataExtenso()} (${hojeISO()}, America/Sao_Paulo). Usuário: ${user.nome} (${papel}).${onde}${semFinanceiro}${semProcessos}</contexto>${personalizacao}`
 }
 
 /** Forma estrutural do contexto do documento aberto (validada no schema da rota). */

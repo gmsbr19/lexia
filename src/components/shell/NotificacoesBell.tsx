@@ -13,6 +13,8 @@ import { linkParaNotificacao } from "@/lib/notificacoes/links"
 import { useNotificacoes } from "@/lib/notificacoes/store"
 import type { NotificacaoRow } from "@/lib/notificacoes/types"
 import { NotifRowContent } from "./NotifRow"
+import { lexGlassStrong } from "@/styles/glass.css"
+import { glassElevation } from "@/styles/glass"
 
 const POP_CSS = `
 .notif-pop-list { scrollbar-width: thin; }
@@ -74,8 +76,8 @@ export function NotificacoesBell() {
         <DropdownMenu.Content
           align="end"
           sideOffset={8}
-          className="crm-scope"
-          style={{ width: 384, maxWidth: "calc(100vw - 24px)", background: "var(--lex-acrylic-strong)", backdropFilter: "var(--lex-blur)", WebkitBackdropFilter: "var(--lex-blur)", border: "1px solid var(--lex-acrylic-border)", borderRadius: 14, boxShadow: "var(--lex-glass-shadow), 0 16px 40px rgba(2,13,37,0.20), inset 0 1px 0 rgba(255,255,255,0.16)", padding: 0, overflow: "hidden", zIndex: 1250 }}
+          className={`crm-scope ${lexGlassStrong}`}
+          style={{ width: 384, maxWidth: "calc(100vw - 24px)", borderRadius: 14, padding: 0, zIndex: 1250, ...glassElevation("0 16px 40px rgba(2,13,37,0.20)") }}
         >
           <style>{POP_CSS}</style>
 

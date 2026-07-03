@@ -4,20 +4,9 @@
 // chat). Orbe/sparkle acrílicos (vidro fosco + dourado girando, reaproveitando as
 // classes do crm-theme.css) + textarea auto-crescente. Estilo bound aos tokens.
 import { useEffect, useRef, type CSSProperties, type ReactNode } from "react"
+import { lexGlassStrong } from "@/styles/glass.css"
+import { glassElevation } from "@/styles/glass"
 import "./asst.css"
-
-/** Superfície acrílica com dim backdrop (spotlight, modal, chat flutuante). */
-export const ACRYLIC: CSSProperties = {
-  background: "var(--lex-acrylic)",
-  backdropFilter: "var(--lex-blur)",
-  WebkitBackdropFilter: "var(--lex-blur)",
-}
-/** Superfície acrílica SEM backdrop (menus/popovers) — mais opaca para legibilidade. */
-export const ACRYLIC_STRONG: CSSProperties = {
-  background: "var(--lex-acrylic-strong)",
-  backdropFilter: "var(--lex-blur)",
-  WebkitBackdropFilter: "var(--lex-blur)",
-}
 
 // ── Orbe: vidro fosco navy + borda dourada girando (.lex-aura-edge) + sparkle
 //    dourado girando (.lx-sparkle + .lex-orb-grad) + glow interno + auroras. ──
@@ -161,13 +150,11 @@ export function AutoTextarea({
 export function MenuPanel({ children, style }: { children: ReactNode; style?: CSSProperties }) {
   return (
     <div
-      className="crm-pop-in"
+      className={`crm-pop-in ${lexGlassStrong}`}
       style={{
         borderRadius: 12,
-        border: "1px solid var(--lex-acrylic-border)",
-        boxShadow: "var(--lex-glass-shadow), 0 12px 28px rgba(2,13,37,0.18), inset 0 1px 0 rgba(255,255,255,0.16)",
         padding: 6,
-        ...ACRYLIC_STRONG,
+        ...glassElevation("0 12px 28px rgba(2,13,37,0.18)"),
         ...style,
       }}
     >

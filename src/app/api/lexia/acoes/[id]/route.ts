@@ -20,6 +20,7 @@ import { aplicarTeto, MODO_ECONOMICO_AVISO } from "@/lib/consumo/guard"
 import { runAgentTurn } from "@/lib/lexia/agent/loop"
 import { sseResponse } from "@/lib/lexia/agent/sse"
 import type { AgentCtx } from "@/lib/lexia/agent/types"
+import { getModulosConfig, processosHabilitado } from "@/lib/settings"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -100,7 +101,12 @@ export async function POST(req: Request, ctx: RouteCtx) {
 
       const teto = await aplicarTeto(decidirModelo("", await ultimoModelo(acao.conversaId)))
       const decision = teto.decision
-      const agentCtx: AgentCtx = { user: sessionUser, conversaId: acao.conversaId, signal: req.signal }
+      const agentCtx: AgentCtx = {
+        user: sessionUser,
+        conversaId: acao.conversaId,
+        signal: req.signal,
+        processosHabilitado: processosHabilitado(await getModulosConfig()),
+      }
       const result = await runAgentTurn(agentCtx, messages, decision, emit)
       if (teto.rebaixado) result.blocks.unshift({ type: "notice", text: MODO_ECONOMICO_AVISO })
       // Surface a deep-link to whatever the agent just created/changed (unless
