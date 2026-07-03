@@ -145,7 +145,87 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
-- **Glassmorphism recipe replaced app-wide, 2 iterations (this session, VERIFIED tsc 0 + 310/310 testes,
+- **Tarefas & Projetos — full "Tarefas v2" (Todoist-style) redesign + Ramble voice capture + 2 post-hoc
+  bugfixes (this session, tsc 0, 317/317 testes, NO migration)** (memories `project_projetos_module`,
+  `project_tarefas_module`). Implemented the Claude Design "LexIA - Tarefas v2" handoff, replacing the old
+  tab-bar + project-rail workspace with a Todoist-inspired module SIDEBAR
+  ([t2-shell.tsx](src/components/tarefas/t2-shell.tsx)): Entrada · Hoje · Em breve · Agenda do dia · Todas as
+  tarefas · Dashboard · Modelos · favoritados + **projetos dinâmicos** · Arquivados. New v2 rows/views
+  ([t2-rows.tsx](src/components/tarefas/t2-rows.tsx), [t2-views.tsx](src/components/tarefas/t2-views.tsx)),
+  quick-add with inline token highlighting
+  ([QuickAddModal.tsx](src/components/tarefas/QuickAddModal.tsx), keyboard shortcut **Q**), and a two-column
+  task detail ([TaskDetailModal.tsx](src/components/tarefas/TaskDetailModal.tsx), replaces the deleted
+  `TaskModal.tsx`). `parseQuickAdd` (`tf-meta.ts`) now resolves `#projeto` against the real dynamic Projeto
+  list (accent-insensitive) instead of the old static practice-area enum; `TarefasContext` now also carries
+  `projetos`/`projetoById`. **New: Ramble** — voice dictation for task capture
+  ([RambleModal.tsx](src/components/tarefas/RambleModal.tsx) + `POST /api/tarefas/ramble` +
+  [ramble-ai.ts](src/lib/tarefas/ramble-ai.ts), Haiku structured call that keeps a running task-draft list
+  across utterances, incl. editing/removing drafts by voice and ending on "é isso"); degrades to the local
+  `parseQuickAdd` heuristics without `ANTHROPIC_API_KEY`/model, and to a typed pipeline without browser speech
+  support. **Fixed the requested UX bug**: the daily agenda's drag-and-drop now snaps to 15-minute slots
+  anywhere on the timeline with a custom drag-image so the drop preview always hangs BELOW the cursor (was
+  covering the row above it). **Two bugs reported AFTER the redesign, both fixed**: (1) `meId` (drives
+  "Minhas"/"Só minhas" and the quick-add default responsável) was `socios[0]?.id` — the first sócio
+  alphabetically — so every account saw the same person's ("Eduarda Gomes") tasks under "Minhas"; now
+  resolved server-side from the session e-mail (`getWorkspaceData` → `userIdPorEmail`, threaded as
+  `WorkspaceData.meId` → `TarefasProvider`). (2) The calendar's day cells used `minHeight` (grew the WHOLE
+  week row when one day had many tasks) and had no `minWidth:0`, so CSS Grid's default content-based sizing
+  let a long task title stretch the cell/column horizontally despite the inner `overflow:hidden` — fixed with
+  a fixed `height:120` + `overflow:hidden` + `minWidth:0` + `flexShrink:0` on the inner rows. **Verified:
+  `npx tsc --noEmit` 0 errors; `npm test` 317/317** (7 new: `tests/tarefas-quickadd.test.ts` for the dynamic
+  `#projeto`/`@pessoa` resolution). **User action:** visual in `/tarefas`: the new sidebar nav + Hoje/Em breve
+  week-strip/Entrada/Agenda-do-dia (drag a task to a time slot — the preview chip should hang below the
+  cursor)/Dashboard; press **Q** for quick-add (token highlighting as you type); click the mic icon in the
+  sidebar to try **Ramble** (needs mic permission; works even without a model, degraded); open a task for the
+  new 2-column detail; confirm "Minhas"/"Só minhas" shows YOUR OWN tasks (not a fixed teammate's); open
+  Calendário view with a busy day (4+ tasks or a long title) and confirm the day box stays a fixed size with a
+  "+N mais" line instead of growing.
+- **Glass = handoff preset "E · Vidro fosco" via the SHARED recipe (this session, tsc 0, NO migration)**
+  (memory `project_acrylic_surfaces`). Pulled the repo; a prior commit `52a7bd4` had STARTED a shared-glass
+  refactor but left it half-baked. Finished + corrected it. The earlier token-only passes (superseded bullet
+  below) had punted on the reference `::before`/`::after` edge hairlines ("impossible inline / no shared
+  className"); `52a7bd4` solved THAT by adding [glass.css.ts](src/styles/glass.css.ts) (`lexGlass`/
+  `lexGlassStrong` composing one `glass` base) + [glass.ts](src/styles/glass.ts) (`glassElevation()` for the
+  per-surface `--lex-elevation` drop) and wiring **ALL ~31 floating surfaces** to it (modals/dropdowns/toasts/
+  spotlight/slide-ins/chat — an Explore-agent sweep confirmed 100% adoption; `modalCard` etc. all compose it) —
+  BUT its recipe was a leftover prototype paste (`240×360`, white `0.05`, `blur(16px)`) and its tokens were
+  inconsistent (theme.css.ts navy `0.56` vs `.crm-scope` white `0.05`, `--lex-acrylic-strong` missing in the
+  bridge). **Rewrote [glass.css.ts](src/styles/glass.css.ts)** to preset E properly: token-driven flat fill +
+  `var(--lex-blur)` + `var(--lex-acrylic-border)` + `box-shadow: var(--lex-elevation,…), var(--lex-glass-shadow)`
+  + TWO masked edge pseudos — `::before` = 1px soft white glow ring, `::after` = the Apple "liquid glass"
+  refraction (`backdrop-filter: blur(6px) brightness(1.16) saturate(150%)`, 3px masked ring); dropped the dead
+  prototype dims/blur. **Aligned tokens THEME-AWARE** in [theme.css.ts](src/styles/theme.css.ts) (`:root`/
+  `.theme-dark`) + mirrored in [crm-theme.css](src/components/crm/crm-theme.css) (`.crm-scope`/`.theme-dark
+  .crm-scope`, added the missing `--lex-acrylic-strong`): **light = white glass** (acrylic 0.62 / pill 0.72 /
+  strong 0.80, navy `0.10` hairline) so surfaces' dark `var(--text)` stays legible; **dark = navy fosco** (base
+  `#020D25`, 0.45 / 0.55 / 0.66, white `0.08` hairline, preset-E shadow); both `blur(20px) saturate(120%)`.
+  Because every surface consumes the shared class, the whole app restyles from **3 files**. LexIA orb keeps its
+  own glass ([LexiaKit.tsx](src/components/lexia/LexiaKit.tsx): blur16/sat150 + gold rim — orb spec, untouched).
+  **KNOWN LIMIT (handoff §01, deferred):** a dropdown opened INSIDE another glass surface (the chat panel; the
+  CrmSettings modal's nested card) can't crisply frost the content behind it (nested `backdrop-filter` has no
+  backdrop to sample) — it degrades to the strong fill (still obscures, acceptable). The `.glass-host`
+  (border/shadow only) + sibling `.glass-surface` (owns blur) + `z-index:3` trigger split fixes it; invasive
+  DOM restructure, do only on request.
+  **FIX (follow-up, "border works but no blur" — debugged LIVE in Chrome, root cause ≠ first guess):** blur was
+  missing app-wide because **Turbopack's Lightning CSS collapses a hand-written `backdropFilter` +
+  `WebkitBackdropFilter` pair and re-emits it WRONG** — the served vanilla-extract chunk had ONLY
+  `-webkit-backdrop-filter` (standard stripped at build), Chrome discards that alias → parsed rule had neither
+  → no frost anywhere (border/ring/shadow fine). Proven by comparing the chunk's `fetch()` raw text vs the
+  CSSOM `cssRules` in the live page; injected test cards with literal CSS blurred fine (compositing/tokens OK).
+  **Fix = author ONLY the standard `backdropFilter`** in [glass.css.ts](src/styles/glass.css.ts) (Lightning adds
+  prefixes itself; the `WebkitMask`+`mask` pair in `::before` survives the pipeline — the bug bites
+  backdrop-filter specifically). RULE: never hand-write webkit+standard backdrop-filter pairs in
+  `.css.ts`/`.css`; inline React `style={}` (orb, shell popovers) bypasses Lightning and is fine. An earlier
+  fix this session had blamed a nested `::after` backdrop-filter ("Apple refraction") — plausible Chrome hazard
+  but NOT the actual cause; that `::after` (and its replacement diagonal gradient sheen) were removed anyway at
+  the user's request, so the recipe is now blur + fill + 1px glow ring only. **Verified: served CSS re-checked
+  in-browser after HMR (`backdrop-filter: var(--lex-blur)` present, `::after` gone) + real `lexGlass`/
+  `lexGlassStrong` classes screenshot-frosted over busy content; `npx tsc --noEmit` 0 source errors. Login page
+  was used for the live test (dev creds in CLAUDE.md §4 are stale — login now rejects them).** **User action:**
+  visual in the app in BOTH themes: modal / dropdown / toast / LexIA chat + Spotlight should now frost (dark =
+  navy fosco + faint glow ring). Tune per-tier alpha in the 2 token files to taste; if you want navy glass in
+  LIGHT mode too, say so (needs light text on those surfaces).
+- **(SUPERSEDED by the bullet above — that was a mid-refactor, buggy state) Glassmorphism recipe replaced app-wide, 2 iterations (this session, VERIFIED tsc 0 + 310/310 testes,
   NO migration).** User supplied exact CSS recipes to replace the old frosted-glass look (light/dark-tinted
   fill, `blur(34px) saturate(1.7)`, hairline border, single top highlight). Because every modal/dropdown/
   toast/popup already drew from ONE set of global CSS vars (by design, see §5 acrylic memory), both passes
