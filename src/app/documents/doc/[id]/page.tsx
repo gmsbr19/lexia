@@ -2,9 +2,19 @@
 
 import { memo, use, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Braces, Check, ChevronLeft, FileDown, FileText, PanelLeft, PanelRight, Save } from "lucide-react"
+import { Check, ChevronLeft, FileDown, FileText, PanelLeft, PanelRight, Save } from "lucide-react"
 import { apiSend } from "@/lib/client/api"
-import { DocEditor, type DocEditorHandle, type DocSelecao } from "@/components/documents/editor2/DocEditor"
+import {
+  DocEditor,
+  type ArmClickInfo,
+  type DocEditorHandle,
+  type DocSelecao,
+  type FieldClickInfo,
+  type MarkState,
+} from "@/components/documents/editor2/DocEditor"
+import { ArmFieldPopover, FieldFillPopover, SelectionToolbar, type AnchorRect } from "@/components/documents/editor2/EditorPopovers"
+import { TimbradoPicker } from "@/components/documents/editor2/TimbradoPicker"
+import { fieldTypeMeta } from "@/components/documents/editor2/field-types"
 import { LexiaChat } from "@/components/lexia/LexiaChat"
 import type { DocPatchPayload } from "@/components/lexia/DocPatchCard"
 import type { DocumentoContexto } from "@/components/lexia/types"
@@ -20,6 +30,7 @@ import { tokens } from "@/styles/tokens.css"
 // (mesma superfície da LexIA global) NÃO re-renderiza a cada tecla.
 const EmbeddedLexiaChat = memo(LexiaChat)
 const NOOP = () => {}
+const NO_MARKS: MarkState = { bold: false, italic: false, underline: false }
 
 interface Props {
   params: Promise<{ id: string }>
@@ -42,14 +53,20 @@ export default function DocFlexEditorPage({ params }: Props) {
   // (applying detected fields / LexIA ops) so the chips show up; typing never bumps it.
   const [editorKey, setEditorKey] = useState(0)
   const [salvandoModelo, setSalvandoModelo] = useState(false)
-  // Painel de campos & timbrado começa OCULTO (a LexIA ocupa a direita fixa); o
-  // usuário o abre pelo toggle quando vai preencher campos.
-  const [panelOpen, setPanelOpen] = useState(false)
-  // Painel da LexIA (direita): aberto por padrão, com toggle para recolher.
+  // Ambos os painéis abrem por padrão: campos & timbrado (esq) + LexIA (dir).
+  // Recolhíveis pelos toggles do cabeçalho.
+  const [panelOpen, setPanelOpen] = useState(true)
   const [lexiaOpen, setLexiaOpen] = useState(true)
-  // Seleção de texto no editor → chip "Trecho" no composer da LexIA (painel docado).
+  // Seleção de texto no editor → chip "Trecho" no composer da LexIA + barra flutuante.
   const [selection, setSelection] = useState<DocSelecao | null>(null)
+  const [selRect, setSelRect] = useState<AnchorRect | null>(null)
+  const [selMarks, setSelMarks] = useState<MarkState>(NO_MARKS)
+  // Popovers do editor (glass): preencher campo no papel · posicionar novo campo.
+  const [fillField, setFillField] = useState<FieldClickInfo | null>(null)
+  const [armPopover, setArmPopover] = useState<ArmClickInfo | null>(null)
   const editorRef = useRef<DocEditorHandle>(null)
+  const selectionRef = useRef<DocSelecao | null>(null)
+  selectionRef.current = selection
 
   // ── load the document ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -157,10 +174,9 @@ export default function DocFlexEditorPage({ params }: Props) {
   }, [])
 
   // Aplica as edições propostas pela LexIA (card "Aplicar"). Ops por POSIÇÃO (seleção)
-  // vão pelo editor VIVO (sem remontar, preservam undo); se o intervalo ficou obsoleto,
-  // caem p/ busca textual (op.de). Ops de texto/campo vão por aplicarOps + remontagem
-  // (p/ os chips aparecerem). Passes separados — posição primeiro, sobre o doc fresco
-  // do editor (senão a remontagem descartaria a edição cirúrgica já aplicada).
+  // vão pelo editor VIVO (sem remontar, preservam undo + realce de IA); se o intervalo
+  // ficou obsoleto, caem p/ busca textual (op.de). Ops de texto/campo vão por aplicarOps
+  // + remontagem (p/ os chips aparecerem). Passes separados — posição primeiro.
   const onDocAccept = useCallback(
     (payload: DocPatchPayload) => {
       if (payload.campos?.length) {
@@ -187,11 +203,40 @@ export default function DocFlexEditorPage({ params }: Props) {
         setEditorKey((k) => k + 1)
       }
       setSelection(null)
+      setSelRect(null)
     },
     [onApplyCampos],
   )
 
-  const clearSelection = useCallback(() => setSelection(null), [])
+  const clearSelection = useCallback(() => {
+    setSelection(null)
+    setSelRect(null)
+  }, [])
+
+  // Seleção do editor → estado da page (chip da LexIA + barra flutuante + marcas).
+  const handleSelectionChange = useCallback((sel: DocSelecao | null) => {
+    setSelection(sel)
+    if (sel && editorRef.current) {
+      setSelRect(editorRef.current.rectOfRange(sel.from, sel.to))
+      setSelMarks(editorRef.current.markState())
+    } else {
+      setSelRect(null)
+    }
+  }, [])
+
+  // Reancora a barra flutuante quando o editor rola / redimensiona.
+  useEffect(() => {
+    const recompute = () => {
+      const sel = selectionRef.current
+      if (sel && editorRef.current) setSelRect(editorRef.current.rectOfRange(sel.from, sel.to))
+    }
+    window.addEventListener("scroll", recompute, true)
+    window.addEventListener("resize", recompute)
+    return () => {
+      window.removeEventListener("scroll", recompute, true)
+      window.removeEventListener("resize", recompute)
+    }
+  }, [])
 
   // O chat lê texto/campos/valores/seleção LAZILY no envio (getter estável), então
   // digitar o corpo não re-renderiza o chat memoizado.
@@ -205,6 +250,17 @@ export default function DocFlexEditorPage({ params }: Props) {
     }),
     [docId],
   )
+
+  // Barra flutuante → "Editar com a LexIA": abre o painel (a seleção já vira chip).
+  const editWithLexia = useCallback(() => setLexiaOpen(true), [])
+  const formatSelection = useCallback((mark: "bold" | "italic" | "underline") => {
+    editorRef.current?.toggleMark(mark)
+    const sel = selectionRef.current
+    if (sel && editorRef.current) {
+      setSelMarks(editorRef.current.markState())
+      setSelRect(editorRef.current.rectOfRange(sel.from, sel.to))
+    }
+  }, [])
 
   const salvarModelo = async () => {
     if (salvandoModelo) return
@@ -228,6 +284,7 @@ export default function DocFlexEditorPage({ params }: Props) {
   }
 
   const savedLabel = savedAgo < 5 ? "Salvo agora" : savedAgo < 60 ? `Salvo há ${savedAgo}s` : `Salvo há ${Math.floor(savedAgo / 60)}min`
+  const toggleBtn = (active: boolean): React.CSSProperties => ({ width: 34, height: 34, padding: 0, borderRadius: 9, flexShrink: 0, color: active ? tokens.color.accent : tokens.color.textMuted })
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
@@ -244,21 +301,8 @@ export default function DocFlexEditorPage({ params }: Props) {
           background: tokens.color.bg,
         }}
       >
-        <button
-          onClick={() => router.push("/documents")}
-          className={btn({ variant: "ghost" })}
-          style={{ width: 34, height: 34, padding: 0, borderRadius: 9, flexShrink: 0 }}
-          title="Voltar para documentos"
-        >
+        <button onClick={() => router.push("/documents")} className={btn({ variant: "ghost" })} style={{ width: 34, height: 34, padding: 0, borderRadius: 9, flexShrink: 0 }} title="Voltar para documentos">
           <ChevronLeft size={18} />
-        </button>
-        <button
-          onClick={() => setPanelOpen((o) => !o)}
-          className={btn({ variant: "ghost" })}
-          style={{ width: 34, height: 34, padding: 0, borderRadius: 9, flexShrink: 0, color: panelOpen ? tokens.color.accent : tokens.color.textMuted }}
-          title="Mostrar/ocultar campos & papel timbrado"
-        >
-          <PanelLeft size={17} />
         </button>
         <span style={{ width: 30, height: 30, borderRadius: 8, display: "grid", placeItems: "center", background: tokens.color.bgSunken, color: tokens.color.textMuted, flexShrink: 0 }}>
           <FileText size={16} />
@@ -267,31 +311,19 @@ export default function DocFlexEditorPage({ params }: Props) {
           value={nome}
           onChange={(e) => setNome(e.target.value)}
           placeholder="Nome do documento"
-          style={{
-            border: "none",
-            background: "transparent",
-            fontSize: 15,
-            fontWeight: 500,
-            letterSpacing: "-0.02em",
-            color: tokens.color.text,
-            outline: "none",
-            minWidth: 0,
-            width: "min(420px, 40vw)",
-          }}
+          style={{ border: "none", background: "transparent", fontSize: 15, fontWeight: 500, letterSpacing: "-0.02em", color: tokens.color.text, outline: "none", minWidth: 0, width: "min(420px, 34vw)" }}
         />
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: tokens.color.textMuted, flexShrink: 0 }}>
-          <span style={{ width: 6, height: 6, borderRadius: "50%", background: savedAgo < 2 ? tokens.color.ok : tokens.color.ok, display: "inline-block" }} />
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: tokens.color.ok, display: "inline-block" }} />
           {savedLabel}
         </span>
 
         <span style={{ flex: 1 }} />
 
-        <button
-          onClick={() => setLexiaOpen((o) => !o)}
-          className={btn({ variant: "ghost" })}
-          style={{ width: 34, height: 34, padding: 0, borderRadius: 9, flexShrink: 0, color: lexiaOpen ? tokens.color.accent : tokens.color.textMuted }}
-          title="Mostrar/ocultar a LexIA"
-        >
+        <button onClick={() => setPanelOpen((o) => !o)} className={btn({ variant: "ghost" })} style={toggleBtn(panelOpen)} title="Mostrar/ocultar campos & papel timbrado">
+          <PanelLeft size={17} />
+        </button>
+        <button onClick={() => setLexiaOpen((o) => !o)} className={btn({ variant: "ghost" })} style={toggleBtn(lexiaOpen)} title="Mostrar/ocultar a LexIA">
           <PanelRight size={17} />
         </button>
         <button onClick={() => void salvarModelo()} disabled={salvandoModelo} className={btn({ variant: "ghost" })} style={{ height: 34, fontSize: 13, display: "inline-flex", alignItems: "center", gap: 6 }}>
@@ -305,28 +337,13 @@ export default function DocFlexEditorPage({ params }: Props) {
         </button>
       </div>
 
-      {/* Body: campos (esq, toggle) | editor | LexIA (dir, sempre aberta, docada) */}
+      {/* Body: campos (esq, toggle) | editor | LexIA (dir, toggle) */}
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
         {/* Fields & letterhead panel */}
         {panelOpen && (
-          <aside style={{ width: 264, flexShrink: 0, overflowY: "auto", padding: 16, background: tokens.color.bgSoft, borderRight: `1px solid ${tokens.color.border}` }}>
+          <aside style={{ width: 272, flexShrink: 0, overflowY: "auto", padding: 16, background: tokens.color.bgSoft, borderRight: `1px solid ${tokens.color.border}` }}>
             <div style={{ fontSize: 11, fontWeight: 500, color: tokens.color.textSubtle, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 9 }}>Papel timbrado</div>
-            <select
-              value={timbradoId ?? ""}
-              onChange={(e) => setTimbradoId(e.target.value ? Number(e.target.value) : null)}
-              style={{ width: "100%", height: 40, borderRadius: 10, border: `1px solid ${tokens.color.border}`, background: tokens.color.surface, color: tokens.color.text, padding: "0 11px", fontSize: 13, fontFamily: tokens.font.sans }}
-            >
-              <option value="">Sem timbrado</option>
-              {timbrados.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.nome}
-                  {t.padrao ? " (padrão)" : ""}
-                </option>
-              ))}
-            </select>
-            <a href="/documents/timbrados" target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 8, fontSize: 12, color: tokens.color.accent, textDecoration: "none", fontWeight: 500 }}>
-              Gerenciar papéis timbrados
-            </a>
+            <TimbradoPicker timbrados={timbrados} value={timbradoId} onChange={setTimbradoId} selectedImage={timbrado?.imagem ?? null} />
 
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "22px 0 10px" }}>
               <div style={{ fontSize: 11, fontWeight: 500, color: tokens.color.textSubtle, textTransform: "uppercase", letterSpacing: "0.07em" }}>Campos</div>
@@ -347,17 +364,18 @@ export default function DocFlexEditorPage({ params }: Props) {
                 {placeholders.map((ph) => {
                   const val = valores[ph.name] ?? ""
                   const isFilled = val.trim().length > 0
+                  const { Icon, label: typeLabel } = fieldTypeMeta(ph.dataType)
                   return (
                     <div key={ph.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 9, border: `1px solid ${tokens.color.border}`, background: tokens.color.surface }}>
                       <span style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, display: "grid", placeItems: "center", background: isFilled ? tokens.color.okSoft : tokens.color.accentSoft, color: isFilled ? tokens.color.ok : tokens.color.accent }}>
-                        {isFilled ? <Check size={14} /> : <Braces size={14} />}
+                        {isFilled ? <Check size={14} /> : <Icon size={14} />}
                       </span>
                       <span style={{ minWidth: 0, flex: 1 }}>
                         <span style={{ display: "block", fontSize: 12, color: tokens.color.textMuted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ph.label}</span>
                         <input
                           value={val}
                           onChange={(e) => setValores((v) => ({ ...v, [ph.name]: e.target.value }))}
-                          placeholder={ph.defaultValue || ph.dataType}
+                          placeholder={`A preencher · ${typeLabel}`}
                           style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: tokens.font.sans, fontSize: 12.5, fontWeight: 500, color: tokens.color.text, padding: 0, marginTop: 1 }}
                         />
                       </span>
@@ -372,14 +390,25 @@ export default function DocFlexEditorPage({ params }: Props) {
         {/* Editor — Word-style A4 page view with the letterhead behind the text */}
         <section style={{ flex: "1 1 0", minWidth: 0 }}>
           {hydrated ? (
-            <DocEditor key={editorKey} ref={editorRef} initialDoc={doc} onChange={setDoc} letterheadDataUrl={timbrado?.imagem ?? null} marginsMm={margins} onSelectionChange={setSelection} />
+            <DocEditor
+              key={editorKey}
+              ref={editorRef}
+              initialDoc={doc}
+              onChange={setDoc}
+              letterheadDataUrl={timbrado?.imagem ?? null}
+              marginsMm={margins}
+              valores={valores}
+              onSelectionChange={handleSelectionChange}
+              onMarksChange={setSelMarks}
+              onFieldClick={setFillField}
+              onArmClick={setArmPopover}
+            />
           ) : (
             <div style={{ padding: 24, color: tokens.color.textMuted, fontSize: 14 }}>Carregando…</div>
           )}
         </section>
 
-        {/* LexIA — painel DOCADO à direita (mesma superfície da global; não sobrepõe o
-            editor, que reflui no espaço restante). Recolhível pelo toggle do cabeçalho. */}
+        {/* LexIA — painel DOCADO à direita (mesma superfície da global). Recolhível. */}
         {lexiaOpen && (
           <aside style={{ width: 384, flexShrink: 0, minWidth: 0, borderLeft: `1px solid ${tokens.color.border}`, overflow: "hidden" }}>
             <EmbeddedLexiaChat
@@ -399,8 +428,32 @@ export default function DocFlexEditorPage({ params }: Props) {
             />
           </aside>
         )}
-
       </div>
+
+      {/* Glass popovers do editor */}
+      {selection && selRect && !fillField && !armPopover && (
+        <SelectionToolbar rect={selRect} active={selMarks} onFormat={formatSelection} onEditWithLexia={editWithLexia} />
+      )}
+      {fillField && (
+        <FieldFillPopover
+          field={fillField}
+          value={valores[fillField.name] ?? ""}
+          rect={fillField.rect}
+          onChange={(v) => setValores((prev) => ({ ...prev, [fillField.name]: v }))}
+          onClear={() => setValores((prev) => ({ ...prev, [fillField.name]: "" }))}
+          onClose={() => setFillField(null)}
+        />
+      )}
+      {armPopover && (
+        <ArmFieldPopover
+          rect={armPopover.rect}
+          onSubmit={(field) => {
+            editorRef.current?.insertFieldAt(armPopover.pos, field)
+            setArmPopover(null)
+          }}
+          onClose={() => setArmPopover(null)}
+        />
+      )}
     </div>
   )
 }
