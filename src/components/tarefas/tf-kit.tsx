@@ -106,22 +106,6 @@ export function AssigneeAvatar({
   )
 }
 
-// ── project dot (+ optional name) ────────────────────────────────────────────
-export function ProjectDot({ id, showName = false, size = 8 }: { id: string; showName?: boolean; size?: number }) {
-  const { project } = useTarefasCtx()
-  const p = project(id)
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 7, minWidth: 0 }}>
-      <span style={{ width: size, height: size, borderRadius: "50%", background: p.color, flexShrink: 0 }} />
-      {showName && (
-        <span style={{ fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {p.name}
-        </span>
-      )}
-    </span>
-  )
-}
-
 // ── vínculo chip (caso/cliente · clicável) ───────────────────────────────────
 export function LinkChip({ vinculo, onClick }: { vinculo: VinculoRef | null; onClick?: (v: VinculoRef) => void }) {
   if (!vinculo) return null

@@ -15,11 +15,28 @@ import {
   LinkChip,
   PriorityFlag,
   PrazoChip,
-  ProjectDot,
   SectionHeader,
   SubProgress,
   TaskCheck,
 } from "./tf-kit"
+
+// Dynamic project chip (dot + nome). `projetoId == null` reads as Entrada.
+export function ProjTag({ projetoId, showName = true }: { projetoId: number | null; showName?: boolean }) {
+  const { projetoById } = useTarefasCtx()
+  const p = projetoById(projetoId)
+  const cor = p?.cor || "var(--text-subtle)"
+  const nome = p?.nome ?? "Entrada"
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+      <span style={{ width: 8, height: 8, borderRadius: "50%", background: cor, flexShrink: 0 }} />
+      {showName && (
+        <span style={{ fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {nome}
+        </span>
+      )}
+    </span>
+  )
+}
 
 export interface ViewCallbacks {
   onToggle: (id: number) => void
@@ -65,7 +82,7 @@ const COMPLETION_GRACE_MS = 650
 
 // Tracks tasks that JUST transitioned to done so they can linger (showing the
 // filled check + strikethrough) before being animated out when hideDone is on.
-function useJustCompleted(tasks: TaskRow[]): Set<number> {
+export function useJustCompleted(tasks: TaskRow[]): Set<number> {
   const [ids, setIds] = useState<Set<number>>(() => new Set())
   const prev = useRef<Map<number, boolean>>(new Map())
   const timers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map())
@@ -105,14 +122,13 @@ function useJustCompleted(tasks: TaskRow[]): Set<number> {
       prev.current.set(t.id, t.done)
     })
   }, [tasks])
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => () => timers.current.forEach(clearTimeout), [])
   return ids
 }
 
 // Applies hide-completed (keeping just-completed tasks during their grace window)
 // and returns the visible slice. The grace set is what powers the exit animation.
-function useVisibleTasks(tasks: TaskRow[], hideDone: boolean | undefined): TaskRow[] {
+export function useVisibleTasks(tasks: TaskRow[], hideDone: boolean | undefined): TaskRow[] {
   const just = useJustCompleted(tasks)
   if (!hideDone) return tasks
   return tasks.filter((t) => !t.done || just.has(t.id))
@@ -122,7 +138,7 @@ const ROW_EASE = [0.22, 1, 0.36, 1] as const
 
 // Wraps task rows so completion (removal from the list) collapses + fades out
 // instead of snapping. Keyed by task id; entrance is suppressed on first paint.
-function AnimatedRows({ rows }: { rows: { id: number; el: ReactNode }[] }) {
+export function AnimatedRows({ rows }: { rows: { id: number; el: ReactNode }[] }) {
   return (
     <AnimatePresence initial={false}>
       {rows.map((r) => (
@@ -192,7 +208,7 @@ export function TaskRow({
           {task.reminder && <Icon name="bell" size={11} strokeWidth={1.9} style={{ color: "var(--text-subtle)", flexShrink: 0 }} />}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4, flexWrap: "wrap" }}>
-          {showProject && <ProjectDot id={task.projeto} showName />}
+          {showProject && <ProjTag projetoId={task.projetoId} />}
           <LinkChip vinculo={task.vinculo} onClick={cb.onLinkClick} />
           <SubProgress subtasks={task.subtasks} />
         </div>
@@ -338,12 +354,19 @@ interface Group {
 }
 
 export function ListaView({ tasks, groupBy, hideDone, selectable, selectedIds, onSelect, ...cb }: { tasks: TaskRow[]; groupBy: GroupBy } & HideDone & Selectable & ViewCallbacks) {
-  const { projects, socios } = useTarefasCtx()
+  const { projetos, socios } = useTarefasCtx()
   const vis = useVisibleTasks(tasks, hideDone)
   let groups: Group[] = []
 
   if (groupBy === "projeto") {
-    groups = projects.map((p) => ({ key: p.id, header: { dot: p.color, label: p.name }, items: vis.filter((t) => t.projeto === p.id) }))
+    groups = [
+      { key: "inbox", header: { dot: "var(--text-subtle)", label: "Entrada" }, items: vis.filter((t) => t.projetoId == null) },
+      ...projetos.map((p) => ({
+        key: p.id,
+        header: { dot: p.cor || "var(--text-muted)", label: p.nome },
+        items: vis.filter((t) => t.projetoId === p.id),
+      })),
+    ]
   } else if (groupBy === "responsavel") {
     groups = socios.map((m) => ({ key: m.id, header: { avatar: m.id, label: m.nome }, items: vis.filter((t) => t.responsavelId === m.id) }))
     groups.push({ key: "none", header: { label: "Não atribuídas" }, items: vis.filter((t) => t.responsavelId == null) })
@@ -518,7 +541,7 @@ export function QuadroView({ tasks, onMove, ...cb }: { tasks: TaskRow[]; onMove:
 
 // ── CALENDÁRIO ────────────────────────────────────────────────────────────────
 export function CalendarioView({ tasks, ...cb }: { tasks: TaskRow[] } & ViewCallbacks) {
-  const { project } = useTarefasCtx()
+  const { projetoById } = useTarefasCtx()
   const todayIso = TODAY()
   const tnow = tParse(todayIso)
   const [ref, setRef] = useState({ y: tnow.getFullYear(), m: tnow.getMonth() })
@@ -613,7 +636,7 @@ export function CalendarioView({ tasks, ...cb }: { tasks: TaskRow[] } & ViewCall
                     fontWeight: 500,
                     color: "var(--text)",
                     background: "var(--bg-sunken)",
-                    borderLeft: `3px solid ${project(t.projeto).color}`,
+                    borderLeft: `3px solid ${projetoById(t.projetoId)?.cor || "var(--text-subtle)"}`,
                     borderRadius: 6,
                     padding: "2px 5px",
                     cursor: "pointer",
@@ -637,24 +660,73 @@ export function CalendarioView({ tasks, ...cb }: { tasks: TaskRow[] } & ViewCall
   )
 }
 
-// ── AGENDA DO DIA (timeline com drag) ─────────────────────────────────────────
+// ── AGENDA DO DIA (timeline com drag, snap de 15 min) ─────────────────────────
 const HOURS = Array.from({ length: 14 }, (_, i) => 7 + i) // 07..20
 const SLOT_H = 56
+const SNAP_MIN = 15
+
+// Replaces the native drag ghost by a compact chip anchored at its TOP-left
+// corner, so the preview always hangs BELOW/right of the pointer instead of
+// covering the timeline slots above it (a transparent spacer adds a small gap).
+// The node is appended inside the .tf-scope wrapper so the CSS vars resolve.
+function dragChipBelowCursor(e: React.DragEvent, titulo: string, cor: string) {
+  const host = (e.currentTarget as HTMLElement).closest(".tf-scope")
+  if (!host) return
+  const g = document.createElement("div")
+  g.style.cssText = "position:fixed;top:-1000px;left:-1000px;padding:14px 0 0 10px;background:transparent;pointer-events:none;"
+  const chip = document.createElement("div")
+  chip.textContent = titulo
+  chip.style.cssText =
+    "max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" +
+    "font-family:var(--font-sans);font-size:12px;font-weight:500;color:var(--text);" +
+    `background:var(--bg-elevated);border:1px solid var(--border-strong);border-left:3px solid ${cor};` +
+    "border-radius:8px;padding:6px 10px;box-shadow:var(--shadow-md);"
+  g.appendChild(chip)
+  host.appendChild(g)
+  e.dataTransfer.setDragImage(g, 4, 0)
+  setTimeout(() => g.remove(), 0)
+}
+
+/** Minutes since midnight, re-evaluated every 30s (keeps the now-line honest). */
+function useNowMin(): number {
+  const [m, setM] = useState(() => {
+    const d = new Date()
+    return d.getHours() * 60 + d.getMinutes()
+  })
+  useEffect(() => {
+    const h = setInterval(() => {
+      const d = new Date()
+      setM(d.getHours() * 60 + d.getMinutes())
+    }, 30_000)
+    return () => clearInterval(h)
+  }, [])
+  return m
+}
 
 export function AgendaView({ tasks, onSchedule, ...cb }: { tasks: TaskRow[]; onSchedule: (id: number, hora: string) => void } & ViewCallbacks) {
-  const { project } = useTarefasCtx()
-  const [over, setOver] = useState<number | null>(null)
-  const now = new Date()
-  const nowMin = now.getHours() * 60 + now.getMinutes()
+  const { projetoById } = useTarefasCtx()
+  const gridRef = useRef<HTMLDivElement>(null)
+  const [overMin, setOverMin] = useState<number | null>(null) // minuto sob o cursor (snap 15)
+  const nowMin = useNowMin()
   const todayIso = TODAY()
   const todays = tasks.filter((t) => t.data === todayIso)
   const pool = todays.filter((t) => !t.hora && !t.done)
   const placed = todays.filter((t) => t.hora)
-  const drop = (e: React.DragEvent, hour: number) => {
+  const corDe = (t: TaskRow) => projetoById(t.projetoId)?.cor || "var(--accent)"
+
+  const minuteFromEvent = (e: React.DragEvent): number => {
+    const rect = gridRef.current!.getBoundingClientRect()
+    const y = e.clientY - rect.top
+    let m = HOURS[0] * 60 + (y / SLOT_H) * 60
+    m = Math.round(m / SNAP_MIN) * SNAP_MIN
+    return Math.max(HOURS[0] * 60, Math.min((HOURS[HOURS.length - 1] + 1) * 60 - SNAP_MIN, m))
+  }
+  const fmtMin = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`
+  const dropAt = (e: React.DragEvent) => {
     e.preventDefault()
     const id = e.dataTransfer.getData("text/plain")
-    if (id) onSchedule(Number(id), `${String(hour).padStart(2, "0")}:00`)
-    setOver(null)
+    if (id) onSchedule(Number(id), fmtMin(minuteFromEvent(e)))
+    setOverMin(null)
   }
 
   return (
@@ -675,6 +747,7 @@ export function AgendaView({ tasks, onSchedule, ...cb }: { tasks: TaskRow[]; onS
               onDragStart={(e) => {
                 e.dataTransfer.effectAllowed = "move"
                 e.dataTransfer.setData("text/plain", String(t.id))
+                dragChipBelowCursor(e, t.titulo, corDe(t))
               }}
               onClick={() => cb.onOpen(t.id)}
               className="card pool-card"
@@ -696,26 +769,61 @@ export function AgendaView({ tasks, onSchedule, ...cb }: { tasks: TaskRow[]; onS
         </div>
       </div>
 
-      {/* timeline */}
+      {/* timeline — solta em qualquer horário (snap de 15 min) */}
       <div className="card" style={{ padding: "8px 8px 8px 0", position: "relative" }}>
-        <div style={{ position: "relative" }}>
+        <div
+          ref={gridRef}
+          style={{ position: "relative" }}
+          onDragOver={(e) => {
+            e.preventDefault()
+            e.dataTransfer.dropEffect = "move"
+            setOverMin(minuteFromEvent(e))
+          }}
+          onDragLeave={(e) => {
+            if (gridRef.current && !gridRef.current.contains(e.relatedTarget as Node)) setOverMin(null)
+          }}
+          onDrop={dropAt}
+        >
           {HOURS.map((h) => (
-            <div
-              key={h}
-              onDragOver={(e) => {
-                e.preventDefault()
-                setOver(h)
-              }}
-              onDragLeave={() => setOver((o) => (o === h ? null : o))}
-              onDrop={(e) => drop(e, h)}
-              style={{ display: "flex", height: SLOT_H, borderTop: "1px solid var(--border)", background: over === h ? "var(--accent-soft)" : "transparent", transition: "background .1s" }}
-            >
+            <div key={h} style={{ display: "flex", height: SLOT_H, borderTop: "1px solid var(--border)" }}>
               <div style={{ width: 56, flexShrink: 0, textAlign: "right", paddingRight: 10, paddingTop: 4, fontSize: 11, color: "var(--text-subtle)", fontFeatureSettings: '"tnum"' }}>
                 {String(h).padStart(2, "0")}:00
               </div>
               <div style={{ flex: 1, borderLeft: "1px solid var(--border)" }} />
             </div>
           ))}
+          {/* indicador de soltura — a hora fica ABAIXO da linha, fora do caminho do olhar */}
+          {overMin != null && (
+            <div
+              style={{
+                position: "absolute",
+                left: 56,
+                right: 0,
+                top: ((overMin - HOURS[0] * 60) / 60) * SLOT_H,
+                height: 0,
+                borderTop: "2px dashed var(--accent)",
+                zIndex: 4,
+                pointerEvents: "none",
+              }}
+            >
+              <span
+                style={{
+                  position: "absolute",
+                  left: 6,
+                  top: 5,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  fontFeatureSettings: '"tnum"',
+                  background: "var(--accent)",
+                  color: "var(--brand-navy)",
+                  padding: "1px 7px",
+                  borderRadius: 6,
+                }}
+              >
+                {fmtMin(overMin)}
+              </span>
+            </div>
+          )}
           {/* now line */}
           {nowMin >= HOURS[0] * 60 && nowMin <= (HOURS[HOURS.length - 1] + 1) * 60 && (
             <div
@@ -737,7 +845,7 @@ export function AgendaView({ tasks, onSchedule, ...cb }: { tasks: TaskRow[]; onS
           {placed.map((t) => {
             const [hh, mm] = (t.hora as string).split(":").map(Number)
             const top = ((hh * 60 + mm - HOURS[0] * 60) / 60) * SLOT_H
-            const col = project(t.projeto).color
+            const col = corDe(t)
             return (
               <div
                 key={t.id}
@@ -745,6 +853,7 @@ export function AgendaView({ tasks, onSchedule, ...cb }: { tasks: TaskRow[]; onS
                 onDragStart={(e) => {
                   e.dataTransfer.effectAllowed = "move"
                   e.dataTransfer.setData("text/plain", String(t.id))
+                  dragChipBelowCursor(e, t.titulo, col)
                 }}
                 onClick={() => cb.onOpen(t.id)}
                 style={{
