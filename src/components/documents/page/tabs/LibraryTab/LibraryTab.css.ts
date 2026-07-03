@@ -1,6 +1,7 @@
 import { style } from "@vanilla-extract/css"
 import { recipe } from "@vanilla-extract/recipes"
 import { tokens } from "@/styles/tokens.css"
+import { lexGlassStrong } from "@/styles/glass.css"
 import { pillBase } from "../../documents-page.css"
 
 export const pageFrameLibrary = style({
@@ -275,21 +276,22 @@ export const rowMenuWrap = style({
   display: "inline-flex",
 })
 
-export const rowMenu = style({
-  position: "absolute",
-  top: "calc(100% + 4px)",
-  right: 0,
-  zIndex: 20,
-  minWidth: 200,
-  padding: 4,
-  background: tokens.color.surface,
-  border: `1px solid ${tokens.color.border}`,
-  borderRadius: tokens.radius.md,
-  boxShadow: tokens.color.shadowMd,
-  display: "flex",
-  flexDirection: "column",
-  gap: 2,
-})
+export const rowMenu = style([
+  lexGlassStrong,
+  {
+    position: "absolute",
+    top: "calc(100% + 4px)",
+    right: 0,
+    zIndex: 20,
+    minWidth: 200,
+    padding: 4,
+    borderRadius: tokens.radius.md,
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    vars: { "--lex-elevation": "0 18px 50px rgba(2,13,37,0.28)" },
+  },
+])
 
 export const rowMenuItem = style({
   display: "flex",
@@ -307,7 +309,7 @@ export const rowMenuItem = style({
   textAlign: "left",
   cursor: "pointer",
   selectors: {
-    "&:hover": { background: tokens.color.bgSoft },
+    "&:hover": { background: tokens.color.surfaceHover },
     "&:disabled": { opacity: 0.5, cursor: "default" },
   },
 })

@@ -1,9 +1,9 @@
-import { tabStrip, tabButton } from "./TabStrip.css"
+import { tabStrip, tabButton, moduleLabel } from "./TabStrip.css"
 
 export type DocumentsTab = "criar" | "meus-documentos" | "modelos" | "timbrados"
 
 const TABS: Array<{ id: DocumentsTab; label: string }> = [
-  { id: "criar", label: "Criar" },
+  { id: "criar", label: "Novo documento" },
   { id: "meus-documentos", label: "Meus documentos" },
   { id: "modelos", label: "Modelos" },
   { id: "timbrados", label: "Papéis timbrados" },
@@ -28,6 +28,7 @@ export function DocumentsTabStrip({
           {tab.label}
         </button>
       ))}
+      <span className={moduleLabel}>Módulo de Documentos</span>
     </div>
   )
 }

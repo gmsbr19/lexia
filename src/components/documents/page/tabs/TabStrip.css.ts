@@ -4,12 +4,23 @@ import { tokens } from "@/styles/tokens.css"
 
 export const tabStrip = style({
   display: "flex",
+  alignItems: "center",
   gap: 0,
   borderBottom: `1px solid ${tokens.color.border}`,
   padding: "0 40px",
   background: tokens.color.bg,
   flexShrink: 0,
-  height:"fit-content"
+  height: "fit-content",
+})
+
+export const moduleLabel = style({
+  marginLeft: "auto",
+  fontSize: 13,
+  color: tokens.color.textSubtle,
+  fontFamily: tokens.font.sans,
+  letterSpacing: "-0.01em",
+  whiteSpace: "nowrap",
+  "@media": { "screen and (max-width: 720px)": { display: "none" } },
 })
 
 export const tabButton = recipe({

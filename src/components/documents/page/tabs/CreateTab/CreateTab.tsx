@@ -105,8 +105,8 @@ export function DocumentsCreateTab({
       <div className={`${pageFrame} ${pageFrameCreate}`}>
         {/* AI access lives in the global LexIA bar (no redundant in-page composer). */}
         <div className={section}>
-          <h1 className={heroTitle}>O que vamos criar?</h1>
-          <p className={heroLead}>Escolha um modelo abaixo ou descreva o documento na barra da LexIA.</p>
+          <h1 className={heroTitle}>Novo documento</h1>
+          <p className={heroLead}>Comece em branco, escolha um modelo do escritório ou importe um .docx — a LexIA marca os campos para você.</p>
 
           <div className={createRow}>
             <button type="button" disabled={busy} onClick={() => void novoEmBranco()} className={blankCard}>
@@ -114,7 +114,7 @@ export function DocumentsCreateTab({
                 <Plus size={20} strokeWidth={2.2} />
               </span>
               <span className={blankBody}>
-                <span className={blankTitle}>Começar em branco</span>
+                <span className={blankTitle}>Documento em branco</span>
                 <span className={blankSub}>Folha em branco sobre o papel timbrado padrão</span>
               </span>
             </button>
