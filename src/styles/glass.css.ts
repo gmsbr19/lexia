@@ -1,96 +1,62 @@
 import { style } from "@vanilla-extract/css"
 
-// ── Shared glass surface ─────────────────────────────────────────────────────
-// ONE recipe for every modal, dropdown, popover, and toast in the app. Retint
-// or reshape the effect by editing the CSS custom properties in
-// theme.css.ts (:root / .theme-dark) + the .crm-scope bridge in
-// crm-theme.css — every surface below (and every inline consumer via the
-// exported classes) picks it up automatically, nothing else needs to change.
+// ── Shared glass surface — preset "E · Vidro fosco" (design handoff) ──────────
+// ONE recipe for every modal, dropdown, popover, spotlight, slide-in and toast
+// in the app. Retint or reshape the whole system by editing the CSS custom
+// properties (`--lex-acrylic*` / `--lex-blur` / `--lex-glass-shadow`) in
+// theme.css.ts (:root = light / .theme-dark = dark) + the .crm-scope bridge in
+// crm-theme.css — every surface below (and every inline/`.css.ts` consumer via
+// the exported classes) picks it up automatically, nothing else needs to change.
 //
-// This file exists because the shine hairlines (::before top edge, ::after
-// left edge) need real CSS — they can't be expressed through an inline
-// `style={}` object. Consumers that used to hand-write
-// `background/backdropFilter/border/boxShadow` inline should use `lexGlass`/
-// `lexGlassStrong` (className) instead; plain `.css.ts` recipes should
-// compose via `style([lexGlass, {...}])`.
+// This file exists because the edge layer needs a real CSS pseudo-element —
+// it can't be expressed through an inline `style={}` object:
+//   ::before → a soft 1px glow ring (a masked gradient hairline on the border).
+// CRITICAL: no pseudo/child of a glass surface may carry its OWN
+// `backdrop-filter`. A nested backdrop-filter inside this element (which
+// already has one + overflow:hidden) makes Chrome DROP the parent's blur
+// entirely — the surface renders flat. The handoff's preset-E ::after
+// refraction did exactly that and was removed.
 //
 // Per-surface outer elevation (the drop shadow that lifts a big modal off the
-// page) layers in via the `--lex-elevation` custom property: unset by
-// default (falls back to an inert shadow), or set locally — inline via
-// `glassElevation(...)` for plain style={} consumers, or via vanilla-extract's
-// `vars` for composed .css.ts consumers — so each surface can add its own
-// outer shadow without duplicating the base recipe.
-const base = style({
+// page) layers in via the `--lex-elevation` custom property: unset by default
+// (falls back to an inert shadow), or set locally — inline via `glassElevation()`
+// for plain style={} consumers, or via vanilla-extract's `vars` for composed
+// .css.ts consumers — so each surface adds its own drop without redefining the
+// base recipe.
+const glass = style({
   position: "relative",
   overflow: "hidden",
+  borderRadius: 14,
   border: "1px solid var(--lex-acrylic-border)",
   backgroundClip: "padding-box",
+  // Standard property ONLY — do NOT hand-write WebkitBackdropFilter here.
+  // Turbopack's Lightning CSS collapses a manual webkit+standard pair into one
+  // property group and re-emits it WRONG: the served chunk kept only
+  // `-webkit-backdrop-filter`, which Chrome discards → no blur anywhere
+  // (confirmed live: raw chunk had only the -webkit- form). Lightning adds
+  // vendor prefixes for the configured targets (Safari) by itself.
   backdropFilter: "var(--lex-blur)",
-  WebkitBackdropFilter: "var(--lex-blur)",
   boxShadow: "var(--lex-elevation, 0 0 #0000), var(--lex-glass-shadow)",
-  backgroundImage:
-    "linear-gradient(145deg, rgba(var(--lex-glass-base),0.42) 0%, rgba(var(--lex-glass-base),0.28) 46%, rgba(var(--lex-glass-base),0.16) 100%), radial-gradient(120% 100% at 12% 0%, rgba(var(--lex-glass-base),0.18) 0%, transparent 52%)",
-  backgroundBlendMode: "normal, normal",
   selectors: {
+    // soft 1px glow ring — a masked gradient hairline riding the border
     "&::before": {
       content: '""',
       position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      height: 1,
-      background: "linear-gradient(90deg, transparent, rgba(var(--lex-glass-base),0.32), transparent)",
-      pointerEvents: "none",
-    },
-    "&::after": {
-      content: '""',
-      position: "absolute",
-      top: 0,
-      left: 0,
-      width: 1,
-      height: "100%",
-      background: "linear-gradient(180deg, rgba(var(--lex-glass-base),0.28), transparent, rgba(var(--lex-glass-base),0.12))",
+      inset: 0,
+      borderRadius: "inherit",
+      padding: 1,
+      background:
+        "linear-gradient(180deg, rgba(255,255,255,0.26), rgba(255,255,255,0.04) 38%, rgba(255,255,255,0.09))",
+      WebkitMask: "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
+      mask: "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
+      WebkitMaskComposite: "xor",
+      maskComposite: "exclude",
       pointerEvents: "none",
     },
   },
 })
 
-const glass = style({
-  width: "240px",
-  height: "360px",
-  background: "rgba(255, 255, 255, 0.05)",
-  backdropFilter: "blur(16px)",
-  WebkitBackdropFilter: "blur(16px)",
-  borderRadius: "20px",
-  border: "1px solid rgba(255, 255, 255, 0.3)",
-  boxShadow: "0 8px 32px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.5), inset 0 -1px 0 rgba(255, 255, 255, 0.1), inset 0 0 0px 0px rgba(255, 255, 255, 0)",
-  position: "relative",
-  overflow: "hidden",
-  selectors: {
-    "&::before": {
-      content: '""',
-      position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      height: 1,
-      background: "linear-gradient(90deg, transparent, rgba(var(--lex-glass-base),0.32), transparent)",
-      pointerEvents: "none",
-    },
-    "&::after": {
-      content: '""',
-      position: "absolute",
-      top: 0,
-      left: 0,
-      width: 1,
-      height: "100%",
-      background: "linear-gradient(180deg, rgba(var(--lex-glass-base),0.28), transparent, rgba(var(--lex-glass-base),0.12))",
-      pointerEvents: "none",
-    },
-  },
-})
-
-/** Default-tier glass — modals, floating panels, slide-ins. */
+/** Default-tier glass — modals, floating panels, spotlight, slide-ins. */
 export const lexGlass = style([glass, { background: "var(--lex-acrylic)" }])
 /** Stronger-fill glass — small surfaces over live content (menus, toasts, the
  * notifications dropdown) where legibility matters more than see-through. */

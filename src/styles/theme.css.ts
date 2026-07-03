@@ -138,23 +138,25 @@ globalStyle(":root", {
     "--fin-amber": "#B47E12",
     "--ease": "cubic-bezier(0.22, 1, 0.36, 1)",
     "--dur": "160ms",
-    // Frosted-glass (acrylic) recipe — the LexIA chat-panel glass, defined
-    // GLOBALLY so every floating surface (modals, popups, toasts, the
-    // notifications dropdown — many rendered outside .crm-scope via portals)
-    // shares the EXACT same look. Translucency = rgba() alpha + backdrop-filter,
-    // NEVER opacity. `--lex-glass-base` is the RGB triplet so the tint can be
-    // recolored without touching alpha. This version mirrors the reference
-    // effect, but retinted to navy: a darker glass fill, a more subtle outline,
-    // stronger refraction, blur(22px), and a layered inset highlight on top of a
-    // soft outer drop-shadow for lift.
-    "--lex-glass-base": "2,13,37",
-    "--lex-acrylic": "rgba(var(--lex-glass-base),0.56)",
-    "--lex-acrylic-pill": "rgba(var(--lex-glass-base),0.64)",
-    "--lex-acrylic-strong": "rgba(var(--lex-glass-base),0.72)",
-    "--lex-acrylic-border": "rgba(var(--lex-glass-base),0.14)",
-    "--lex-blur": "blur(22px) saturate(185%)",
+    // Frosted-glass (acrylic) recipe — preset "E · Vidro fosco" from the design
+    // handoff, defined GLOBALLY so every floating surface (modals, popups,
+    // toasts, the notifications dropdown — many rendered outside .crm-scope via
+    // portals) shares the EXACT same look. The shared recipe lives in
+    // glass.css.ts; here we only set the tokens it reads. Translucency = rgba()
+    // alpha + backdrop-filter, NEVER opacity. `--lex-glass-base` is the RGB
+    // triplet so the tint recolors without touching alpha.
+    // THEME-AWARE: light mode uses a white-tinted glass so the surfaces' dark
+    // `var(--text)` stays legible; dark mode uses the handoff's navy fosco. The
+    // Apple edge refraction + glow ring are added by glass.css.ts on top.
+    // Light (:root): white glass, subtle navy hairline, gentle lift.
+    "--lex-glass-base": "255,255,255",
+    "--lex-acrylic": "rgba(var(--lex-glass-base),0.62)",
+    "--lex-acrylic-pill": "rgba(var(--lex-glass-base),0.72)",
+    "--lex-acrylic-strong": "rgba(var(--lex-glass-base),0.80)",
+    "--lex-acrylic-border": "rgba(2,13,37,0.10)",
+    "--lex-blur": "blur(20px) saturate(120%)",
     "--lex-glass-shadow":
-      "0 10px 34px rgba(0,0,0,0.18), inset 0 1px 0 rgba(var(--lex-glass-base),0.24), inset 0 -1px 0 rgba(var(--lex-glass-base),0.08)",
+      "0 10px 30px rgba(2,13,37,0.12), inset 0 1px 0 rgba(255,255,255,0.55), inset 0 0 20px rgba(255,255,255,0.05)",
   },
 });
 globalStyle(`.${darkTheme}`, {
@@ -162,14 +164,16 @@ globalStyle(`.${darkTheme}`, {
     "--fin-pos": "#4FC07D",
     "--fin-neg": "#E07A60",
     "--fin-amber": "#E0B257",
-    "--lex-glass-base": "18,32,62",
-    "--lex-acrylic": "rgba(var(--lex-glass-base),0.54)",
-    "--lex-acrylic-pill": "rgba(var(--lex-glass-base),0.62)",
-    "--lex-acrylic-strong": "rgba(var(--lex-glass-base),0.70)",
-    "--lex-acrylic-border": "rgba(var(--lex-glass-base),0.12)",
-    "--lex-blur": "blur(22px) saturate(185%)",
+    // Dark (.theme-dark): the handoff's navy "fosco" — glass-base is the pure
+    // brand navy #020D25 per preset E; border is a faint white hairline.
+    "--lex-glass-base": "2,13,37",
+    "--lex-acrylic": "rgba(var(--lex-glass-base),0.45)",
+    "--lex-acrylic-pill": "rgba(var(--lex-glass-base),0.55)",
+    "--lex-acrylic-strong": "rgba(var(--lex-glass-base),0.66)",
+    "--lex-acrylic-border": "rgba(255,255,255,0.08)",
+    "--lex-blur": "blur(20px) saturate(120%)",
     "--lex-glass-shadow":
-      "0 10px 34px rgba(0,0,0,0.24), inset 0 1px 0 rgba(var(--lex-glass-base),0.18), inset 0 -1px 0 rgba(var(--lex-glass-base),0.06)",
+      "0 16px 40px rgba(2,13,37,0.35), inset 0 0 24px rgba(174,174,174,0.04), inset 0 0 4px 2px rgba(255,255,255,0.03)",
   },
 });
 

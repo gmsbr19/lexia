@@ -292,31 +292,35 @@
   border-radius: 0 3px 3px 0; background: var(--accent-strong);
 }
 
-/* theme-invariant "shine glass" (mirrors the :root/.theme-dark recipe in
- * theme.css.ts) — near-transparent white fill, real visible white border,
- * blur(16px), layered inset highlight. Bridged here because .crm-scope
- * re-tinted these per theme; kept as an override point rather than deleting it. */
+/* Glass tokens for in-app surfaces — MUST mirror the :root/.theme-dark recipe in
+ * theme.css.ts so surfaces inside .crm-scope match the portaled ones (toasts,
+ * notifications dropdown). Preset "E · Vidro fosco": theme-aware white glass in
+ * light (keeps dark text legible) / navy fosco in dark. Kept as the .crm-scope
+ * override point; the shared recipe (glow ring + Apple refraction) is in
+ * glass.css.ts. */
 .crm-scope {
   --lex-glass-base: 255, 255, 255;
-  --lex-acrylic: rgba(var(--lex-glass-base), 0.05);
-  --lex-acrylic-pill: rgba(var(--lex-glass-base), 0.05);
-  --lex-acrylic-border: rgba(255, 255, 255, 0.3);
-  --lex-blur: blur(16px);
+  --lex-acrylic: rgba(var(--lex-glass-base), 0.62);
+  --lex-acrylic-pill: rgba(var(--lex-glass-base), 0.72);
+  --lex-acrylic-strong: rgba(var(--lex-glass-base), 0.80);
+  --lex-acrylic-border: rgba(2, 13, 37, 0.10);
+  --lex-blur: blur(20px) saturate(120%);
   --lex-glass-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.5),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.1);
+    0 10px 30px rgba(2, 13, 37, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 0 0 20px rgba(255, 255, 255, 0.05);
 }
 .theme-dark .crm-scope {
-  --lex-glass-base: 255, 255, 255;
-  --lex-acrylic: rgba(var(--lex-glass-base), 0.05);
-  --lex-acrylic-pill: rgba(var(--lex-glass-base), 0.05);
-  --lex-acrylic-border: rgba(255, 255, 255, 0.3);
-  --lex-blur: blur(16px);
+  --lex-glass-base: 2, 13, 37;
+  --lex-acrylic: rgba(var(--lex-glass-base), 0.45);
+  --lex-acrylic-pill: rgba(var(--lex-glass-base), 0.55);
+  --lex-acrylic-strong: rgba(var(--lex-glass-base), 0.66);
+  --lex-acrylic-border: rgba(255, 255, 255, 0.08);
+  --lex-blur: blur(20px) saturate(120%);
   --lex-glass-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.5),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.1);
+    0 16px 40px rgba(2, 13, 37, 0.35),
+    inset 0 0 24px rgba(174, 174, 174, 0.04),
+    inset 0 0 4px 2px rgba(255, 255, 255, 0.03);
 }
 
 /* right-dock (pinned-to-side) slide-in for the LexIA bar */
