@@ -25,6 +25,7 @@ export const tarefasLoteSchema = z.object({
   ids: z.array(idReq).min(1).max(200),
   status: z.enum(["todo", "doing", "review", "done"]).optional(),
   responsavelId: idOpt,
+  data: dateStr.nullish(),
   prazo: dateStr.nullish(),
   projetoId: idOpt,
   prio: z.number().int().min(1).max(4).optional(),

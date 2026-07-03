@@ -103,6 +103,7 @@ export interface TarefasLote {
   ids: number[]
   status?: "todo" | "doing" | "review" | "done"
   responsavelId?: number | null
+  data?: string | null
   prazo?: string | null
   projetoId?: number | null
   prio?: number
@@ -123,6 +124,7 @@ export async function bulkUpdateTarefas(input: TarefasLote) {
     data.concluidoEm = input.status === "done" ? new Date() : null
   }
   if (input.responsavelId !== undefined) data.responsavelId = optId(input.responsavelId)
+  if (input.data !== undefined) data.data = toDate(input.data)
   if (input.prazo !== undefined) data.prazo = toDate(input.prazo)
   if (input.projetoId !== undefined) data.projetoId = optId(input.projetoId)
   if (input.prio !== undefined) data.prio = Math.min(4, Math.max(1, Math.round(input.prio)))
