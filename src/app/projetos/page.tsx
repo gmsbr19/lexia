@@ -13,6 +13,6 @@ export const dynamic = "force-dynamic"
 export default async function Page() {
   const session = await auth()
   const role = (session?.user?.role as Role) ?? "estagiario"
-  const data = await getWorkspaceData()
+  const data = await getWorkspaceData(session?.user?.email)
   return <ProjetosWorkspace dataset={data} role={role} initialTab="projetos" />
 }

@@ -148,6 +148,7 @@ export interface WorkspaceDataset {
   socios: TeamMember[]
   casos: IdNome[]
   clientes: IdNome[]
+  meId: number | null
 }
 
 export function ProjetosWorkspace({
@@ -162,8 +163,7 @@ export function ProjetosWorkspace({
   initialProjetoId?: number | null
 }) {
   const params = useSearchParams()
-  const { socios, casos, clientes } = dataset
-  const meId = socios[0]?.id ?? null
+  const { socios, casos, clientes, meId } = dataset
   const canEdit = CAN_EDIT_PROJETO.includes(role)
   const canTemplate = CAN_TEMPLATE.includes(role)
 
@@ -680,7 +680,7 @@ export function ProjetosWorkspace({
 
   return (
     <div className={`${tfRoot} t2-workspace`}>
-      <TarefasProvider socios={socios} casos={casos} clientes={clientes} projetos={projetosView}>
+      <TarefasProvider socios={socios} casos={casos} clientes={clientes} projetos={projetosView} meId={meId}>
         <div className={`t2-scrim${sideOpen ? " is-open" : ""}`} onClick={() => setSideOpen(false)} />
         <div className={`t2-side-wrap${sideOpen ? " is-open" : ""}`}>
           <TasksSidebar

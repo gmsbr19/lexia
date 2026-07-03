@@ -22,6 +22,6 @@ export default async function Page({
   const role = (session?.user?.role as Role) ?? "estagiario"
   const raw = typeof params.tab === "string" ? params.tab : undefined
   const initialTab = raw && (TABS as string[]).includes(raw) ? (raw as ModuleTab) : "tarefas"
-  const data = await getWorkspaceData()
+  const data = await getWorkspaceData(session?.user?.email)
   return <ProjetosWorkspace dataset={data} role={role} initialTab={initialTab} />
 }
