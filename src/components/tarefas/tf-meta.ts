@@ -1,8 +1,8 @@
 // Tarefas — pure date/label helpers + the quick-add natural-language parser.
 // Ported from the design's tasks-data.jsx, but TODAY is the real current day
 // (the prototype pinned it to a fixed date) and @/# tokens resolve against the
-// active users + static PROJECTS passed in.
-import type { ProjetoDef, ProjetoKey, TaskPrio, TeamMember } from "@/lib/tarefas/types"
+// active users + the DYNAMIC projetos passed in.
+import type { TaskPrio, TeamMember } from "@/lib/tarefas/types"
 
 export const WD = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"]
 export const WD_LONG = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"]
@@ -72,9 +72,26 @@ export function byTime<T extends { hora?: string | null; prio: number; prazo?: s
 
 // ── quick-add natural-language parser ────────────────────────────────────────
 // "Protocolar recurso amanhã 14h #trabalhista @joão !alta"
+
+// Tokens the quick-add UI highlights inline (mirror technique). Kept in sync
+// with what parseQuickAdd actually consumes. NOTE: JS `\b` is ASCII-only — after
+// a trailing "ã" there is no word boundary, so "amanhã" needs a lookahead.
+export const QUICKADD_TOKEN_RE = /(#[\wà-ú-]+|@[\wà-ú-]+|![\wà-ú-]+|\b\d{1,2}[:h]\d{2}\b|\b\d{1,2}h\b|\bhoje\b|\bamanh[ãa](?![\wà-ú]))/gi
+export const isQuickAddToken = (s: string): boolean => {
+  const m = s.match(new RegExp(QUICKADD_TOKEN_RE.source, "i"))
+  return !!m && m[0] === s
+}
+
+/** Accent-insensitive lowercase fold (imported data mixes spellings). */
+const fold = (s: string): string =>
+  s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+
 export interface QuickAddResult {
   titulo: string
-  projeto: ProjetoKey | null
+  projetoId: number | null
   responsavelId: number | null
   prio: TaskPrio | null
   data: string | null
@@ -84,12 +101,12 @@ export interface QuickAddResult {
 
 export function parseQuickAdd(
   raw: string,
-  ctx: { socios: TeamMember[]; projects: ProjetoDef[] },
+  ctx: { socios: TeamMember[]; projetos: { id: number; nome: string }[] },
 ): QuickAddResult {
   let text = ` ${raw} `
   const res: QuickAddResult = {
     titulo: "",
-    projeto: null,
+    projetoId: null,
     responsavelId: null,
     prio: null,
     data: null,
@@ -104,21 +121,24 @@ export function parseQuickAdd(
     res.prio = (v === "urgente" || v === "p1" ? 1 : v === "alta" || v === "p2" ? 2 : v === "p4" || v === "normal" ? 4 : 3) as TaskPrio
     text = text.replace(pm[0], " ")
   }
-  // project  #token
+  // project  #token — accent-insensitive substring of the dynamic project name
   const projm = text.match(/#(\S+)/)
   if (projm) {
-    const q = projm[1].toLowerCase()
-    const p = ctx.projects.find((p) => p.name.toLowerCase().includes(q) || p.id === q)
-    if (p) res.projeto = p.id
+    const q = fold(projm[1])
+    if (q) {
+      const p = ctx.projetos.find((p) => fold(p.nome).includes(q))
+      if (p) res.projetoId = p.id
+    }
     text = text.replace(projm[0], " ")
   }
-  // assignee @token — unique prefix of first name (or substring of full name)
+  // assignee @token — unique prefix of first name (or substring of full name),
+  // accent-insensitive on both sides ("@joao" acha "João")
   const asm = text.match(/@(\S+)/)
   if (asm) {
-    const q = asm[1].toLowerCase().replace(/[^a-zà-ú]/gi, "")
+    const q = fold(asm[1]).replace(/[^a-z]/g, "")
     if (q) {
       const matches = ctx.socios.filter(
-        (m) => m.first.toLowerCase().startsWith(q) || m.nome.toLowerCase().includes(q),
+        (m) => fold(m.first).startsWith(q) || fold(m.nome).includes(q),
       )
       if (matches.length === 1) res.responsavelId = matches[0].id
       else if (matches.length > 1) res.assigneeAmbiguous = true
@@ -133,11 +153,13 @@ export function parseQuickAdd(
     res.hora = `${hh}:${mm}`
     text = text.replace(tm[0], " ")
   }
-  // date keywords
+  // date keywords — "depois de amanhã" ANTES de "amanhã" (senão o prefixo
+  // "depois de" sobraria no título); `(?![\wà-ú])` no lugar do `\b` final
+  // (ASCII-only) para o "ã" acentuado casar.
   const dk: [RegExp, number][] = [
     [/\bhoje\b/i, 0],
-    [/\bamanh[ãa]\b/i, 1],
-    [/\bdepois de amanh[ãa]\b/i, 2],
+    [/\bdepois de amanh[ãa](?![\wà-ú])/i, 2],
+    [/\bamanh[ãa](?![\wà-ú])/i, 1],
   ]
   for (const [re, n] of dk) {
     if (re.test(text)) {
