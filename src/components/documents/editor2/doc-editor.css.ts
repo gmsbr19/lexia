@@ -1,4 +1,4 @@
-import { globalStyle, style } from "@vanilla-extract/css"
+import { globalStyle, keyframes, style } from "@vanilla-extract/css"
 
 export const editorWrap = style({ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 })
 
@@ -87,17 +87,49 @@ globalStyle(`${paper} .ProseMirror blockquote`, {
 })
 globalStyle(`${paper} .ProseMirror img`, { maxWidth: "100%" })
 
-// Merge-field chip + page-break marker (editor-only chrome).
+// Armed "posicionar campo" mode — crosshair + gold ring on the paper.
+export const paperArmed = style({
+  boxShadow: "0 0 0 2px var(--accent-strong), 0 1px 3px rgba(2,13,37,0.06), 0 12px 36px rgba(2,13,37,0.14)",
+})
+globalStyle(`${paperArmed} .ProseMirror, ${paperArmed} .ProseMirror *`, { cursor: "crosshair" })
+
+// Merge-field chip: empty → gold pill `{{label}}` (clickable to fill); filled →
+// the value rendered inline with a soft gold underline (matches the PDF/preview).
 globalStyle(`${paper} .lex-chip`, {
   background: "rgba(138,109,31,0.12)",
   color: "#8a6d1f",
   borderRadius: 4,
   padding: "0 4px",
   fontWeight: 500,
-  whiteSpace: "nowrap",
+  whiteSpace: "pre-wrap",
+  cursor: "pointer",
+  transition: "background 120ms ease",
 })
+globalStyle(`${paper} .lex-chip:hover`, { background: "rgba(138,109,31,0.22)" })
+globalStyle(`${paper} .lex-chip.filled`, {
+  background: "transparent",
+  color: "inherit",
+  fontWeight: 600,
+  padding: "0 1px",
+  borderRadius: 0,
+  borderBottom: "1.5px solid rgba(138,109,31,0.45)",
+})
+globalStyle(`${paper} .lex-chip.filled:hover`, { background: "rgba(138,109,31,0.10)" })
 globalStyle(`${paper} .ProseMirror .lex-chip.ProseMirror-selectednode`, {
   outline: "2px solid rgba(138,109,31,0.5)",
+})
+
+// Transient gold flash where the LexIA just applied an edit.
+const aiInsFade = keyframes({
+  "0%": { background: "rgba(192,161,71,0.42)", boxShadow: "0 0 0 3px rgba(192,161,71,0.14)" },
+  "65%": { background: "rgba(192,161,71,0.24)", boxShadow: "0 0 0 2px rgba(192,161,71,0.07)" },
+  "100%": { background: "rgba(192,161,71,0)", boxShadow: "0 0 0 0 rgba(192,161,71,0)" },
+})
+globalStyle(`${paper} .doc-ai-ins`, {
+  borderRadius: 3,
+  padding: "0 1px",
+  animation: `${aiInsFade} 1.6s cubic-bezier(.22,1,.36,1) forwards`,
+  "@media": { "(prefers-reduced-motion: reduce)": { animation: "none" } },
 })
 globalStyle(`${paper} .lex-pb`, {
   textAlign: "center",
