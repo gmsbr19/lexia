@@ -30,6 +30,7 @@ const ROTULO_RECURSO: Record<string, string> = {
   vinculo: "Vínculo de publicação",
   criterios: "Critérios de tarefa",
   "doc-suggest": "Editor de documentos",
+  ramble: "Ramble (ditado de tarefas)",
 }
 
 /** Aggregate the ledger for a period into total + per-model + per-feature + per-day USD. */
