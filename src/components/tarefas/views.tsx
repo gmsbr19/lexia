@@ -598,9 +598,21 @@ export function CalendarioView({ tasks, ...cb }: { tasks: TaskRow[] } & ViewCall
           const scheduled = d ? tasks.filter((t) => t.data === dateStr) : []
           const deadlines = d ? tasks.filter((t) => t.prazo === dateStr && !t.done).length : 0
           return (
-            <div key={i} style={{ background: "var(--surface)", minHeight: 92, padding: 6, display: d ? "flex" : "block", flexDirection: "column", gap: 3 }}>
+            <div
+              key={i}
+              style={{
+                background: "var(--surface)",
+                height: 120,
+                minWidth: 0,
+                overflow: "hidden",
+                padding: 6,
+                display: d ? "flex" : "block",
+                flexDirection: "column",
+                gap: 3,
+              }}
+            >
               {d && (
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2, flexShrink: 0 }}>
                   <span
                     style={{
                       fontSize: 12,
@@ -614,12 +626,13 @@ export function CalendarioView({ tasks, ...cb }: { tasks: TaskRow[] } & ViewCall
                       display: "inline-flex",
                       alignItems: "center",
                       justifyContent: "center",
+                      flexShrink: 0,
                     }}
                   >
                     {d}
                   </span>
                   {deadlines > 0 && (
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 2, fontSize: 11, fontWeight: 500, color: "var(--fin-neg)" }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 2, fontSize: 11, fontWeight: 500, color: "var(--fin-neg)", flexShrink: 0 }}>
                       <Icon name="flag" size={10} strokeWidth={2.2} />
                       {deadlines}
                     </span>
@@ -645,13 +658,14 @@ export function CalendarioView({ tasks, ...cb }: { tasks: TaskRow[] } & ViewCall
                     textOverflow: "ellipsis",
                     opacity: t.done ? 0.5 : 1,
                     textDecoration: t.done ? "line-through" : "none",
+                    flexShrink: 0,
                   }}
                 >
                   {t.hora ? `${t.hora} ` : ""}
                   {t.titulo}
                 </div>
               ))}
-              {scheduled.length > 3 && <span style={{ fontSize: 11, color: "var(--text-subtle)", paddingLeft: 4 }}>+{scheduled.length - 3} mais</span>}
+              {scheduled.length > 3 && <span style={{ fontSize: 11, color: "var(--text-subtle)", paddingLeft: 4, flexShrink: 0 }}>+{scheduled.length - 3} mais</span>}
             </div>
           )
         })}
