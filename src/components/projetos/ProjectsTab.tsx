@@ -1,10 +1,11 @@
 "use client"
 
-// Projetos & Tarefas — the Projetos tab: a searchable project rail + the canvas
-// (project header, filters, and the SAME five task views scoped to one project's
-// tasks via `projetoId`). Live progresso/saúde are derived from the optimistic
-// task list (pj-meta.deriveRollup).
-import { useEffect, useRef, useState } from "react"
+// Projetos & Tarefas — the project CANVAS (header, filters, and the SAME five
+// task views scoped to one project's tasks via `projetoId`). No rail here in
+// the v2 layout: projects live in the module sidebar (t2-shell.TasksSidebar).
+// Live progresso/saúde are derived from the optimistic task list
+// (pj-meta.deriveRollup).
+import { useEffect, useState } from "react"
 import type { ProjetoView } from "@/lib/projetos/types"
 import { STATUS, type TaskRow, type TaskStatus } from "@/lib/tarefas/types"
 import { statusMeta } from "@/lib/tarefas/types"
@@ -25,128 +26,15 @@ import { dateFull, deriveRollup, type LiveRollup } from "./pj-meta"
 import {
   AreaTag,
   FilterBtn,
-  useAreaOptions,
   MiniStat,
   PageFrame,
-  ProgressBar,
   ProgressRing,
   ProjStatusPill,
   ProjectIcon,
-  ProjectRailItem,
   SaudeChip,
   SkelRow,
 } from "./pj-kit"
 import { tDiff } from "@/components/tarefas/tf-meta"
-
-type RailGroupBy = "area" | "status"
-const PROJ_STATUS_GROUPS: { id: ProjetoView["status"]; label: string }[] = [
-  { id: "ativo", label: "Ativo" },
-  { id: "pausado", label: "Pausado" },
-  { id: "concluido", label: "Concluído" },
-  { id: "arquivado", label: "Arquivado" },
-]
-const railGroupLbl: React.CSSProperties = { display: "flex", alignItems: "center", gap: 6, padding: "6px 10px 5px", fontSize: 11, fontWeight: 500, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }
-const miniSeg = (on: boolean): React.CSSProperties => ({ height: 24, padding: "0 10px", borderRadius: 6, border: "none", cursor: "pointer", background: on ? "var(--surface)" : "transparent", color: on ? "var(--text)" : "var(--text-muted)", fontSize: 11.5, fontWeight: 500, boxShadow: on ? "var(--shadow-sm)" : "none", fontFamily: "var(--font-sans)" })
-
-// ── rail ──────────────────────────────────────────────────────────────────────
-function ProjectRail({
-  projetos,
-  tasks,
-  activeId,
-  onSelectProj,
-  onToggleFav,
-  onNewProject,
-  canCreate,
-  open,
-  onClose,
-}: {
-  projetos: ProjetoView[]
-  tasks: TaskRow[]
-  activeId: number | null
-  onSelectProj: (id: number) => void
-  onToggleFav: (id: number) => void
-  onNewProject: () => void
-  canCreate: boolean
-  open: boolean
-  onClose: () => void
-}) {
-  const [q, setQ] = useState("")
-  const [groupBy, setGroupBy] = useState<RailGroupBy>("area")
-  const areaOpts = useAreaOptions()
-  const list = projetos.filter((p) => p.nome.toLowerCase().includes(q.toLowerCase()))
-  const favs = list.filter((p) => p.favorito)
-
-  const groups: { key: string; label: string; items: ProjetoView[] }[] = []
-  if (groupBy === "area") {
-    areaOpts.forEach((a) => {
-      const items = list.filter((p) => p.area === a.id)
-      if (items.length) groups.push({ key: a.id, label: a.label, items })
-    })
-    const known = new Set(areaOpts.map((a) => a.id))
-    const sem = list.filter((p) => !p.area || !known.has(p.area))
-    if (sem.length) groups.push({ key: "sem", label: "Outros", items: sem })
-  } else {
-    PROJ_STATUS_GROUPS.forEach((s) => {
-      const items = list.filter((p) => p.status === s.id)
-      if (items.length) groups.push({ key: s.id, label: s.label, items })
-    })
-  }
-
-  const railItem = (p: ProjetoView) => (
-    <ProjectRailItem
-      key={p.id}
-      proj={p}
-      live={deriveRollup(p.id, tasks)}
-      active={activeId === p.id}
-      onClick={() => { onSelectProj(p.id); onClose() }}
-      onToggleFav={() => onToggleFav(p.id)}
-    />
-  )
-
-  return (
-    <aside className={`proj-rail${open ? " is-open" : ""}`}>
-      <div style={{ padding: "12px 12px 10px", display: "flex", flexDirection: "column", gap: 10, borderBottom: "1px solid var(--border)" }}>
-        <div style={{ position: "relative" }}>
-          <div style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--text-subtle)" }}><Icon name="search" size={14} /></div>
-          <input value={q} onChange={(e) => setQ(e.target.value)} className="input" placeholder="Buscar projeto…" style={{ paddingLeft: 32, height: 34, fontSize: 13 }} />
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 11, color: "var(--text-subtle)", fontWeight: 500 }}>Agrupar:</span>
-          <div style={{ display: "flex", gap: 2, background: "var(--bg-soft)", borderRadius: 8, padding: 2, border: "1px solid var(--border)" }}>
-            <button onClick={() => setGroupBy("area")} style={miniSeg(groupBy === "area")}>Área</button>
-            <button onClick={() => setGroupBy("status")} style={miniSeg(groupBy === "status")}>Status</button>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ flex: 1, overflowY: "auto", padding: "8px 8px 4px" }}>
-        {favs.length > 0 && (
-          <div style={{ marginBottom: 6 }}>
-            <div style={railGroupLbl}><Icon name="star" size={11} strokeWidth={2} style={{ fill: "currentColor" }} />Favoritos</div>
-            {favs.map(railItem)}
-            <div style={{ height: 1, background: "var(--border)", margin: "8px 10px" }} />
-          </div>
-        )}
-        {groups.map((g) => (
-          <div key={g.key} style={{ marginBottom: 6 }}>
-            <div style={railGroupLbl}>{g.label}<span style={{ color: "var(--text-subtle)", fontWeight: 400 }}>{g.items.length}</span></div>
-            {g.items.map(railItem)}
-          </div>
-        ))}
-        {!list.length && <div style={{ fontSize: 12, color: "var(--text-subtle)", textAlign: "center", padding: "24px 12px" }}>Nenhum projeto encontrado.</div>}
-      </div>
-
-      {canCreate && (
-        <div style={{ padding: 10, borderTop: "1px solid var(--border)" }}>
-          <button onClick={onNewProject} className="btn btn-secondary" style={{ width: "100%", height: 38, fontSize: 13 }}>
-            <Icon name="plus" size={15} strokeWidth={2} />
-            Novo projeto
-          </button>
-        </div>
-      )}
-    </aside>
-  )
-}
 
 // ── project header ──────────────────────────────────────────────────────────────
 function ProjectHeader({
@@ -257,7 +145,7 @@ interface CanvasUi {
   hideDone: boolean
 }
 
-function ProjectCanvas({
+export function ProjectCanvas({
   proj,
   tasks,
   cb,
@@ -269,7 +157,6 @@ function ProjectCanvas({
   onDelete,
   onLinkClick,
   canEdit,
-  onRailOpen,
   onNewTask,
   selectMode,
   setSelectMode,
@@ -287,7 +174,6 @@ function ProjectCanvas({
   onDelete: () => void
   onLinkClick: () => void
   canEdit: boolean
-  onRailOpen: () => void
   onNewTask: () => void
   selectMode: boolean
   setSelectMode: (v: boolean) => void
@@ -310,10 +196,6 @@ function ProjectCanvas({
   return (
     <div style={{ flex: 1, minWidth: 0, overflowY: "auto" }}>
       <PageFrame pad="22px 32px 60px">
-        <button className="rail-toggle btn btn-secondary" onClick={onRailOpen} style={{ height: 32, fontSize: 12, marginBottom: 14 }}>
-          <Icon name="layoutGrid" size={14} strokeWidth={1.9} />
-          Projetos
-        </button>
         <ProjectHeader proj={proj} live={live} canEdit={canEdit} onRename={onRename} onEdit={onEdit} onArchive={onArchive} onDelete={onDelete} onLinkClick={onLinkClick} />
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
@@ -407,7 +289,7 @@ function ProjectEmptyState({ proj, canEdit, onNewTask }: { proj: ProjetoView; ca
   )
 }
 
-function CanvasSkeleton() {
+export function CanvasSkeleton() {
   return (
     <div style={{ flex: 1, minWidth: 0, overflowY: "auto" }}>
       <PageFrame pad="22px 32px 60px">
@@ -425,7 +307,7 @@ function CanvasSkeleton() {
   )
 }
 
-function NoProjectsState({ canCreate, onNew, onTemplates }: { canCreate: boolean; onNew: () => void; onTemplates: () => void }) {
+export function NoProjectsState({ canCreate, onNew, onTemplates }: { canCreate: boolean; onNew: () => void; onTemplates: () => void }) {
   return (
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 40 }}>
       <div style={{ textAlign: "center", maxWidth: 460 }}>
@@ -443,86 +325,3 @@ function NoProjectsState({ canCreate, onNew, onTemplates }: { canCreate: boolean
   )
 }
 
-// ── tab shell (rail + canvas) ───────────────────────────────────────────────────
-export function ProjectsTab(props: {
-  projetos: ProjetoView[]
-  tasks: TaskRow[]
-  activeId: number | null
-  loadingProj: boolean
-  canEdit: boolean
-  onSelectProj: (id: number) => void
-  onToggleFav: (id: number) => void
-  onNewProject: () => void
-  onEditProject: (p: ProjetoView) => void
-  onRename: (id: number, name: string) => void
-  onArchive: (p: ProjetoView) => void
-  onDelete: (id: number) => void
-  onLinkClick: (p: ProjetoView) => void
-  onNewTask: (projetoId: number) => void
-  onTemplates: () => void
-  cb: ViewCallbacks
-  onMove: (id: number, status: TaskStatus) => void
-  onSchedule: (id: number, hora: string) => void
-  selectMode: boolean
-  setSelectMode: (v: boolean) => void
-  selectedIds: Set<number>
-  onSelect: (id: number) => void
-}) {
-  const { projetos, tasks, activeId } = props
-  const [railOpen, setRailOpen] = useState(false)
-  const prevActive = useRef(activeId)
-  // brief skeleton on project switch
-  const [switching, setSwitching] = useState(false)
-  useEffect(() => {
-    if (prevActive.current !== activeId) {
-      prevActive.current = activeId
-      setSwitching(true)
-      const t = setTimeout(() => setSwitching(false), 280)
-      return () => clearTimeout(t)
-    }
-  }, [activeId])
-
-  const sel = activeId != null ? projetos.find((p) => p.id === activeId) ?? null : projetos[0] ?? null
-
-  return (
-    <div className="proj-two-pane">
-      <div className={`rail-scrim${railOpen ? " is-open" : ""}`} onClick={() => setRailOpen(false)} />
-      <ProjectRail
-        projetos={projetos}
-        tasks={tasks}
-        activeId={sel?.id ?? null}
-        onSelectProj={props.onSelectProj}
-        onToggleFav={props.onToggleFav}
-        onNewProject={props.onNewProject}
-        canCreate={props.canEdit}
-        open={railOpen}
-        onClose={() => setRailOpen(false)}
-      />
-      {!projetos.length ? (
-        <NoProjectsState canCreate={props.canEdit} onNew={props.onNewProject} onTemplates={props.onTemplates} />
-      ) : props.loadingProj || switching || !sel ? (
-        <CanvasSkeleton />
-      ) : (
-        <ProjectCanvas
-          proj={sel}
-          tasks={tasks}
-          cb={props.cb}
-          onMove={props.onMove}
-          onSchedule={props.onSchedule}
-          onRename={(name) => props.onRename(sel.id, name)}
-          onEdit={() => props.onEditProject(sel)}
-          onArchive={() => props.onArchive(sel)}
-          onDelete={() => props.onDelete(sel.id)}
-          onLinkClick={() => props.onLinkClick(sel)}
-          canEdit={props.canEdit}
-          onRailOpen={() => setRailOpen(true)}
-          onNewTask={() => props.onNewTask(sel.id)}
-          selectMode={props.selectMode}
-          setSelectMode={props.setSelectMode}
-          selectedIds={props.selectedIds}
-          onSelect={props.onSelect}
-        />
-      )}
-    </div>
-  )
-}

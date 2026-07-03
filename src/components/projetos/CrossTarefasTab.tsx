@@ -8,9 +8,9 @@ import { PRIO, type TaskRow, type TaskStatus, type TeamMember } from "@/lib/tare
 import type { ProjetoView } from "@/lib/projetos/types"
 import { Icon } from "@/components/tarefas/tf-icons"
 import { AssigneeAvatar, Menu, MenuItem, ViewSwitcher, type ViewId } from "@/components/tarefas/tf-kit"
-import { dataLabel, parseQuickAdd, type QuickAddResult } from "@/components/tarefas/tf-meta"
+import { dataLabel, parseQuickAdd } from "@/components/tarefas/tf-meta"
+import type { NovaTarefa } from "@/components/tarefas/QuickAddModal"
 import { AgendaView, CalendarioView, GROUP_OPTS, HojeView, ListaView, QuadroView, type GroupBy, type ViewCallbacks } from "@/components/tarefas/views"
-import { PROJECTS } from "@/lib/tarefas/types"
 import { FilterBtn, PageFrame, PageHeader } from "./pj-kit"
 import { statusMeta, STATUS } from "@/lib/tarefas/types"
 
@@ -31,16 +31,26 @@ const segBtn = (on: boolean): CSSProperties => ({
   fontFamily: "var(--font-sans)",
 })
 
-const projectDef = (key: string) => PROJECTS.find((p) => p.id === key) ?? PROJECTS[0]
-
-function QuickAddBar({ socios, onAdd }: { socios: TeamMember[]; onAdd: (parsed: QuickAddResult) => void }) {
+function QuickAddBar({ socios, projetos, onAdd }: { socios: TeamMember[]; projetos: ProjetoView[]; onAdd: (t: NovaTarefa) => void }) {
   const [v, setV] = useState("")
-  const parsed = v.trim() ? parseQuickAdd(v, { socios, projects: PROJECTS }) : null
-  const hasTokens = parsed && (parsed.projeto || parsed.responsavelId != null || parsed.prio || parsed.data || parsed.hora)
+  const ativos = projetos.filter((p) => p.status !== "arquivado")
+  const parsed = v.trim() ? parseQuickAdd(v, { socios, projetos: ativos }) : null
+  const hasTokens = parsed && (parsed.projetoId != null || parsed.responsavelId != null || parsed.prio || parsed.data || parsed.hora)
   const member = parsed?.responsavelId != null ? socios.find((m) => m.id === parsed.responsavelId) : null
+  const proj = parsed?.projetoId != null ? projetos.find((p) => p.id === parsed.projetoId) : null
   const submit = () => {
     if (!parsed || !parsed.titulo) return
-    onAdd(parsed)
+    onAdd({
+      titulo: parsed.titulo,
+      notes: null,
+      data: parsed.data,
+      hora: parsed.hora,
+      prazo: null,
+      prio: parsed.prio ?? 4,
+      responsavelId: parsed.responsavelId,
+      projetoId: parsed.projetoId,
+      reminder: null,
+    })
     setV("")
   }
   return (
@@ -67,10 +77,10 @@ function QuickAddBar({ socios, onAdd }: { socios: TeamMember[]; onAdd: (parsed: 
               {parsed.hora ? ` ${parsed.hora}` : ""}
             </span>
           )}
-          {parsed.projeto && (
+          {proj && (
             <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 500, color: "var(--text-muted)", background: "var(--bg-sunken)", padding: "2px 8px", borderRadius: 999 }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: projectDef(parsed.projeto).color }} />
-              {projectDef(parsed.projeto).name}
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: proj.cor || "var(--text-muted)" }} />
+              {proj.nome}
             </span>
           )}
           {member && (
@@ -113,7 +123,7 @@ export function CrossTarefasTab({
   cb: ViewCallbacks
   onMove: (id: number, status: TaskStatus) => void
   onSchedule: (id: number, hora: string) => void
-  onAdd: (parsed: QuickAddResult) => void
+  onAdd: (t: NovaTarefa) => void
   selectMode: boolean
   setSelectMode: (v: boolean) => void
   selectedIds: Set<number>
@@ -138,9 +148,9 @@ export function CrossTarefasTab({
 
   return (
     <PageFrame>
-      <PageHeader title="Tarefas" sub="Todas as tarefas, de qualquer projeto — nas mesmas visões, com filtros" />
+      <PageHeader title="Todas as tarefas" sub="De qualquer projeto — nas mesmas visões, com filtros" />
 
-      <QuickAddBar socios={socios} onAdd={onAdd} />
+      <QuickAddBar socios={socios} projetos={projetos} onAdd={onAdd} />
 
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
         <ViewSwitcher view={view} setView={setView} />

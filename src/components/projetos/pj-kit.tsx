@@ -13,78 +13,13 @@ import { glassElevation } from "@/styles/glass"
 import { Icon, type TfIconName } from "@/components/tarefas/tf-icons"
 import { AssigneeAvatar, Menu, MenuItem } from "@/components/tarefas/tf-kit"
 import { TODAY } from "@/components/tarefas/tf-meta"
-import { addBizDaysClient, dateAbs, type LiveRollup } from "./pj-meta"
+import { addBizDaysClient } from "./pj-meta"
 
 const EASE = "cubic-bezier(0.22, 1, 0.36, 1)"
 
-// ── module tabs (Tarefas · Projetos · Dashboard · Templates) ─────────────────
+// ── legacy deep-link tab ids (?tab= no /tarefas; o workspace v2 os mapeia
+// para a navegação da sidebar) ────────────────────────────────────────────────
 export type ModuleTab = "tarefas" | "projetos" | "dashboard" | "templates"
-const MODULE_TABS: { id: ModuleTab; label: string; icon: TfIconName }[] = [
-  { id: "tarefas", label: "Tarefas", icon: "listChecks" },
-  { id: "projetos", label: "Projetos", icon: "layoutGrid" },
-  { id: "dashboard", label: "Dashboard", icon: "barChart" },
-  { id: "templates", label: "Templates", icon: "copy" },
-]
-export function ModuleTabs({
-  active,
-  onChange,
-  counts = {},
-}: {
-  active: ModuleTab
-  onChange: (t: ModuleTab) => void
-  counts?: Partial<Record<ModuleTab, number>>
-}) {
-  return (
-    <div style={{ display: "flex", alignItems: "stretch", gap: 0, padding: "0 8px", overflowX: "auto", overflowY: "hidden", flexShrink: 0 }}>
-      {MODULE_TABS.map((t) => {
-        const on = active === t.id
-        const c = counts[t.id]
-        return (
-          <button
-            key={t.id}
-            onClick={() => onChange(t.id)}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "0 14px",
-              height: 44,
-              border: "none",
-              background: "transparent",
-              fontSize: 13.5,
-              fontWeight: on ? 600 : 500,
-              color: on ? "var(--text)" : "var(--text-muted)",
-              letterSpacing: "-0.01em",
-              cursor: "pointer",
-              whiteSpace: "nowrap",
-              fontFamily: "var(--font-sans)",
-              borderBottom: on ? "2px solid var(--accent)" : "2px solid transparent",
-              marginBottom: -1,
-            }}
-          >
-            <Icon name={t.icon} size={15} strokeWidth={on ? 2 : 1.8} style={{ color: on ? "var(--accent)" : "currentColor" }} />
-            <span>{t.label}</span>
-            {c != null && (
-              <span
-                style={{
-                  fontSize: 11,
-                  fontWeight: 500,
-                  background: on ? "var(--accent-soft)" : "var(--bg-sunken)",
-                  color: on ? "var(--accent)" : "var(--text-subtle)",
-                  padding: "1px 6px",
-                  borderRadius: 999,
-                  fontFeatureSettings: '"tnum"',
-                }}
-              >
-                {c}
-              </span>
-            )}
-          </button>
-        )
-      })}
-    </div>
-  )
-}
 
 // ── saúde do projeto (chip + dot) ────────────────────────────────────────────
 const SAUDE_SOFT: Record<SaudeProjeto, string> = {
@@ -252,111 +187,6 @@ export function ProjectIcon({ cor, icone, size = 34, radius = 9 }: { cor: string
     >
       <Icon name={(icone as TfIconName) || "folder"} size={size * 0.5} strokeWidth={1.8} />
     </span>
-  )
-}
-
-// ── item do rail de projetos ──────────────────────────────────────────────────
-export function ProjectRailItem({
-  proj,
-  live,
-  active,
-  onClick,
-  onToggleFav,
-}: {
-  proj: ProjetoView
-  live: LiveRollup
-  active: boolean
-  onClick: () => void
-  onToggleFav: () => void
-}) {
-  const open = live.total - live.done
-  return (
-    <div
-      onClick={onClick}
-      className="rail-item"
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 7,
-        padding: "9px 10px",
-        borderRadius: 10,
-        cursor: "pointer",
-        background: active ? "var(--accent-soft)" : "transparent",
-        outline: active ? "1.5px solid color-mix(in srgb, var(--accent) 35%, transparent)" : "none",
-        outlineOffset: -1,
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-        <span style={{ width: 9, height: 9, borderRadius: "50%", background: proj.cor || "var(--text-muted)", flexShrink: 0 }} />
-        <span
-          style={{
-            flex: 1,
-            minWidth: 0,
-            fontSize: 13,
-            fontWeight: 500,
-            color: active ? "var(--accent)" : "var(--text)",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            letterSpacing: "-0.01em",
-          }}
-        >
-          {proj.nome}
-        </span>
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            onToggleFav()
-          }}
-          className="rail-fav"
-          title={proj.favorito ? "Remover favorito" : "Favoritar"}
-          style={{
-            border: "none",
-            background: "transparent",
-            cursor: "pointer",
-            padding: 0,
-            lineHeight: 0,
-            flexShrink: 0,
-            color: proj.favorito ? "var(--accent)" : "var(--text-subtle)",
-            opacity: proj.favorito ? 1 : 0,
-          }}
-        >
-          <Icon name="star" size={13} strokeWidth={1.9} style={proj.favorito ? { fill: "currentColor" } : undefined} />
-        </button>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 18 }}>
-        <ProgressBar value={live.progresso} color={proj.cor || "var(--accent)"} height={3} />
-        <SaudeDot saude={live.saude} />
-        <span style={{ fontSize: 11, color: "var(--text-subtle)", fontFeatureSettings: '"tnum"', whiteSpace: "nowrap" }}>{open} ab.</span>
-      </div>
-    </div>
-  )
-}
-
-// ── card de projeto (grade) ───────────────────────────────────────────────────
-export function ProjectCard({ proj, live, onClick }: { proj: ProjetoView; live: LiveRollup; onClick: () => void }) {
-  return (
-    <div onClick={onClick} className="lift-card card" style={{ padding: 16, cursor: "pointer", display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-        <ProjectIcon cor={proj.cor} icone={proj.icone} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 500, color: "var(--text)", letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{proj.nome}</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 5 }}>
-            <ProjStatusPill status={proj.status} />
-            {proj.area && <AreaTag area={proj.area} />}
-          </div>
-        </div>
-        {proj.responsavel && <AssigneeAvatar id={proj.responsavel.id} size={24} />}
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <ProgressBar value={live.progresso} color={proj.cor || "var(--accent)"} />
-        <span style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted)", fontFeatureSettings: '"tnum"' }}>{live.progresso}%</span>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <SaudeChip saude={live.saude} compact />
-        <span style={{ fontSize: 12, color: "var(--text-subtle)", marginLeft: "auto" }}>{proj.prazo ? `Prazo ${dateAbs(proj.prazo)}` : "Sem prazo"}</span>
-      </div>
-    </div>
   )
 }
 
