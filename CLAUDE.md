@@ -145,6 +145,42 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **Documentos — "docs2" editor redesign (handoff `lexia-handoff(4).zip`) + glass nos popups + passe nas abas
+  (this session, tsc 0, 320/320 testes, NO migration)** (memory `project_documents_module`,
+  `project_acrylic_surfaces`). README apontava p/ `LexIA - Documentos.html`, mas o `src/docs/docs2-*.jsx`
+  do bundle estava AUSENTE — o design foi reconstruído do CSS embutido + 3 screenshots (`editor.png`,
+  `01/02-light-editor.png`) + diff do v1. **Decisões do usuário (perguntadas):** ambos os painéis abertos por
+  padrão; TODAS as 3 novas interações; passe completo (inclui abas). **Constraints mantidas:** paginação A4 +
+  zoom ([pagination.ts](src/components/documents/editor2/pagination.ts) INTACTA) e o chat da LexIA
+  ([LexiaChat](src/components/lexia/LexiaChat.tsx)) NÃO mudaram; nada de funcionalidade removida. **Novos
+  arquivos** em `components/documents/editor2/`: `field-types.tsx` (dataType→ícone+rótulo PT-BR),
+  `ai-flash.ts` (extensão PM: realce dourado transitório de edição da IA via `aiFlashKey` meta+timeout),
+  `placeholder-view.ts` (**NodeView só-cliente**: mostra o VALOR inline quando o campo está preenchido, senão
+  `{{rótulo}}`, lendo `valores` via `getValor`; + `PlaceholderRefresh`, decoração de nó versionada que repinta
+  quando `valores` muda — um fill NÃO é edição de doc; o import `.docx` no servidor via `editor-schema.ts`
+  `PlaceholderNode.renderHTML` continua texto puro, o NodeView é só do browser via `editorProps.nodeViews`),
+  `EditorPopovers.tsx` (3 popovers glass: **FieldFillPopover** = clicar num `{{campo}}` no papel p/ preencher;
+  **ArmFieldPopover** = novo campo nome+tipo; **SelectionToolbar** = B/I/U + "Editar com a LexIA"), `TimbradoPicker.tsx`
+  (dropdown glass com miniatura+"Padrão do escritório", substitui o `<select>` cru). **[DocEditor.tsx](src/components/documents/editor2/DocEditor.tsx)**
+  (reescrito, paginação/zoom intactos): `editorProps.handleClickOn`→`onFieldClick` (a menos que armado);
+  `handleClick`(armado)→`onArmClick`; botão **"posicionar campo"** (Crosshair, `paperArmed` crosshair+anel dourado);
+  **"Campo"** virou popover no cursor (fim do `window.prompt`); handle novo `rectOfRange/markState/toggleMark/
+  insertFieldAt/flashRange`; `applyPosOp` agora dá flash no intervalo editado; **`onMarksChange`** (correção da
+  única revisão: as marcas da barra flutuante ficavam obsoletas ao formatar pela barra do topo/Ctrl+B — reemitido
+  no `onUpdate` quando há seleção). **[page.tsx](src/app/documents/doc/[id]/page.tsx)** (reescrito): ambos os
+  painéis abrem por padrão (campos esq · LexIA dir); passa `valores` ao DocEditor; painel de campos com **ícones
+  por tipo**; renderiza os 3 popovers glass; seleção→barra flutuante ("Editar com a LexIA" só abre o painel docado,
+  a seleção já vira chip); toda a lógica de load/autosave/`onDocAccept`/`getChatContext`/salvar-modelo preservada.
+  **Glass**: `lexGlassStrong`+`glassElevation` nos popovers/picker e no menu "⋯" de *Meus documentos*
+  ([LibraryTab.css.ts](src/components/documents/page/tabs/LibraryTab/LibraryTab.css.ts) `rowMenu` compõe o glass).
+  **Abas**: "Criar"→**"Novo documento"** + rótulo **"Módulo de Documentos"** à direita
+  ([TabStrip](src/components/documents/page/tabs/TabStrip.tsx)); hero do CreateTab alinhado. **Método**: build
+  direto + 1 workflow de revisão adversarial (4 dims, verify por achado) → **1 achado low confirmado e corrigido**
+  (selMarks obsoleto). **Verificado: `npx tsc --noEmit` 0 erros; `npm test` 320/320** (1 novo:
+  `tests/documents-field-types.test.ts`). **Sem migração. User action:** visual em `/documents/doc/[id]`: campo
+  preenchido aparece no papel (sublinhado dourado); clicar num `{{campo}}` → popover glass; barra "Campo"/mira →
+  popover novo campo; selecionar texto → barra flutuante (B/I/U + Editar com a LexIA) e destaque dourado quando a
+  IA aplica; seletor de timbrado = dropdown glass; menu "⋯" em Meus documentos com glass; abas "Novo documento…".
 - **Tarefas & Projetos — full "Tarefas v2" (Todoist-style) redesign + Ramble voice capture + 2 post-hoc
   bugfixes (this session, tsc 0, 317/317 testes, NO migration)** (memories `project_projetos_module`,
   `project_tarefas_module`). Implemented the Claude Design "LexIA - Tarefas v2" handoff, replacing the old
