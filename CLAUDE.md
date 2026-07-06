@@ -145,6 +145,39 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **Comercial · fix: gastos de junho não apareciam + atribuição de conversão UNIFICADA por ENTRADA + default
+  de data + diagnóstico (this session, VERIFIED tsc 0, 472/472 testes, eslint limpo, NO migration).** Sintoma:
+  contrato ganho + gastos de anúncios lançados, mas junho mostrava Investimento R$ 0 E Valor contratado R$ 0.
+  Os dois fixes anteriores (categoria por nome; valor pelo caso) já estavam commitados+pushados → era DADOS/
+  semântica (confirmado no dev.db). **(A) Ad spend por COMPETÊNCIA** — novo `spendPeriodo` em
+  [comercial/queries.ts](src/lib/comercial/queries.ts): o gasto pertence ao mês de `dataVencimento ??
+  dataLancamento` (OR em SQL — Prisma não tem COALESCE-in-range); aplicado em `spendWhere`
+  (getComercialKpis/getOrigemBreakdown), `getCampanhas`, e no `getComercialDataset` (select ganhou
+  `dataVencimento`; `CmDatasetGasto.data` agora é a competência). Corrige o Investimento: o gasto lançado em
+  julho com venc-junho passa a contar em junho. **(B) Atribuição de conversão por mês de ENTRADA/CONTATO
+  (regra do usuário: um lead de junho é resultado de junho mesmo fechando meses depois — foi a verba/estratégia
+  de junho que o trouxe).** *Nota:* numa 1ª tentativa desta sessão eu troquei para mês da CONVERSÃO e o usuário
+  CORRIGIU — revertido. O CLIENTE ([cm-meta.ts](src/components/comercial/cm-meta.ts)) já era por entrada (helper
+  `ganhosDoPeriodo` = `etapa==="ganho" && sc.test(dataEntrada)`, usado em cmKpis/cmChannels/cmCampaignStats/
+  cmTrend; cmFunnel idem). O SERVIDOR estava INCONSISTENTE (usava `dataConversao`) — **alinhado**:
+  `getComercialKpis`, `getCampanhas` e `getOrigemBreakdown` agora filtram ganhos por `dataEntrada`. Agora
+  cliente (tela Comercial) e servidor (Início/LexIA/export) contam igual. **CONSEQUÊNCIA:** o valor de um lead
+  ganho aparece no mês em que o lead ENTROU; se ele entrou antes, conta no mês anterior (não no de fechamento).
+  **(C) Default de data** — `cmDefaultDateFor(ref,period)` (hoje se o período em visão inclui hoje, senão o
+  ÚLTIMO dia do período); `CmGastoModal` ganhou prop `defaultData` (ligado no
+  [ComercialApp.tsx](src/components/comercial/ComercialApp.tsx)); e o `venc` HARDCODED `"2026-06-15"` do
+  [NovoLancamentoModal.tsx](src/components/financeiro/interativo/NovoLancamentoModal.tsx) virou `todayISO()`.
+  **Diagnóstico reutilizável** (read-only) [scripts/diagnostico-comercial.ts](scripts/diagnostico-comercial.ts):
+  `npx tsx scripts/diagnostico-comercial.ts 2026-06` explica linha-a-linha por que cada número zera + aponta os
+  gastos fora do mês e os leads ganhos sem caso/honorário (roda contra o DATABASE_URL de prod; NÃO grava).
+  **Verificado END-TO-END no dev.db** (reproduz o print): junho → Investimento **R$ 9.192,28** (via competência;
+  cliente == servidor). **Valor contratado segue R$ 0 em junho** porque o ÚNICO lead ganho que ENTROU em junho
+  (Thiago #37) não tem caso/honorário vinculado — atribuição por entrada está certa; falta LINKAR o honorário
+  (Converter / vincular caso). Testes: 5 novos em [tests/cm-meta.test.ts](tests/cm-meta.test.ts) (atribuição por
+  entrada + `cmDefaultDateFor`). **tsc 0; 472/472; eslint limpo; sem migração. User action:** deploy → junho
+  mostra o investimento; para o VALOR aparecer, vincular o honorário ao lead ganho de junho (Converter/caso).
+  Restam 5 gastos de campanha (#471–475, venc=null lançamento=julho) que caem em julho — re-datar se forem de
+  junho; o diagnóstico aponta quais.
 - **Comercial · fix: retorno (ROAS/ROI) não contava honorários lançados no caso (this session, VERIFIED
   tsc 0, 467/467 testes, eslint limpo, NO migration).** Sintoma: contrato ganho (Thiago José, mídia paga
   jun/26) com R$ 2.400 já recebidos NÃO aparecia como retorno no Comercial. **Causa raiz:** o valor de um
