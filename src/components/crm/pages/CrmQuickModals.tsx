@@ -21,6 +21,7 @@ import {
   anonimizarCliente,
   createCliente,
   createLancamento,
+  mesclarClientes,
 } from "../crm-api"
 import type { CrmDataset } from "../crm-types"
 import { ORIGEM_LABEL } from "@/lib/comercial/types"
@@ -83,7 +84,7 @@ export function CrmQuickCliente({ onClose, onRefresh }: QuickClienteProps) {
 
   return (
     <FxModal
-      title="Novo cliente"
+      title="Novo contato"
       sub="Cadastro de pessoa física ou jurídica"
       onClose={onClose}
       width={520}
@@ -332,6 +333,91 @@ export function CrmQuickLancamento({ dataset, onClose, onRefresh }: QuickLancame
             placeholder="—"
           />
         </div>
+      </div>
+    </FxModal>
+  )
+}
+
+// ───────────────────────── Mesclar clientes (dedup) ─────────────────────────
+interface MesclarProps {
+  dataset: CrmDataset
+  /** The survivor — the client whose page we came from (kept). */
+  alvoId: number
+  onClose: () => void
+  onRefresh: () => void
+}
+export function CrmMesclarClientes({ dataset, alvoId, onClose, onRefresh }: MesclarProps) {
+  const { toast } = useCrmToast()
+  const [pick, setPick] = useState("")
+  const [txt, setTxt] = useState("")
+  const [saving, setSaving] = useState(false)
+
+  const alvo = useMemo(() => dataset.clientes.find((c) => c.id === alvoId), [dataset.clientes, alvoId])
+  const dup = useMemo(() => dataset.clientes.find((c) => String(c.id) === pick), [dataset.clientes, pick])
+  // confirm by typing the duplicate's name (it is the record being removed)
+  const ok = !!dup && dup.id !== alvoId && txt.trim().toUpperCase() === dup.nome.toUpperCase()
+
+  const confirm = async () => {
+    if (saving || !ok || !dup) return
+    setSaving(true)
+    try {
+      await mesclarClientes(alvoId, dup.id)
+      toast("Clientes mesclados", { icon: "checkCircle" })
+      onRefresh()
+      onClose()
+    } catch (err) {
+      toast(errMsg(err), { tone: "neg", icon: "alertTriangle" })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <FxModal
+      title="Mesclar clientes"
+      sub={alvo ? `Absorve um cliente duplicado em ${alvo.nome}. Irreversível.` : "Mesclar clientes duplicados."}
+      onClose={onClose}
+      width={520}
+      footer={
+        <>
+          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+          <button
+            className="btn btn-primary"
+            disabled={!ok || saving}
+            onClick={confirm}
+            style={ok ? { background: "var(--fin-neg,#C0492F)", color: "#fff" } : {}}
+          >
+            Mesclar
+          </button>
+        </>
+      }
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: 12, borderRadius: 10, background: "var(--accent-soft)", fontSize: 12, color: "var(--text-muted)" }}>
+          <Icon name="sparkles" size={18} style={{ color: "var(--accent)", flexShrink: 0 }} />
+          <span>Todos os casos, honorários, lançamentos, tarefas, eventos, documentos, leads e notas do cliente duplicado passam para <strong style={{ color: "var(--text)" }}>{alvo?.nome ?? "este cliente"}</strong>. Campos vazios deste são preenchidos com os do duplicado.</span>
+        </div>
+        <div>
+          <FxLabel>Cliente duplicado (será removido)</FxLabel>
+          <FxSelect
+            options={dataset.clientes.filter((c) => c.id !== alvoId).map((x) => ({ value: String(x.id), label: x.nome }))}
+            value={pick}
+            onChange={(e) => { setPick(e.target.value); setTxt("") }}
+            placeholder="Selecione o duplicado…"
+          />
+        </div>
+        {dup && (
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: 12, borderRadius: 10, background: "rgba(192,73,47,0.08)", color: "var(--fin-neg,#C0492F)", fontSize: 12 }}>
+              <Icon name="alertTriangle" size={18} />
+              <span>O cadastro de <strong>{dup.nome}</strong> será excluído após a migração dos vínculos.</span>
+            </div>
+            <div>
+              <FxLabel>Digite o nome do cliente duplicado para confirmar</FxLabel>
+              <FxInput value={txt} onChange={(e) => setTxt(e.target.value)} placeholder={dup.nome} />
+            </div>
+          </>
+        )}
       </div>
     </FxModal>
   )

@@ -66,6 +66,7 @@ interface Props {
   dataset: CrmDataset
   nav: CrmNav
   onAnonimizar: (id: number) => void
+  onMesclar: (id: number) => void
   onRefresh: () => void
 }
 
@@ -200,7 +201,7 @@ function CrmLancRow({
   )
 }
 
-export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, onAnonimizar, onRefresh }: Props) {
+export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, onAnonimizar, onMesclar, onRefresh }: Props) {
   const { toast } = useCrmToast()
   // "Equipe" (não Sócio/Admin/Financeiro) não dá baixa nem cria lançamentos —
   // continua vendo honorários/lançamentos e seus status (pago/pendente).
@@ -426,6 +427,11 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
             <button className="btn btn-secondary" onClick={() => setEdit((e) => !e)} title="Editar dados">
               <Icon name="edit" size={14} />{edit ? "Concluir" : "Editar"}
             </button>
+            {(role === "admin" || role === "socio") && (
+              <button className="btn btn-secondary" onClick={() => onMesclar(clienteId)} title="Mesclar um cliente duplicado neste (migra tudo e remove o duplicado)">
+                <Icon name="gitMerge" size={14} />Mesclar
+              </button>
+            )}
             {(role === "admin" || role === "socio") && (
               <button className="btn btn-ghost" onClick={() => onAnonimizar(clienteId)} title="Excluir cliente (LGPD — apaga os dados pessoais, mantém o financeiro)" style={{ color: "var(--fin-neg,#C0492F)" }}>
                 <Icon name="trash2" size={14} />Excluir

@@ -39,6 +39,9 @@ export const searchAll = (q: string) => get<SearchResults>(`/api/search?q=${enco
 export const createCliente = (body: unknown) => mut(`/api/clientes`, "POST", body)
 export const patchCliente = (id: number, body: unknown) => mut(`/api/clientes/${id}`, "PATCH", body)
 export const anonimizarCliente = (id: number) => mut(`/api/clientes/${id}/anonimizar`, "POST")
+/** Merge the duplicate into the survivor (id). Returns per-relation move counts. */
+export const mesclarClientes = (id: number, duplicadoId: number) =>
+  mut(`/api/clientes/${id}/mesclar`, "POST", { duplicadoId })
 
 // ── cobrança & anotações ──
 export const addAnotacaoCliente = (id: number, body: { conteudo: string; fixado?: boolean }) =>
