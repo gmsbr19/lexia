@@ -2,12 +2,15 @@
 // office task standard: a "verbo de ação + objeto" title, a description, a
 // responsável, a prazo, and DoR + DoD (the agent drafts the DoR/DoD itself).
 import { z } from "zod"
+import { prisma } from "@/lib/db"
 import { getTarefasDataset } from "@/lib/tarefas/queries"
 import { createTarefa, deleteTarefa, updateTarefa } from "@/lib/tarefas/mutations"
 import { idOpt, idReq } from "@/lib/validation"
-import { dataBr, nomeUsuario } from "../confirmar"
+import { dataBr, diffRow, nomeUsuario } from "../confirmar"
 import { defineTool } from "../types"
 import { cap, limite } from "./shared"
+
+const STATUS_LABEL: Record<string, string> = { todo: "A fazer", doing: "Em andamento", review: "Em revisão", done: "Concluída" }
 
 const dataISO = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "use o formato YYYY-MM-DD")
 
@@ -117,11 +120,13 @@ export const tarefasTools = [
     }),
     resumo: (i) => `Editar tarefa #${i.id}`,
     montarConfirmacao: async (_ctx, i) => {
-      const det: { label: string; valor: string }[] = []
-      if (i.titulo) det.push({ label: "Novo título", valor: i.titulo })
-      if (i.prazo) det.push({ label: "Prazo", valor: dataBr(i.prazo) })
-      if (i.status) det.push({ label: "Status", valor: i.status })
-      if (i.prio != null) det.push({ label: "Prioridade", valor: String(i.prio) })
+      const antes = await prisma.tarefa.findUnique({ where: { id: i.id }, select: { titulo: true, prazo: true, status: true, prio: true } })
+      const det = [
+        diffRow("Título", i.titulo, antes?.titulo),
+        diffRow("Prazo", i.prazo ? dataBr(i.prazo) : undefined, antes?.prazo ? dataBr(antes.prazo.toISOString().slice(0, 10)) : undefined),
+        diffRow("Status", i.status ? STATUS_LABEL[i.status] : undefined, antes?.status ? STATUS_LABEL[antes.status] : undefined),
+        diffRow("Prioridade", i.prio != null ? String(i.prio) : undefined, antes?.prio != null ? String(antes.prio) : undefined),
+      ].filter((d): d is NonNullable<typeof d> => d != null)
       return { resumo: "Editar tarefa", detalhes: det.length ? det : undefined }
     },
     run: async (ctx, i) => updateTarefa(i.id, { titulo: i.titulo, prazo: i.prazo, prio: i.prio, status: i.status, notes: i.notes }, ctx.user.email),

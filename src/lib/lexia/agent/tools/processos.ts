@@ -27,7 +27,7 @@ import { listMovimentosInbox, listPrazos, listProcessos, listPublicacoes, getPro
 import { podeAcessarProcesso } from "@/lib/processos/rbac"
 import { idOpt, idReq } from "@/lib/validation"
 import { verFinanceiro } from "@/lib/users/types"
-import { brl, dataBr, nomeCaso, nomeCliente, nomeUsuario, rotuloProcesso } from "../confirmar"
+import { brl, dataBr, diffRow, nomeCaso, nomeCliente, nomeUsuario, rotuloProcesso } from "../confirmar"
 import { defineTool, type AgentCtx } from "../types"
 import { limite } from "./shared"
 
@@ -194,13 +194,19 @@ export const processosTools = [
     }),
     resumo: (i) => `Editar processo #${i.id}`,
     montarConfirmacao: async (_ctx, i) => {
-      const det = [{ label: "Processo", valor: await rotuloProcesso(i.id) }]
-      if (i.status) det.push({ label: "Status", valor: i.status })
-      if (i.classe) det.push({ label: "Classe", valor: i.classe })
-      if (i.assunto) det.push({ label: "Assunto", valor: i.assunto })
-      if (i.tribunal) det.push({ label: "Tribunal", valor: i.tribunal })
-      if (i.valorCausaCents != null) det.push({ label: "Valor da causa", valor: brl(i.valorCausaCents) })
-      if (i.responsavelId) det.push({ label: "Responsável", valor: await nomeUsuario(i.responsavelId) })
+      const antes = await prisma.processo.findUnique({
+        where: { id: i.id },
+        select: { status: true, classe: true, assunto: true, tribunal: true, valorCausaCents: true, responsavelUser: { select: { nome: true } } },
+      })
+      const det = [
+        { label: "Processo", valor: await rotuloProcesso(i.id) },
+        diffRow("Status", i.status, antes?.status),
+        diffRow("Classe", i.classe, antes?.classe ?? undefined),
+        diffRow("Assunto", i.assunto, antes?.assunto ?? undefined),
+        diffRow("Tribunal", i.tribunal, antes?.tribunal ?? undefined),
+        diffRow("Valor da causa", i.valorCausaCents != null ? brl(i.valorCausaCents) : undefined, antes?.valorCausaCents != null ? brl(antes.valorCausaCents) : undefined),
+        i.responsavelId ? diffRow("Responsável", await nomeUsuario(i.responsavelId), antes?.responsavelUser?.nome ?? undefined) : null,
+      ].filter((d): d is NonNullable<typeof d> => d != null)
       return { resumo: "Editar processo", detalhes: det }
     },
     run: async (ctx, i) => {
@@ -406,12 +412,17 @@ export const processosTools = [
     }),
     resumo: (i) => `Editar prazo #${i.id}`,
     montarConfirmacao: async (_ctx, i) => {
-      const p = await prisma.prazo.findUnique({ where: { id: i.id }, select: { descricao: true } })
-      const det = [{ label: "Prazo", valor: p?.descricao ?? `#${i.id}` }]
-      if (i.descricao) det.push({ label: "Nova descrição", valor: i.descricao })
-      if (i.quantidadeDias != null) det.push({ label: "Dias", valor: String(i.quantidadeDias) })
-      if (i.status) det.push({ label: "Status", valor: i.status })
-      if (i.responsavelId) det.push({ label: "Responsável", valor: await nomeUsuario(i.responsavelId) })
+      const p = await prisma.prazo.findUnique({
+        where: { id: i.id },
+        select: { descricao: true, quantidadeDias: true, status: true, responsavelUser: { select: { nome: true } } },
+      })
+      const det = [
+        { label: "Prazo", valor: p?.descricao ?? `#${i.id}` },
+        diffRow("Nova descrição", i.descricao, p?.descricao ?? undefined),
+        diffRow("Dias", i.quantidadeDias != null ? String(i.quantidadeDias) : undefined, p?.quantidadeDias != null ? String(p.quantidadeDias) : undefined),
+        diffRow("Status", i.status, p?.status ?? undefined),
+        i.responsavelId ? diffRow("Responsável", await nomeUsuario(i.responsavelId), p?.responsavelUser?.nome ?? undefined) : null,
+      ].filter((d): d is NonNullable<typeof d> => d != null)
       return { resumo: "Editar prazo", detalhes: det }
     },
     run: async (ctx, i) => {
