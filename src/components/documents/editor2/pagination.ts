@@ -167,6 +167,7 @@ function computeDecorations(view: EditorView): Computed {
 interface PgState {
   deco: DecorationSet
   version: number // bumps only when the layout could have changed (doc edit / margins)
+  forced: boolean // true when the bump came from an explicit "recompute" meta → dispatch past the sig guard
 }
 
 export const Pagination = Extension.create({
@@ -175,23 +176,25 @@ export const Pagination = Extension.create({
     let raf = 0
     let timer: ReturnType<typeof setTimeout> | null = null
     let lastVersion = -1
+    let pendingForce = false // next measure dispatches even if the sig is unchanged
     let lastSig = " " // force the first compute to differ
     return [
       new Plugin({
         key: paginationKey,
         state: {
-          init: (): PgState => ({ deco: DecorationSet.empty, version: 0 }),
+          init: (): PgState => ({ deco: DecorationSet.empty, version: 0, forced: false }),
           apply(tr, old: PgState): PgState {
             const meta = tr.getMeta(paginationKey)
             // our own recompute result — adopt it WITHOUT bumping the version, so it
             // doesn't re-trigger another recompute (no loop)
-            if (meta instanceof DecorationSet) return { deco: meta, version: old.version }
+            if (meta instanceof DecorationSet) return { deco: meta, version: old.version, forced: false }
             // bump ONLY on a real edit or an explicit "recompute" (e.g. margins moved).
             // A selection-only transaction leaves the version alone → dragging to select
             // text never re-runs the reflow-heavy measurement that disrupts the native
             // browser selection.
-            const version = tr.docChanged || meta === "recompute" ? old.version + 1 : old.version
-            return { deco: old.deco.map(tr.mapping, tr.doc), version }
+            const recompute = meta === "recompute"
+            const version = tr.docChanged || recompute ? old.version + 1 : old.version
+            return { deco: old.deco.map(tr.mapping, tr.doc), version, forced: recompute }
           },
         },
         props: {
@@ -203,15 +206,17 @@ export const Pagination = Extension.create({
           const measure = () => {
             raf = 0
             const { set, sig } = computeDecorations(view)
-            if (sig !== lastSig) {
+            if (pendingForce || sig !== lastSig) {
               lastSig = sig
+              pendingForce = false
               view.dispatch(view.state.tr.setMeta(paginationKey, set))
             }
           }
           // Debounce: a burst of keystrokes coalesces into a SINGLE measurement once
           // typing pauses (~150ms) → zero reflow during active typing. The rAF then
           // measures after layout has settled.
-          const schedule = () => {
+          const schedule = (force: boolean) => {
+            if (force) pendingForce = true
             if (timer) clearTimeout(timer)
             timer = setTimeout(() => {
               timer = null
@@ -222,10 +227,10 @@ export const Pagination = Extension.create({
           // recompute only when the version changed (real edit / margins) — NOT on
           // every update, which also fires for selection changes.
           const maybeSchedule = () => {
-            const v = (paginationKey.getState(view.state) as PgState).version
-            if (v !== lastVersion) {
-              lastVersion = v
-              schedule()
+            const st = paginationKey.getState(view.state) as PgState
+            if (st.version !== lastVersion) {
+              lastVersion = st.version
+              schedule(st.forced)
             }
           }
           maybeSchedule() // initial layout

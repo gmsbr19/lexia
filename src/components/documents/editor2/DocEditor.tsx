@@ -1,8 +1,10 @@
 "use client"
 
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react"
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react"
 import { EditorContent, useEditor, type Editor } from "@tiptap/react"
 import clsx from "clsx"
+import { lexGlassStrong } from "@/styles/glass.css"
+import { glassElevation } from "@/styles/glass"
 import { editorExtensions } from "@/lib/documents/editor-schema"
 import { DEFAULT_MARGINS_MM, type MarginsMm, type LexDoc } from "@/lib/documents/model/types"
 import type { PlaceholderType } from "@/lib/documents/model/types"
@@ -32,6 +34,7 @@ import {
   ZoomOut,
 } from "lucide-react"
 import { lexToProseMirror, proseMirrorToLex, type PMNode } from "@/lib/documents/model/tiptap"
+import type { Node as ProseNode } from "@tiptap/pm/model"
 import * as s from "./doc-editor.css"
 
 // ── slug helper for a new field's stable key ───────────────────────────────────
@@ -84,6 +87,14 @@ function Toolbar({
   onCampoAtCursor: () => void
 }) {
   const ICON = 15
+  // Comandos que trocam a ESTRUTURA/altura do bloco (align/título/lista/citação/
+  // quebra) usam setNodeMarkup, que pode deixar as decorações da paginação
+  // mal-mapeadas (texto "corrido" ignorando as margens das páginas 2+). Forçar um
+  // recompute limpo depois — como um remount faria — reancorra as quebras.
+  const blockCmd = (fn: () => void) => {
+    fn()
+    editor.view.dispatch(editor.state.tr.setMeta(paginationKey, "recompute"))
+  }
   return (
     <div className={s.toolbar}>
       <Btn title="Negrito" active={editor.isActive("bold")} onClick={() => editor.chain().focus().toggleBold().run()}>
@@ -101,34 +112,34 @@ function Toolbar({
 
       <span className={s.sep} />
 
-      <Btn title="Título 1" active={editor.isActive("heading", { level: 1 })} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}>
+      <Btn title="Título 1" active={editor.isActive("heading", { level: 1 })} onClick={() => blockCmd(() => editor.chain().focus().toggleHeading({ level: 1 }).run())}>
         <Heading1 size={ICON} />
       </Btn>
-      <Btn title="Título 2" active={editor.isActive("heading", { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>
+      <Btn title="Título 2" active={editor.isActive("heading", { level: 2 })} onClick={() => blockCmd(() => editor.chain().focus().toggleHeading({ level: 2 }).run())}>
         <Heading2 size={ICON} />
       </Btn>
-      <Btn title="Lista" active={editor.isActive("bulletList")} onClick={() => editor.chain().focus().toggleBulletList().run()}>
+      <Btn title="Lista" active={editor.isActive("bulletList")} onClick={() => blockCmd(() => editor.chain().focus().toggleBulletList().run())}>
         <List size={ICON} />
       </Btn>
-      <Btn title="Lista numerada" active={editor.isActive("orderedList")} onClick={() => editor.chain().focus().toggleOrderedList().run()}>
+      <Btn title="Lista numerada" active={editor.isActive("orderedList")} onClick={() => blockCmd(() => editor.chain().focus().toggleOrderedList().run())}>
         <ListOrdered size={ICON} />
       </Btn>
-      <Btn title="Citação" active={editor.isActive("blockquote")} onClick={() => editor.chain().focus().toggleBlockquote().run()}>
+      <Btn title="Citação" active={editor.isActive("blockquote")} onClick={() => blockCmd(() => editor.chain().focus().toggleBlockquote().run())}>
         <Quote size={ICON} />
       </Btn>
 
       <span className={s.sep} />
 
-      <Btn title="Alinhar à esquerda" active={editor.isActive({ textAlign: "left" })} onClick={() => editor.chain().focus().setTextAlign("left").run()}>
+      <Btn title="Alinhar à esquerda" active={editor.isActive({ textAlign: "left" })} onClick={() => blockCmd(() => editor.chain().focus().setTextAlign("left").run())}>
         <AlignLeft size={ICON} />
       </Btn>
-      <Btn title="Centralizar" active={editor.isActive({ textAlign: "center" })} onClick={() => editor.chain().focus().setTextAlign("center").run()}>
+      <Btn title="Centralizar" active={editor.isActive({ textAlign: "center" })} onClick={() => blockCmd(() => editor.chain().focus().setTextAlign("center").run())}>
         <AlignCenter size={ICON} />
       </Btn>
-      <Btn title="Alinhar à direita" active={editor.isActive({ textAlign: "right" })} onClick={() => editor.chain().focus().setTextAlign("right").run()}>
+      <Btn title="Alinhar à direita" active={editor.isActive({ textAlign: "right" })} onClick={() => blockCmd(() => editor.chain().focus().setTextAlign("right").run())}>
         <AlignRight size={ICON} />
       </Btn>
-      <Btn title="Justificar" active={editor.isActive({ textAlign: "justify" })} onClick={() => editor.chain().focus().setTextAlign("justify").run()}>
+      <Btn title="Justificar" active={editor.isActive({ textAlign: "justify" })} onClick={() => blockCmd(() => editor.chain().focus().setTextAlign("justify").run())}>
         <AlignJustify size={ICON} />
       </Btn>
 
@@ -141,7 +152,7 @@ function Toolbar({
       <Btn title="Posicionar campo — clique no texto para inserir" active={armed} onClick={onToggleArm}>
         <Crosshair size={ICON} />
       </Btn>
-      <Btn title="Quebra de página" onClick={() => editor.chain().focus().insertContent({ type: "pageBreak" }).run()}>
+      <Btn title="Quebra de página" onClick={() => blockCmd(() => editor.chain().focus().insertContent({ type: "pageBreak" }).run())}>
         <SeparatorHorizontal size={ICON} />
       </Btn>
     </div>
@@ -155,10 +166,18 @@ function Toolbar({
 // continuously (true content-splitting needs a full pagination engine) — the
 // exported PDF remains the exact paginated truth.
 const PAGE_GUIDE = "linear-gradient(to bottom, transparent calc(100% - 1.5px), rgba(2,13,37,0.10) calc(100% - 1.5px))"
+// A4 width in CSS px (210mm) + the editorScroll horizontal padding — used to
+// fit the paper to the available column width by default.
+const A4_W_PX = (210 * 96) / 25.4
+const EDITOR_PAD_X = 24
 
-// Char usado como "leaf text" das folhas/atoms (placeholders) ao ler a seleção —
-// mantém os offsets coerentes com o que vai no contexto da LexIA.
+// Leaf text ao ler a seleção: um campo (placeholder) aparece como {{Rótulo}} —
+// legível no chip "Trecho" da LexIA e no contexto (em vez do caractere de folha
+// ￼). Usado de forma CONSISTENTE em getSelection/onSelectionUpdate e na
+// verificação anti-stale do applyPosOp, então os textos batem.
 const LEAF = "￼"
+const selLeaf = (node: ProseNode): string =>
+  node.type.name === "placeholder" ? `{{${String(node.attrs.label || node.attrs.name || "campo")}}}` : LEAF
 
 export interface DocSelecao {
   texto: string
@@ -200,6 +219,8 @@ export interface DocEditorHandle {
   insertFieldAt: (pos: number, field: { label: string; dataType: PlaceholderType }) => void
   /** Realce dourado transitório num intervalo (edição aplicada pela IA). */
   flashRange: (from: number, to: number) => void
+  /** Rola até o campo (placeholder) com este `name` no documento e o realça. */
+  locateField: (name: string) => void
   /** Aplica uma op de POSIÇÃO; devolve false se o intervalo ficou obsoleto (o page faz fallback). */
   applyPosOp: (op: DocOp) => boolean
   /** LexDoc atual do editor (após as ops por posição) — base p/ aplicar as ops em JSON. */
@@ -238,12 +259,32 @@ export const DocEditor = forwardRef<DocEditorHandle, {
   const armedRef = useRef(false)
   armedRef.current = armed
 
-  // Zoom da folha (0.5–2.0). Aplicado via CSS `zoom` (escala de LAYOUT) — a paginação
+  // Zoom da folha (0.4–2.0). Aplicado via CSS `zoom` (escala de LAYOUT) — a paginação
   // compara clientWidth × getBoundingClientRect, ambos no mesmo espaço escalado, então
-  // os cálculos de quebra continuam consistentes em qualquer zoom.
+  // os cálculos de quebra continuam consistentes em qualquer zoom. Por padrão a folha
+  // ENCAIXA na largura disponível (entre os painéis); zoom manual desliga o auto-fit.
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const manualZoomRef = useRef(false)
   const [zoom, setZoom] = useState(1)
-  const zoomIn = () => setZoom((z) => Math.min(2, Math.round((z + 0.1) * 100) / 100))
-  const zoomOut = () => setZoom((z) => Math.max(0.5, Math.round((z - 0.1) * 100) / 100))
+  const fitZoom = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const avail = el.clientWidth - EDITOR_PAD_X * 2
+    if (avail <= 0) return
+    setZoom(Math.max(0.4, Math.min(1, Math.round((avail / A4_W_PX) * 100) / 100)))
+  }, [])
+  const zoomIn = () => {
+    manualZoomRef.current = true
+    setZoom((z) => Math.min(2, Math.round((z + 0.1) * 100) / 100))
+  }
+  const zoomOut = () => {
+    manualZoomRef.current = true
+    setZoom((z) => Math.max(0.4, Math.round((z - 0.1) * 100) / 100))
+  }
+  const zoomFit = () => {
+    manualZoomRef.current = false
+    fitZoom()
+  }
 
   const editor = useEditor({
     immediatelyRender: false, // SSR-safe in the App Router
@@ -301,7 +342,7 @@ export const DocEditor = forwardRef<DocEditorHandle, {
         onSelRef.current?.(null)
         return
       }
-      const texto = editor.state.doc.textBetween(from, to, "\n", LEAF)
+      const texto = editor.state.doc.textBetween(from, to, "\n", selLeaf)
       onSelRef.current?.(texto.trim() ? { texto, from, to } : null)
     },
   })
@@ -334,7 +375,7 @@ export const DocEditor = forwardRef<DocEditorHandle, {
           if (!editor) return null
           const { from, to } = editor.state.selection
           if (from === to) return null
-          const texto = editor.state.doc.textBetween(from, to, "\n", LEAF)
+          const texto = editor.state.doc.textBetween(from, to, "\n", selLeaf)
           return texto.trim() ? { texto, from, to } : null
         },
         coordsOf: coordsAt,
@@ -366,6 +407,22 @@ export const DocEditor = forwardRef<DocEditorHandle, {
             .run()
         },
         flashRange: flash,
+        locateField: (name) => {
+          if (!editor) return
+          let at = -1
+          let size = 0
+          editor.state.doc.descendants((node, pos) => {
+            if (at >= 0) return false
+            if (node.type.name === "placeholder" && node.attrs.name === name) {
+              at = pos
+              size = node.nodeSize
+            }
+            return true
+          })
+          if (at < 0) return
+          editor.chain().focus().setTextSelection(at).scrollIntoView().run()
+          flash(at, at + size)
+        },
         applyPosOp: (op) => {
           if (!editor) return false
           const size = editor.state.doc.content.size
@@ -373,7 +430,7 @@ export const DocEditor = forwardRef<DocEditorHandle, {
           const to = op.to ?? -1
           if (from < 0 || to < from || to > size) return false
           // Verificação anti-stale: o intervalo ainda contém o texto original (`de`)?
-          if (op.de != null && editor.state.doc.textBetween(from, to, "\n", LEAF) !== op.de) return false
+          if (op.de != null && editor.state.doc.textBetween(from, to, "\n", selLeaf) !== op.de) return false
           if (op.tipo === "substituir_selecao") {
             const para = op.para ?? ""
             const chain = editor.chain().focus()
@@ -429,6 +486,20 @@ export const DocEditor = forwardRef<DocEditorHandle, {
     editor.view.dispatch(editor.state.tr.setMeta(placeholderRefreshKey, true).setMeta(paginationKey, "recompute"))
   }, [editor, valores])
 
+  // Encaixa a folha à largura disponível ao montar e sempre que a coluna muda de
+  // tamanho (abrir/fechar um painel) — a menos que o usuário tenha dado zoom manual.
+  useEffect(() => {
+    if (!editor) return
+    fitZoom()
+    const el = scrollRef.current
+    if (!el || typeof ResizeObserver === "undefined") return
+    const ro = new ResizeObserver(() => {
+      if (!manualZoomRef.current) fitZoom()
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [editor, fitZoom])
+
   if (!editor) return <div className={s.editorWrap} />
 
   const backgroundImage = letterheadDataUrl ? `${PAGE_GUIDE}, url("${letterheadDataUrl}")` : PAGE_GUIDE
@@ -445,7 +516,7 @@ export const DocEditor = forwardRef<DocEditorHandle, {
   return (
     <div className={s.editorWrap} style={{ position: "relative" }}>
       <Toolbar editor={editor} armed={armed} onToggleArm={() => setArmed((a) => !a)} onCampoAtCursor={campoAtCursor} />
-      <div className={s.editorScroll}>
+      <div ref={scrollRef} className={s.editorScroll}>
         <div
           data-doc-paper
           className={clsx(s.paper, armed && s.paperArmed)}
@@ -464,6 +535,7 @@ export const DocEditor = forwardRef<DocEditorHandle, {
 
       {/* Controle de zoom flutuante (canto inferior direito do editor) */}
       <div
+        className={lexGlassStrong}
         style={{
           position: "absolute",
           bottom: 16,
@@ -474,19 +546,17 @@ export const DocEditor = forwardRef<DocEditorHandle, {
           gap: 2,
           padding: 3,
           borderRadius: 11,
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          boxShadow: "0 6px 20px rgba(2,13,37,0.16)",
+          ...glassElevation("0 6px 20px rgba(2,13,37,0.22)"),
         }}
       >
-        <button type="button" className={s.tbtn} title="Diminuir zoom" onClick={zoomOut} disabled={zoom <= 0.5}>
+        <button type="button" className={s.tbtn} title="Diminuir zoom" onClick={zoomOut} disabled={zoom <= 0.4}>
           <ZoomOut size={15} />
         </button>
         <button
           type="button"
           className={s.tbtn}
-          title="Restaurar zoom (100%)"
-          onClick={() => setZoom(1)}
+          title="Ajustar à largura"
+          onClick={zoomFit}
           style={{ minWidth: 48, fontVariantNumeric: "tabular-nums", fontWeight: 500 }}
         >
           {Math.round(zoom * 100)}%

@@ -13,6 +13,7 @@ import { lexGlassStrong } from "@/styles/glass.css"
 import { glassElevation } from "@/styles/glass"
 import { tokens } from "@/styles/tokens.css"
 import { FIELD_TYPE_OPTIONS, fieldTypeMeta } from "./field-types"
+import { fInput } from "./fields.css"
 import type { PlaceholderType } from "@/lib/documents/model/types"
 
 const ELEV = "0 18px 50px rgba(2,13,37,0.28)"
@@ -90,7 +91,9 @@ export function FieldFillPopover({
     if (ref.current) clampToViewport(ref.current)
   }, [rect])
   useEffect(() => {
-    inputRef.current?.focus()
+    // preventScroll: focusing a popover near the fold would otherwise scroll the
+    // page → our scroll-dismiss listener would fire and the popover would "flash".
+    inputRef.current?.focus({ preventScroll: true })
     inputRef.current?.select()
   }, [field.name])
 
@@ -123,6 +126,7 @@ export function FieldFillPopover({
       </div>
       <input
         ref={inputRef}
+        className={fInput}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
@@ -132,18 +136,6 @@ export function FieldFillPopover({
           }
         }}
         placeholder={`Valor do campo…`}
-        style={{
-          width: "100%",
-          height: 36,
-          borderRadius: 8,
-          border: `1px solid ${tokens.color.border}`,
-          background: tokens.color.surface,
-          color: tokens.color.text,
-          padding: "0 10px",
-          fontSize: 13,
-          fontFamily: tokens.font.sans,
-          outline: "none",
-        }}
       />
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 9 }}>
         <button type="button" onClick={onClear} disabled={!value} style={{ ...ghostChip, opacity: value ? 1 : 0.5, cursor: value ? "pointer" : "default" }}>
@@ -178,7 +170,7 @@ export function ArmFieldPopover({
     if (ref.current) clampToViewport(ref.current)
   }, [rect])
   useEffect(() => {
-    inputRef.current?.focus()
+    inputRef.current?.focus({ preventScroll: true })
   }, [])
 
   const submit = () => {
@@ -211,6 +203,7 @@ export function ArmFieldPopover({
       <label style={fieldLabel}>Nome do campo</label>
       <input
         ref={inputRef}
+        className={fInput}
         value={label}
         onChange={(e) => setLabel(e.target.value)}
         onKeyDown={(e) => {
@@ -220,37 +213,11 @@ export function ArmFieldPopover({
           }
         }}
         placeholder="Ex.: Nome do outorgante"
-        style={{
-          width: "100%",
-          height: 36,
-          borderRadius: 8,
-          border: `1px solid ${tokens.color.border}`,
-          background: tokens.color.surface,
-          color: tokens.color.text,
-          padding: "0 10px",
-          fontSize: 13,
-          fontFamily: tokens.font.sans,
-          outline: "none",
-          marginBottom: 9,
-        }}
+        style={{ marginBottom: 9 }}
       />
       <label style={fieldLabel}>Tipo</label>
-      <select
-        value={dataType}
-        onChange={(e) => setDataType(e.target.value as PlaceholderType)}
-        style={{
-          width: "100%",
-          height: 36,
-          borderRadius: 8,
-          border: `1px solid ${tokens.color.border}`,
-          background: tokens.color.surface,
-          color: tokens.color.text,
-          padding: "0 8px",
-          fontSize: 13,
-          fontFamily: tokens.font.sans,
-          outline: "none",
-        }}
-      >
+      <select className={fInput} value={dataType} onChange={(e) => setDataType(e.target.value as PlaceholderType)}>
+
         {FIELD_TYPE_OPTIONS.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}

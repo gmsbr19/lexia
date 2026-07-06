@@ -67,3 +67,30 @@ describe('aplicarCampos', () => {
     expect(out).toEqual(before)
   })
 })
+
+describe('aplicarCampos — form-layout metadata (AI schema)', () => {
+  it('writes section/options/multiline onto the placeholder and extractPlaceholders reads them back', async () => {
+    const { extractPlaceholders } = await import('@/lib/documents/model/placeholders')
+    const campos: CampoDetectado[] = [
+      { exactText: 'João da Silva', name: 'outorgante_nome', dataType: 'nome', label: 'Nome', section: 'Outorgante' },
+      { exactText: '123.456.789-00', name: 'outorgante_cpf', dataType: 'cpf', label: 'CPF', section: 'Outorgante' },
+    ]
+    const out = aplicarCampos(doc(), campos)
+    const phs = extractPlaceholders(out)
+    const nome = phs.find((p) => p.name === 'outorgante_nome')
+    expect(nome?.section).toBe('Outorgante')
+    expect(phs.every((p) => p.section === 'Outorgante')).toBe(true)
+  })
+
+  it('carries options (dropdown) and multiline through the round-trip', async () => {
+    const { extractPlaceholders } = await import('@/lib/documents/model/placeholders')
+    const d: LexDoc = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'estado casado(a) e objeto contratação de serviços.' }] }] }
+    const out = aplicarCampos(d, [
+      { exactText: 'casado(a)', name: 'estado_civil', dataType: 'texto', label: 'Estado civil', section: 'Partes', options: ['solteiro(a)', 'casado(a)'] },
+      { exactText: 'contratação de serviços', name: 'objeto', dataType: 'texto', label: 'Objeto', section: 'Objeto', multiline: true },
+    ])
+    const phs = extractPlaceholders(out)
+    expect(phs.find((p) => p.name === 'estado_civil')?.options).toEqual(['solteiro(a)', 'casado(a)'])
+    expect(phs.find((p) => p.name === 'objeto')?.multiline).toBe(true)
+  })
+})

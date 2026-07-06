@@ -107,6 +107,7 @@ export function contextoDocumento(doc: DocumentoContexto): string {
     "Sem seleção: \"substituir_texto\" (de = trecho EXATO) para trocas, \"formatar_texto\" para formatar, \"preencher_campo\" para placeholders, \"inserir_paragrafo\" para acrescentar ao fim.",
     "Preencha placeholders com dados REAIS do cliente — busque com \"buscar\"/\"detalhe_cliente\"; nunca invente CPF, endereço, valores ou datas.",
     "Preserve a terminologia e a estrutura jurídica. Seja cirúrgico e mínimo.",
+    "ECONOMIA DE TOKENS: aja pelas FERRAMENTAS (as edições viram cards interativos que o usuário aplica) — o foco é a ação, não o texto. NÃO reescreva nem reliste no chat as mudanças que as ferramentas já fazem, NÃO escreva mensagens de conclusão/resumo (\"pronto\", \"apliquei\", \"segue o resultado\"), NÃO peça confirmação em texto (o card já confirma). Se não houver nada a dizer além das ações, responda com texto VAZIO. No máximo uma frase curta quando for realmente necessário esclarecer algo.",
   ].join("\n- ")
   return `\n<documento_aberto>\n<instrucoes_doc>\n- ${instrucoes}\n</instrucoes_doc>\n<campos>\n${camposList}\n</campos>\n<valores>\n${valoresList}\n</valores>${selecaoBloco}\n<texto>\n${corpo}\n</texto>\n</documento_aberto>`
 }

@@ -70,6 +70,9 @@ function inlineToLex(nodes: PMNode[] | undefined): LexInline[] | undefined {
           dataType: typeof a.dataType === 'string' ? (a.dataType as PlaceholderType) : undefined,
           label: typeof a.label === 'string' ? a.label : undefined,
           defaultValue: typeof a.defaultValue === 'string' ? a.defaultValue : undefined,
+          section: typeof a.section === 'string' ? a.section : undefined,
+          options: Array.isArray(a.options) ? a.options.filter((x): x is string => typeof x === 'string') : undefined,
+          multiline: a.multiline === true ? true : undefined,
         },
       })
     }
