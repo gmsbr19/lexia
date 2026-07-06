@@ -347,8 +347,8 @@ export async function mesclarLeadComCliente(id: number, input: MesclarLeadInput,
   if (!antes) throw new UserError("Lead não encontrado")
   const result = await prisma.$transaction(async (tx) => {
     const [lead, cliente] = await Promise.all([
-      tx.lead.findUnique({ where: { id }, select: { id: true, nome: true, email: true, telefone: true } }),
-      tx.cliente.findUnique({ where: { id: clienteId }, select: { emails: true, telefones: true } }),
+      tx.lead.findUnique({ where: { id }, select: { id: true, nome: true, email: true, telefone: true, origem: true } }),
+      tx.cliente.findUnique({ where: { id: clienteId }, select: { emails: true, telefones: true, origem: true } }),
     ])
     if (!lead) throw new UserError("Lead não encontrado")
     if (!cliente) throw new UserError("Cliente não encontrado")
