@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { cmDeltaPct, cmKpis, type CmRef } from "@/components/comercial/cm-meta"
+import { cmDefaultDateFor, cmDeltaPct, cmKpis, cmRefToday, cmScope, type CmRef } from "@/components/comercial/cm-meta"
 import { cmRedactLeads, initials } from "@/lib/comercial/lgpd"
 import type { CmDatasetGasto, CmDatasetLead } from "@/lib/comercial/types"
 
@@ -99,6 +99,21 @@ describe("cmKpis — conversões atribuídas pelo mês de ENTRADA (contato)", ()
     expect(k.leads).toBe(0) // entrou em maio → é resultado de maio
     expect(k.conversoes).toBe(0)
     expect(k.valorContratado).toBe(0)
+  })
+})
+
+describe("cmDefaultDateFor", () => {
+  it("devolve o último dia de um mês passado em visão", () => {
+    expect(cmDefaultDateFor({ y: 2020, m: 2 }, "mes")).toBe("2020-03-31")
+    expect(cmDefaultDateFor({ y: 2021, m: 1 }, "mes")).toBe("2021-02-28") // fev não-bissexto
+  })
+  it("devolve o último dia de um trimestre / ano passado", () => {
+    expect(cmDefaultDateFor({ y: 2020, m: 0 }, "trimestre")).toBe("2020-03-31") // Q1
+    expect(cmDefaultDateFor({ y: 2020, m: 7 }, "ano")).toBe("2020-12-31")
+  })
+  it("usa hoje quando o período atual está em visão", () => {
+    const ref = cmRefToday()
+    expect(cmScope(ref, "mes").test(cmDefaultDateFor(ref, "mes"))).toBe(true)
   })
 })
 

@@ -128,6 +128,17 @@ export function cmRefToday(): CmRef {
   const d = new Date()
   return { y: d.getFullYear(), m: d.getMonth() }
 }
+/** A sensible default record date for a new entry in the viewed period: today
+ *  when it falls inside the scope, otherwise the LAST day of the viewed period —
+ *  so an expense logged while viewing a past month lands in that month instead
+ *  of silently defaulting to today. */
+export function cmDefaultDateFor(ref: CmRef, period: Periodo): string {
+  const today = cmToday()
+  if (cmScope(ref, period).test(today)) return today
+  const m = period === "ano" ? 11 : period === "trimestre" ? Math.floor(ref.m / 3) * 3 + 2 : ref.m
+  const last = new Date(ref.y, m + 1, 0).getDate()
+  return `${ref.y}-${String(m + 1).padStart(2, "0")}-${String(last).padStart(2, "0")}`
+}
 
 // ── metrics (all centavos) ───────────────────────────────────────────────────
 export interface CmKpiSet {

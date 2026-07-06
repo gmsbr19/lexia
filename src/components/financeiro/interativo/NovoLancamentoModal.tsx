@@ -42,7 +42,7 @@ export function NovoLancamentoModal({
   const [caso, setCaso] = useState(edit?.caso ?? "")
   const [contaId, setContaId] = useState<number | null>(edit?.contaId ?? null)
   const [valor, setValor] = useState(edit ? (edit.valorCents / 100).toFixed(2).replace(".", ",") : "")
-  const [venc, setVenc] = useState(edit?.venc?.slice(0, 10) ?? "2026-06-15")
+  const [venc, setVenc] = useState(edit?.venc?.slice(0, 10) ?? todayISO())
   const [modo, setModo] = useState<Modo>("unica")
   const [vezes, setVezes] = useState(6)
   const [pago, setPago] = useState(edit ? edit.pago : false)

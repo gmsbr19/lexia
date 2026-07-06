@@ -106,10 +106,12 @@ export function CmCampanhaModal({ onClose, onSubmit, edit }: { onClose: () => vo
 
 // ── Registrar gasto ──────────────────────────────────────────────────────────
 export interface GastoPayload { campanhaId: number; valorCents: number; data: string; contaId: number | null; descricao: string; requestId: string }
-export function CmGastoModal({ onClose, onSubmit, campaigns, contas, campanha }: { onClose: () => void; onSubmit: (p: GastoPayload) => Promise<void>; campaigns: CmDatasetCampaign[]; contas: CmContaOption[]; campanha?: CmDatasetCampaign | null }) {
+export function CmGastoModal({ onClose, onSubmit, campaigns, contas, campanha, defaultData }: { onClose: () => void; onSubmit: (p: GastoPayload) => Promise<void>; campaigns: CmDatasetCampaign[]; contas: CmContaOption[]; campanha?: CmDatasetCampaign | null; defaultData?: string }) {
   const [campId, setCampId] = useState(String(campanha?.id ?? campaigns[0]?.id ?? ""))
   const [valor, setValor] = useState("")
-  const [data, setData] = useState(cmToday())
+  // Default to the viewed period (not always "today") so a gasto logged while
+  // looking at a past month lands in that month — where the dashboard shows it.
+  const [data, setData] = useState(defaultData ?? cmToday())
   const [contaId, setContaId] = useState(String(contas[0]?.id ?? ""))
   const [descricao, setDescricao] = useState("")
   // Idempotency key, stable for this modal instance — double-clicks/retries

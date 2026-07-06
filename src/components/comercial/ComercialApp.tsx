@@ -9,7 +9,7 @@ import { apiSend } from "@/lib/client/api"
 import { cmRoot } from "./cm-classes"
 import { Icon } from "./cm-icons"
 import { CmPeriodBar, CmTabs, type CmTabDef } from "./cm-kit"
-import { cmRefToday, cmScope, type CmRef, type Periodo } from "./cm-meta"
+import { cmDefaultDateFor, cmRefToday, cmScope, type CmRef, type Periodo } from "./cm-meta"
 import { CmVisao } from "./tabs/CmVisao"
 import { CmFunil } from "./tabs/CmFunil"
 import { CmCampanhas } from "./tabs/CmCampanhas"
@@ -135,7 +135,7 @@ export function ComercialApp({ dataset, verFin }: { dataset: CmDataset; verFin: 
         </div>
 
         {modal?.type === "campanha" && <CmCampanhaModal onClose={() => setModal(null)} onSubmit={submitCampanha} edit={modal.edit} />}
-        {modal?.type === "gasto" && <CmGastoModal onClose={() => setModal(null)} onSubmit={submitGasto} campaigns={dataset.campaigns} contas={dataset.contas} campanha={modal.campanha} />}
+        {modal?.type === "gasto" && <CmGastoModal onClose={() => setModal(null)} onSubmit={submitGasto} campaigns={dataset.campaigns} contas={dataset.contas} campanha={modal.campanha} defaultData={cmDefaultDateFor(ref0, period)} />}
         {modal?.type === "lead" && <CmLeadModal onClose={() => setModal(null)} onSubmit={submitLead} campaigns={dataset.campaigns} edit={modal.edit} />}
         {modal?.type === "converter" && <CmConverterModal lead={modal.lead} onClose={() => setModal(null)} onSubmit={submitConverter} />}
         {modal?.type === "mesclar" && <CmMergeModal lead={modal.lead} clientes={dataset.clientes} onClose={() => setModal(null)} onSubmit={submitMesclar} />}
