@@ -4,24 +4,35 @@
 // Reads ?conversa=<id> to open a thread. Shares the same chat kit as the popup.
 import { useCallback, useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Icon } from "@/components/crm/crm-icons"
+import { Icon, type CrmIconName } from "@/components/crm/crm-icons"
 import { crmDate } from "@/components/crm/crm-fmt"
 import { lexiaConversa, lexiaConversas, lexiaDeleteConversa } from "@/components/crm/crm-api"
 import type { LexiaConversaRow } from "@/components/crm/crm-types"
-import { Composer } from "./Composer"
+import { LexiaComposer, type Ctx } from "./LexiaComposer"
+import type { ClientAnexo } from "./anexos"
 import { LexiaThread } from "./LexiaThread"
+import type { MentionEntidade } from "./MentionPopover"
 import { Suggestions, contextChips } from "./Suggestions"
 import { useLexiaStream } from "./useLexiaStream"
 
 const GOLD_GRAD = "var(--brand-gold)"
+
+// Menção "@" (Fase 7) → chip de contexto (ícone por tipo de entidade).
+const ICONE_MENCAO: Record<MentionEntidade["tipo"], CrmIconName> = { cliente: "user", processo: "briefcase", contrato: "fileCheck" }
+function ctxDeMencao(e: MentionEntidade): Ctx {
+  return { icon: ICONE_MENCAO[e.tipo], label: e.nome, entidade: e }
+}
 
 export function LexiaPage() {
   const router = useRouter()
   const params = useSearchParams()
   const initial = Number(params.get("conversa")) || null
 
-  const { messages, streaming, conversaId, send, decide, stop, reset, hydrate } = useLexiaStream()
+  const { messages, streaming, conversaId, send, decide, responder, stop, retry, continuar, refazer, editarUltimaPergunta, reset, hydrate } = useLexiaStream()
   const [conversas, setConversas] = useState<LexiaConversaRow[]>([])
+  const [input, setInput] = useState("")
+  const [anexos, setAnexos] = useState<ClientAnexo[]>([])
+  const [contexts, setContexts] = useState<Ctx[]>([])
 
   const refreshList = useCallback(() => {
     lexiaConversas()
@@ -66,6 +77,8 @@ export function LexiaPage() {
 
   const novo = useCallback(() => {
     reset()
+    setInput("")
+    setAnexos([])
     router.replace("/lexia")
   }, [reset, router])
 
@@ -185,10 +198,39 @@ export function LexiaPage() {
               messages={messages}
               streaming={streaming}
               onDecide={decide}
+              onResponder={responder}
+              onRetry={retry}
+              onContinuar={continuar}
+              onRefazer={refazer}
+              onEditarPergunta={editarUltimaPergunta}
+              onFollowupPick={setInput}
               padding="26px 22px"
               empty={<Suggestions chips={contextChips("lexia", false)} onPick={(c) => send(c, "lexia")} />}
             />
-            <Composer onSend={(t, anexos) => send(t, "lexia", anexos)} onStop={stop} streaming={streaming} />
+            <div style={{ flexShrink: 0, padding: "10px 22px 20px" }}>
+              <LexiaComposer
+                value={input}
+                onChange={setInput}
+                onSubmit={() => {
+                  const t = input.trim()
+                  if (!t && anexos.length === 0) return
+                  setInput("")
+                  setAnexos([])
+                  const entidades = contexts.map((c) => c.entidade).filter((e): e is MentionEntidade => !!e)
+                  send(t, "lexia", anexos.length ? anexos : undefined, entidades.length ? { contexto: { entidades } } : undefined)
+                  setContexts([])
+                }}
+                streaming={streaming}
+                onStop={stop}
+                disabled={messages.some((m) => m.role === "assistant" && m.blocks.some((b) => b.type === "notice" && b.codigo === "sem-chave"))}
+                anexos={anexos}
+                contextChips={contexts}
+                onRemoveContextChip={(label) => setContexts((p) => p.filter((x) => x.label !== label))}
+                onMention={(e) => setContexts((p) => (p.some((x) => x.entidade?.tipo === e.tipo && x.entidade?.id === e.id) ? p : [...p, ctxDeMencao(e)]))}
+                onAnexosChange={setAnexos}
+                placeholder="Pergunte, busque ou diga o que fazer…"
+              />
+            </div>
           </div>
         </div>
       </div>

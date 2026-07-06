@@ -2,7 +2,7 @@
 
 import { memo, use, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Check, ChevronLeft, FileDown, FileText, PanelLeft, PanelRight, Save } from "lucide-react"
+import { ChevronLeft, FileDown, FileText, PanelLeft, PanelRight, Save } from "lucide-react"
 import { apiSend } from "@/lib/client/api"
 import {
   DocEditor,
@@ -13,8 +13,8 @@ import {
   type MarkState,
 } from "@/components/documents/editor2/DocEditor"
 import { ArmFieldPopover, FieldFillPopover, SelectionToolbar, type AnchorRect } from "@/components/documents/editor2/EditorPopovers"
-import { TimbradoPicker } from "@/components/documents/editor2/TimbradoPicker"
-import { fieldTypeMeta } from "@/components/documents/editor2/field-types"
+import { DocFormPanel } from "@/components/documents/editor2/DocFormPanel"
+import { autofillFromCliente, clienteCreateFromValores } from "@/components/documents/editor2/cliente-fill"
 import { LexiaChat } from "@/components/lexia/LexiaChat"
 import type { DocPatchPayload } from "@/components/lexia/DocPatchCard"
 import type { DocumentoContexto } from "@/components/lexia/types"
@@ -23,6 +23,8 @@ import { aplicarCampos, lexDocText, type CampoDetectado } from "@/lib/documents/
 import { aplicarOps, partitionOps, type DocOp } from "@/lib/documents/model/ops"
 import { DEFAULT_MARGINS_MM, emptyDoc, type LexDoc, type MarginsMm } from "@/lib/documents/model/types"
 import type { DocumentoDetail, TimbradoDetail, TimbradoRow } from "@/lib/documentos/types"
+import type { ClienteRow } from "@/lib/finance/types"
+import type { ClienteDetail } from "@/lib/clientes/types"
 import { btn } from "@/styles/components.css"
 import { tokens } from "@/styles/tokens.css"
 
@@ -46,6 +48,10 @@ export default function DocFlexEditorPage({ params }: Props) {
   const [valores, setValores] = useState<Record<string, string>>({})
   const [timbradoId, setTimbradoId] = useState<number | null>(null)
   const [timbrados, setTimbrados] = useState<TimbradoRow[]>([])
+  // Cliente vinculado (auto-preenche os campos por tipo; ou cria um novo do form).
+  const [clienteId, setClienteId] = useState<number | null>(null)
+  const [clienteNome, setClienteNome] = useState<string | null>(null)
+  const [flashNames, setFlashNames] = useState<Set<string>>(() => new Set())
   const [timbrado, setTimbrado] = useState<TimbradoDetail | null>(null)
   const [hydrated, setHydrated] = useState(false)
   const [savedAgo, setSavedAgo] = useState(0)
@@ -64,6 +70,8 @@ export default function DocFlexEditorPage({ params }: Props) {
   // Popovers do editor (glass): preencher campo no papel · posicionar novo campo.
   const [fillField, setFillField] = useState<FieldClickInfo | null>(null)
   const [armPopover, setArmPopover] = useState<ArmClickInfo | null>(null)
+  // Bump p/ focar o composer da LexIA (barra flutuante "Editar com a LexIA").
+  const [lexiaFocusSeq, setLexiaFocusSeq] = useState(0)
   const editorRef = useRef<DocEditorHandle>(null)
   const selectionRef = useRef<DocSelecao | null>(null)
   selectionRef.current = selection
@@ -79,6 +87,7 @@ export default function DocFlexEditorPage({ params }: Props) {
         if (d.conteudo && typeof d.conteudo === "object") setDoc(d.conteudo as LexDoc)
         if (d.valores) setValores(d.valores)
         setTimbradoId(d.timbradoId)
+        setClienteId(d.clienteId ?? null)
       } catch {
         // start blank on failure
       } finally {
@@ -113,11 +122,25 @@ export default function DocFlexEditorPage({ params }: Props) {
     }
   }, [timbradoId])
 
+  // Nome do cliente vinculado (só busca ao carregar; pick/create já definem o nome).
+  useEffect(() => {
+    if (clienteId == null || clienteNome != null) return
+    let cancelled = false
+    apiSend<ClienteDetail>(`/api/clientes/${clienteId}`, "GET")
+      .then((c) => {
+        if (!cancelled) setClienteNome(c.header.nome)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [clienteId, clienteNome])
+
   // ── autosave (debounced) ───────────────────────────────────────────────────
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savingRef = useRef(false)
-  const stateRef = useRef({ nome, doc, valores, timbradoId })
-  stateRef.current = { nome, doc, valores, timbradoId }
+  const stateRef = useRef({ nome, doc, valores, timbradoId, clienteId })
+  stateRef.current = { nome, doc, valores, timbradoId, clienteId }
 
   const persist = useCallback(async () => {
     if (savingRef.current) return
@@ -129,6 +152,7 @@ export default function DocFlexEditorPage({ params }: Props) {
         conteudo: cur.doc,
         valores: cur.valores,
         timbradoId: cur.timbradoId,
+        clienteId: cur.clienteId,
       })
       setSavedAgo(0)
     } catch {
@@ -145,7 +169,7 @@ export default function DocFlexEditorPage({ params }: Props) {
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current)
     }
-  }, [nome, doc, valores, timbradoId, hydrated, persist])
+  }, [nome, doc, valores, timbradoId, clienteId, hydrated, persist])
 
   useEffect(() => {
     const i = setInterval(() => setSavedAgo((s) => s + 1), 1000)
@@ -153,10 +177,9 @@ export default function DocFlexEditorPage({ params }: Props) {
   }, [])
   useEffect(() => {
     setSavedAgo(0)
-  }, [nome, doc, valores, timbradoId])
+  }, [nome, doc, valores, timbradoId, clienteId])
 
   const placeholders = useMemo(() => extractPlaceholders(doc), [doc])
-  const filled = placeholders.filter((p) => (valores[p.name] ?? "").trim().length > 0).length
   const margins: MarginsMm = useMemo(
     () =>
       timbrado
@@ -168,8 +191,19 @@ export default function DocFlexEditorPage({ params }: Props) {
   const exportar = (formato: "pdf" | "docx") => window.open(`/api/documentos/${docId}/exportar?formato=${formato}`, "_blank")
 
   // ── apply LexIA suggestions / ops onto the live document ────────────────────
+  // Ao detectar campos sobre um texto que JÁ existe, o texto casado vira o VALOR
+  // do campo (não esvazia) — o documento continua mostrando o conteúdo, agora
+  // como um campo preenchido, e o painel conta como preenchido.
   const onApplyCampos = useCallback((campos: CampoDetectado[]) => {
     setDoc((d) => aplicarCampos(d, campos))
+    setValores((v) => {
+      const next = { ...v }
+      for (const c of campos) {
+        const val = (c.exactText ?? "").trim()
+        if (c.name && val && !(next[c.name] ?? "").trim()) next[c.name] = val
+      }
+      return next
+    })
     setEditorKey((k) => k + 1)
   }, [])
 
@@ -213,6 +247,50 @@ export default function DocFlexEditorPage({ params }: Props) {
     setSelRect(null)
   }, [])
 
+  // ── cliente vinculado (auto-preenche / cria) ────────────────────────────────
+  const setValor = useCallback((name: string, value: string) => setValores((v) => ({ ...v, [name]: value })), [])
+
+  const flashCampos = useCallback((names: string[]) => {
+    if (!names.length) return
+    setFlashNames(new Set(names))
+    window.setTimeout(() => setFlashNames(new Set()), 1100)
+  }, [])
+
+  const onPickCliente = useCallback(
+    (c: ClienteRow) => {
+      setClienteId(c.id)
+      setClienteNome(c.nome)
+      apiSend<ClienteDetail>(`/api/clientes/${c.id}`, "GET")
+        .then((detail) => {
+          const fill = autofillFromCliente(extractPlaceholders(stateRef.current.doc), detail.header)
+          const keys = Object.keys(fill)
+          if (keys.length) {
+            setValores((v) => ({ ...v, ...fill }))
+            flashCampos(keys)
+          }
+        })
+        .catch(() => {})
+    },
+    [flashCampos],
+  )
+
+  const onCreateCliente = useCallback((nomeHint: string) => {
+    const body = clienteCreateFromValores(extractPlaceholders(stateRef.current.doc), stateRef.current.valores, nomeHint)
+    apiSend<{ id: number; nome?: string }>("/api/clientes", "POST", body)
+      .then((c) => {
+        setClienteId(c.id)
+        setClienteNome(c.nome ?? body.nome)
+      })
+      .catch((e) => window.alert(e instanceof Error ? e.message : "Falha ao criar cliente."))
+  }, [])
+
+  const onUnlinkCliente = useCallback(() => {
+    setClienteId(null)
+    setClienteNome(null)
+  }, [])
+
+  const onLocateField = useCallback((name: string) => editorRef.current?.locateField(name), [])
+
   // Seleção do editor → estado da page (chip da LexIA + barra flutuante + marcas).
   const handleSelectionChange = useCallback((sel: DocSelecao | null) => {
     setSelection(sel)
@@ -251,8 +329,12 @@ export default function DocFlexEditorPage({ params }: Props) {
     [docId],
   )
 
-  // Barra flutuante → "Editar com a LexIA": abre o painel (a seleção já vira chip).
-  const editWithLexia = useCallback(() => setLexiaOpen(true), [])
+  // Barra flutuante → "Editar com a LexIA": abre o painel, foca o composer (a
+  // seleção já vira chip) e dá um feedback visual (pulse no composer).
+  const editWithLexia = useCallback(() => {
+    setLexiaOpen(true)
+    setLexiaFocusSeq((n) => n + 1)
+  }, [])
   const formatSelection = useCallback((mark: "bold" | "italic" | "underline") => {
     editorRef.current?.toggleMark(mark)
     const sel = selectionRef.current
@@ -304,6 +386,9 @@ export default function DocFlexEditorPage({ params }: Props) {
         <button onClick={() => router.push("/documents")} className={btn({ variant: "ghost" })} style={{ width: 34, height: 34, padding: 0, borderRadius: 9, flexShrink: 0 }} title="Voltar para documentos">
           <ChevronLeft size={18} />
         </button>
+        <button onClick={() => setPanelOpen((o) => !o)} className={btn({ variant: "ghost" })} style={toggleBtn(panelOpen)} title="Mostrar/ocultar campos & papel timbrado">
+          <PanelLeft size={17} />
+        </button>
         <span style={{ width: 30, height: 30, borderRadius: 8, display: "grid", placeItems: "center", background: tokens.color.bgSunken, color: tokens.color.textMuted, flexShrink: 0 }}>
           <FileText size={16} />
         </span>
@@ -320,9 +405,6 @@ export default function DocFlexEditorPage({ params }: Props) {
 
         <span style={{ flex: 1 }} />
 
-        <button onClick={() => setPanelOpen((o) => !o)} className={btn({ variant: "ghost" })} style={toggleBtn(panelOpen)} title="Mostrar/ocultar campos & papel timbrado">
-          <PanelLeft size={17} />
-        </button>
         <button onClick={() => setLexiaOpen((o) => !o)} className={btn({ variant: "ghost" })} style={toggleBtn(lexiaOpen)} title="Mostrar/ocultar a LexIA">
           <PanelRight size={17} />
         </button>
@@ -337,54 +419,28 @@ export default function DocFlexEditorPage({ params }: Props) {
         </button>
       </div>
 
-      {/* Body: campos (esq, toggle) | editor | LexIA (dir, toggle) */}
+      {/* Body: formulário (esq, toggle) | editor | LexIA (dir, toggle) */}
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-        {/* Fields & letterhead panel */}
+        {/* Form panel (design "LexIA - Documentos": filled inputs + cliente + timbrado) */}
         {panelOpen && (
-          <aside style={{ width: 272, flexShrink: 0, overflowY: "auto", padding: 16, background: tokens.color.bgSoft, borderRight: `1px solid ${tokens.color.border}` }}>
-            <div style={{ fontSize: 11, fontWeight: 500, color: tokens.color.textSubtle, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 9 }}>Papel timbrado</div>
-            <TimbradoPicker timbrados={timbrados} value={timbradoId} onChange={setTimbradoId} selectedImage={timbrado?.imagem ?? null} />
-
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "22px 0 10px" }}>
-              <div style={{ fontSize: 11, fontWeight: 500, color: tokens.color.textSubtle, textTransform: "uppercase", letterSpacing: "0.07em" }}>Campos</div>
-              <span style={{ fontSize: 11, color: tokens.color.textMuted, fontVariantNumeric: "tabular-nums" }}>
-                {filled}/{placeholders.length} preenchidos
-              </span>
-            </div>
-            <div style={{ height: 4, borderRadius: 999, background: tokens.color.bgSunken, overflow: "hidden", marginBottom: 12 }}>
-              <div style={{ height: "100%", width: `${placeholders.length ? (filled / placeholders.length) * 100 : 0}%`, background: tokens.color.accentStrong, borderRadius: 999, transition: "width .3s" }} />
-            </div>
-
-            {placeholders.length === 0 ? (
-              <div style={{ fontSize: 12, color: tokens.color.textSubtle, lineHeight: 1.5, padding: "4px 2px" }}>
-                Nenhum campo ainda. Use <strong style={{ color: tokens.color.textMuted }}>Campo</strong> na barra ou peça à LexIA para <strong style={{ color: tokens.color.accent }}>detectar campos</strong>.
-              </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {placeholders.map((ph) => {
-                  const val = valores[ph.name] ?? ""
-                  const isFilled = val.trim().length > 0
-                  const { Icon, label: typeLabel } = fieldTypeMeta(ph.dataType)
-                  return (
-                    <div key={ph.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 9, border: `1px solid ${tokens.color.border}`, background: tokens.color.surface }}>
-                      <span style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, display: "grid", placeItems: "center", background: isFilled ? tokens.color.okSoft : tokens.color.accentSoft, color: isFilled ? tokens.color.ok : tokens.color.accent }}>
-                        {isFilled ? <Check size={14} /> : <Icon size={14} />}
-                      </span>
-                      <span style={{ minWidth: 0, flex: 1 }}>
-                        <span style={{ display: "block", fontSize: 12, color: tokens.color.textMuted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ph.label}</span>
-                        <input
-                          value={val}
-                          onChange={(e) => setValores((v) => ({ ...v, [ph.name]: e.target.value }))}
-                          placeholder={`A preencher · ${typeLabel}`}
-                          style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: tokens.font.sans, fontSize: 12.5, fontWeight: 500, color: tokens.color.text, padding: 0, marginTop: 1 }}
-                        />
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </aside>
+          <div style={{ width: 320, flexShrink: 0, minHeight: 0 }}>
+            <DocFormPanel
+              placeholders={placeholders}
+              valores={valores}
+              setValor={setValor}
+              timbrados={timbrados}
+              timbradoId={timbradoId}
+              setTimbradoId={setTimbradoId}
+              timbradoImagem={timbrado?.imagem ?? null}
+              clienteId={clienteId}
+              clienteNome={clienteNome}
+              onPickCliente={onPickCliente}
+              onCreateCliente={onCreateCliente}
+              onUnlinkCliente={onUnlinkCliente}
+              onLocateField={onLocateField}
+              flashNames={flashNames}
+            />
+          </div>
         )}
 
         {/* Editor — Word-style A4 page view with the letterhead behind the text */}
@@ -419,6 +475,7 @@ export default function DocFlexEditorPage({ params }: Props) {
               mode="float"
               onModeChange={NOOP}
               askSeq={0}
+              focusSeq={lexiaFocusSeq}
               bottomInset={0}
               onMinimize={NOOP}
               docContext={getChatContext}

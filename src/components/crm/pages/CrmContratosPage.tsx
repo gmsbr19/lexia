@@ -1,101 +1,172 @@
 "use client"
 
-// LexIA · CRM — Contratos (honorários) list. Ported from the design prototype
-// page-contratos.jsx, wired to the real backend: iterates dataset.contratos
-// (HonorarioRow[]) instead of the mock lançamentos store. Money is centavos.
+// LexIA · CRM — Contratos (lente COMERCIAL). Um contrato = um Caso (que pode
+// reunir vários honorários); esta página é o controle comercial (valor
+// contratado, área, origem, pagamento, data de fechamento), enquanto a página de
+// Casos é o controle operacional. Clique numa linha abre o caso.
 import { useMemo, useState } from "react"
 import {
-  CrmContratoStatus,
+  CrmBadge,
+  CrmCasoTipoPill,
   CrmEmpty,
   CrmKpiRow,
   CrmPageHead,
   CrmRow,
   CrmSearch,
-  FxFrame,
   FxSegmented,
+  FxSelect,
+  FxFrame,
 } from "../crm-kit"
+import { Icon } from "../crm-icons"
 import { crmDate, crmMoney } from "../crm-fmt"
-import type { CrmDataset, CrmNav, HonorarioRow } from "../crm-types"
+import type { ContratoRow, CrmDataset, CrmNav } from "../crm-types"
+import { resolveAreaColor, resolveAreaLabel, useAreasStore } from "@/lib/areas/store"
+import { ORIGEM_LABEL, type LeadOrigem } from "@/lib/comercial/types"
 
 interface Props {
   dataset: CrmDataset
   nav: CrmNav
 }
 
-const CRM_CON_COLS = "1fr 150px 150px 100px 120px 110px 90px 110px 100px"
+// Contrato · Área · Origem · Valor · Pagamento · Fechado em
+const CRM_CON_COLS = "1fr 150px 130px 140px 130px 120px"
 const norm = (s: string | null | undefined) =>
   (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
 
-const TIPO_LABEL: Record<string, string> = {
-  recorrente: "Recorrente",
-  parcelado: "Parcelado",
-  exito: "Êxito",
-  avista: "À vista",
+type Pagamento = "recebido" | "parcial" | "aberto" | "vazio"
+function pagamentoDe(c: ContratoRow): Pagamento {
+  if (c.valorContratadoCents <= 0) return "vazio"
+  if (c.recebidoCents >= c.valorContratadoCents) return "recebido"
+  if (c.recebidoCents > 0) return "parcial"
+  return "aberto"
+}
+function origemLabel(k: string | null): string {
+  if (!k) return "Direto"
+  return ORIGEM_LABEL[k as LeadOrigem] ?? k
 }
 
+type SortKey = "data" | "valor"
+
 export function CrmContratosPage({ dataset, nav }: Props) {
+  const areas = useAreasStore((s) => s.areas)
   const [q, setQ] = useState("")
-  const [seg, setSeg] = useState("todos")
+  const [pag, setPag] = useState("todos")
+  const [area, setArea] = useState("")
+  const [origem, setOrigem] = useState("")
+  const [tipo, setTipo] = useState("")
+  const [sortKey, setSortKey] = useState<SortKey>("data")
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
   const nq = norm(q.trim())
 
   const contratos = dataset.contratos
 
   const kpis = useMemo(() => {
-    const total = contratos.reduce((s, h) => s + h.valorCents, 0)
-    const recebido = contratos
-      .filter((h) => h.status === "recebido")
-      .reduce((s, h) => s + h.valorCents, 0)
-    const lancado = total - recebido
+    const total = contratos.reduce((s, c) => s + c.valorContratadoCents, 0)
+    const recebido = contratos.reduce((s, c) => s + c.recebidoCents, 0)
+    const aberto = total - recebido
     const ticket = contratos.length ? Math.round(total / contratos.length) : 0
-    return { total, recebido, lancado, ticket }
+    return { total, recebido, aberto, ticket }
   }, [contratos])
 
-  const rows = useMemo(
-    () =>
-      contratos
-        .filter((h) => {
-          if (seg === "recebidos" && h.status !== "recebido") return false
-          if (seg === "lancados" && h.status === "recebido") return false
-          if (
-            nq &&
-            !(
-              norm(h.descricao).includes(nq) ||
-              norm(h.cliente).includes(nq) ||
-              norm(h.caso).includes(nq)
-            )
-          )
-            return false
-          return true
-        })
-        .sort((a, b) => (b.vencimento || "").localeCompare(a.vencimento || "")),
-    [contratos, seg, nq],
-  )
+  // Filter option lists — only the área/origem values that actually occur.
+  const areaOpts = useMemo(() => {
+    const keys = [...new Set(contratos.map((c) => c.area).filter((a): a is string => !!a))]
+    return keys
+      .map((k) => ({ value: k, label: resolveAreaLabel(areas, k) }))
+      .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"))
+  }, [contratos, areas])
+  const origemOpts = useMemo(() => {
+    const keys = [...new Set(contratos.map((c) => c.origem))]
+    return keys
+      .map((k) => ({ value: k ?? "__direto", label: origemLabel(k) }))
+      .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"))
+  }, [contratos])
+
+  const rows = useMemo(() => {
+    const filtered = contratos.filter((c) => {
+      if (pag !== "todos" && pagamentoDe(c) !== pag) return false
+      if (area && c.area !== area) return false
+      if (origem && (c.origem ?? "__direto") !== origem) return false
+      if (tipo && c.tipo !== tipo) return false
+      if (nq && !(norm(c.titulo).includes(nq) || norm(c.cliente).includes(nq))) return false
+      return true
+    })
+    const dir = sortDir === "asc" ? 1 : -1
+    return filtered.sort((a, b) => {
+      const cmp =
+        sortKey === "valor"
+          ? a.valorContratadoCents - b.valorContratadoCents
+          : (a.dataFechamento ?? "").localeCompare(b.dataFechamento ?? "")
+      return cmp * dir
+    })
+  }, [contratos, pag, area, origem, tipo, nq, sortKey, sortDir])
+
+  const toggleSort = (k: SortKey) => {
+    if (sortKey === k) setSortDir((d) => (d === "asc" ? "desc" : "asc"))
+    else {
+      setSortKey(k)
+      setSortDir("desc")
+    }
+  }
+
+  const hasFilter = !!(pag !== "todos" || area || origem || tipo || nq)
 
   return (
     <FxFrame>
       <CrmPageHead
-        title="Contratos & honorários"
-        sub={`${contratos.length} honorários · ligados ao financeiro`}
+        title="Contratos"
+        sub={`${contratos.length} contratos · controle comercial (um contrato reúne os honorários do caso)`}
       />
       <CrmKpiRow
         kpis={[
           { label: "Total contratado", value: crmMoney(kpis.total), icon: "receipt" },
           { label: "Recebido", value: crmMoney(kpis.recebido), icon: "checkCircle", tone: "pos" },
-          { label: "Em aberto (lançado)", value: crmMoney(kpis.lancado), icon: "clock", accent: "gold" },
+          { label: "Em aberto", value: crmMoney(kpis.aberto), icon: "clock", accent: "gold" },
           { label: "Ticket médio", value: crmMoney(kpis.ticket), icon: "barChart" },
         ]}
       />
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
-        <CrmSearch value={q} onChange={setQ} placeholder="Buscar por descrição, cliente, caso…" />
+        <CrmSearch value={q} onChange={setQ} placeholder="Buscar por contrato ou cliente…" />
+        {areaOpts.length > 0 && (
+          <div style={{ width: 170 }}>
+            <FxSelect value={area} onChange={(e) => setArea(e.target.value)} placeholder="Todas as áreas" options={areaOpts} />
+          </div>
+        )}
+        {origemOpts.length > 0 && (
+          <div style={{ width: 160 }}>
+            <FxSelect value={origem} onChange={(e) => setOrigem(e.target.value)} placeholder="Todas as origens" options={origemOpts} />
+          </div>
+        )}
+        <div style={{ width: 160 }}>
+          <FxSelect
+            value={tipo}
+            onChange={(e) => setTipo(e.target.value)}
+            placeholder="Todos os tipos"
+            options={[
+              { value: "consultivo", label: "Consultivo" },
+              { value: "litigio", label: "Litígio" },
+            ]}
+          />
+        </div>
         <FxSegmented
           options={[
             { value: "todos", label: "Todos" },
-            { value: "recebidos", label: "Recebidos" },
-            { value: "lancados", label: "Lançados" },
+            { value: "recebido", label: "Recebido" },
+            { value: "parcial", label: "Parcial" },
+            { value: "aberto", label: "Em aberto" },
           ]}
-          value={seg}
-          onChange={setSeg}
+          value={pag}
+          onChange={setPag}
         />
+        {hasFilter && (
+          <button
+            className="btn btn-ghost"
+            onClick={() => { setQ(""); setPag("todos"); setArea(""); setOrigem(""); setTipo("") }}
+            style={{ height: 34, fontSize: 12 }}
+          >
+            Limpar
+          </button>
+        )}
       </div>
       <div className="card" style={{ overflow: "hidden" }}>
         <div
@@ -108,73 +179,127 @@ export function CrmContratosPage({ dataset, nav }: Props) {
             background: "var(--bg-soft)",
           }}
         >
-          {["Descrição", "Cliente", "Caso", "Vencimento", "Valor", "Status", "Tipo", "Conta", "Pago em"].map(
-            (hd, i) => (
-              <div
-                key={hd}
-                style={{
-                  fontSize: 11,
-                  fontWeight: 500,
-                  color: "var(--text-subtle)",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.08em",
-                  textAlign: i === 4 ? "right" : "left",
-                }}
-              >
-                {hd}
-              </div>
-            ),
-          )}
+          <Hd label="Contrato" />
+          <Hd label="Área" />
+          <Hd label="Origem" />
+          <Hd label="Valor" align="right" sortActive={sortKey === "valor"} dir={sortDir} onSort={() => toggleSort("valor")} />
+          <Hd label="Pagamento" />
+          <Hd label="Fechado em" sortActive={sortKey === "data"} dir={sortDir} onSort={() => toggleSort("data")} />
         </div>
         {rows.length === 0 ? (
           <CrmEmpty icon="receipt" title="Nenhum contrato encontrado" sub="Ajuste a busca ou os filtros." />
         ) : (
-          rows.slice(0, 60).map((h: HonorarioRow, i) => (
-            <CrmRow
-              key={h.id}
-              onClick={() => nav.openContrato(h.id)}
-              style={{
-                display: "grid",
-                gridTemplateColumns: CRM_CON_COLS,
-                gap: 14,
-                padding: "12px 18px",
-                alignItems: "center",
-                borderTop: i ? "1px solid var(--border)" : "none",
-              }}
-            >
-              <div style={ellip(13, "var(--text)", 500)}>{h.descricao}</div>
-              <div style={ellip(12, "var(--text-muted)")}>{h.cliente || "—"}</div>
-              <div style={ellip(12, "var(--text-muted)")}>{h.caso || "—"}</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
-                {crmDate(h.vencimento)}
-              </div>
-              <div
+          rows.slice(0, 80).map((c, i) => {
+            const cor = resolveAreaColor(areas, c.area)
+            return (
+              <CrmRow
+                key={c.id}
+                onClick={() => nav.openCaso(c.id)}
                 style={{
-                  textAlign: "right",
-                  fontSize: 13,
-                  fontWeight: 500,
-                  color: "var(--text)",
-                  fontVariantNumeric: "tabular-nums",
+                  display: "grid",
+                  gridTemplateColumns: CRM_CON_COLS,
+                  gap: 14,
+                  padding: "12px 18px",
+                  alignItems: "center",
+                  borderTop: i ? "1px solid var(--border)" : "none",
                 }}
               >
-                {crmMoney(h.valorCents)}
-              </div>
-              <div>
-                <CrmContratoStatus status={h.status} venc={h.vencimento} />
-              </div>
-              <div style={ellip(12, "var(--text-muted)")}>{h.tipo ? TIPO_LABEL[h.tipo] ?? h.tipo : "—"}</div>
-              <div style={ellip(12, "var(--text-muted)")}>{h.conta || "—"}</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
-                {h.dataPagamento ? crmDate(h.dataPagamento) : "—"}
-              </div>
-            </CrmRow>
-          ))
+                <div style={{ minWidth: 0 }}>
+                  <div style={ellip(13, "var(--text)", 500)}>{c.titulo}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-subtle)", marginTop: 2, display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.cliente || "—"}</span>
+                    {c.tipo && <CrmCasoTipoPill tipo={c.tipo} />}
+                  </div>
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  {c.area ? (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)", overflow: "hidden" }}>
+                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: cor || "var(--text-subtle)", flexShrink: 0 }} />
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{resolveAreaLabel(areas, c.area)}</span>
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>—</span>
+                  )}
+                </div>
+                <div style={ellip(12, "var(--text-muted)")}>{origemLabel(c.origem)}</div>
+                <div style={{ textAlign: "right", minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)", fontVariantNumeric: "tabular-nums" }}>
+                    {crmMoney(c.valorContratadoCents)}
+                  </div>
+                  {c.honorariosCount > 0 && (
+                    <div style={{ fontSize: 11, color: "var(--text-subtle)", marginTop: 2 }}>
+                      {c.honorariosCount} {c.honorariosCount === 1 ? "honorário" : "honorários"}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <PagamentoBadge p={pagamentoDe(c)} />
+                </div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
+                  {c.dataFechamento ? crmDate(c.dataFechamento) : "—"}
+                </div>
+              </CrmRow>
+            )
+          })
         )}
       </div>
       <div style={{ fontSize: 12, color: "var(--text-subtle)", textAlign: "center", marginTop: 14 }}>
-        {Math.min(rows.length, 60)} de {rows.length} honorários
+        {Math.min(rows.length, 80)} de {rows.length} contratos
       </div>
     </FxFrame>
+  )
+}
+
+function PagamentoBadge({ p }: { p: Pagamento }) {
+  if (p === "recebido") return <CrmBadge tone="pos" dot>Recebido</CrmBadge>
+  if (p === "parcial") return <CrmBadge tone="gold" dot>Parcial</CrmBadge>
+  if (p === "aberto") return <CrmBadge tone="neutral" dot>Em aberto</CrmBadge>
+  return <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>—</span>
+}
+
+function Hd({
+  label,
+  align = "left",
+  sortActive,
+  dir,
+  onSort,
+}: {
+  label: string
+  align?: "left" | "right"
+  sortActive?: boolean
+  dir?: "asc" | "desc"
+  onSort?: () => void
+}) {
+  const base = {
+    fontSize: 11,
+    fontWeight: 500,
+    color: sortActive ? "var(--text-muted)" : "var(--text-subtle)",
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.08em",
+  }
+  if (!onSort) return <div style={{ ...base, textAlign: align }}>{label}</div>
+  return (
+    <button
+      onClick={onSort}
+      style={{
+        ...base,
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        justifyContent: align === "right" ? "flex-end" : "flex-start",
+        background: "transparent",
+        border: "none",
+        padding: 0,
+        cursor: "pointer",
+      }}
+    >
+      {label}
+      <Icon
+        name={sortActive ? (dir === "asc" ? "chevronUp" : "chevronDown") : "chevronsUpDown"}
+        size={13}
+        style={{ opacity: sortActive ? 1 : 0.4 }}
+      />
+    </button>
   )
 }
 

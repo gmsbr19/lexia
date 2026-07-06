@@ -1,10 +1,12 @@
 // Comercial tools — funnel/leads reports (readonly) + lead writes (gated).
 import { z } from "zod"
+import { prisma } from "@/lib/db"
 import { getComercialKpis, getFunil, getLeads } from "@/lib/comercial/queries"
 import { createLead, deleteLead, marcarPerdido, moverEtapa, updateLead } from "@/lib/comercial/mutations"
 import { leadCreateSchema, leadEtapaSchema } from "@/lib/comercial/schemas"
 import type { LeadEtapa } from "@/lib/comercial/types"
 import { idReq } from "@/lib/validation"
+import { diffRow } from "../confirmar"
 import { defineTool } from "../types"
 import { cap, limite } from "./shared"
 
@@ -68,10 +70,10 @@ export const comercialTools = [
     }),
     resumo: (i) => `Editar lead #${i.id}`,
     montarConfirmacao: async (_ctx, i) => {
-      const det: { label: string; valor: string }[] = []
-      if (i.nome) det.push({ label: "Nome", valor: i.nome })
-      if (i.email) det.push({ label: "E-mail", valor: i.email })
-      if (i.telefone) det.push({ label: "Telefone", valor: i.telefone })
+      const antes = await prisma.lead.findUnique({ where: { id: i.id }, select: { nome: true, email: true, telefone: true } })
+      const det = [diffRow("Nome", i.nome, antes?.nome), diffRow("E-mail", i.email, antes?.email), diffRow("Telefone", i.telefone, antes?.telefone)].filter(
+        (d): d is NonNullable<typeof d> => d != null,
+      )
       return { resumo: "Editar lead", detalhes: det.length ? det : undefined }
     },
     run: async (_ctx, i) => updateLead(i.id, { nome: i.nome, email: i.email, telefone: i.telefone, observacoes: i.observacoes }),

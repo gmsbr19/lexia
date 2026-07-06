@@ -73,12 +73,12 @@ export function CrmClientesPage({ dataset, nav, onNovo }: Props) {
   return (
     <FxFrame>
       <CrmPageHead
-        title="Clientes"
-        sub={`${clientes.length} contatos importados do Astrea`}
+        title="Contatos"
+        sub={`${clientes.length} contatos`}
         right={
           <button className="btn btn-primary" onClick={onNovo}>
             <Icon name="userPlus" size={15} />
-            Novo cliente
+            Novo contato
           </button>
         }
       />
@@ -117,7 +117,7 @@ export function CrmClientesPage({ dataset, nav, onNovo }: Props) {
             background: "var(--bg-soft)",
           }}
         >
-          {["Cliente", "Tipo", "CPF/CNPJ", "Cidade/UF", "Classificação", "Casos"].map((h, i) => (
+          {["Contato", "Tipo", "CPF/CNPJ", "Cidade/UF", "Classificação", "Casos"].map((h, i) => (
             <div
               key={h}
               style={{
@@ -136,12 +136,12 @@ export function CrmClientesPage({ dataset, nav, onNovo }: Props) {
         {rows.length === 0 ? (
           <CrmEmpty
             icon="users"
-            title="Nenhum cliente encontrado"
-            sub="Ajuste a busca ou cadastre um novo cliente."
+            title="Nenhum contato encontrado"
+            sub="Ajuste a busca ou cadastre um novo contato."
             cta={
               <button className="btn btn-secondary" onClick={onNovo}>
                 <Icon name="userPlus" size={14} />
-                Novo cliente
+                Novo contato
               </button>
             }
           />
@@ -210,7 +210,7 @@ export function CrmClientesPage({ dataset, nav, onNovo }: Props) {
         )}
       </div>
       <div style={{ fontSize: 12, color: "var(--text-subtle)", textAlign: "center", marginTop: 14 }}>
-        {rows.length} de {clientes.length} clientes
+        {rows.length} de {clientes.length} contatos
       </div>
     </FxFrame>
   )

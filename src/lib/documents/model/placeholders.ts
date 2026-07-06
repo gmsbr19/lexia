@@ -15,6 +15,10 @@ export interface PlaceholderDecl {
   dataType: PlaceholderType
   label: string
   defaultValue?: string
+  /** Form-layout metadata (AI-detected). */
+  section?: string
+  options?: string[]
+  multiline?: boolean
 }
 
 /** The text a placeholder renders to, plus whether it was actually filled. */
@@ -68,6 +72,9 @@ export function extractPlaceholders(doc: LexDoc): PlaceholderDecl[] {
       dataType: n.attrs.dataType ?? 'texto',
       label: n.attrs.label?.trim() || name,
       defaultValue: n.attrs.defaultValue,
+      section: n.attrs.section?.trim() || undefined,
+      options: n.attrs.options?.length ? n.attrs.options : undefined,
+      multiline: n.attrs.multiline || undefined,
     })
   })
   return [...seen.values()]

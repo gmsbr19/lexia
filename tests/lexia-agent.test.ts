@@ -1,9 +1,41 @@
 import { describe, expect, it } from "vitest"
 import { decidirModelo } from "@/lib/lexia/agent/router"
+import { perguntarSchema } from "@/lib/lexia/agent/tools/perguntar"
 import { validarRota } from "@/lib/lexia/agent/tools/navegacao"
 import { TOOLS, TOOLS_BY_NAME, toApiTools } from "@/lib/lexia/agent/registry"
+import { acaoDecisaoSchema } from "@/lib/lexia/schemas"
 import { encodeSse } from "@/lib/lexia/agent/sse"
 import { addDiasISO } from "@/lib/lexia/agent/datas"
+
+describe("perguntarSchema — validação da tool perguntar_usuario (Fase 6, D3)", () => {
+  it("aceita 2-6 opções, multipla/permitirOutro opcionais", () => {
+    expect(perguntarSchema.safeParse({ pergunta: "Qual cliente?", opcoes: ["Aurora", "Vargas"] }).success).toBe(true)
+    expect(perguntarSchema.safeParse({ pergunta: "Quais critérios?", opcoes: ["a", "b", "c"], multipla: true, permitirOutro: true }).success).toBe(true)
+  })
+
+  it("rejeita menos de 2 ou mais de 6 opções", () => {
+    expect(perguntarSchema.safeParse({ pergunta: "X?", opcoes: ["só uma"] }).success).toBe(false)
+    expect(perguntarSchema.safeParse({ pergunta: "X?", opcoes: Array.from({ length: 7 }, (_, i) => `op${i}`) }).success).toBe(false)
+  })
+
+  it("rejeita pergunta vazia", () => {
+    expect(perguntarSchema.safeParse({ pergunta: "", opcoes: ["a", "b"] }).success).toBe(false)
+  })
+})
+
+describe("acaoDecisaoSchema — decisao 'responder' (ChoiceCard, Fase 6, D3)", () => {
+  it("confirmar/recusar seguem sem exigir resposta", () => {
+    expect(acaoDecisaoSchema.safeParse({ decisao: "confirmar" }).success).toBe(true)
+    expect(acaoDecisaoSchema.safeParse({ decisao: "recusar" }).success).toBe(true)
+  })
+
+  it("responder exige `resposta` com ao menos uma seleção ou um 'outro'", () => {
+    expect(acaoDecisaoSchema.safeParse({ decisao: "responder" }).success).toBe(false)
+    expect(acaoDecisaoSchema.safeParse({ decisao: "responder", resposta: { selecionadas: [] } }).success).toBe(false)
+    expect(acaoDecisaoSchema.safeParse({ decisao: "responder", resposta: { selecionadas: ["Opção A"] } }).success).toBe(true)
+    expect(acaoDecisaoSchema.safeParse({ decisao: "responder", resposta: { selecionadas: [], outro: "Texto livre" } }).success).toBe(true)
+  })
+})
 
 describe("router — model selection (Sonnet default, Opus opt-in only)", () => {
   it("routes greetings to Haiku without tools", () => {
@@ -119,11 +151,12 @@ describe("registry — deterministic, valid tool schemas", () => {
     expect(doc.has("detalhe_cliente")).toBe(true)
     // mutações de CRM, navegação e rascunhar somem (foco em editar o doc aberto)
     for (const n of ["criar_tarefa", "criar_cliente", "navegar", "rascunhar_documento"]) expect(doc.has(n), n).toBe(false)
-    // tudo no docMode é leitura OU uma das 2 de documento
+    // tudo no docMode é leitura, uma das 2 de documento, ou a pergunta de
+    // esclarecimento (perguntar_usuario, Fase 6 — não abre nenhuma capacidade extra)
     const docSet = new Set(DOC_ONLY)
     for (const t of toApiTools("admin", "agente", true)) {
       const tool = TOOLS_BY_NAME.get(t.name)!
-      expect(tool.kind === "readonly" || docSet.has(t.name), t.name).toBe(true)
+      expect(tool.kind === "readonly" || tool.kind === "pergunta" || docSet.has(t.name), t.name).toBe(true)
     }
     // fora do editor as ferramentas de documento NÃO existem
     const global = new Set(toApiTools("admin").map((t) => t.name))
@@ -131,6 +164,15 @@ describe("registry — deterministic, valid tool schemas", () => {
     // docMode + "pergunta": o agente só consulta — sem editar o documento
     const docPergunta = new Set(toApiTools("admin", "pergunta", true).map((t) => t.name))
     for (const n of DOC_ONLY) expect(docPergunta.has(n), n).toBe(false)
+  })
+
+  it("perguntar_usuario (Fase 6, D3) — disponível em TODOS os modos, incl. 'pergunta' e docMode; kind='pergunta' não é mutação", () => {
+    expect(TOOLS_BY_NAME.get("perguntar_usuario")?.kind).toBe("pergunta")
+    for (const mode of ["agente", "pergunta", "plano"] as const) {
+      expect(toApiTools("admin", mode).some((t) => t.name === "perguntar_usuario"), mode).toBe(true)
+    }
+    // dentro do editor (docMode) também sobrevive — não abre nenhuma capacidade extra de CRM
+    expect(toApiTools("admin", "agente", true).some((t) => t.name === "perguntar_usuario")).toBe(true)
   })
 
   it("hides financial tools from the 'Equipe' (non-finance roles), keeps them for sócio/financeiro", () => {

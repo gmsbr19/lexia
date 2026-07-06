@@ -17,7 +17,7 @@ export const SIDEBAR: SidebarItem[] = [
   { id: "financeiro", label: "Financeiro", icon: "wallet", href: "/financeiro", socioPlus: true },
   { id: "comercial", label: "Comercial", icon: "megaphone", href: "/comercial" },
   { id: "tarefas", label: "Tarefas", icon: "listChecks", href: "/tarefas" },
-  { id: "clientes", label: "Clientes", icon: "users", href: "/clientes" },
+  { id: "clientes", label: "Contatos", icon: "users", href: "/contatos" },
   { id: "contratos", label: "Contratos", icon: "receipt", href: "/contratos" },
   { id: "processos", label: "Casos & Processos", icon: "scale", href: "/processos" },
   { id: "agenda", label: "Agenda", icon: "calendar", href: "/agenda" },
@@ -33,7 +33,7 @@ const ROUTE_META: Record<string, { label: string; icon: CrmIconName }> = {
   "/comercial": { label: "Comercial", icon: "megaphone" },
   "/tarefas": { label: "Tarefas", icon: "listChecks" },
   "/projetos": { label: "Projetos", icon: "listChecks" },
-  "/clientes": { label: "Clientes", icon: "users" },
+  "/contatos": { label: "Contatos", icon: "users" },
   "/contratos": { label: "Contratos", icon: "receipt" },
   "/casos": { label: "Casos", icon: "briefcase" },
   "/processos": { label: "Casos & Processos", icon: "scale" },
@@ -45,7 +45,7 @@ const ROUTE_META: Record<string, { label: string; icon: CrmIconName }> = {
 
 /** Tab/label metadata for a pathname. Cliente detail is dynamic (label set by the page). */
 export function metaForPath(pathname: string): { label: string; icon: CrmIconName } {
-  if (/^\/clientes\/\d+/.test(pathname)) return { label: "Cliente", icon: "user" }
+  if (/^\/contatos\/\d+/.test(pathname)) return { label: "Contato", icon: "user" }
   if (/^\/processos\/\d+/.test(pathname)) return { label: "Processo", icon: "scale" }
   if (pathname.startsWith("/documents/")) return { label: "Documento", icon: "fileText" }
   return ROUTE_META[pathname] ?? { label: pathname.replace(/^\//, "") || "Início", icon: "fileText" }

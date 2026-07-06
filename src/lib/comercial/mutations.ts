@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db"
 import { UserError } from "@/lib/errors"
 import { createLancamento } from "@/lib/finance/mutations"
 import { notificarLeadConvertido } from "@/lib/notificacoes/triggers"
+import { planejarBackfillCliente } from "./merge"
 import {
   LEAD_ETAPAS,
   MARKETING_CATEGORIA_ASTREA_ID,
@@ -325,6 +326,47 @@ export async function converterLead(id: number, input: ConverterLeadInput, actor
   })
   // Conversão nova (não estava em 'ganho' antes) → avisa os gestores.
   if (antes && antes.etapa !== "ganho") {
+    void notificarLeadConvertido({ leadId: id, nome: result.nome, actorEmail })
+  }
+  return result
+}
+
+export interface MesclarLeadInput {
+  clienteId: number
+}
+
+/** Merge a lead into an ALREADY-REGISTERED Cliente — for when the same person
+ *  was a client before also showing up as a lead (e.g. re-imported from
+ *  Genions). Links the lead to that Cliente and marks it 'ganho' (no
+ *  Honorário is created here — the client relationship, and any of its
+ *  contracts, already exist); backfills empty Cliente contact fields (email/
+ *  telefone) from the lead. */
+export async function mesclarLeadComCliente(id: number, input: MesclarLeadInput, actorEmail?: string | null) {
+  const clienteId = reqInt(input.clienteId, "cliente")
+  const antes = await prisma.lead.findUnique({ where: { id }, select: { etapa: true, dataConversao: true } })
+  if (!antes) throw new UserError("Lead não encontrado")
+  const result = await prisma.$transaction(async (tx) => {
+    const [lead, cliente] = await Promise.all([
+      tx.lead.findUnique({ where: { id }, select: { id: true, nome: true, email: true, telefone: true, origem: true } }),
+      tx.cliente.findUnique({ where: { id: clienteId }, select: { emails: true, telefones: true, origem: true } }),
+    ])
+    if (!lead) throw new UserError("Lead não encontrado")
+    if (!cliente) throw new UserError("Cliente não encontrado")
+    const patch = planejarBackfillCliente(lead, cliente)
+    if (Object.keys(patch).length > 0) await tx.cliente.update({ where: { id: clienteId }, data: patch })
+    return tx.lead.update({
+      where: { id },
+      data: {
+        etapa: "ganho",
+        dataConversao: antes.dataConversao ?? new Date(),
+        clienteId,
+        motivoPerda: null,
+      },
+    })
+  })
+  // Mesclagem nova (não estava em 'ganho' antes) → avisa os gestores, mesmo
+  // fluxo de notificação da conversão normal.
+  if (antes.etapa !== "ganho") {
     void notificarLeadConvertido({ leadId: id, nome: result.nome, actorEmail })
   }
   return result

@@ -48,9 +48,9 @@ function StageMenu({ lead, onMove, onConvert, onLose }: { lead: CmDatasetLead; o
   )
 }
 
-function LeadRow({ l, campMap, selected, onSelect, onMove, onConvert, onLose, onEdit, onReopen }: {
+function LeadRow({ l, campMap, selected, onSelect, onMove, onConvert, onLose, onEdit, onReopen, onMerge }: {
   l: CmDatasetLead; campMap: Map<number, string>; selected: boolean; onSelect: (id: number) => void
-  onMove: (id: number, k: LeadEtapa) => void; onConvert: (l: CmDatasetLead) => void; onLose: (l: CmDatasetLead) => void; onEdit: (l: CmDatasetLead) => void; onReopen: (id: number) => void
+  onMove: (id: number, k: LeadEtapa) => void; onConvert: (l: CmDatasetLead) => void; onLose: (l: CmDatasetLead) => void; onEdit: (l: CmDatasetLead) => void; onReopen: (id: number) => void; onMerge: (l: CmDatasetLead) => void
 }) {
   const [menu, setMenu] = useState(false)
   return (
@@ -83,6 +83,7 @@ function LeadRow({ l, campMap, selected, onSelect, onMove, onConvert, onLose, on
               <div className={`card ${lexGlassStrong}`} style={{ position: "absolute", right: 0, top: 32, zIndex: 41, minWidth: 178, padding: 6, ...glassElevation("0 12px 28px rgba(2,13,37,0.16)") }}>
                 <button className="cm-menu-item" onClick={() => { setMenu(false); onEdit(l) }}><Icon name="edit" size={13} />Editar lead</button>
                 {l.etapa !== "ganho" && <button className="cm-menu-item" onClick={() => { setMenu(false); onConvert(l) }} style={{ color: "#2E9E5B" }}><Icon name="handshake" size={13} />Converter</button>}
+                <button className="cm-menu-item" onClick={() => { setMenu(false); onMerge(l) }}><Icon name="gitMerge" size={13} />Mesclar com cliente</button>
                 {l.etapa !== "perdido" && <button className="cm-menu-item" onClick={() => { setMenu(false); onLose(l) }} style={{ color: "var(--cm-neg,#C0492F)" }}><Icon name="x" size={13} />Marcar perdido</button>}
                 {(l.etapa === "ganho" || l.etapa === "perdido") && <button className="cm-menu-item" onClick={() => { setMenu(false); onReopen(l.id) }}><Icon name="refreshCw" size={13} />Reabrir lead</button>}
               </div>
@@ -94,9 +95,9 @@ function LeadRow({ l, campMap, selected, onSelect, onMove, onConvert, onLose, on
   )
 }
 
-export function CmLeads({ dataset, injectFilter, lastImport, onNew, onMove, onConvert, onLose, onEdit, onReopen, onBulkMove, onImport }: {
+export function CmLeads({ dataset, injectFilter, lastImport, onNew, onMove, onConvert, onLose, onEdit, onReopen, onBulkMove, onImport, onMerge }: {
   dataset: CmDataset; injectFilter: LeadInject | null; lastImport: LastImport | null
-  onNew: () => void; onMove: (id: number, k: LeadEtapa) => void; onConvert: (l: CmDatasetLead) => void; onLose: (l: CmDatasetLead) => void; onEdit: (l: CmDatasetLead) => void; onReopen: (id: number) => void; onBulkMove: (ids: number[], k: LeadEtapa) => void; onImport: () => void
+  onNew: () => void; onMove: (id: number, k: LeadEtapa) => void; onConvert: (l: CmDatasetLead) => void; onLose: (l: CmDatasetLead) => void; onEdit: (l: CmDatasetLead) => void; onReopen: (id: number) => void; onBulkMove: (ids: number[], k: LeadEtapa) => void; onImport: () => void; onMerge: (l: CmDatasetLead) => void
 }) {
   const storedAreas = useAreasStore((s) => s.areas)
   const areaOpts = useMemo(() => toAreaOptions(storedAreas), [storedAreas])
@@ -201,7 +202,7 @@ export function CmLeads({ dataset, injectFilter, lastImport, onNew, onMove, onCo
                 </tr>
               </thead>
               <tbody>
-                {pageRows.map((l) => <LeadRow key={l.id} l={l} campMap={campMap} selected={sel.has(l.id)} onSelect={toggle} onMove={onMove} onConvert={onConvert} onLose={onLose} onEdit={onEdit} onReopen={onReopen} />)}
+                {pageRows.map((l) => <LeadRow key={l.id} l={l} campMap={campMap} selected={sel.has(l.id)} onSelect={toggle} onMove={onMove} onConvert={onConvert} onLose={onLose} onEdit={onEdit} onReopen={onReopen} onMerge={onMerge} />)}
                 {rows.length === 0 && <tr><td colSpan={9} style={{ padding: "48px 16px" }}><CmEmpty icon="search" title="Nenhum lead encontrado" desc="Ajuste os filtros ou cadastre um novo lead." /></td></tr>}
               </tbody>
             </table>

@@ -12,6 +12,10 @@ export interface CampoDetectado {
   name: string
   dataType?: PlaceholderType
   label?: string
+  /** Form-layout metadata (the AI groups fields + picks controls). */
+  section?: string
+  options?: string[]
+  multiline?: boolean
 }
 
 // ── plain text (what the detector reads) ───────────────────────────────────────
@@ -52,7 +56,14 @@ function splitInline(content: LexInline[], campo: CampoDetectado): LexInline[] |
     const after = node.text.slice(idx + campo.exactText.length)
     const ph: LexPlaceholderNode = {
       type: 'placeholder',
-      attrs: { name: campo.name, dataType: campo.dataType ?? 'texto', label: campo.label || campo.name },
+      attrs: {
+        name: campo.name,
+        dataType: campo.dataType ?? 'texto',
+        label: campo.label || campo.name,
+        ...(campo.section ? { section: campo.section } : {}),
+        ...(campo.options?.length ? { options: campo.options } : {}),
+        ...(campo.multiline ? { multiline: true } : {}),
+      },
     }
     const repl: LexInline[] = []
     if (before) repl.push(node.marks ? { type: 'text', text: before, marks: node.marks } : { type: 'text', text: before })

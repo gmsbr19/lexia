@@ -5,7 +5,7 @@
 // arrows + a route-based tab strip + a per-page actions slot, plus the global AI
 // surfaces (LexIA orb/popup, Spotlight ⌘K, Settings). Each route renders its
 // content in the content area; there is no per-pane split (route-tabs model).
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { signOut } from "next-auth/react"
 import { apiSend } from "@/lib/client/api"
@@ -249,6 +249,23 @@ export function UnifiedShell({ children }: { children: ReactNode }) {
   // Páginas públicas sem shell (login + página de ativação do convite).
   const isLogin = pathname === "/login" || pathname.startsWith("/definir-senha")
 
+  // No editor de documentos, a sidebar global recolhe automaticamente p/ dar mais
+  // espaço ao editor; restaura o estado anterior ao sair. O toggle manual (Recolher
+  // menu) continua livre — só re-força ao entrar/sair do editor, não a cada render.
+  const isDocEditor = pathname.startsWith("/documents/doc/")
+  const collapsedRef = useRef(collapsed)
+  collapsedRef.current = collapsed
+  const preEditorCollapsed = useRef<boolean | null>(null)
+  useEffect(() => {
+    if (isDocEditor) {
+      if (preEditorCollapsed.current === null) preEditorCollapsed.current = collapsedRef.current
+      setCollapsed(true)
+    } else if (preEditorCollapsed.current !== null) {
+      setCollapsed(preEditorCollapsed.current)
+      preEditorCollapsed.current = null
+    }
+  }, [isDocEditor])
+
   useEffect(() => {
     if (isLogin) return
     let alive = true
@@ -306,9 +323,9 @@ export function UnifiedShell({ children }: { children: ReactNode }) {
   const role: Role = me?.role ?? "staff"
   const nav: CrmNav = useMemo(
     () => ({
-      navPage: (page: CrmPage) => router.push(`/${page}`),
-      openCliente: (id: number) => router.push(`/clientes/${id}`),
-      openClienteTab: (id: number) => router.push(`/clientes/${id}`),
+      navPage: (page: CrmPage) => router.push(page === "clientes" ? "/contatos" : `/${page}`),
+      openCliente: (id: number) => router.push(`/contatos/${id}`),
+      openClienteTab: (id: number) => router.push(`/contatos/${id}`),
       openCaso: (id: number) => router.push(`/processos?view=processos&caso=${id}`),
       openContrato: (id: number) => router.push(`/contratos?contrato=${id}`),
       openProcesso: (id: number) => router.push(`/processos/${id}`),
@@ -316,7 +333,7 @@ export function UnifiedShell({ children }: { children: ReactNode }) {
     [router],
   )
   const action = (kind: string) => {
-    if (kind === "novo-cliente") router.push("/clientes?new=cliente")
+    if (kind === "novo-cliente") router.push("/contatos?new=cliente")
     else if (kind === "nova-tarefa") router.push("/tarefas")
     else if (kind === "novo-lancamento") router.push("/financeiro")
     else if (kind === "novo-evento") router.push("/agenda")
@@ -334,7 +351,7 @@ export function UnifiedShell({ children }: { children: ReactNode }) {
   }
 
   const page = pathname.split("/")[1] || "inicio"
-  const clienteMatch = pathname.match(/^\/clientes\/(\d+)/)
+  const clienteMatch = pathname.match(/^\/contatos\/(\d+)/)
   const clienteId = clienteMatch ? Number(clienteMatch[1]) : undefined
   const dataset = emptyDataset(clientes, role, me?.nome ?? "", me?.email ?? "")
   const visibleTabs = hydrated ? tabs : []

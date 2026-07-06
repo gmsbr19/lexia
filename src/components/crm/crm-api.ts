@@ -39,6 +39,9 @@ export const searchAll = (q: string) => get<SearchResults>(`/api/search?q=${enco
 export const createCliente = (body: unknown) => mut(`/api/clientes`, "POST", body)
 export const patchCliente = (id: number, body: unknown) => mut(`/api/clientes/${id}`, "PATCH", body)
 export const anonimizarCliente = (id: number) => mut(`/api/clientes/${id}/anonimizar`, "POST")
+/** Merge the duplicate into the survivor (id). Returns per-relation move counts. */
+export const mesclarClientes = (id: number, duplicadoId: number) =>
+  mut(`/api/clientes/${id}/mesclar`, "POST", { duplicadoId })
 
 // ── cobrança & anotações ──
 export const addAnotacaoCliente = (id: number, body: { conteudo: string; fixado?: boolean }) =>
@@ -90,7 +93,9 @@ export const lexiaConversa = (id: number) => get<LexiaConversaDetail>(`/api/lexi
 // Chat itself streams over SSE — see src/components/lexia/useLexiaStream (not apiSend).
 export const lexiaNewConversa = (titulo?: string) => mut<{ id: number; titulo: string | null }>(`/api/lexia/conversas`, "POST", { titulo: titulo ?? null })
 export const lexiaRenameConversa = (id: number, titulo: string) => mut(`/api/lexia/conversas/${id}`, "PATCH", { titulo })
+export const lexiaFixarConversa = (id: number, fixada: boolean) => mut(`/api/lexia/conversas/${id}`, "PATCH", { fixada })
 export const lexiaDeleteConversa = (id: number) => mut(`/api/lexia/conversas/${id}`, "DELETE")
+export const lexiaFeedback = (mensagemId: number, feedback: "up" | "down" | null) => mut(`/api/lexia/mensagens/${mensagemId}`, "PATCH", { feedback })
 
 // ── LexIA preferências (persona, instruções, modo, modelo, toggles) ──
 export const getLexiaPrefs = () => get<LexiaPrefsResolved>(`/api/lexia/preferencias`)

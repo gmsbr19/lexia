@@ -6,7 +6,7 @@ import { getCasos } from "@/lib/finance/queries"
 import { idOpt, idReq } from "@/lib/validation"
 import { verFinanceiro } from "@/lib/users/types"
 import type { CasoDetail } from "@/lib/casos/types"
-import { nomeCaso, nomeCliente, nomeUsuario } from "../confirmar"
+import { diffRow, nomeCaso, nomeCliente, nomeUsuario } from "../confirmar"
 import { defineTool } from "../types"
 import { cap, limite } from "./shared"
 
@@ -84,12 +84,15 @@ export const casosTools = [
     }),
     resumo: (i) => `Editar caso #${i.id}`,
     montarConfirmacao: async (_ctx, i) => {
-      const det = [{ label: "Caso", valor: await nomeCaso(i.id) }]
-      if (i.titulo) det.push({ label: "Novo título", valor: i.titulo })
-      if (i.status) det.push({ label: "Status", valor: i.status })
-      if (i.area) det.push({ label: "Área", valor: i.area })
-      if (i.clientePrincipalId) det.push({ label: "Cliente", valor: await nomeCliente(i.clientePrincipalId) })
-      if (i.responsavelId) det.push({ label: "Responsável", valor: await nomeUsuario(i.responsavelId) })
+      const antes = await getCasoDetail(i.id)
+      const det = [
+        { label: "Caso", valor: await nomeCaso(i.id) },
+        diffRow("Título", i.titulo, antes?.titulo),
+        diffRow("Status", i.status, antes?.status ?? undefined),
+        diffRow("Área", i.area, antes?.area ?? undefined),
+        i.clientePrincipalId ? diffRow("Cliente", await nomeCliente(i.clientePrincipalId), antes?.cliente ?? undefined) : null,
+        i.responsavelId ? diffRow("Responsável", await nomeUsuario(i.responsavelId), antes?.responsavelUser ?? undefined) : null,
+      ].filter((d): d is NonNullable<typeof d> => d != null)
       return { resumo: "Editar caso", detalhes: det }
     },
     run: async (_ctx, i) =>

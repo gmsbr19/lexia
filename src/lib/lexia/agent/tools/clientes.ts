@@ -10,7 +10,7 @@ import { getClientes } from "@/lib/finance/queries"
 import { idReq } from "@/lib/validation"
 import { verFinanceiro } from "@/lib/users/types"
 import type { ClienteDetail } from "@/lib/clientes/types"
-import { nomeCliente } from "../confirmar"
+import { diffRow, nomeCliente } from "../confirmar"
 import { defineTool } from "../types"
 import { cap, limite } from "./shared"
 
@@ -82,12 +82,16 @@ export const clientesTools = [
     resumo: (i) => `Editar cliente #${(i as { id: number }).id}`,
     montarConfirmacao: async (_ctx, input) => {
       const i = input as z.infer<typeof clientePatchSchema> & { id: number }
-      const det: { label: string; valor: string }[] = [{ label: "Cliente", valor: await nomeCliente(i.id) }]
-      if (i.nome) det.push({ label: "Novo nome", valor: i.nome })
-      if (i.cpfCnpj) det.push({ label: "CPF/CNPJ", valor: i.cpfCnpj })
-      if (i.cidade) det.push({ label: "Cidade", valor: `${i.cidade}${i.uf ? `/${i.uf}` : ""}` })
-      if (i.emails?.length) det.push({ label: "E-mails", valor: i.emails.join(", ") })
-      if (i.telefones?.length) det.push({ label: "Telefones", valor: i.telefones.join(", ") })
+      const antes = await getClienteDetail(i.id)
+      const h = antes?.header
+      const det = [
+        { label: "Cliente", valor: await nomeCliente(i.id) },
+        diffRow("Nome", i.nome, h?.nome),
+        diffRow("CPF/CNPJ", i.cpfCnpj, h?.cpfCnpj),
+        diffRow("Cidade", i.cidade ? `${i.cidade}${i.uf ? `/${i.uf}` : ""}` : undefined, h?.cidade ? `${h.cidade}${h.uf ? `/${h.uf}` : ""}` : undefined),
+        diffRow("E-mails", i.emails?.length ? i.emails.join(", ") : undefined, h?.emails?.length ? h.emails.join(", ") : undefined),
+        diffRow("Telefones", i.telefones?.length ? i.telefones.join(", ") : undefined, h?.telefones?.length ? h.telefones.join(", ") : undefined),
+      ].filter((d): d is NonNullable<typeof d> => d != null)
       return { resumo: "Editar cliente", detalhes: det }
     },
     run: async (_ctx, input) => {

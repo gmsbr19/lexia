@@ -1,8 +1,15 @@
 "use client"
 
-// Lightweight Markdown renderer — headings, bold/italic, inline + block code,
-// lists, links and paragraphs. No dependency, no dangerouslySetInnerHTML.
-import { Fragment, type ReactNode } from "react"
+// Markdown renderer — headings, bold/italic, inline + block code (com barra de
+// linguagem, copiar e colapso — Fase 2/R3), listas (incl. tarefas e aninhadas),
+// citação, regra horizontal, links, tabela (scroll contido + cabeçalho fixo).
+// Sem dependência, sem dangerouslySetInnerHTML. O parser (blocos) mora em
+// md/parse.ts, puro e testável isoladamente.
+import { Fragment, useState, type ReactNode } from "react"
+import { parseMarkdown, type MdList, type MdListItem } from "./md/parse"
+import { CodeBlock } from "./md/CodeBlock"
+import { LongTable } from "./md/LongTable"
+import "./md/md.css"
 
 const codeInline: React.CSSProperties = {
   fontFamily: "var(--font-mono, ui-monospace, monospace)",
@@ -10,17 +17,6 @@ const codeInline: React.CSSProperties = {
   background: "var(--bg-sunken)",
   padding: "1px 5px",
   borderRadius: 6,
-}
-const codeBlock: React.CSSProperties = {
-  fontFamily: "var(--font-mono, ui-monospace, monospace)",
-  fontSize: 12,
-  background: "var(--bg-sunken)",
-  border: "1px solid var(--border)",
-  borderRadius: 10,
-  padding: "10px 12px",
-  overflowX: "auto",
-  margin: "6px 0",
-  whiteSpace: "pre",
 }
 
 function inline(text: string): ReactNode[] {
@@ -58,167 +54,105 @@ function inline(text: string): ReactNode[] {
   return out
 }
 
-export function Markdown({ text }: { text: string }) {
-  const lines = text.replace(/\r\n/g, "\n").split("\n")
-  const blocks: ReactNode[] = []
-  let i = 0
-  let key = 0
+/** Item de lista de tarefa — toggle visual local (sem persistência; a resposta é estática). */
+function TaskItem({ initial, children }: { initial: boolean; children: ReactNode }) {
+  const [done, setDone] = useState(initial)
+  return (
+    <li className="cc-task" data-done={done ? "1" : "0"}>
+      <button
+        type="button"
+        className="cc-check"
+        onClick={() => setDone((d) => !d)}
+        role="checkbox"
+        aria-checked={done}
+        style={{ background: done ? undefined : "transparent" }}
+      >
+        {done && (
+          <svg width={9} height={9} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        )}
+      </button>
+      <span>{children}</span>
+    </li>
+  )
+}
 
-  while (i < lines.length) {
-    const line = lines[i]
+function renderList(list: MdList, keyPrefix: string): ReactNode {
+  const Tag = list.ordered ? "ol" : "ul"
+  const hasTasks = list.items.some((it) => it.checked !== undefined)
+  return (
+    <Tag key={keyPrefix} style={{ margin: "4px 0", paddingLeft: hasTasks ? 2 : list.ordered ? 22 : 20, listStyle: hasTasks ? "none" : undefined, marginLeft: hasTasks ? 0 : undefined }}>
+      {list.items.map((item, idx) => renderListItem(item, `${keyPrefix}-${idx}`))}
+    </Tag>
+  )
+}
 
-    // fenced code
-    if (line.trim().startsWith("```")) {
-      const body: string[] = []
-      i++
-      while (i < lines.length && !lines[i].trim().startsWith("```")) body.push(lines[i++])
-      if (i < lines.length) i++ // closing fence
-      blocks.push(
-        <pre key={key++} style={codeBlock}>
-          {body.join("\n")}
-        </pre>,
-      )
-      continue
-    }
-
-    // heading
-    const h = line.match(/^(#{1,3})\s+(.*)$/)
-    if (h) {
-      const lvl = h[1].length
-      const size = lvl === 1 ? 16 : lvl === 2 ? 14 : 14
-      blocks.push(
-        <div key={key++} style={{ fontSize: size, fontWeight: 500, margin: "6px 0 2px", letterSpacing: "-0.01em" }}>
-          {inline(h[2])}
-        </div>,
-      )
-      i++
-      continue
-    }
-
-    // unordered list
-    if (/^\s*[-*]\s+/.test(line)) {
-      const items: ReactNode[] = []
-      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) {
-        items.push(<li key={items.length}>{inline(lines[i].replace(/^\s*[-*]\s+/, ""))}</li>)
-        i++
-      }
-      blocks.push(
-        <ul key={key++} style={{ margin: "4px 0", paddingLeft: 20 }}>
-          {items}
-        </ul>,
-      )
-      continue
-    }
-
-    // ordered list
-    if (/^\s*\d+\.\s+/.test(line)) {
-      const items: ReactNode[] = []
-      while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
-        items.push(<li key={items.length}>{inline(lines[i].replace(/^\s*\d+\.\s+/, ""))}</li>)
-        i++
-      }
-      blocks.push(
-        <ol key={key++} style={{ margin: "4px 0", paddingLeft: 22 }}>
-          {items}
-        </ol>,
-      )
-      continue
-    }
-
-    // table
-    if (line.trim().startsWith("|")) {
-      const rows: string[][] = []
-      while (i < lines.length && lines[i].trim().startsWith("|")) {
-        const rawCells = lines[i]
-          .split("|")
-          .slice(1, -1)
-          .map((c) => c.trim())
-        
-        // Skip markdown separator row eg: |---|---|
-        const isSeparator = rawCells.length > 0 && rawCells.every((c) => /^[:-]+$/.test(c))
-        if (isSeparator) {
-          i++
-          continue
-        }
-
-        if (rawCells.length > 0) {
-          rows.push(rawCells)
-        }
-        i++
-      }
-
-      if (rows.length > 0) {
-        const [headerRow, ...bodyRows] = rows
-        blocks.push(
-          <div key={key++} style={{ overflowX: "auto", margin: "8px 0" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead>
-                <tr>
-                  {headerRow.map((h, idx) => (
-                    <th
-                      key={idx}
-                      style={{
-                        textAlign: "left",
-                        padding: "6px 8px",
-                        borderBottom: "1px solid var(--border)",
-                        fontWeight: 500,
-                        color: "var(--text-soft)",
-                      }}
-                    >
-                      {inline(h)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {bodyRows.map((row, rIdx) => (
-                  <tr key={rIdx} style={{ borderBottom: "1px solid var(--bg-sunken)" }}>
-                    {row.map((c, cIdx) => (
-                      <td key={cIdx} style={{ padding: "6px 8px" }}>
-                        {inline(c)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )
-      }
-      continue
-    }
-
-    // blank line
-    if (!line.trim()) {
-      i++
-      continue
-    }
-
-    // paragraph (gather consecutive non-empty, non-special lines)
-    const para: string[] = []
-    while (
-      i < lines.length &&
-      lines[i].trim() &&
-      !/^\s*[-*]\s+/.test(lines[i]) &&
-      !/^\s*\d+\.\s+/.test(lines[i]) &&
-      !/^(#{1,3})\s+/.test(lines[i]) &&
-      !lines[i].trim().startsWith("```") &&
-      !lines[i].trim().startsWith("|")
-    ) {
-      para.push(lines[i])
-      i++
-    }
-    blocks.push(
-      <p key={key++} style={{ margin: "4px 0", lineHeight: 1.55 }}>
-        {para.map((p, idx) => (
-          <Fragment key={idx}>
-            {idx > 0 && <br />}
-            {inline(p)}
-          </Fragment>
-        ))}
-      </p>,
+function renderListItem(item: MdListItem, key: string): ReactNode {
+  const body = (
+    <>
+      {inline(item.text)}
+      {item.children && renderList(item.children, `${key}c`)}
+    </>
+  )
+  if (item.checked !== undefined) {
+    return (
+      <TaskItem key={key} initial={item.checked}>
+        {body}
+      </TaskItem>
     )
   }
+  return <li key={key}>{body}</li>
+}
 
-  return <div style={{ fontSize: 14, color: "var(--text)" }}>{blocks}</div>
+export function Markdown({ text, streaming = false }: { text: string; streaming?: boolean }) {
+  const blocks = parseMarkdown(text, { streaming })
+  return (
+    <div style={{ fontSize: 14, color: "var(--text)" }}>
+      {blocks.map((b, key) => {
+        switch (b.type) {
+          case "code":
+            return <CodeBlock key={key} lang={b.lang} code={b.code} streaming={b.aberto} />
+          case "heading": {
+            const size = b.level === 1 ? 16 : 14
+            return (
+              <div key={key} style={{ fontSize: size, fontWeight: 500, margin: "6px 0 2px", letterSpacing: "-0.01em" }}>
+                {inline(b.text)}
+              </div>
+            )
+          }
+          case "blockquote":
+            return (
+              <blockquote key={key} className="cc-blockquote">
+                {b.lines.map((l, i) => (
+                  <Fragment key={i}>
+                    {i > 0 && <br />}
+                    {inline(l)}
+                  </Fragment>
+                ))}
+              </blockquote>
+            )
+          case "hr":
+            return <hr key={key} className="cc-hr" />
+          case "list":
+            return renderList({ ordered: b.ordered, items: b.items }, `l${key}`)
+          case "table":
+            return <LongTable key={key} header={b.header} rows={b.rows} renderInline={(s) => inline(s)} />
+          case "paragraph":
+            return (
+              <p key={key} style={{ margin: "4px 0", lineHeight: 1.55 }}>
+                {b.lines.map((l, i) => (
+                  <Fragment key={i}>
+                    {i > 0 && <br />}
+                    {inline(l)}
+                  </Fragment>
+                ))}
+              </p>
+            )
+          default:
+            return null
+        }
+      })}
+    </div>
+  )
 }

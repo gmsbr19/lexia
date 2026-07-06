@@ -14,7 +14,7 @@ import { CrmContratosPage } from "./pages/CrmContratosPage"
 import { CrmAgendaPage } from "./pages/CrmAgendaPage"
 import { CrmCasoModal } from "./pages/CrmCasoModal"
 import { CrmContratoModal } from "./pages/CrmContratoModal"
-import { CrmQuickCliente, CrmAnonimizar } from "./pages/CrmQuickModals"
+import { CrmQuickCliente, CrmAnonimizar, CrmMesclarClientes } from "./pages/CrmQuickModals"
 import type { ClienteTab, CrmDataset, CrmNav } from "./crm-types"
 
 /** Router-based nav + Caso/Contrato modal overlays shared by the CRM routes. */
@@ -24,9 +24,9 @@ function useCrmRouteNav(dataset: CrmDataset, init?: { caso?: number; contrato?: 
   const [contrato, setContrato] = useState<number | null>(init?.contrato ?? null)
   const refresh = () => router.refresh()
   const nav: CrmNav = {
-    navPage: (page) => router.push(`/${page}`),
-    openCliente: (id) => router.push(`/clientes/${id}`),
-    openClienteTab: (id) => router.push(`/clientes/${id}`),
+    navPage: (page) => router.push(page === "clientes" ? "/contatos" : `/${page}`),
+    openCliente: (id) => router.push(`/contatos/${id}`),
+    openClienteTab: (id) => router.push(`/contatos/${id}`),
     openCaso: (id) => setCaso(id),
     openContrato: (id) => setContrato(id),
     openProcesso: (id) => router.push(`/processos/${id}`),
@@ -67,12 +67,13 @@ export function ClienteDetailRoute({ dataset, clienteId, initialTab }: { dataset
   const { nav, modals } = useCrmRouteNav(dataset)
   const [tab, setTab] = useState<ClienteTab>(initialTab ?? "financeiro")
   const [anonId, setAnonId] = useState<number | null>(null)
+  const [mergeId, setMergeId] = useState<number | null>(null)
   const setLabel = useTabs((s) => s.setLabel)
 
   // refine the tab label/icon with the real cliente name
   useEffect(() => {
     const c = dataset.clientes.find((x) => x.id === clienteId)
-    if (c) setLabel(`/clientes/${clienteId}`, c.nome, c.tipo === "pj" ? "building" : "user")
+    if (c) setLabel(`/contatos/${clienteId}`, c.nome, c.tipo === "pj" ? "building" : "user")
   }, [clienteId, dataset.clientes, setLabel])
 
   return (
@@ -85,10 +86,12 @@ export function ClienteDetailRoute({ dataset, clienteId, initialTab }: { dataset
         dataset={dataset}
         nav={nav}
         onAnonimizar={(id) => setAnonId(id)}
+        onMesclar={(id) => setMergeId(id)}
         onRefresh={() => router.refresh()}
       />
       {modals}
       {anonId != null && <CrmAnonimizar dataset={dataset} clienteId={anonId} onClose={() => setAnonId(null)} onRefresh={() => router.refresh()} />}
+      {mergeId != null && <CrmMesclarClientes dataset={dataset} alvoId={mergeId} onClose={() => setMergeId(null)} onRefresh={() => router.refresh()} />}
     </>
   )
 }

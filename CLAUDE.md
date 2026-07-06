@@ -145,6 +145,186 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **Comercial · fix: gastos de anúncios não contavam (duas categorias "Marketing") (this session, VERIFIED
+  tsc 0, 461/461 testes, eslint limpo, NO migration).** Sintoma: usuário lançou os gastos de Google/Meta de
+  junho (via Financeiro, categoria **"Marketing/Anúncios"**) e o módulo Comercial mostrava investimento zero.
+  **Causa raiz (diagnosticada consultando o dev.db):** existem DUAS categorias de marketing — a do app
+  **"Marketing"** (`astreaId app-cat-marketing`) e a importada do Astrea **"Marketing/Anúncios"** (astreaId
+  numérico, ids diferentes por ambiente). A query de ad-spend do Comercial só reconhecia gastos com
+  `campanhaId != null` OU `categoriaId == app-cat-marketing`, então TUDO lançado à mão sob "Marketing/Anúncios"
+  ficava invisível (não só junho — todo o histórico manual). **Fix ([lib/comercial/queries.ts](src/lib/comercial/queries.ts)):**
+  `marketingCategoriaId()` (singular, por astreaId) virou **`marketingCategoriaIds()`** (plural) — reconhece
+  QUALQUER categoria cujo nome, normalizado (accent-insensitive via `normalizar`), contenha "marketing"/
+  "anuncio" (novo helper `ehCategoriaMarketing`), além da app-cat-marketing; **casa por NOME, nunca por id
+  fixo** (ids diferem entre dev/prod). `spendWhere(ids[], …)` e o `spendOr` do dataset passaram a usar
+  `categoriaId: { in: ids }`. Sem migração — puro código de leitura. **Efeito colateral esperado (desejado):**
+  o histórico antigo sob "Marketing/Anúncios" também passa a contar → investimento/ROAS/ROI de meses
+  passados recalculam. **CAVEATS informados ao usuário:** (1) o Comercial filtra o gasto pela DATA do
+  lançamento (`dataLancamento`); se junho ainda aparecer zerado, conferir se a data do lançamento (não só o
+  vencimento) está em junho; (2) gasto lançado sem campanha vinculada conta no TOTAL/ROAS mas não na quebra
+  por-campanha — para atribuir a uma campanha, usar Comercial → "Registrar gasto" ou o import CSV da Meta.
+  **Usuário está em PRODUÇÃO** (o dev.db que li é separado) → o fix é código; ao subir, junho passa a contar.
+  **User action:** deploy do código → conferir `/comercial` em junho. Opcional: unificar as duas categorias
+  em produção p/ consistência futura.
+- **CRM · Mesclar 2 clientes (dedup) + rename "Clientes"→"Contatos" (rótulos + ROTA) (this session, VERIFIED
+  tsc 0, 461/461 testes, eslint sem achados novos, NO migration).** Dois pedidos. **Decisões travadas:**
+  (A-merge) o cliente duplicado é EXCLUÍDO de vez após migrar tudo; conflito de contato = mantém o cliente
+  escolhido, preenche só vazios. (B-rename) troca rótulos E a rota para `/contatos` (com redirect de
+  `/clientes`). **A — mesclar clientes:** função pura `planejarMesclagemCliente`
+  ([clientes/merge.ts](src/lib/clientes/merge.ts), backfill campo-a-campo só onde o alvo está vazio) +
+  `mesclarClientes(alvoId, duplicadoId)` ([clientes/mutations.ts](src/lib/clientes/mutations.ts)): numa
+  transação, repointa TODAS as FKs do duplicado→alvo (honorarios/lancamentos/leads/tarefas/eventos/
+  documentos/partes/projetos/clienteAnotacao via `clienteId`; casos via `clientePrincipalId`), faz o backfill
+  e HARD-DELETE do duplicado (nada fica órfão). Schema `mesclarClientesSchema` + rota
+  `POST /api/clientes/[id]/mesclar` (id = sobrevivente, body `{duplicadoId}`, `runMutation` action
+  "cliente.mesclar", roles admin/socio). UI: `CrmMesclarClientes` ([CrmQuickModals.tsx](src/components/crm/pages/CrmQuickModals.tsx),
+  escolhe o duplicado + confirma digitando o nome, espelha o `CrmAnonimizar`) + botão "Mesclar" (ícone
+  `gitMerge`, novo em [crm-icons.tsx](src/components/crm/crm-icons.tsx)) no cabeçalho do cliente
+  ([CrmClienteDetail.tsx](src/components/crm/pages/CrmClienteDetail.tsx) `onMesclar` prop) ligado no
+  [CrmRoutes.tsx](src/components/crm/CrmRoutes.tsx) (estado `mergeId`). Teste puro
+  [tests/clientes-merge.test.ts](tests/clientes-merge.test.ts). **B — Clientes→Contatos:** rota nova
+  `app/contatos/{page,[id]/page}.tsx` (cópia das de clientes) e `app/clientes/{page,[id]/page}.tsx` viraram
+  **redirects** (preservam ?query/?tab — deep links antigos de notificação/LexIA/bookmark seguem funcionando).
+  Rótulos "Cliente(s)"→"Contato(s)": sidebar/nav ([unified-nav.ts](src/components/shell/unified-nav.ts) href
+  `/contatos` + ROUTE_META + regex de detalhe; [shell-data.ts](src/components/shell/shell-data.ts)),
+  `CrmClientesPage` (título/botões/coluna/empty), modal Novo contato, **tela de lançamento do financeiro**
+  ([NovoLancamentoModal.tsx](src/components/financeiro/interativo/NovoLancamentoModal.tsx): "Cliente"→"Contato"
+  em entrada), OfficeDashboard, briefing, Spotlight/MentionPopover/LexiaChat PAGE_CTX/Suggestions (chave
+  `page` agora "contatos"). Pushes internos `/clientes/${id}`→`/contatos/${id}` em UnifiedShell/CrmRoutes/
+  ProcessosApp/ProcFichaRoute; `navPage` mapeia clientes→/contatos; LexIA links.ts/cards.ts→/contatos;
+  navegacao.ts whitelist ganhou `/contatos(/<id>)` (mantém `/clientes` legado p/ o redirect). **`/api/clientes`
+  e o modelo `Cliente` NÃO mudaram** (só rota de página + rótulos). Testes de card da LexIA atualizados p/
+  `/contatos`. **Verificado: tsc 0; 461/461 testes (4 novos de merge); eslint sem achados novos** (erros
+  set-state-in-effect/refs em UnifiedShell + CrmClienteDetail são PRÉ-EXISTENTES, confirmado via baseline).
+  **Sem migração. User action:** visual — o menu agora diz "Contatos" e abre `/contatos`; abrir um contato →
+  botão "Mesclar" (admin/sócio) → escolher duplicado → confirma → tudo migra e o duplicado some; a tela de
+  novo lançamento (entrada) diz "Contato"; deep links antigos `/clientes/...` redirecionam.
+- **CRM · Cliente — campo `origem` editável + integração com a mesclagem de lead (this session, VERIFIED
+  tsc 0, 457/457 testes, eslint sem achados novos, migração 20260706120000_cliente_origem APLICADA).**
+  `origem` só existia no `Lead`; o usuário precisava editar a origem do CLIENTE e que a mesclagem
+  preenchesse. **Decisões travadas:** (1) mesclagem preenche a origem do cliente só se estiver vazia (mesma
+  regra do backfill de e-mail/telefone — nunca sobrescreve); (2) a tabela de Contratos passa a mostrar a
+  origem do cliente, com fallback à origem do lead vinculado ao caso. **Backend:** `Cliente.origem String?`
+  ([schema.prisma](prisma/schema.prisma), migração ADD COLUMN — a ÚNICA desta feature); reusa o vocabulário
+  do Lead (`ORIGEM_LABEL`/`LeadOrigem` de [comercial/types.ts](src/lib/comercial/types.ts)) — helper
+  `validOrigem` (aceita só chaves conhecidas, senão null) em [clientes/mutations.ts](src/lib/clientes/mutations.ts)
+  (create+update); campo propagado em [schemas.ts](src/lib/clientes/schemas.ts)/[types.ts](src/lib/clientes/types.ts)
+  (`ClienteHeader.origem`)/[queries.ts](src/lib/clientes/queries.ts) (select+header). Rotas `/api/clientes`
+  herdam automático. **Mesclagem:** [merge.ts](src/lib/comercial/merge.ts) `planejarBackfillCliente` ganhou
+  `origem` (backfill se vazia); [mesclarLeadComCliente](src/lib/comercial/mutations.ts) seleciona `origem` de
+  lead+cliente e aplica o patch. **Contratos:** [getContratos](src/lib/finance/queries.ts) agora resolve
+  `origem = clientePrincipal.origem ?? origemLead ?? null`. **UI:** seletor de Origem no modal Novo cliente
+  ([CrmQuickModals.tsx](src/components/crm/pages/CrmQuickModals.tsx), novo export `ORIGEM_OPTS`) e no form de
+  edição do cliente ([CrmClienteDetail.tsx](src/components/crm/pages/CrmClienteDetail.tsx): estado+seed+
+  payload) + linha de origem no cabeçalho do cliente (ícone target). **Verificado: tsc 0; 457/457 testes
+  (1 novo caso de backfill de origem); eslint sem achados novos** (2 erros set-state-in-effect + warnings
+  CrmLink/AcertoSocioLado são PRÉ-EXISTENTES, confirmado via baseline com git stash). **User action:** a
+  migração já foi aplicada nesta sessão (o usuário pausou o `next dev`); reiniciar o dev e conferir visual —
+  Novo cliente e Editar cliente têm o campo Origem; mesclar um lead num cliente sem origem preenche a origem
+  do lead; a tabela `/contratos` mostra a origem editada do cliente.
+- **CRM · Contratos — página refeita como LENTE COMERCIAL de Casos (this session, VERIFIED tsc 0, 456/456
+  testes, eslint limpo, NO migration).** A página `/contratos` mostrava honorários lançados (fee ledger);
+  o usuário queria uma tabela de contratos fechados com valor, área, origem etc. **Decisão travada com o
+  usuário:** *contrato = caso* (um contrato reúne vários honorários) — Casos = controle operacional,
+  Contratos = controle comercial (mesma entidade `Caso`, lente diferente). Datas: "data de fechamento" =
+  `Caso.dataCriacao` (Caso não tem `createdAt @default`; dataCriacao é o análogo de abertura do caso).
+  Mantido status de pagamento como coluna+filtro + KPIs financeiros. **Backend:** novo `ContratoRow`
+  ([finance/types.ts](src/lib/finance/types.ts)) + `getContratos()` ([finance/queries.ts](src/lib/finance/queries.ts))
+  — agrega `Σ honorários.valorCents` (contratado) e o subconjunto `status='recebido'` por caso, origem vem
+  do lead vinculado ao caso (`Lead.casoId`, mais recente por `dataConversao`; casos diretos/importados sem
+  lead → "Direto"). **`dataset.contratos` REPROPÓSITO** de `HonorarioRow[]`→`ContratoRow[]` — seguro: a
+  LISTA só era lida pela própria página; o modal de honorário (`openContrato`/`CrmContratoModal`), a aba
+  Contratos do cliente (`detail.honorarios`), Spotlight e notificações buscam por id/independente e seguem
+  intactos. `getHonorarios()` continua existindo (usado pela tool LexIA). CrmDataset atualizado nos DOIS
+  lugares ([lib/crm/dataset.ts](src/lib/crm/dataset.ts) + [crm-types.ts](src/components/crm/crm-types.ts)).
+  **UI** ([CrmContratosPage.tsx](src/components/crm/pages/CrmContratosPage.tsx), reescrita): colunas
+  Contrato·Área·Origem·Valor contratado·Pagamento·Fechado em; filtros busca + área (só as presentes, cor+label
+  via `useAreasStore`/`resolveAreaLabel`/`resolveAreaColor`) + origem (`ORIGEM_LABEL` de comercial) + tipo
+  (consultivo/litígio) + segmented de pagamento (Todos/Recebido/Parcial/Em aberto); ordenação clicável nas
+  colunas Valor e Fechado em (default: fechado em desc); KPIs Total contratado/Recebido/Em aberto/Ticket
+  médio; clique na linha → `nav.openCaso` (o `CrmCasoModal` já é renderizado pelo `ContratosRoute`). Novos
+  ícones `chevronUp`/`chevronsUpDown` em [crm-icons.tsx](src/components/crm/crm-icons.tsx). **Verificado:
+  tsc 0; 456/456 testes; eslint limpo** (1 aviso pré-existente `AcertoSocioLado` não relacionado). **Sem
+  migração. User action:** visual em `/contratos` — tabela de contratos (casos) com área/origem/valor/
+  pagamento; filtrar e ordenar; clicar abre o caso; o deep-link `/contratos?contrato=<honorarioId>` das
+  notificações ainda abre o modal de honorário.
+- **Comercial · Leads — "Mesclar com cliente existente" (this session, VERIFIED tsc 0, 456/456 testes,
+  eslint limpo, NO migration)** (memory to add: `project_comercial_leads`). Problem: a client already
+  registered as `Cliente` sometimes reappears as a `Lead` on a later Genions import (no dedup exists in
+  the importer), creating a duplicate record instead of recognizing the relationship. Added an explicit
+  manual merge action rather than automatic dedup. **Decisions locked with the user:** merging marks the
+  lead `etapa: "ganho"` (no `Honorário` is created — the client relationship already exists, unlike
+  `converterLead`); Cliente contact fields (`emails`/`telefones`) are backfilled ONLY when empty on the
+  Cliente (never overwrite curated data); any authenticated user can merge (same as the rest of Leads
+  CRUD today — no role gate). **Pure logic**: `src/lib/comercial/merge.ts` `planejarBackfillCliente`
+  (lead contact → Cliente patch, gap-filling only), tested in `tests/comercial-merge.test.ts` (5 cases).
+  **Mutation**: `mesclarLeadComCliente` in `src/lib/comercial/mutations.ts` (transaction: backfill Cliente
+  contact fields + `Lead.update({etapa:"ganho", dataConversao, clienteId, motivoPerda:null})`; reuses the
+  existing `notificarLeadConvertido` trigger on first transition into "ganho", same as `converterLead`).
+  **Route**: `POST /api/comercial/leads/[id]/mesclar` (`mesclarLeadSchema` in `schemas.ts`, `runMutation`
+  action `"lead.mesclar"`, no `roles` — matches every other Leads route). **Client picker**: `CmDataset.
+  clientes` was an unused `string[]` (dead field, no UI ever read it) — upgraded to `CmClienteOption[]`
+  (`{id,nome}`, already fetched via the existing `getClienteOptions()` call in `getComercialDataset`) so
+  the merge modal's searchable list needs **zero extra network round-trip** (client-side filter, same
+  pattern as the leads/campaigns tables already in the dataset). **UI**: new `CmMergeModal` in
+  `CmModals.tsx` (search input + filtered list, `cm-menu-item` rows, "Trocar" to reselect) wired as a new
+  `"Mesclar com cliente"` action (`gitMerge` icon, added to `cm-icons.tsx`) in the lead row's "⋯" menu
+  (`CmLeads.tsx`) → `ComercialApp.tsx` new `Modal` variant `"mesclar"` + `submitMesclar`. **Verified:
+  `npx tsc --noEmit` 0 errors; `npm test` 456/456 (5 new); `npx eslint` on all touched Comercial files
+  clean.** **User action:** visual in `/comercial` → Leads tab → a lead's "⋯" menu → "Mesclar com cliente"
+  → search + pick an existing client → Mesclar; confirm the lead now shows the linked cliente name and
+  etapa "Ganho" (no honorário created), and that the client's e-mail/telefone got backfilled only if they
+  were empty before.
+- **LexIA · Chat — implementação COMPLETA do handoff "Chat de IA" (24 módulos, 8 fases, this session,
+  VERIFIED tsc 0, 451/451 testes, eslint limpo, 1 migração ÚNICA)** (memories `project_lexia_bar`,
+  `project_lexia_agent`, `project_documents_module` — o editor de docs reusa o mesmo `LexiaChat` embutido).
+  Handoff de 2 rodadas (cards/padrões + "Robustez" 6 blocos) implementado passo a passo em 8 fases
+  verificadas independentemente (tsc+testes a cada uma); nada do chat anterior foi perdido. **Decisões
+  travadas com o usuário no planejamento:** entity cards automáticos a partir das tools de leitura (0
+  tokens extra); follow-ups via sentinela de texto `<sugestoes>` (não uma tool — ~30-60 tokens vs. 1 rodada
+  de API); ChoiceCard completo com tool `perguntar_usuario` + pausa/resume; 1 migração Prisma consolidada.
+  **Fase 1 (fundações):** migração `20260704184817_lexia_chat_v2` (`LexiaMensagem.feedback/meta`,
+  `LexiaConversa.fixada/contexto`, `LexiaAcaoPendente.kind/respostaJson` — a ÚNICA migração de todo o
+  projeto); `cc/` kit completo (CcKit tokens/linhas/cards + motion kit ThinkingOrb/reveals/ícones animados,
+  regra travada: keyframes SEMPRE sob `prefers-reduced-motion: no-preference`, nunca par webkit+standard
+  `backdrop-filter` — bug do Lightning CSS). **Fase 2 (composer unificado + markdown v2):** `LexiaComposer.tsx`
+  extraído — as 5 montagens (flutuante/lateral/tela-cheia/embutido no editor/`/lexia`) agora compartilham UM
+  composer; markdown completo (CodeBlock com copiar/colapsar, checkbox, blockquote, listas aninhadas, hr,
+  LongTable); `AiActionsBar` (copiar+feedback 👍👎) + `ModelSeal`. **Fase 3 (entity cards + timeline + diff):**
+  `agent/cards.ts` mapeia tool→card automaticamente (cliente/lead/lançamento/honorário/tarefa/processo/evento
+  + busca agrupada + insight/viz); `AgentTimeline` substitui os chips soltos de tool; `ConfirmCard` ganhou diff
+  riscado→novo nas edições. **Fase 4 (controle de geração — a mais arriscada):** `SysCard` (8 códigos de
+  erro: offline/sobrecarga/timeout/sem-chave/sessão/stream-caiu/modo-econômico/genérico) + `POST
+  /api/lexia/conversas/[id]/continuar` (serve Continuar-por-limite/Retomar-após-parar/Reconectar); 2 bugs
+  reais corrigidos: `sse.ts` sem guarda de `cancel()` (enqueue pós-desconexão) e o loop perdia o texto parcial
+  no aborto (agora vira bloco de verdade, com `meta.interrompida`); scroll do thread com auto-stick <28px +
+  pill "↓ Nova resposta". **Fase 5 (truncamento/retry):** editar a última pergunta inline (pencil no balão,
+  reenviar substitui — `truncarConversaDesde` deleta ≥id + expira pendentes numa transação); `RetryMenu`
+  (Tentar de novo/Modelo avançado/Ajustar tom-tamanho via `agent/modificadores.ts`, volátil); **gap real
+  corrigido durante a implementação:** o retry genérico da Fase 4 só reproduzia o último `send()` — depois
+  de um refazer que falhasse, "Tentar de novo" reenviava a pergunta ERRADA; unificado em `lastReplayRef`
+  (tagged union). **Fase 6 (ChoiceCard + follow-ups + proveniência — ÚNICA edição do prompt CACHEADO):**
+  nova tool `perguntar_usuario` (kind="pergunta" — pausa o turno como uma mutação mas sem `run`; resolve com
+  decisao="responder"); `FollowupsFilter` (holdback de streaming p/ nunca piscar `<sugest…` na tela, testado
+  com torture-test de chunk=1 caractere); `fontesParaTool`+rodapé de fontes citáveis; `ThoughtDisclosure`
+  ("Pensou por Xs", extended thinking); `TurnResult.meta` centraliza thinking/fontes/followups (refatorado a
+  partir dos campos soltos da Fase 4). **Fase 7 (composer poderoso):** `@` menções (Clientes/Processos/
+  Contratos via `/api/search`, popover com teclado, vira chip + injeta `<mencoes>` no turno) e `/` comandos;
+  `MicButton`+`useDitado` (Web Speech API, mesmo padrão do `RambleModal` de Tarefas); colar texto longo (>2500
+  chars) oferece "Anexar como .txt" (novo MIME `text/plain` decodifica p/ bloco de texto); contador de 4000
+  caracteres + bloqueio; prévia rica de anexo na bolha enviada. **Fase 8 (histórico v2 + welcome v2 + a11y):**
+  `HistoryDropdown` (busca accent-insensitive, fixar/renomear inline, skeleton); pools de sugestão maiores
+  com "↻ Renovar" + "Sugerido pra você"; **3 bugs REAIS de teclado corrigidos na varredura de a11y** — as
+  opções do ChoiceCard e a linha do HistoryDropdown eram `<div onClick>` sem suporte a teclado, e o `CcRow`
+  compartilhado (usado por TODAS as linhas de entity card) tinha o mesmo problema, corrigido uma vez só no
+  componente base; +anel de foco dourado (`:focus-visible`) em tudo que não usa `.btn`. **Verificado a cada
+  fase e no fim: `npx tsc --noEmit` 0 erros; `npm test` 451/451 (foram de 320 a 451 ao longo da sessão);
+  `npx eslint` no módulo LexIA inteiro limpo** (achados pré-existentes fora de escopo em `LexiaChat.tsx`
+  2 casos/`LexiaSpotlight.tsx` documentados e deliberadamente não tocados). **User action:** parar `next dev`
+  se ainda não aplicou a migração desta sessão → `npm run db:migrate` → `npm run db:generate` → `npm run dev`.
+  Visual: pedir algo ambíguo → ChoiceCard de opções; "@Nome" no composer → popover → chip; colar texto longo →
+  oferta .txt; ícone de mic (Chrome/Edge) → ditado; parar uma geração → Retomar/Refazer; abrir o menu do
+  histórico → busca + fixar (estrela) + renomear inline; Tab/Enter navegando cards e ChoiceCard sem mouse.
 - **Documentos — "docs2" editor redesign (handoff `lexia-handoff(4).zip`) + glass nos popups + passe nas abas
   (this session, tsc 0, 320/320 testes, NO migration)** (memory `project_documents_module`,
   `project_acrylic_surfaces`). README apontava p/ `LexIA - Documentos.html`, mas o `src/docs/docs2-*.jsx`
@@ -176,7 +356,17 @@ This Next (16.2.6) has breaking changes vs. training data — consult
   **Abas**: "Criar"→**"Novo documento"** + rótulo **"Módulo de Documentos"** à direita
   ([TabStrip](src/components/documents/page/tabs/TabStrip.tsx)); hero do CreateTab alinhado. **Método**: build
   direto + 1 workflow de revisão adversarial (4 dims, verify por achado) → **1 achado low confirmado e corrigido**
-  (selMarks obsoleto). **Verificado: `npx tsc --noEmit` 0 erros; `npm test` 320/320** (1 novo:
+  (selMarks obsoleto). **6 ajustes pós-visual (follow-up, tsc 0, 320 testes):** (1) campos do painel + inputs
+  dos popovers agora usam o kit de formulário `.f-in` ([fields.css.ts](src/components/documents/editor2/fields.css.ts):
+  `fInput`/`fieldChip`/`fieldChipInput` — borda + **anel dourado no foco**, `:focus-within` no chip); (2) controle
+  de **zoom com glass** (`lexGlassStrong`); (3) o toggle do painel de campos voltou p/ a **ESQUERDA** do cabeçalho
+  (o da LexIA fica à direita); (4) **zoom auto-fit**: a folha A4 encaixa na largura da coluna por padrão (ResizeObserver
+  re-encaixa ao abrir/fechar painel; zoom manual desliga o auto-fit; o botão do meio = "Ajustar à largura"); (5)
+  **economia de tokens** no editor: `prompt.ts` `<instrucoes_doc>` agora manda a IA agir SÓ pelas ferramentas (cards),
+  sem reescrever/concluir em prosa (responde vazio quando só há ações) — a notificação "concluiu" já era suprimida no
+  editor (`watchingRef=open`); (6) **"Editar com a LexIA"** na barra flutuante agora **foca o composer** (novo prop
+  `focusSeq` no `LexiaChat` + `taRef` no `AutoTextarea`) com um **pulse dourado** de feedback. **Verificado: `npx tsc
+  --noEmit` 0 erros; `npm test` 320/320** (1 novo:
   `tests/documents-field-types.test.ts`). **Sem migração. User action:** visual em `/documents/doc/[id]`: campo
   preenchido aparece no papel (sublinhado dourado); clicar num `{{campo}}` → popover glass; barra "Campo"/mira →
   popover novo campo; selecionar texto → barra flutuante (B/I/U + Editar com a LexIA) e destaque dourado quando a

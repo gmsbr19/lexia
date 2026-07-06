@@ -37,6 +37,7 @@ export async function getClienteDetail(id: number): Promise<ClienteDetail | null
       cep: true,
       emails: true,
       telefones: true,
+      origem: true,
     },
   })
   if (!cliente) return null
@@ -148,6 +149,7 @@ export async function getClienteDetail(id: number): Promise<ClienteDetail | null
     cep: cliente.cep,
     emails: splitJoined(cliente.emails),
     telefones: splitJoined(cliente.telefones),
+    origem: cliente.origem,
   }
 
   const lancamentos: LancamentoRow[] = lancRows.map((r) => {

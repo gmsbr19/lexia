@@ -8,16 +8,16 @@ import {
   getClienteOptions,
   getClientes,
   getContasOptions,
-  getHonorarios,
+  getContratos,
   getSocioContas,
 } from "@/lib/finance/queries"
-import type { CasoRow, ContaOption, HonorarioRow, IdNome, SocioConta } from "@/lib/finance/types"
+import type { CasoRow, ContaOption, ContratoRow, IdNome, SocioConta } from "@/lib/finance/types"
 import type { ClienteRow } from "@/lib/finance/types"
 
 export interface CrmDataset {
   clientes: ClienteRow[]
   casos: CasoRow[]
-  contratos: HonorarioRow[]
+  contratos: ContratoRow[]
   socios: SocioConta[]
   clienteOptions: IdNome[]
   casoOptions: IdNome[]
@@ -32,7 +32,7 @@ export async function getCrmDataset(): Promise<CrmDataset> {
     requireUser(),
     getClientes(),
     getCasos(),
-    getHonorarios(),
+    getContratos(),
     getSocioContas(),
     getClienteOptions(),
     getCasoOptions(),

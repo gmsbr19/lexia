@@ -12,6 +12,7 @@ import { comercialTools } from "./tools/comercial"
 import { documentosTools } from "./tools/documentos"
 import { financeiroTools } from "./tools/financeiro"
 import { navegacaoTools } from "./tools/navegacao"
+import { perguntarTools } from "./tools/perguntar"
 import { processosTools } from "./tools/processos"
 import { projetosTools } from "./tools/projetos"
 import { tarefasTools } from "./tools/tarefas"
@@ -28,6 +29,7 @@ export const TOOLS: AgentTool[] = [
   ...processosTools,
   ...documentosTools,
   ...navegacaoTools,
+  ...perguntarTools,
 ].sort((a, b) => a.name.localeCompare(b.name))
 
 export const TOOLS_BY_NAME = new Map(TOOLS.map((t) => [t.name, t]))
@@ -84,8 +86,9 @@ export function toApiTools(
       // As ferramentas de documento exigem um doc aberto E um modo que permita editar
       // (no modo "pergunta" o agente só responde/consulta, não propõe alterações).
       if (DOC_TOOLS.has(t.name)) return !!docMode && mode !== "pergunta"
-      // Dentro do editor, o resto fica restrito a leitura (foco no documento).
-      if (docMode) return t.kind === "readonly"
+      // Dentro do editor, o resto fica restrito a leitura + a pergunta de esclarecimento
+      // (foco no documento; perguntar não abre nenhuma capacidade extra de CRM).
+      if (docMode) return t.kind === "readonly" || t.kind === "pergunta"
       return true
     })
     .map((t) => ({

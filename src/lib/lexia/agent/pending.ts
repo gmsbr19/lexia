@@ -18,6 +18,9 @@ export type AcaoPendente = {
   id: number
   conversaId: number
   userEmail: string
+  /** "mutation" (default, resolve com confirmar/recusar) | "pergunta" (resolve
+   *  com responder — a tool perguntar_usuario, Fase 6, D3). */
+  kind: string
   toolName: string
   toolUseId: string
   payload: string
@@ -35,11 +38,13 @@ export async function criarAcaoPendente(input: {
   payload: unknown
   resumo: string
   contexto: Anthropic.MessageParam[]
+  kind?: "mutation" | "pergunta"
 }): Promise<number> {
   const row = await prisma.lexiaAcaoPendente.create({
     data: {
       conversaId: input.conversaId,
       userEmail: input.userEmail,
+      kind: input.kind ?? "mutation",
       toolName: input.toolName,
       toolUseId: input.toolUseId,
       payload: JSON.stringify(input.payload),
@@ -66,11 +71,12 @@ export async function carregarAcao(id: number, userEmail: string): Promise<AcaoP
 /**
  * Atomically claim a pending action (idempotency against double-clicks): only
  * the caller that flips it away from 'pendente' wins. Returns true on win.
+ * `respostaJson` (kind="pergunta" only) persists the user's answer alongside.
  */
-export async function reservarAcao(id: number, status: "confirmada" | "recusada"): Promise<boolean> {
+export async function reservarAcao(id: number, status: "confirmada" | "recusada" | "respondida", respostaJson?: string): Promise<boolean> {
   const r = await prisma.lexiaAcaoPendente.updateMany({
     where: { id, status: "pendente" },
-    data: { status, resolvedAt: new Date() },
+    data: { status, resolvedAt: new Date(), ...(respostaJson != null ? { respostaJson } : {}) },
   })
   return r.count === 1
 }

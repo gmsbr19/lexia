@@ -141,6 +141,7 @@ model Cliente {
   cep             String?
   emails          String? // ';'-joined
   telefones       String? // ';'-joined
+  origem          String? // como o cliente chegou (mesmo conjunto do Lead: google_ads|meta_ads|indicacao|organico|outro)
   casos           Caso[]
   honorarios      Honorario[]
   lancamentos     Lancamento[]
@@ -630,6 +631,8 @@ model LexiaUso {
 model LexiaConversa {
   id        Int                 @id @default(autoincrement())
   titulo    String?
+  fixada    Boolean             @default(false) // pinned to top of the history dropdown
+  contexto  String? // JSON {tipo,id,nome,rota} — last @-mentioned entity, shown as a history chip
   userEmail String // owner — conversations are per-user
   createdAt DateTime            @default(now())
   updatedAt DateTime            @updatedAt
@@ -640,17 +643,19 @@ model LexiaConversa {
 }
 
 model LexiaMensagem {
-  id         Int           @id @default(autoincrement())
-  conversaId Int
-  conversa   LexiaConversa @relation(fields: [conversaId], references: [id], onDelete: Cascade)
-  role       String // 'user' | 'assistant'
-  content    String // plain-text fallback (always present; old rows render from this)
-  blocks     String? // JSON UI-block array: [{ type:'text'|'tool'|'confirm'|'notice', ... }]
-  model      String? // model id used for the assistant turn
+  id           Int           @id @default(autoincrement())
+  conversaId   Int
+  conversa     LexiaConversa @relation(fields: [conversaId], references: [id], onDelete: Cascade)
+  role         String // 'user' | 'assistant'
+  content      String // plain-text fallback (always present; old rows render from this)
+  blocks       String? // JSON UI-block array: [{ type:'text'|'tool'|'confirm'|'notice'|'card'|'choice', ... }]
+  model        String? // model id used for the assistant turn
   inputTokens  Int?
   outputTokens Int?
-  createdAt  DateTime      @default(now())
-  anexos     LexiaAnexo[]
+  feedback     String? // "up" | "down" — user feedback on an assistant turn
+  meta         String? // JSON MsgMeta: { thinking?, fontes?, truncada?, interrompida?, followups?, continuacao? }
+  createdAt    DateTime      @default(now())
+  anexos       LexiaAnexo[]
 
   @@index([conversaId])
 }
@@ -678,19 +683,21 @@ model LexiaAnexo {
 // `contexto` snapshot is the Anthropic messages array at the pause point so the
 // loop can resume with the tool_result once the user decides.
 model LexiaAcaoPendente {
-  id         Int           @id @default(autoincrement())
-  conversaId Int
-  conversa   LexiaConversa @relation(fields: [conversaId], references: [id], onDelete: Cascade)
-  userEmail  String
-  toolName   String
-  toolUseId  String // Anthropic tool_use block id
-  payload    String // JSON tool input (re-validated against the tool schema on confirm)
-  resumo     String // PT-BR one-line summary shown on the confirmation card
-  status     String   @default("pendente") // pendente | confirmada | recusada | expirada
-  contexto   String // JSON snapshot of the API messages array at the pause point
-  resultJson String? // JSON result of the executed mutation
-  createdAt  DateTime  @default(now())
-  resolvedAt DateTime?
+  id           Int           @id @default(autoincrement())
+  conversaId   Int
+  conversa     LexiaConversa @relation(fields: [conversaId], references: [id], onDelete: Cascade)
+  userEmail    String
+  kind         String   @default("mutation") // "mutation" | "pergunta" — pergunta = perguntar_usuario pause (no payload execution)
+  toolName     String
+  toolUseId    String // Anthropic tool_use block id
+  payload      String // JSON tool input (re-validated against the tool schema on confirm)
+  resumo       String // PT-BR one-line summary shown on the confirmation/choice card
+  status       String   @default("pendente") // pendente | confirmada | recusada | expirada
+  contexto     String // JSON snapshot of the API messages array at the pause point
+  resultJson   String? // JSON result of the executed mutation
+  respostaJson String? // JSON {selecionadas, outro?} — user's answer when kind="pergunta"
+  createdAt    DateTime  @default(now())
+  resolvedAt   DateTime?
 
   @@index([conversaId, status])
 }

@@ -142,7 +142,7 @@ export function LexiaSpotlight({ seed = "", page, clienteId, nav, onNavigate, on
         label: "Ir para",
         items: [
           { id: "g-ini", icon: "home", title: "Início", run: () => { onNavigate("/"); close() } },
-          { id: "g-cli", icon: "users", title: "Clientes", run: () => { nav.navPage("clientes"); close() } },
+          { id: "g-cli", icon: "users", title: "Contatos", run: () => { nav.navPage("clientes"); close() } },
           { id: "g-cas", icon: "briefcase", title: "Casos", run: () => { nav.navPage("casos"); close() } },
           { id: "g-con", icon: "receipt", title: "Contratos", run: () => { nav.navPage("contratos"); close() } },
           { id: "g-fin", icon: "wallet", title: "Financeiro", run: () => { onNavigate("/financeiro"); close() } },
@@ -184,7 +184,7 @@ export function LexiaSpotlight({ seed = "", page, clienteId, nav, onNavigate, on
       sub: `P${t.prio}${t.prazo ? ` · ${crmDate(t.prazo)}` : ""}`,
       run: () => { onNavigate("/tarefas"); close() },
     }))
-    if (clientes.length) g.push({ key: "k-cli", label: "Clientes", items: clientes })
+    if (clientes.length) g.push({ key: "k-cli", label: "Contatos", items: clientes })
     if (casos.length) g.push({ key: "k-cas", label: "Casos", items: casos })
     if (contratos.length) g.push({ key: "k-con", label: "Contratos", items: contratos })
     if (tarefas.length) g.push({ key: "k-tar", label: "Tarefas", items: tarefas })

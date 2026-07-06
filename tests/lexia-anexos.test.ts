@@ -19,11 +19,11 @@ describe("validação de anexos", () => {
     expect(bytesDeBase64("YWJjZA==")).toBe(4) // "abcd"
   })
 
-  it("aceita só os MIME types suportados", () => {
+  it("aceita só os MIME types suportados (text/plain desde a Fase 7 — colar longo → .txt)", () => {
     expect(mimePermitido("image/png")).toBe(true)
     expect(mimePermitido("application/pdf")).toBe(true)
+    expect(mimePermitido("text/plain")).toBe(true)
     expect(mimePermitido("image/svg+xml")).toBe(false)
-    expect(mimePermitido("text/plain")).toBe(false)
   })
 
   it("rejeita formato não suportado e arquivo vazio", () => {
@@ -45,11 +45,13 @@ describe("validação de anexos", () => {
 })
 
 describe("blocos para a Messages API", () => {
-  it("imagem vira bloco image; PDF vira bloco document", () => {
+  it("imagem vira bloco image; PDF vira bloco document; text/plain vira bloco text decodificado (Fase 7)", () => {
     const img = anexoParaBloco("image/jpeg", B64_PEQ)
     expect(img).toEqual({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: B64_PEQ } })
     const pdf = anexoParaBloco("application/pdf", B64_PEQ)
     expect(pdf).toEqual({ type: "document", source: { type: "base64", media_type: "application/pdf", data: B64_PEQ } })
+    const txt = anexoParaBloco("text/plain", B64_PEQ)
+    expect(txt).toEqual({ type: "text", text: "hello" })
   })
 
   it("construirConteudo devolve string sem anexos e blocos com anexos", () => {

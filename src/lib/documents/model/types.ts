@@ -49,6 +49,12 @@ export interface LexPlaceholderNode {
     label?: string
     /** Value used when `valores[name]` is absent. */
     defaultValue?: string
+    /** Form-layout metadata (AI-detected): section this field belongs to. */
+    section?: string
+    /** Fixed choices → renders a dropdown in the form. */
+    options?: string[]
+    /** Long free text → renders a textarea in the form. */
+    multiline?: boolean
   }
 }
 

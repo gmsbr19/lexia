@@ -38,19 +38,20 @@ export function PaperclipButton({ onPick, disabled }: { onPick: (files: FileList
   )
 }
 
-function Thumb({ a }: { a: ChatAnexo }) {
+function Thumb({ a, size = 26 }: { a: ChatAnexo; size?: number }) {
   const url = dataUrlImagem(a)
+  const radius = size > 30 ? 10 : 6
   if (url) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={url} alt={a.nome} style={{ width: 26, height: 26, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
+    return <img src={url} alt={a.nome} style={{ width: size, height: size, borderRadius: radius, objectFit: "cover", flexShrink: 0 }} />
   }
   const img = ehImagem(a.mimeType)
   return (
     <span
       style={{
-        width: 26,
-        height: 26,
-        borderRadius: 6,
+        width: size,
+        height: size,
+        borderRadius: radius,
         flexShrink: 0,
         display: "flex",
         alignItems: "center",
@@ -59,16 +60,22 @@ function Thumb({ a }: { a: ChatAnexo }) {
         color: img ? "var(--accent)" : "var(--text-muted)",
       }}
     >
-      <Icon name={img ? "eye" : "fileText"} size={14} />
+      <Icon name={img ? "eye" : "fileText"} size={size > 30 ? 18 : 14} />
     </span>
   )
 }
 
-/** Faixa de chips. Com onRemove → mostra o ✕ (composer); sem → balão enviado. */
+/**
+ * Faixa de chips. Com onRemove → chip compacto do composer (✕ pra remover). Sem
+ * onRemove → prévia RICA dentro do balão enviado (Fase 7): thumb maior, cartão
+ * de arquivo mais legível — a mesma peça, dois tamanhos pelo contexto de uso.
+ */
 export function AnexoChips({ anexos, onRemove }: { anexos: ChatAnexo[]; onRemove?: (i: number) => void }) {
   if (!anexos.length) return null
+  const rica = !onRemove
+  const thumbSize = rica ? 44 : 26
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+    <div style={{ display: "flex", flexWrap: "wrap", gap: rica ? 7 : 8, justifyContent: rica ? "flex-end" : "flex-start" }}>
       {anexos.map((a, i) => (
         <div
           key={i}
@@ -76,17 +83,17 @@ export function AnexoChips({ anexos, onRemove }: { anexos: ChatAnexo[]; onRemove
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 8,
-            maxWidth: 240,
-            padding: "5px 9px 5px 5px",
-            borderRadius: 10,
+            gap: rica ? 10 : 8,
+            maxWidth: rica ? 280 : 240,
+            padding: rica ? "7px 12px 7px 7px" : "5px 9px 5px 5px",
+            borderRadius: rica ? 12 : 10,
             border: "1px solid var(--border)",
             background: "var(--bg-elevated)",
           }}
         >
-          <Thumb a={a} />
-          <div style={{ minWidth: 0, lineHeight: 1.25 }}>
-            <div style={{ fontSize: 12.5, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 150 }}>
+          <Thumb a={a} size={thumbSize} />
+          <div style={{ minWidth: 0, lineHeight: 1.3 }}>
+            <div style={{ fontSize: rica ? 13 : 12.5, fontWeight: rica ? 500 : 400, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: rica ? 190 : 150 }}>
               {a.nome}
             </div>
             <div style={{ fontSize: 11, color: "var(--text-subtle)" }}>{rotuloTamanho(a.tamanho)}</div>

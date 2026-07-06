@@ -30,6 +30,7 @@ export interface ClienteHeader {
   cep: string | null
   emails: string[]
   telefones: string[]
+  origem: string | null // lead-source key (ORIGEM_LABEL) or null
 }
 
 export interface ClienteResumo {

@@ -23,6 +23,7 @@ import {
   FxKpi,
   FxLabel,
   FxMoney,
+  FxSelect,
   FxTabs,
   type EvtTipo,
   type FxTabDef,
@@ -43,6 +44,8 @@ import { crmDate, crmDateLong } from "../crm-fmt"
 import { verFinanceiro } from "@/lib/users/types"
 import { useModulosStore, processosHabilitado } from "@/lib/modulos/store"
 import { CrmDocumentoModal, CrmEventoModal, CrmLancamentoModal, CrmTarefaModal } from "./CrmClienteModals"
+import { ORIGEM_OPTS } from "./CrmQuickModals"
+import { ORIGEM_LABEL } from "@/lib/comercial/types"
 import type {
   ClienteDetail,
   ClienteTab,
@@ -63,6 +66,7 @@ interface Props {
   dataset: CrmDataset
   nav: CrmNav
   onAnonimizar: (id: number) => void
+  onMesclar: (id: number) => void
   onRefresh: () => void
 }
 
@@ -197,7 +201,7 @@ function CrmLancRow({
   )
 }
 
-export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, onAnonimizar, onRefresh }: Props) {
+export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, onAnonimizar, onMesclar, onRefresh }: Props) {
   const { toast } = useCrmToast()
   // "Equipe" (não Sócio/Admin/Financeiro) não dá baixa nem cria lançamentos —
   // continua vendo honorários/lançamentos e seus status (pago/pendente).
@@ -216,6 +220,7 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
   const [fTel, setFTel] = useState("")
   const [fCidade, setFCidade] = useState("")
   const [fUf, setFUf] = useState("")
+  const [fOrigem, setFOrigem] = useState("")
   // cobrança & anotações tab
   const [noteText, setNoteText] = useState("")
   const [cobMotivo, setCobMotivo] = useState("")
@@ -250,6 +255,7 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
       setFTel(h.telefones[0] ?? "")
       setFCidade(h.cidade ?? "")
       setFUf(h.uf ?? "")
+      setFOrigem(h.origem ?? "")
     }
   }, [edit, detail])
 
@@ -330,6 +336,7 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
         telefones: fTel.trim() ? [fTel.trim()] : [],
         cidade: fCidade.trim() || null,
         uf: fUf.trim() || null,
+        origem: fOrigem || null,
       })
       await load()
       onRefresh()
@@ -340,7 +347,7 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
     } finally {
       setSaving(false)
     }
-  }, [clienteId, fNome, fApelido, fDoc, fEmail, fTel, fCidade, fUf, load, onRefresh, toast])
+  }, [clienteId, fNome, fApelido, fDoc, fEmail, fTel, fCidade, fUf, fOrigem, load, onRefresh, toast])
 
   if (loading && !detail) {
     return <FxFrame><CrmEmpty icon="user" title="Carregando…" sub="Buscando os dados do cliente." /></FxFrame>
@@ -404,6 +411,7 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
               {c.emails[0] && <CrmInfoLine icon="mail">{c.emails[0]}</CrmInfoLine>}
               {c.telefones[0] && <CrmInfoLine icon="phone">{c.telefones[0]}</CrmInfoLine>}
               {fullAddr && <CrmInfoLine icon="mapPin">{fullAddr}</CrmInfoLine>}
+              {c.origem && <CrmInfoLine icon="target">{ORIGEM_LABEL[c.origem as keyof typeof ORIGEM_LABEL] ?? c.origem}</CrmInfoLine>}
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -419,6 +427,11 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
             <button className="btn btn-secondary" onClick={() => setEdit((e) => !e)} title="Editar dados">
               <Icon name="edit" size={14} />{edit ? "Concluir" : "Editar"}
             </button>
+            {(role === "admin" || role === "socio") && (
+              <button className="btn btn-secondary" onClick={() => onMesclar(clienteId)} title="Mesclar um cliente duplicado neste (migra tudo e remove o duplicado)">
+                <Icon name="gitMerge" size={14} />Mesclar
+              </button>
+            )}
             {(role === "admin" || role === "socio") && (
               <button className="btn btn-ghost" onClick={() => onAnonimizar(clienteId)} title="Excluir cliente (LGPD — apaga os dados pessoais, mantém o financeiro)" style={{ color: "var(--fin-neg,#C0492F)" }}>
                 <Icon name="trash2" size={14} />Excluir
@@ -448,6 +461,7 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
                 <div><FxLabel>Cidade</FxLabel><FxInput value={fCidade} onChange={(e) => setFCidade(e.target.value)} /></div>
                 <div><FxLabel>UF</FxLabel><FxInput value={fUf} onChange={(e) => setFUf(e.target.value)} maxLength={2} /></div>
               </div>
+              <div><FxLabel>Origem</FxLabel><FxSelect value={fOrigem} onChange={(e) => setFOrigem(e.target.value)} placeholder="— Não informada —" options={ORIGEM_OPTS} /></div>
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
               <button className="btn btn-ghost" onClick={() => setEdit(false)} disabled={saving}>Cancelar</button>

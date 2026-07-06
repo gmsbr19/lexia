@@ -10,13 +10,17 @@ import type { Emit, SseEvent, UiBlock } from "../types"
 
 export type { Emit, SseEvent, UiBlock }
 
-/** Cartão de confirmação legível: título + linhas (nomes resolvidos, datas/$ pt-BR). */
+/** Cartão de confirmação legível: título + linhas (nomes resolvidos, datas/$ pt-BR).
+ * `valorAntigo` (edições) habilita o diff riscado→novo do MutationCard (Fase 3). */
 export interface Confirmacao {
   resumo: string
-  detalhes?: { label: string; valor: string }[]
+  detalhes?: { label: string; valor: string; valorAntigo?: string }[]
 }
 
-export type ToolKind = "readonly" | "mutation" | "client"
+// "pergunta" (Fase 6, D3) = a UNIQUE tool "perguntar_usuario": pausa o turno
+// igual a uma proposta de mutação, mas SEM `run` — a resposta do usuário (não
+// uma execução) vira o tool_result no resume. Ver criarAcaoPendente(kind).
+export type ToolKind = "readonly" | "mutation" | "client" | "pergunta"
 
 export interface AgentCtx {
   user: SessionUser

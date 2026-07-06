@@ -21,7 +21,7 @@ import {
   cmParseCents,
   cmToday,
 } from "./cm-meta"
-import type { CampanhaStatus, CmContaOption, CmDatasetCampaign, CmDatasetLead, LeadEtapa, LeadOrigem, Plataforma } from "@/lib/comercial/types"
+import type { CampanhaStatus, CmClienteOption, CmContaOption, CmDatasetCampaign, CmDatasetLead, LeadEtapa, LeadOrigem, Plataforma } from "@/lib/comercial/types"
 import { toAreaOptions, useAreasStore } from "@/lib/areas/store"
 
 const centsInput = (c: number | null | undefined) => (c ? (c / 100).toFixed(2).replace(".", ",") : "")
@@ -235,6 +235,66 @@ export function CmConverterModal({ lead, onClose, onSubmit }: { lead: CmDatasetL
           <CmField label="Tipo de honorário"><CmSelect options={TIPOS_HONORARIO} value={tipoHon} onChange={(e) => setTipoHon(e.target.value)} /></CmField>
         </div>
         <CmField label="Data da conversão"><CmInput type="date" value={data} onChange={(e) => setData(e.target.value)} /></CmField>
+      </div>
+    </CmModal>
+  )
+}
+
+// ── Mesclar lead com cliente já existente ────────────────────────────────────
+// For when the same person was already registered as a Cliente before also
+// showing up as a Lead (typically a later Genions import). Links the lead to
+// the picked Cliente instead of creating a duplicate — see CmMergeModal's
+// note text below for the exact effect (mirrors mesclarLeadComCliente).
+export interface MesclarPayload { id: number; clienteId: number }
+export function CmMergeModal({ lead, clientes, onClose, onSubmit }: { lead: CmDatasetLead; clientes: CmClienteOption[]; onClose: () => void; onSubmit: (p: MesclarPayload) => Promise<void> }) {
+  const [q, setQ] = useState("")
+  const [clienteId, setClienteId] = useState<number | null>(null)
+  const { busy, err, run } = useSubmit(onClose)
+  const results = useMemo(() => {
+    const nq = q.trim().toLowerCase()
+    const list = nq ? clientes.filter((c) => c.nome.toLowerCase().includes(nq)) : clientes
+    return list.slice(0, 30)
+  }, [clientes, q])
+  const selected = clienteId != null ? clientes.find((c) => c.id === clienteId) ?? null : null
+  const valid = clienteId != null
+
+  return (
+    <CmModal width={520} title="Mesclar com cliente existente" sub={`${lead.nome} · ${ORIGEM_LABEL[lead.origem]}`} onClose={onClose}
+      footer={<>
+        <button className="btn btn-ghost" onClick={onClose} style={{ height: 36 }}>Cancelar</button>
+        <button className="btn btn-gold" disabled={!valid || busy} onClick={() => run(() => onSubmit({ id: lead.id, clienteId: clienteId as number }))} style={{ height: 36, opacity: valid && !busy ? 1 : 0.5 }}><Icon name="gitMerge" size={14} />Mesclar</button>
+      </>}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 15 }}>
+        <ErrLine err={err} />
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "12px 14px", background: "var(--accent-soft)", border: "1px solid rgba(192,161,71,0.3)", borderRadius: "var(--r-sm)" }}>
+          <Icon name="sparkles" size={16} style={{ color: "var(--accent)", flexShrink: 0, marginTop: 1 }} />
+          <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>Vincula este lead a um cliente <strong style={{ color: "var(--text)", fontWeight: 500 }}>já cadastrado</strong> — marca como Ganho sem criar honorário novo — e preenche e-mail/telefone do cliente se estiverem vazios.</div>
+        </div>
+        <CmField label="Cliente">
+          {selected ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", border: "1px solid var(--border-strong)", borderRadius: "var(--r-sm)", background: "var(--bg-soft)" }}>
+              <Icon name="user" size={15} style={{ color: "var(--text-subtle)" }} />
+              <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text)", flex: 1 }}>{selected.nome}</span>
+              <button className="btn btn-ghost" onClick={() => setClienteId(null)} style={{ height: 26, fontSize: 12, padding: "0 8px" }}>Trocar</button>
+            </div>
+          ) : (
+            <>
+              <CmInput autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar cliente por nome..." />
+              <div style={{ marginTop: 8, maxHeight: 220, overflowY: "auto", border: "1px solid var(--border)", borderRadius: "var(--r-sm)" }}>
+                {results.length === 0 ? (
+                  <div style={{ padding: "14px 12px", fontSize: 12, color: "var(--text-subtle)" }}>Nenhum cliente encontrado.</div>
+                ) : (
+                  results.map((c, i) => (
+                    <button key={c.id} className="cm-menu-item" onClick={() => setClienteId(c.id)} style={{ borderRadius: 0, borderTop: i === 0 ? "none" : "1px solid var(--border)" }}>
+                      <Icon name="user" size={14} style={{ color: "var(--text-subtle)" }} />
+                      {c.nome}
+                    </button>
+                  ))
+                )}
+              </div>
+            </>
+          )}
+        </CmField>
       </div>
     </CmModal>
   )

@@ -21,7 +21,7 @@ export const NAV_ITEMS: ShellNavItem[] = [
     { id: "financeiro", label: "Financeiro", icon: Wallet, href: "/financeiro" },
     { id: "comercial", label: "Comercial", icon: Megaphone, href: "/comercial" },
     { id: "tarefas", label: "Tarefas", icon: ListTodo, href: "/tarefas" },
-    { id: "clientes", label: "Clientes", icon: Users, href: "/clientes" },
+    { id: "clientes", label: "Contatos", icon: Users, href: "/contatos" },
     { id: "contratos", label: "Contratos", icon: Receipt, href: "/contratos" },
     { id: "casos", label: "Casos", icon: Briefcase, href: "/casos" },
     { id: "agenda", label: "Agenda", icon: Calendar, href: "/agenda" },

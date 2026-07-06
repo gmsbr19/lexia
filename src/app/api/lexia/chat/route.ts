@@ -11,10 +11,11 @@ import { RATE_LIMIT_MESSAGE, rateLimit } from "@/lib/rate-limit"
 import { readJson } from "@/lib/finance/api"
 import { parseBody } from "@/lib/validation"
 import { lexiaChatSchema } from "@/lib/lexia/schemas"
-import { carregarHistorico, ensureConversa, persistAssistantMsg, persistUserMsg } from "@/lib/lexia/mutations"
+import { atualizarContextoConversa, carregarHistorico, ensureConversa, persistAssistantMsg, persistUserMsg, truncarConversaDesde } from "@/lib/lexia/mutations"
 import { mensagemErro } from "@/lib/lexia/agent/client"
 import { construirConteudo } from "@/lib/lexia/agent/anexos"
-import { contextoDocumento, contextoLinha } from "@/lib/lexia/agent/prompt"
+import { contextoDocumento, contextoLinha, mencoesLinha } from "@/lib/lexia/agent/prompt"
+import { modificadorLinha } from "@/lib/lexia/agent/modificadores"
 import { getLexiaPrefsRaw } from "@/lib/lexia/preferencias"
 import { getModulosConfig, processosHabilitado } from "@/lib/settings"
 import { decidirModelo } from "@/lib/lexia/agent/router"
@@ -62,6 +63,12 @@ export async function POST(req: Request) {
   const instrucao = mensagemRaw || "Leia o(s) documento(s) anexado(s) e me ajude com base nele(s)."
   return withRequestOrigin(resolveRequestOrigin(req), () => sseResponse(async (emit) => {
     try {
+      // Editar pergunta / RetryMenu (Fase 5): descarta a mensagem-âncora (e tudo
+      // depois) ANTES de persistir o novo turno — reenviar substitui, sem branching.
+      if (body.refazerDesdeMensagemId != null) {
+        if (!body.conversaId) throw new UserError("conversaId é obrigatório para refazer")
+        await truncarConversaDesde(body.conversaId, sessionUser.email, body.refazerDesdeMensagemId)
+      }
       const conversaId = await ensureConversa(sessionUser.email, body.conversaId ?? null, tituloSeed)
       const { messages: prior, lastModel } = await carregarHistorico(conversaId)
       const userMsg = await persistUserMsg(conversaId, mensagemRaw, body.anexos)
@@ -114,7 +121,13 @@ export async function POST(req: Request) {
       // Contexto do documento aberto (só no editor flexível) — bloco VOLÁTIL fora do
       // CORE cacheado; injeta texto/campos/seleção + as instruções de edição.
       const contextoDoc = body.documento ? contextoDocumento(body.documento) : ""
-      const texto = `${contextoLinha(sessionUser, body.pagina, { ...prefs, agentMode }, processosOk)}${contextoDoc}\n\n${instrucao}`
+      // Menções "@" (Fase 7): contexto volátil + a última vira o chip do histórico
+      // (LexiaConversa.contexto — Fase 8 consome; falha aqui nunca quebra o turno).
+      if (body.contexto?.entidades.length) {
+        const ultima = body.contexto.entidades[body.contexto.entidades.length - 1]
+        void atualizarContextoConversa(conversaId, ultima).catch(() => {})
+      }
+      const texto = `${contextoLinha(sessionUser, body.pagina, { ...prefs, agentMode }, processosOk)}${contextoDoc}${mencoesLinha(body.contexto?.entidades)}${modificadorLinha(body.modificador)}\n\n${instrucao}`
       const messages: Anthropic.MessageParam[] = [
         ...prior,
         { role: "user", content: construirConteudo(texto, body.anexos) },
@@ -141,13 +154,14 @@ export async function POST(req: Request) {
       }
 
       const result = await runAgentTurn(ctx, messages, decision, emit)
-      if (teto.rebaixado) result.blocks.unshift({ type: "notice", text: MODO_ECONOMICO_AVISO })
+      if (teto.rebaixado) result.blocks.unshift({ type: "notice", text: MODO_ECONOMICO_AVISO, codigo: "modo-economico" })
       const saved = await persistAssistantMsg(conversaId, {
         text: result.text,
         blocks: result.blocks,
         model: decision.model,
         inputTokens: result.usage.input,
         outputTokens: result.usage.output,
+        meta: result.meta,
       })
       log.info(
         { conversaId, model: decision.model, in: result.usage.input, out: result.usage.output },
@@ -165,7 +179,8 @@ export async function POST(req: Request) {
       if (!(e instanceof UserError)) {
         log.error({ err: e instanceof Error ? `${e.name}: ${e.message}` : String(e) }, "lexia chat failed")
       }
-      emit({ type: "error", mensagem: mensagemErro(e) })
+      const { mensagem, codigo } = mensagemErro(e)
+      emit({ type: "error", mensagem, codigo })
     }
   }))
 }

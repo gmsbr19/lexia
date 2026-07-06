@@ -23,6 +23,11 @@ export const PlaceholderNode = Node.create({
       dataType: { default: "texto" },
       label: { default: "" },
       defaultValue: { default: "" },
+      // Form-layout metadata — kept in the model (getJSON) but not rendered to
+      // the DOM (rendered:false), so the .docx-import HTML round-trip ignores them.
+      section: { default: null, rendered: false },
+      options: { default: null, rendered: false },
+      multiline: { default: null, rendered: false },
     }
   },
   parseHTML() {

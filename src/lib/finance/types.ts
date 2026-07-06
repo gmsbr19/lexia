@@ -230,6 +230,24 @@ export interface HonorarioRow {
   lancamentoId: number | null // settling cash-ledger row
 }
 
+/** Commercial lens over a Caso: one contract = one caso (a caso may bundle
+ *  several honorários). Powers the /contratos list (área/origem/valor
+ *  contratado/pagamento). Distinct from HonorarioRow (the fee ledger). */
+export interface ContratoRow {
+  id: number // caso id
+  titulo: string
+  cliente: string | null
+  clienteId: number | null
+  area: string | null // AreaDireito chave (resolved to label client-side)
+  origem: string | null // lead origem key when the contract came from a won lead; null = direto
+  tipo: string | null // 'consultivo' | 'litigio'
+  statusCaso: string | null
+  dataFechamento: string | null // ISO — Caso.dataCriacao (when the case/contract was opened)
+  valorContratadoCents: number // Σ honorários vinculados ao caso
+  recebidoCents: number // Σ honorários com status 'recebido'
+  honorariosCount: number
+}
+
 /** Contrato modal: full honorário detail + its série de parcelas. */
 export interface HonorarioDetail extends HonorarioRow {
   valorLiquidoCents: number

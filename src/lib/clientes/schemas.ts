@@ -20,9 +20,15 @@ export const clienteCreateSchema = z.object({
   cep: z.string().max(15).nullish(),
   emails: strList.optional(),
   telefones: strList.optional(),
+  origem: z.string().max(20).nullish(),
 })
 
 export const clientePatchSchema = clienteCreateSchema.partial()
+
+/** Merge a duplicate cliente into the one addressed by the route id. */
+export const mesclarClientesSchema = z.object({
+  duplicadoId: z.number().int().positive(),
+})
 
 // ── Cobrança & anotações ──────────────────────────────────────────────────────
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "data deve ser YYYY-MM-DD")

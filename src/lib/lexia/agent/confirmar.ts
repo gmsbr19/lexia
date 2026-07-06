@@ -39,3 +39,14 @@ export async function rotuloProcesso(id?: number | null): Promise<string> {
   if (!p) return `processo #${id}`
   return p.numeroCnj ?? p.caso?.titulo ?? `processo #${id}`
 }
+
+/**
+ * Monta uma linha do cartão de confirmação com o diff antes→depois (Fase 3,
+ * MutationCard). `novo` ausente (campo não editado) → sem linha. `antigo`
+ * ausente ou igual ao novo → sem `valorAntigo` (linha "estática", sem risco).
+ */
+export function diffRow(label: string, novo: string | undefined | null, antigo?: string | null): { label: string; valor: string; valorAntigo?: string } | null {
+  if (novo == null || novo === "") return null
+  if (antigo != null && antigo !== "" && antigo !== novo) return { label, valor: novo, valorAntigo: antigo }
+  return { label, valor: novo }
+}

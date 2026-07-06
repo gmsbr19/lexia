@@ -2,7 +2,7 @@
 // `*Create`/`*Patch` interfaces in ./mutations.ts, enforced at the route
 // boundary (parseBody throws UserError → clean 400).
 import { z } from "zod"
-import { dateStr, idOpt, money, requestId } from "@/lib/validation"
+import { dateStr, idOpt, idReq, money, requestId } from "@/lib/validation"
 
 const plataforma = z.enum(["google_ads", "meta_ads", "outro"])
 const campanhaStatus = z.enum(["ativa", "pausada", "encerrada"])
@@ -50,6 +50,10 @@ export const leadPatchSchema = leadCreateSchema.omit({ etapa: true }).partial()
 export const leadEtapaSchema = z.object({
   etapa: leadEtapa,
   motivo: z.string().max(500).nullish(),
+})
+
+export const mesclarLeadSchema = z.object({
+  clienteId: idReq,
 })
 
 export const converterLeadSchema = z.object({

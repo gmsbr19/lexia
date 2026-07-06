@@ -1,10 +1,11 @@
 // Agenda tools — list events (readonly) + create event (confirmation-gated).
 import { z } from "zod"
+import { prisma } from "@/lib/db"
 import { listEventos } from "@/lib/agenda/queries"
 import { createEvento, deleteEvento, updateEvento } from "@/lib/agenda/mutations"
 import { eventoCreateSchema } from "@/lib/agenda/schemas"
 import { idReq } from "@/lib/validation"
-import { dataBr } from "../confirmar"
+import { dataBr, diffRow } from "../confirmar"
 import { defineTool } from "../types"
 import { addDiasISO, hojeISO } from "../datas"
 import { cap, limite } from "./shared"
@@ -67,11 +68,13 @@ export const agendaTools = [
     }),
     resumo: (i) => `Editar evento #${i.id}`,
     montarConfirmacao: async (_ctx, i) => {
-      const det: { label: string; valor: string }[] = []
-      if (i.titulo) det.push({ label: "Novo título", valor: i.titulo })
-      if (i.dataInicio) det.push({ label: "Quando", valor: dataBr(i.dataInicio.slice(0, 10)) })
-      if (i.local) det.push({ label: "Local", valor: i.local })
-      if (i.status) det.push({ label: "Status", valor: i.status })
+      const antes = await prisma.evento.findUnique({ where: { id: i.id }, select: { titulo: true, dataInicio: true, local: true, status: true } })
+      const det = [
+        diffRow("Título", i.titulo, antes?.titulo),
+        diffRow("Quando", i.dataInicio ? dataBr(i.dataInicio.slice(0, 10)) : undefined, antes?.dataInicio ? dataBr(antes.dataInicio.toISOString().slice(0, 10)) : undefined),
+        diffRow("Local", i.local, antes?.local ?? undefined),
+        diffRow("Status", i.status, antes?.status ?? undefined),
+      ].filter((d): d is NonNullable<typeof d> => d != null)
       return { resumo: "Editar evento", detalhes: det.length ? det : undefined }
     },
     run: async (ctx, i) => updateEvento(i.id, { titulo: i.titulo, dataInicio: i.dataInicio, local: i.local, status: i.status }, ctx.user.email),
