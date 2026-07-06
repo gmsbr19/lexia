@@ -7,6 +7,7 @@
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/db"
 import { normalizar } from "@/lib/text"
+import { valorContratadoPorLead, somaValorContratado } from "./valor"
 import { currentMes, periodRange, periodScope, shiftPeriod } from "@/lib/finance/periodo"
 import { getCasoOptions, getClienteOptions, getContasOptions } from "@/lib/finance/queries"
 import {
@@ -96,7 +97,14 @@ export async function getComercialKpis(mes?: string, periodo: Periodo = "mes"): 
     prisma.lead.count({ where: { dataEntrada: { gte: ps, lt: pe } } }),
     prisma.lead.findMany({
       where: { etapa: "ganho", dataConversao: { gte: start, lt: end } },
-      select: { valorEstimadoCents: true, honorario: { select: { valorCents: true } } },
+      select: {
+        id: true,
+        casoId: true,
+        dataConversao: true,
+        valorEstimadoCents: true,
+        honorario: { select: { valorCents: true } },
+        caso: { select: { honorarios: { select: { valorCents: true } } } },
+      },
     }),
     prisma.lancamento.aggregate({ _sum: { valorCents: true }, where: spendWhere(marketingIds, start, end) }),
     prisma.honorario.aggregate({
@@ -106,7 +114,17 @@ export async function getComercialKpis(mes?: string, periodo: Periodo = "mes"): 
   ])
 
   const conversoes = ganhos.length
-  const valorContratadoCents = ganhos.reduce((a, g) => a + wonValue(g), 0)
+  // Contracted value follows the caso's REAL honorários (deduped per caso), not
+  // just the lead's linked honorário — see ./valor. Aligns with the Comercial UI.
+  const valorContratadoCents = somaValorContratado(
+    ganhos.map((g) => ({
+      id: g.id,
+      casoId: g.casoId,
+      conv: g.dataConversao?.getTime() ?? 0,
+      honorarioCents: g.honorario?.valorCents ?? 0,
+      casoHonorariosCents: (g.caso?.honorarios ?? []).reduce((a, h) => a + h.valorCents, 0),
+    })),
+  )
   const investimentoCents = Math.abs(investimento._sum.valorCents ?? 0)
 
   return {
@@ -412,8 +430,9 @@ export async function getComercialDataset(): Promise<CmDataset> {
         dataConversao: true,
         motivoPerda: true,
         area: true,
+        casoId: true,
         cliente: { select: { nome: true } },
-        caso: { select: { titulo: true } },
+        caso: { select: { titulo: true, honorarios: { select: { valorCents: true } } } },
         honorario: { select: { valorCents: true } },
       },
     }),
@@ -426,6 +445,18 @@ export async function getComercialDataset(): Promise<CmDataset> {
     getClienteOptions(),
     getCasoOptions(),
   ])
+
+  const valorLeadMap = valorContratadoPorLead(
+    leads
+      .filter((l) => l.etapa === "ganho")
+      .map((l) => ({
+        id: l.id,
+        casoId: l.casoId,
+        conv: l.dataConversao?.getTime() ?? 0,
+        honorarioCents: l.honorario?.valorCents ?? 0,
+        casoHonorariosCents: (l.caso?.honorarios ?? []).reduce((a, h) => a + h.valorCents, 0),
+      })),
+  )
 
   return {
     campaigns: campanhas.map((c): CmDatasetCampaign => ({
@@ -447,7 +478,10 @@ export async function getComercialDataset(): Promise<CmDataset> {
       campanhaId: l.campanhaId,
       etapa: l.etapa as LeadEtapa,
       valorEstimadoCents: l.valorEstimadoCents ?? 0,
-      valorContratadoCents: l.honorario?.valorCents ?? null,
+      // Contracted value follows the REAL honorários of the lead's caso (deduped
+      // per caso), so lançar honorários no caso + marcar o lead ganho já alimenta
+      // o ROI — sem depender do "Converter". Fallback: honorário ligado ao lead.
+      valorContratadoCents: valorLeadMap.get(l.id) ?? null,
       dataEntrada: isoDate(l.dataEntrada),
       dataConv: isoDate(l.dataConversao),
       cliente: l.cliente?.nome ?? null,

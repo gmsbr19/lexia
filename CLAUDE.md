@@ -145,6 +145,30 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **Comercial · fix: retorno (ROAS/ROI) não contava honorários lançados no caso (this session, VERIFIED
+  tsc 0, 467/467 testes, eslint limpo, NO migration).** Sintoma: contrato ganho (Thiago José, mídia paga
+  jun/26) com R$ 2.400 já recebidos NÃO aparecia como retorno no Comercial. **Causa raiz:** o valor de um
+  lead ganho vinha só do honorário **ligado diretamente ao lead** (`CmDatasetLead.valorContratadoCents =
+  l.honorario?.valorCents`, e [cm-meta.ts](src/components/comercial/cm-meta.ts) `cmKpis` soma
+  `g.valorContratadoCents || 0`, sem fallback a estimativa). Marcar "Ganho" pelo menu rápido NÃO liga
+  honorário (só o botão "Converter" faz); o usuário lançou os honorários no CASO, então o lead valia 0 →
+  ROI/ROAS/ticket zerados. **Fix:** novo módulo PURO [lib/comercial/valor.ts](src/lib/comercial/valor.ts)
+  `valorContratadoPorLead`/`somaValorContratado` — o valor de um lead ganho segue os **honorários REAIS do
+  caso vinculado** (`lead.casoId` → `caso.honorarios`), creditado **UMA vez por caso** (ao lead de conversão
+  mais recente; proteção contra dupla contagem quando 2 leads → 1 caso); fallback ao honorário ligado ao
+  lead; SEM fallback a estimativa (só receita real). Aplicado no [queries.ts](src/lib/comercial/queries.ts):
+  `getComercialDataset` (dataset que alimenta TODA a tela do Comercial via cm-meta) passa a computar
+  `valorContratadoCents` por lead com o helper (select do lead ganhou `casoId` + `caso.honorarios`); e
+  `getComercialKpis` (Início + LexIA) idem, alinhando os números. **REQUISITO p/ o valor aparecer:** o lead
+  ganho precisa estar **vinculado ao caso** onde os honorários foram lançados. Se foi marcado ganho pelo menu
+  rápido sem vincular (sem casoId), continua 0 — usar "Converter" (liga caso+honorário) ou vincular o caso.
+  **Suspeita adicional (não resolvida — precisa de dados de PROD):** a página de Contratos mostra R$ 0 nesse
+  caso mesmo com honorário "vinculado a um caso de despejo" → provável **caso DUPLICADO** (a linha é um caso
+  vazio; os honorários estão em outro registro). Módulo Casos & Processos está DESATIVADO no ambiente do
+  usuário, então ele não consegue inspecionar/mesclar casos. Possível próximo passo: caso-merge (como o de
+  clientes) ou reativar Casos. Teste puro [tests/comercial-valor.test.ts](tests/comercial-valor.test.ts).
+  **Verificado: tsc 0; 467/467 testes; eslint limpo. Sem migração. User action:** deploy → conferir ROI de
+  junho; garantir que o lead do Thiago esteja vinculado ao caso com os honorários (senão continua 0).
 - **Comercial · fix: gastos de anúncios não contavam (duas categorias "Marketing") (this session, VERIFIED
   tsc 0, 461/461 testes, eslint limpo, NO migration).** Sintoma: usuário lançou os gastos de Google/Meta de
   junho (via Financeiro, categoria **"Marketing/Anúncios"**) e o módulo Comercial mostrava investimento zero.
