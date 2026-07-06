@@ -11,6 +11,7 @@ import {
   ArrowRight,
   ArrowRightCircle,
   ArrowUpRight,
+  AtSign,
   Banknote,
   BarChart3,
   Bell,
@@ -59,6 +60,7 @@ import {
   Megaphone,
   Menu,
   Mic,
+  Minus,
   MinusCircle,
   Moon,
   MoreHorizontal,
@@ -66,6 +68,7 @@ import {
   PanelLeft,
   Paperclip,
   Pencil,
+  PencilLine,
   Percent,
   Phone,
   PieChart,
@@ -85,6 +88,8 @@ import {
   Sun,
   Sunrise,
   Target,
+  ThumbsDown,
+  ThumbsUp,
   Trash2,
   TrendingDown,
   TrendingUp,
@@ -94,6 +99,7 @@ import {
   Users,
   Wallet,
   Wand2,
+  WifiOff,
   X,
   Zap,
 } from "lucide-react"
@@ -191,6 +197,12 @@ const ICONS = {
   funnel: Filter,
   fileSpreadsheet: FileSpreadsheet,
   braces: Braces,
+  thumbsUp: ThumbsUp,
+  thumbsDown: ThumbsDown,
+  wifiOff: WifiOff,
+  at: AtSign,
+  edit3: PencilLine,
+  minus: Minus,
 } satisfies Record<string, LucideIcon>
 
 export type CrmIconName = keyof typeof ICONS
