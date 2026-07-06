@@ -22,12 +22,14 @@ import {
   CmImportarModal,
   CmImportarMetaModal,
   CmLeadModal,
+  CmMergeModal,
   CmPerdidoModal,
   type CampanhaPayload,
   type ConverterPayload,
   type GastoPayload,
   type ImportSummary,
   type LeadPayload,
+  type MesclarPayload,
   type PerdidoPayload,
 } from "./CmModals"
 import type { CmDataset, CmDatasetCampaign, CmDatasetLead, LeadEtapa } from "@/lib/comercial/types"
@@ -40,6 +42,7 @@ type Modal =
   | { type: "gasto"; campanha: CmDatasetCampaign | null }
   | { type: "lead"; edit: CmDatasetLead | null }
   | { type: "converter"; lead: CmDatasetLead }
+  | { type: "mesclar"; lead: CmDatasetLead }
   | { type: "perdido"; lead: CmDatasetLead }
   | { type: "importar" }
   | { type: "importarMeta" }
@@ -80,6 +83,10 @@ export function ComercialApp({ dataset, verFin }: { dataset: CmDataset; verFin: 
   }
   const submitConverter = async (p: ConverterPayload) => {
     await send(`/api/comercial/leads/${p.id}/converter`, { valorContratadoCents: p.valorContratadoCents, tipoHonorario: p.tipoHonorario, clienteNome: p.clienteNome, casoTitulo: p.casoTitulo, dataConversao: p.dataConversao })
+    refresh()
+  }
+  const submitMesclar = async (p: MesclarPayload) => {
+    await send(`/api/comercial/leads/${p.id}/mesclar`, { clienteId: p.clienteId })
     refresh()
   }
   const submitPerdido = async (p: PerdidoPayload) => {
@@ -123,7 +130,7 @@ export function ComercialApp({ dataset, verFin }: { dataset: CmDataset; verFin: 
           {tab === "visao" && <CmVisao dataset={dataset} ref0={ref0} period={period} scope={scope} onNew={() => setModal({ type: "campanha", edit: null })} onLead={() => setModal({ type: "lead", edit: null })} onGoCampanhas={() => setTab("campanhas")} />}
           {tab === "funil" && <CmFunil dataset={dataset} ref0={ref0} period={period} scope={scope} onStage={goLeadsStage} onLead={() => setModal({ type: "lead", edit: null })} />}
           {tab === "campanhas" && <CmCampanhas dataset={dataset} ref0={ref0} period={period} scope={scope} verFin={verFin} onNew={() => setModal({ type: "campanha", edit: null })} onGasto={(c) => setModal({ type: "gasto", campanha: c })} onEdit={(c) => setModal({ type: "campanha", edit: c })} onLeads={goLeadsCampaign} onImport={() => setModal({ type: "importarMeta" })} />}
-          {tab === "leads" && <CmLeads dataset={dataset} injectFilter={leadInject} lastImport={lastImport} onNew={() => setModal({ type: "lead", edit: null })} onMove={moveStage} onConvert={(l) => setModal({ type: "converter", lead: l })} onLose={(l) => setModal({ type: "perdido", lead: l })} onEdit={(l) => setModal({ type: "lead", edit: l })} onReopen={reopenLead} onBulkMove={bulkMove} onImport={() => setModal({ type: "importar" })} />}
+          {tab === "leads" && <CmLeads dataset={dataset} injectFilter={leadInject} lastImport={lastImport} onNew={() => setModal({ type: "lead", edit: null })} onMove={moveStage} onConvert={(l) => setModal({ type: "converter", lead: l })} onLose={(l) => setModal({ type: "perdido", lead: l })} onEdit={(l) => setModal({ type: "lead", edit: l })} onReopen={reopenLead} onBulkMove={bulkMove} onImport={() => setModal({ type: "importar" })} onMerge={(l) => setModal({ type: "mesclar", lead: l })} />}
           {tab === "exportar" && <CmExportar dataset={dataset} ref0={ref0} period={period} scope={scope} />}
         </div>
 
@@ -131,6 +138,7 @@ export function ComercialApp({ dataset, verFin }: { dataset: CmDataset; verFin: 
         {modal?.type === "gasto" && <CmGastoModal onClose={() => setModal(null)} onSubmit={submitGasto} campaigns={dataset.campaigns} contas={dataset.contas} campanha={modal.campanha} />}
         {modal?.type === "lead" && <CmLeadModal onClose={() => setModal(null)} onSubmit={submitLead} campaigns={dataset.campaigns} edit={modal.edit} />}
         {modal?.type === "converter" && <CmConverterModal lead={modal.lead} onClose={() => setModal(null)} onSubmit={submitConverter} />}
+        {modal?.type === "mesclar" && <CmMergeModal lead={modal.lead} clientes={dataset.clientes} onClose={() => setModal(null)} onSubmit={submitMesclar} />}
         {modal?.type === "perdido" && <CmPerdidoModal lead={modal.lead} onClose={() => setModal(null)} onSubmit={submitPerdido} />}
         {modal?.type === "importar" && <CmImportarModal onClose={() => setModal(null)} onImported={onImported} />}
         {modal?.type === "importarMeta" && <CmImportarMetaModal onClose={() => setModal(null)} onImported={() => refresh()} />}
