@@ -96,10 +96,8 @@ async function main() {
     console.log('      → mova para a categoria "Marketing/Anúncios" ou vincule uma campanha.')
   }
 
-  // ── 2) VALOR CONTRATADO (leads ganhos) ─────────────────────────────────────
-  console.log("\n── VALOR CONTRATADO (leads ganhos) ───────────────────────")
-  // a dashboard cliente (cm-meta) filtra ganhos por dataENTRADA no mês;
-  // o servidor (getComercialKpis) filtra por dataCONVERSAO. Mostro os dois.
+  // ── 2) VALOR CONTRATADO (leads ganhos, atribuídos pelo mês de ENTRADA) ──────
+  console.log("\n── VALOR CONTRATADO (leads ganhos, pelo mês de ENTRADA/contato) ──")
   const ganhos = await prisma.lead.findMany({
     where: {
       etapa: "ganho",
@@ -109,35 +107,48 @@ async function main() {
       id: true, nome: true, casoId: true, dataEntrada: true, dataConversao: true,
       valorEstimadoCents: true,
       honorario: { select: { valorCents: true } },
-      caso: { select: { titulo: true, honorarios: { select: { valorCents: true } } } },
+      caso: {
+        select: {
+          titulo: true,
+          honorarios: { select: { valorCents: true } },
+          lancamentos: { where: { tipo: "entrada", subTipo: "honorario" }, select: { valorCents: true, honorarios: { select: { id: true } } } },
+        },
+      },
     },
   })
+  // receita real do caso = honorários + entradas de honorário não espelhadas por um Honorário
+  const casoRev = (c: (typeof ganhos)[number]["caso"]) => {
+    if (!c) return 0
+    const fees = c.honorarios.reduce((a, h) => a + h.valorCents, 0)
+    const manual = c.lancamentos.filter((l) => l.honorarios.length === 0).reduce((a, l) => a + Math.abs(l.valorCents), 0)
+    return fees + manual
+  }
   const valorMap = valorContratadoPorLead(
     ganhos.map((l) => ({
       id: l.id,
       casoId: l.casoId,
       conv: l.dataConversao?.getTime() ?? 0,
       honorarioCents: l.honorario?.valorCents ?? 0,
-      casoHonorariosCents: (l.caso?.honorarios ?? []).reduce((a, h) => a + h.valorCents, 0),
+      casoRevenueCents: casoRev(l.caso),
+      estimadoCents: l.valorEstimadoCents ?? 0,
     })),
   )
   if (ganhos.length === 0) console.log("(nenhum lead ganho com entrada ou conversão neste mês)")
   for (const l of ganhos) {
-    const casoHon = (l.caso?.honorarios ?? []).reduce((a, h) => a + h.valorCents, 0)
+    const rev = casoRev(l.caso)
+    const hon = l.honorario?.valorCents ?? 0
     const valor = valorMap.get(l.id) ?? 0
     console.log(
       `\n  Lead #${l.id} "${l.nome}"` +
         `\n    entrada=${mesDe(l.dataEntrada)}  conversão=${mesDe(l.dataConversao)}` +
         `\n    casoId=${l.casoId ?? "— (SEM CASO VINCULADO)"}${l.caso ? ` ("${l.caso.titulo}")` : ""}` +
-        `\n    honorários do caso: ${brl(casoHon)}   honorário ligado ao lead: ${brl(l.honorario?.valorCents ?? 0)}` +
+        `\n    receita real do caso: ${brl(rev)}   honorário do lead: ${brl(hon)}   estimativa: ${brl(l.valorEstimadoCents ?? 0)}` +
         `\n    → VALOR CONTRATADO CONTABILIZADO: ${brl(valor)}`,
     )
-    if (valor === 0) {
-      if (l.casoId == null) console.log("    ✗ Motivo: lead marcado 'Ganho' SEM caso vinculado. Vincule ao caso (ou use 'Converter').")
-      else if (casoHon === 0) console.log("    ✗ Motivo: o caso vinculado NÃO tem honorários (registro Honorário) — talvez o valor esteja como Lançamento avulso, ou em OUTRO caso (duplicado).")
-    }
+    if (valor === 0) console.log("    ✗ Zero: sem receita no caso, sem honorário no lead e sem estimativa.")
+    else if (rev === 0 && hon === 0) console.log("    ⓘ  Valor vem da ESTIMATIVA do lead (não há receita/honorário no caso). Vincule o lead ao caso p/ ler a receita real lançada.")
     if (l.dataEntrada && (l.dataEntrada < start || l.dataEntrada >= end)) {
-      console.log(`    ⓘ  A tela do Comercial atribui a conversão pelo mês de ENTRADA/contato (${mesDe(l.dataEntrada)}) — este lead conta em ${mesDe(l.dataEntrada)}, não em ${mes}, ainda que tenha fechado agora.`)
+      console.log(`    ⓘ  Atribuído pelo mês de ENTRADA/contato (${mesDe(l.dataEntrada)}) — conta em ${mesDe(l.dataEntrada)}, não em ${mes}.`)
     }
   }
   console.log("\n═══ fim ═══\n")

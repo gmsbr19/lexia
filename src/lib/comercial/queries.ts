@@ -57,6 +57,32 @@ function origemKey(v: string): LeadOrigem {
 type ValuedLead = { valorEstimadoCents: number | null; honorario: { valorCents: number } | null }
 const wonValue = (l: ValuedLead) => l.honorario?.valorCents ?? l.valorEstimadoCents ?? 0
 
+// Real revenue booked to a caso: its Honorário records PLUS income Lançamentos
+// typed as honorário that AREN'T already mirrored by a Honorário (a Lançamento
+// carrying honorarios is the Astrea entrada behind an imported Honorário —
+// counting both would double-count). Lets the office's manual "entrada"
+// bookings (how new contracts are recorded) feed the acquisition value.
+type CasoRevenueSel = {
+  honorarios: { valorCents: number }[]
+  lancamentos: { valorCents: number; honorarios: { id: number }[] }[]
+} | null
+function casoRevenueCents(caso: CasoRevenueSel): number {
+  if (!caso) return 0
+  const fees = caso.honorarios.reduce((a, h) => a + h.valorCents, 0)
+  const manualIncome = caso.lancamentos
+    .filter((l) => l.honorarios.length === 0)
+    .reduce((a, l) => a + Math.abs(l.valorCents), 0)
+  return fees + manualIncome
+}
+// Caso select shared by the two contracted-value call sites.
+const casoRevenueInclude = {
+  honorarios: { select: { valorCents: true } },
+  lancamentos: {
+    where: { tipo: "entrada", subTipo: "honorario" } as const,
+    select: { valorCents: true, honorarios: { select: { id: true } } },
+  },
+} as const
+
 /** True for any categoria the office treats as marketing/ad spend. Matches by
  *  NAME (accent-insensitive) so it catches both the app-managed "Marketing"
  *  (astreaId app-cat-marketing) AND the Astrea-imported "Marketing/Anúncios" —
@@ -119,7 +145,7 @@ export async function getComercialKpis(mes?: string, periodo: Periodo = "mes"): 
         dataConversao: true,
         valorEstimadoCents: true,
         honorario: { select: { valorCents: true } },
-        caso: { select: { honorarios: { select: { valorCents: true } } } },
+        caso: { select: casoRevenueInclude },
       },
     }),
     prisma.lancamento.aggregate({ _sum: { valorCents: true }, where: spendWhere(marketingIds, start, end) }),
@@ -138,7 +164,8 @@ export async function getComercialKpis(mes?: string, periodo: Periodo = "mes"): 
       casoId: g.casoId,
       conv: g.dataConversao?.getTime() ?? 0,
       honorarioCents: g.honorario?.valorCents ?? 0,
-      casoHonorariosCents: (g.caso?.honorarios ?? []).reduce((a, h) => a + h.valorCents, 0),
+      casoRevenueCents: casoRevenueCents(g.caso),
+      estimadoCents: g.valorEstimadoCents ?? 0,
     })),
   )
   const investimentoCents = Math.abs(investimento._sum.valorCents ?? 0)
@@ -450,7 +477,7 @@ export async function getComercialDataset(): Promise<CmDataset> {
         area: true,
         casoId: true,
         cliente: { select: { nome: true } },
-        caso: { select: { titulo: true, honorarios: { select: { valorCents: true } } } },
+        caso: { select: { titulo: true, ...casoRevenueInclude } },
         honorario: { select: { valorCents: true } },
       },
     }),
@@ -472,7 +499,8 @@ export async function getComercialDataset(): Promise<CmDataset> {
         casoId: l.casoId,
         conv: l.dataConversao?.getTime() ?? 0,
         honorarioCents: l.honorario?.valorCents ?? 0,
-        casoHonorariosCents: (l.caso?.honorarios ?? []).reduce((a, h) => a + h.valorCents, 0),
+        casoRevenueCents: casoRevenueCents(l.caso),
+        estimadoCents: l.valorEstimadoCents ?? 0,
       })),
   )
 
