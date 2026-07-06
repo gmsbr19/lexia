@@ -455,7 +455,7 @@ export async function getComercialDataset(): Promise<CmDataset> {
       descricao: g.descricao,
     })),
     contas: contas.map((c) => ({ id: c.id, nome: c.nome })),
-    clientes: clientes.map((c) => c.nome),
+    clientes: clientes.map((c) => ({ id: c.id, nome: c.nome })),
     casos: casos.map((c) => c.nome),
   }
 }

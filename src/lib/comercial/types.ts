@@ -200,11 +200,15 @@ export interface CmContaOption {
   id: number
   nome: string
 }
+export interface CmClienteOption {
+  id: number
+  nome: string
+}
 export interface CmDataset {
   campaigns: CmDatasetCampaign[]
   leads: CmDatasetLead[]
   gastos: CmDatasetGasto[]
   contas: CmContaOption[]
-  clientes: string[]
+  clientes: CmClienteOption[]
   casos: string[]
 }
