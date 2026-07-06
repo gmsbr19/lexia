@@ -6,6 +6,7 @@
 // "use client" module.
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/db"
+import { normalizar } from "@/lib/text"
 import { currentMes, periodRange, periodScope, shiftPeriod } from "@/lib/finance/periodo"
 import { getCasoOptions, getClienteOptions, getContasOptions } from "@/lib/finance/queries"
 import {
@@ -55,19 +56,27 @@ function origemKey(v: string): LeadOrigem {
 type ValuedLead = { valorEstimadoCents: number | null; honorario: { valorCents: number } | null }
 const wonValue = (l: ValuedLead) => l.honorario?.valorCents ?? l.valorEstimadoCents ?? 0
 
-async function marketingCategoriaId(): Promise<number | null> {
-  const c = await prisma.categoria.findUnique({
-    where: { astreaId: MARKETING_CATEGORIA_ASTREA_ID },
-    select: { id: true },
-  })
-  return c?.id ?? null
+/** True for any categoria the office treats as marketing/ad spend. Matches by
+ *  NAME (accent-insensitive) so it catches both the app-managed "Marketing"
+ *  (astreaId app-cat-marketing) AND the Astrea-imported "Marketing/Anúncios" —
+ *  their ids differ per environment, so we never hardcode ids. */
+function ehCategoriaMarketing(nome: string | null | undefined): boolean {
+  const n = normalizar(nome ?? "")
+  return n.includes("marketing") || n.includes("anuncio") || n.includes("ad ") || n === "ads"
 }
 
-// Ad-spend rows = saídas tagged to a campaign OR filed under the Marketing
+// All categoria ids counted as ad spend: the app-managed one + any whose name
+// looks like marketing. Empty array means "match only by campanhaId".
+async function marketingCategoriaIds(): Promise<number[]> {
+  const cats = await prisma.categoria.findMany({ select: { id: true, nome: true, astreaId: true } })
+  return cats.filter((c) => c.astreaId === MARKETING_CATEGORIA_ASTREA_ID || ehCategoriaMarketing(c.nome)).map((c) => c.id)
+}
+
+// Ad-spend rows = saídas tagged to a campaign OR filed under a Marketing
 // categoria, realized/committed within the period (by record date).
-function spendWhere(marketingId: number | null, start: Date, end: Date): Prisma.LancamentoWhereInput {
+function spendWhere(marketingIds: number[], start: Date, end: Date): Prisma.LancamentoWhereInput {
   const tagged: Prisma.LancamentoWhereInput[] = [{ campanhaId: { not: null } }]
-  if (marketingId != null) tagged.push({ categoriaId: marketingId })
+  if (marketingIds.length) tagged.push({ categoriaId: { in: marketingIds } })
   return { tipo: "saida", isAnomalia: false, dataLancamento: { gte: start, lt: end }, OR: tagged }
 }
 
@@ -80,7 +89,7 @@ export async function getComercialKpis(mes?: string, periodo: Periodo = "mes"): 
   const m = mes ?? currentMes()
   const { start, end } = periodRange(m, periodo)
   const { start: ps, end: pe } = periodRange(shiftPeriod(m, periodo, -1), periodo)
-  const marketingId = await marketingCategoriaId()
+  const marketingIds = await marketingCategoriaIds()
 
   const [leads, leadsPrev, ganhos, investimento, recebido] = await Promise.all([
     prisma.lead.count({ where: { dataEntrada: { gte: start, lt: end } } }),
@@ -89,7 +98,7 @@ export async function getComercialKpis(mes?: string, periodo: Periodo = "mes"): 
       where: { etapa: "ganho", dataConversao: { gte: start, lt: end } },
       select: { valorEstimadoCents: true, honorario: { select: { valorCents: true } } },
     }),
-    prisma.lancamento.aggregate({ _sum: { valorCents: true }, where: spendWhere(marketingId, start, end) }),
+    prisma.lancamento.aggregate({ _sum: { valorCents: true }, where: spendWhere(marketingIds, start, end) }),
     prisma.honorario.aggregate({
       _sum: { valorCents: true },
       where: { status: "recebido", dataPagamento: { gte: start, lt: end } },
@@ -214,7 +223,7 @@ export async function getCampanhas(mes?: string, periodo: Periodo = "mes"): Prom
 // ── per-channel (origem) breakdown ───────────────────────────────────────────
 export async function getOrigemBreakdown(mes?: string, periodo: Periodo = "mes"): Promise<OrigemRow[]> {
   const { start, end } = periodRange(mes ?? currentMes(), periodo)
-  const marketingId = await marketingCategoriaId()
+  const marketingIds = await marketingCategoriaIds()
   const [entered, won, spend] = await Promise.all([
     prisma.lead.findMany({ where: { dataEntrada: { gte: start, lt: end } }, select: { origem: true } }),
     prisma.lead.findMany({
@@ -222,7 +231,7 @@ export async function getOrigemBreakdown(mes?: string, periodo: Periodo = "mes")
       select: { origem: true, valorEstimadoCents: true, honorario: { select: { valorCents: true } } },
     }),
     prisma.lancamento.findMany({
-      where: spendWhere(marketingId, start, end),
+      where: spendWhere(marketingIds, start, end),
       select: { valorCents: true, campanha: { select: { plataforma: true } } },
     }),
   ])
@@ -380,9 +389,9 @@ export async function getExportBundle(mes?: string, periodo: Periodo = "mes"): P
 const isoDate = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : null)
 
 export async function getComercialDataset(): Promise<CmDataset> {
-  const marketingId = await marketingCategoriaId()
+  const marketingIds = await marketingCategoriaIds()
   const spendOr: Prisma.LancamentoWhereInput[] = [{ campanhaId: { not: null } }]
-  if (marketingId != null) spendOr.push({ categoriaId: marketingId })
+  if (marketingIds.length) spendOr.push({ categoriaId: { in: marketingIds } })
 
   const [campanhas, leads, gastos, contas, clientes, casos] = await Promise.all([
     prisma.campanha.findMany({
