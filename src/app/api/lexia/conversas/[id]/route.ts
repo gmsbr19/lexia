@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { AuthError, requireUser, unauthorized } from "@/lib/auth/session"
 import { parseId, readJson, runMutation, type RouteCtx } from "@/lib/finance/api"
 import { getConversa } from "@/lib/lexia/queries"
-import { excluirConversa, renomearConversa } from "@/lib/lexia/mutations"
+import { excluirConversa, fixarConversa, renomearConversa } from "@/lib/lexia/mutations"
 import { conversaPatchSchema } from "@/lib/lexia/schemas"
 import { parseBody } from "@/lib/validation"
 
@@ -29,9 +29,13 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
   return runMutation(
     async () => {
       const user = await requireUser()
-      return renomearConversa(parseId(id), user.email, parseBody(conversaPatchSchema, body).titulo)
+      const patch = parseBody(conversaPatchSchema, body)
+      const acaoId = parseId(id)
+      if (patch.fixada !== undefined) await fixarConversa(acaoId, user.email, patch.fixada)
+      if (patch.titulo !== undefined) return renomearConversa(acaoId, user.email, patch.titulo)
+      return { id: acaoId, fixada: patch.fixada }
     },
-    { action: "lexia.conversa.renomear", entity: "LexiaConversa", entityId: id },
+    { action: "lexia.conversa.editar", entity: "LexiaConversa", entityId: id },
   )
 }
 
