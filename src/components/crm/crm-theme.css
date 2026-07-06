@@ -209,6 +209,7 @@
   font-size: 12px; font-weight: 500; color: var(--text); cursor: pointer; font-family: var(--font-sans);
 }
 .crm-scope .fx-menu-item:hover { background: var(--surface-hover); }
+.crm-scope .fx-menu-item:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--ring); }
 
 /* ── suggestion chips + kbd hints ── */
 .crm-scope .crm-chip:hover { border-color: var(--accent) !important; background: var(--accent-soft) !important; }
