@@ -89,6 +89,7 @@ export function AutoTextarea({
   style,
   autoFocus,
   onKeyDownExtra,
+  onPasteExtra,
   taRef,
 }: {
   value: string
@@ -101,6 +102,8 @@ export function AutoTextarea({
   style?: CSSProperties
   autoFocus?: boolean
   onKeyDownExtra?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void
+  /** Colar (Fase 7) — oferta de anexar como .txt quando o texto colado é longo. */
+  onPasteExtra?: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void
   taRef?: React.RefObject<HTMLTextAreaElement | null>
 }) {
   const innerRef = useRef<HTMLTextAreaElement>(null)
@@ -134,6 +137,7 @@ export function AutoTextarea({
       style={style}
       onChange={(e) => onChange(e.target.value)}
       onInput={resize}
+      onPaste={onPasteExtra}
       onKeyDown={(e) => {
         onKeyDownExtra?.(e)
         if (e.defaultPrevented) return

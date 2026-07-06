@@ -3,9 +3,15 @@
 // Browser SSE client for the LexIA streaming endpoints. apiSend is JSON-only;
 // this is its streaming sibling — POST a body, read the event stream, 401 →
 // /login (parity), AbortController for the Parar button.
-import type { SseEvent } from "@/lib/lexia/types"
+import type { ErroCodigo, SseEvent } from "@/lib/lexia/types"
 
-export class LexiaStreamError extends Error {}
+export class LexiaStreamError extends Error {
+  codigo?: ErroCodigo
+  constructor(message: string, codigo?: ErroCodigo) {
+    super(message)
+    this.codigo = codigo
+  }
+}
 
 /**
  * POST `body` to `url` and invoke `onEvent` for each SSE frame until the stream
@@ -25,19 +31,19 @@ export async function streamLexia(
       body: JSON.stringify(body),
       signal,
     })
-  } catch (e) {
+  } catch {
     if (signal.aborted) return
-    throw new LexiaStreamError("Sem conexão — tente novamente")
+    throw new LexiaStreamError("Você está offline. Verifique a rede e tente de novo.", "offline")
   }
 
   if (res.status === 401) {
     if (typeof window !== "undefined") window.location.assign("/login")
-    throw new LexiaStreamError("Sessão expirada")
+    throw new LexiaStreamError("Por segurança, sua sessão terminou. Entre de novo para continuar.", "sessao")
   }
   if (!res.ok || !res.body) {
     // Non-stream error (e.g. 429 JSON) — surface its message.
     const data = (await res.json().catch(() => ({}))) as { error?: string }
-    onEvent({ type: "error", mensagem: data.error || `Falha (${res.status})` })
+    onEvent({ type: "error", mensagem: data.error || `Falha (${res.status})`, codigo: "generico" })
     return
   }
 
@@ -62,7 +68,7 @@ export async function streamLexia(
         }
       }
     }
-  } catch (e) {
-    if (!signal.aborted) throw new LexiaStreamError("A conexão com a LexIA caiu")
+  } catch {
+    if (!signal.aborted) throw new LexiaStreamError("Salvei o trecho acima. Reconecte para continuar de onde parei.", "stream")
   }
 }
