@@ -192,7 +192,7 @@ export interface CmDatasetGasto {
   id: number
   campanhaId: number | null
   valorCents: number // positive magnitude
-  data: string | null // ISO date (record date)
+  data: string | null // ISO date · competência (vencimento ?? lançamento)
   conta: string | null
   descricao: string | null
 }

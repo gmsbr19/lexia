@@ -73,12 +73,25 @@ async function marketingCategoriaIds(): Promise<number[]> {
   return cats.filter((c) => c.astreaId === MARKETING_CATEGORIA_ASTREA_ID || ehCategoriaMarketing(c.nome)).map((c) => c.id)
 }
 
+// Ad spend belongs to the period of its VENCIMENTO (competência) when set, else
+// the record date (dataLancamento) — i.e. COALESCE(dataVencimento, dataLancamento)
+// ∈ [start, end). Kept in one place so every ad-spend query buckets identically.
+// Expressed as an OR because Prisma has no COALESCE-in-range operator.
+function spendPeriodo(start: Date, end: Date): Prisma.LancamentoWhereInput {
+  return {
+    OR: [
+      { dataVencimento: { gte: start, lt: end } },
+      { dataVencimento: null, dataLancamento: { gte: start, lt: end } },
+    ],
+  }
+}
+
 // Ad-spend rows = saídas tagged to a campaign OR filed under a Marketing
-// categoria, realized/committed within the period (by record date).
+// categoria, that fall in the period by competência (vencimento ?? lançamento).
 function spendWhere(marketingIds: number[], start: Date, end: Date): Prisma.LancamentoWhereInput {
   const tagged: Prisma.LancamentoWhereInput[] = [{ campanhaId: { not: null } }]
   if (marketingIds.length) tagged.push({ categoriaId: { in: marketingIds } })
-  return { tipo: "saida", isAnomalia: false, dataLancamento: { gte: start, lt: end }, OR: tagged }
+  return { tipo: "saida", isAnomalia: false, AND: [{ OR: tagged }, spendPeriodo(start, end)] }
 }
 
 const ratio = (num: number, den: number): number | null => (den > 0 ? num / den : null)
@@ -195,7 +208,7 @@ export async function getCampanhas(mes?: string, periodo: Periodo = "mes"): Prom
       },
     }),
     prisma.lancamento.findMany({
-      where: { tipo: "saida", isAnomalia: false, campanhaId: { not: null }, dataLancamento: { gte: start, lt: end } },
+      where: { tipo: "saida", isAnomalia: false, campanhaId: { not: null }, ...spendPeriodo(start, end) },
       select: { campanhaId: true, valorCents: true },
     }),
   ])
@@ -439,7 +452,7 @@ export async function getComercialDataset(): Promise<CmDataset> {
     prisma.lancamento.findMany({
       where: { tipo: "saida", isAnomalia: false, OR: spendOr },
       orderBy: { dataLancamento: "desc" },
-      select: { id: true, campanhaId: true, valorCents: true, dataLancamento: true, descricao: true, conta: { select: { nome: true } } },
+      select: { id: true, campanhaId: true, valorCents: true, dataLancamento: true, dataVencimento: true, descricao: true, conta: { select: { nome: true } } },
     }),
     getContasOptions(),
     getClienteOptions(),
@@ -493,7 +506,9 @@ export async function getComercialDataset(): Promise<CmDataset> {
       id: g.id,
       campanhaId: g.campanhaId,
       valorCents: Math.abs(g.valorCents),
-      data: isoDate(g.dataLancamento),
+      // Competência: o gasto pertence ao mês do vencimento quando houver, senão
+      // ao da data do lançamento — mesma regra do spendWhere no servidor.
+      data: isoDate(g.dataVencimento ?? g.dataLancamento),
       conta: g.conta?.nome ?? null,
       descricao: g.descricao,
     })),
