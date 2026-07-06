@@ -23,8 +23,11 @@ import {
   createLancamento,
 } from "../crm-api"
 import type { CrmDataset } from "../crm-types"
+import { ORIGEM_LABEL } from "@/lib/comercial/types"
 
 const errMsg = (err: unknown) => (err instanceof Error ? err.message : "Erro")
+/** Options for the cliente origem picker — reuses the Lead origem vocabulary. */
+export const ORIGEM_OPTS = Object.entries(ORIGEM_LABEL).map(([value, label]) => ({ value, label }))
 
 // ───────────────────────── Novo cliente ─────────────────────────
 interface QuickClienteProps {
@@ -40,6 +43,7 @@ export function CrmQuickCliente({ onClose, onRefresh }: QuickClienteProps) {
   const [cidadeUf, setCidadeUf] = useState("")
   const [email, setEmail] = useState("")
   const [telefone, setTelefone] = useState("")
+  const [origem, setOrigem] = useState("")
   const [saving, setSaving] = useState(false)
 
   const isPJ = tipo === "pj"
@@ -65,6 +69,7 @@ export function CrmQuickCliente({ onClose, onRefresh }: QuickClienteProps) {
         uf,
         emails: email.trim() ? [email.trim()] : [],
         telefones: telefone.trim() ? [telefone.trim()] : [],
+        origem: origem || null,
       })
       toast("Cliente cadastrado")
       onRefresh()
@@ -139,6 +144,10 @@ export function CrmQuickCliente({ onClose, onRefresh }: QuickClienteProps) {
             <FxLabel>Telefone</FxLabel>
             <FxInput value={telefone} onChange={(e) => setTelefone(e.target.value)} placeholder="(11) 90000-0000" />
           </div>
+        </div>
+        <div>
+          <FxLabel>Origem</FxLabel>
+          <FxSelect value={origem} onChange={(e) => setOrigem(e.target.value)} placeholder="— Não informada —" options={ORIGEM_OPTS} />
         </div>
       </div>
     </FxModal>

@@ -23,6 +23,7 @@ import {
   FxKpi,
   FxLabel,
   FxMoney,
+  FxSelect,
   FxTabs,
   type EvtTipo,
   type FxTabDef,
@@ -43,6 +44,8 @@ import { crmDate, crmDateLong } from "../crm-fmt"
 import { verFinanceiro } from "@/lib/users/types"
 import { useModulosStore, processosHabilitado } from "@/lib/modulos/store"
 import { CrmDocumentoModal, CrmEventoModal, CrmLancamentoModal, CrmTarefaModal } from "./CrmClienteModals"
+import { ORIGEM_OPTS } from "./CrmQuickModals"
+import { ORIGEM_LABEL } from "@/lib/comercial/types"
 import type {
   ClienteDetail,
   ClienteTab,
@@ -216,6 +219,7 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
   const [fTel, setFTel] = useState("")
   const [fCidade, setFCidade] = useState("")
   const [fUf, setFUf] = useState("")
+  const [fOrigem, setFOrigem] = useState("")
   // cobrança & anotações tab
   const [noteText, setNoteText] = useState("")
   const [cobMotivo, setCobMotivo] = useState("")
@@ -250,6 +254,7 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
       setFTel(h.telefones[0] ?? "")
       setFCidade(h.cidade ?? "")
       setFUf(h.uf ?? "")
+      setFOrigem(h.origem ?? "")
     }
   }, [edit, detail])
 
@@ -330,6 +335,7 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
         telefones: fTel.trim() ? [fTel.trim()] : [],
         cidade: fCidade.trim() || null,
         uf: fUf.trim() || null,
+        origem: fOrigem || null,
       })
       await load()
       onRefresh()
@@ -340,7 +346,7 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
     } finally {
       setSaving(false)
     }
-  }, [clienteId, fNome, fApelido, fDoc, fEmail, fTel, fCidade, fUf, load, onRefresh, toast])
+  }, [clienteId, fNome, fApelido, fDoc, fEmail, fTel, fCidade, fUf, fOrigem, load, onRefresh, toast])
 
   if (loading && !detail) {
     return <FxFrame><CrmEmpty icon="user" title="Carregando…" sub="Buscando os dados do cliente." /></FxFrame>
@@ -404,6 +410,7 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
               {c.emails[0] && <CrmInfoLine icon="mail">{c.emails[0]}</CrmInfoLine>}
               {c.telefones[0] && <CrmInfoLine icon="phone">{c.telefones[0]}</CrmInfoLine>}
               {fullAddr && <CrmInfoLine icon="mapPin">{fullAddr}</CrmInfoLine>}
+              {c.origem && <CrmInfoLine icon="target">{ORIGEM_LABEL[c.origem as keyof typeof ORIGEM_LABEL] ?? c.origem}</CrmInfoLine>}
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -448,6 +455,7 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
                 <div><FxLabel>Cidade</FxLabel><FxInput value={fCidade} onChange={(e) => setFCidade(e.target.value)} /></div>
                 <div><FxLabel>UF</FxLabel><FxInput value={fUf} onChange={(e) => setFUf(e.target.value)} maxLength={2} /></div>
               </div>
+              <div><FxLabel>Origem</FxLabel><FxSelect value={fOrigem} onChange={(e) => setFOrigem(e.target.value)} placeholder="— Não informada —" options={ORIGEM_OPTS} /></div>
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
               <button className="btn btn-ghost" onClick={() => setEdit(false)} disabled={saving}>Cancelar</button>
