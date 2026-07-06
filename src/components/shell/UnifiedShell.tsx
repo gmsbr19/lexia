@@ -323,9 +323,9 @@ export function UnifiedShell({ children }: { children: ReactNode }) {
   const role: Role = me?.role ?? "staff"
   const nav: CrmNav = useMemo(
     () => ({
-      navPage: (page: CrmPage) => router.push(`/${page}`),
-      openCliente: (id: number) => router.push(`/clientes/${id}`),
-      openClienteTab: (id: number) => router.push(`/clientes/${id}`),
+      navPage: (page: CrmPage) => router.push(page === "clientes" ? "/contatos" : `/${page}`),
+      openCliente: (id: number) => router.push(`/contatos/${id}`),
+      openClienteTab: (id: number) => router.push(`/contatos/${id}`),
       openCaso: (id: number) => router.push(`/processos?view=processos&caso=${id}`),
       openContrato: (id: number) => router.push(`/contratos?contrato=${id}`),
       openProcesso: (id: number) => router.push(`/processos/${id}`),
@@ -333,7 +333,7 @@ export function UnifiedShell({ children }: { children: ReactNode }) {
     [router],
   )
   const action = (kind: string) => {
-    if (kind === "novo-cliente") router.push("/clientes?new=cliente")
+    if (kind === "novo-cliente") router.push("/contatos?new=cliente")
     else if (kind === "nova-tarefa") router.push("/tarefas")
     else if (kind === "novo-lancamento") router.push("/financeiro")
     else if (kind === "novo-evento") router.push("/agenda")
@@ -351,7 +351,7 @@ export function UnifiedShell({ children }: { children: ReactNode }) {
   }
 
   const page = pathname.split("/")[1] || "inicio"
-  const clienteMatch = pathname.match(/^\/clientes\/(\d+)/)
+  const clienteMatch = pathname.match(/^\/contatos\/(\d+)/)
   const clienteId = clienteMatch ? Number(clienteMatch[1]) : undefined
   const dataset = emptyDataset(clientes, role, me?.nome ?? "", me?.email ?? "")
   const visibleTabs = hydrated ? tabs : []

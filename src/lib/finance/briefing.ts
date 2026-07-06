@@ -235,8 +235,8 @@ export async function getPlanoAcao(): Promise<PlanoAcaoData> {
       valueCents: 0,
       valueKind: null,
       priority: "Baixa",
-      cta: d.id != null ? "Abrir cliente" : "Ver títulos",
-      href: d.id != null ? `/clientes/${d.id}?tab=cobranca` : lancHref("vencido", d.nome),
+      cta: d.id != null ? "Abrir contato" : "Ver títulos",
+      href: d.id != null ? `/contatos/${d.id}?tab=cobranca` : lancHref("vencido", d.nome),
       ai: true,
     }))
     const resto = emEspera.length - steps.length

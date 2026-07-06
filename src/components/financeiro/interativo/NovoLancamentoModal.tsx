@@ -161,7 +161,7 @@ export function NovoLancamentoModal({
               </div>
             </div>
             <div className={c.field}>
-              <div className={c.fieldLabel}><span className={c.fieldLabelText}>{dir === "in" ? "Cliente" : "Fornecedor"}</span></div>
+              <div className={c.fieldLabel}><span className={c.fieldLabelText}>{dir === "in" ? "Contato" : "Fornecedor"}</span></div>
               <input className={c.input} list="fx-party-list" value={party} onChange={(e) => setParty(e.target.value)} placeholder="Selecione ou digite" />
               <datalist id="fx-party-list">{partyList.map((p) => <option key={p} value={p} />)}</datalist>
             </div>

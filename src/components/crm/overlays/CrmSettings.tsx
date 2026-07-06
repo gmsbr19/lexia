@@ -1518,7 +1518,7 @@ export function CrmSettings({
           <SectionTitle style={{ marginBottom: 10 }}>Resumo importado</SectionTitle>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
             {([
-              ["Clientes", r.clientes],
+              ["Contatos", r.clientes],
               ["Casos", r.casos],
               ["Honorários", r.honorarios],
               ["Lançamentos", r.lancamentos],

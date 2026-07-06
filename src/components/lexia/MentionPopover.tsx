@@ -39,7 +39,7 @@ export async function buscarEntidades(q: string): Promise<MentionGrupo[]> {
     return []
   }
   const grupos: MentionGrupo[] = [
-    { label: "Clientes", icon: "user", itens: (r.clientes ?? []).map((c) => ({ tipo: "cliente" as const, id: c.id, nome: c.nome, rota: `/clientes/${c.id}` })) },
+    { label: "Contatos", icon: "user", itens: (r.clientes ?? []).map((c) => ({ tipo: "cliente" as const, id: c.id, nome: c.nome, rota: `/contatos/${c.id}` })) },
     {
       label: "Processos",
       icon: "briefcase",

@@ -8,7 +8,9 @@ import { defineTool } from "../types"
 const ROTAS: RegExp[] = [
   /^\/$/,
   /^\/financeiro$/,
-  /^\/clientes$/,
+  /^\/contatos$/,
+  /^\/contatos\/\d+$/,
+  /^\/clientes$/, // legado → redireciona para /contatos
   /^\/clientes\/\d+$/,
   /^\/casos$/,
   /^\/contratos$/,
@@ -42,7 +44,7 @@ export const navegacaoTools = [
     kind: "client",
     description:
       "Leva o usuário a uma tela do app. Use quando ele pedir para 'abrir/ir para/mostrar' uma seção. " +
-      "Rotas válidas: / (início), /financeiro (aceita ?tab=&mes=&periodo=&dir=&stat=&q=), /clientes, /clientes/<id>, " +
+      "Rotas válidas: / (início), /financeiro (aceita ?tab=&mes=&periodo=&dir=&stat=&q=), /contatos, /contatos/<id>, " +
       "/contratos (?contrato=<id>), /agenda, /tarefas, /projetos, /projetos/<id>, /comercial (?tab=), /documents, " +
       "/processos (módulo unificado 'Casos & Processos'; aceita ?view=painel|processos|prazos|andamentos|captura e ?caso=<id> para abrir um caso), " +
       "/processos/<id>, /plano-acao, /lexia. " +

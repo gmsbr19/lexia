@@ -48,7 +48,7 @@ export function linkParaResultado(toolName: string, result: unknown, payload: un
       break
     case "criar_cliente": {
       const id = idDe(result)
-      bruto = id ? { rota: `/clientes/${id}`, label: "Ver cliente" } : { rota: "/clientes", label: "Ver clientes" }
+      bruto = id ? { rota: `/contatos/${id}`, label: "Ver contato" } : { rota: "/contatos", label: "Ver contatos" }
       break
     }
     case "criar_evento":
@@ -86,7 +86,7 @@ export function linkParaResultado(toolName: string, result: unknown, payload: un
     }
     case "editar_cliente": {
       const id = idDe(result)
-      bruto = id ? { rota: `/clientes/${id}`, label: "Ver cliente" } : { rota: "/clientes", label: "Ver clientes" }
+      bruto = id ? { rota: `/contatos/${id}`, label: "Ver contato" } : { rota: "/contatos", label: "Ver contatos" }
       break
     }
     case "anotar_cliente":
@@ -98,11 +98,11 @@ export function linkParaResultado(toolName: string, result: unknown, payload: un
         payload && typeof payload === "object" && "id" in payload && typeof (payload as { id: unknown }).id === "number"
           ? (payload as { id: number }).id
           : null
-      bruto = cid ? { rota: `/clientes/${cid}?tab=cobranca`, label: "Ver cliente" } : { rota: "/clientes", label: "Ver clientes" }
+      bruto = cid ? { rota: `/contatos/${cid}?tab=cobranca`, label: "Ver contato" } : { rota: "/contatos", label: "Ver contatos" }
       break
     }
     case "excluir_cliente":
-      bruto = { rota: "/clientes", label: "Ver clientes" }
+      bruto = { rota: "/contatos", label: "Ver contatos" }
       break
     case "editar_tarefa": {
       const id = idDe(result)

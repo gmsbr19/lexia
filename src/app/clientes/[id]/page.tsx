@@ -1,12 +1,10 @@
-import { getCrmDataset } from "@/lib/crm/dataset"
-import { ClienteDetailRoute } from "@/components/crm/CrmRoutes"
-import type { ClienteTab } from "@/components/crm/crm-types"
+import { redirect } from "next/navigation"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-const TABS = ["financeiro", "cobranca", "tarefas", "casos", "contratos", "eventos", "documentos"]
-
+// Legacy path — the client detail moved to /contatos/[id]. Redirect old deep
+// links (notifications, chat, bookmarks), preserving the ?tab= query string.
 export default async function Page({
   params,
   searchParams,
@@ -16,8 +14,6 @@ export default async function Page({
 }) {
   const { id } = await params
   const sp = await searchParams
-  const dataset = await getCrmDataset()
-  const tabParam = Array.isArray(sp.tab) ? sp.tab[0] : sp.tab
-  const initialTab = (tabParam && TABS.includes(tabParam) ? tabParam : "financeiro") as ClienteTab
-  return <ClienteDetailRoute dataset={dataset} clienteId={Number(id)} initialTab={initialTab} />
+  const tab = Array.isArray(sp.tab) ? sp.tab[0] : sp.tab
+  redirect(tab ? `/contatos/${id}?tab=${tab}` : `/contatos/${id}`)
 }

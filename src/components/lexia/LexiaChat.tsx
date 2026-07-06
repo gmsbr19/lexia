@@ -47,7 +47,7 @@ const TOPBAR_H = 56
 
 const PAGE_CTX: Record<string, { icon: CrmIconName; label: string }> = {
   financeiro: { icon: "wallet", label: "Financeiro" },
-  clientes: { icon: "users", label: "Clientes" },
+  contatos: { icon: "users", label: "Contatos" },
   casos: { icon: "briefcase", label: "Casos" },
   processos: { icon: "briefcase", label: "Processos" },
   contratos: { icon: "receipt", label: "Contratos" },

@@ -244,7 +244,7 @@ export function OfficeDashboard({ data, verFin }: { data: DashboardData; verFin:
             ) : (
               <div>
                 {f.devedores.map((d) => (
-                  <Link key={d.id} href={`/clientes/${d.id}?tab=financeiro`} className={s.finRow}>
+                  <Link key={d.id} href={`/contatos/${d.id}?tab=financeiro`} className={s.finRow}>
                     <span className={s.finRowName}>{d.nome}</span>
                     <span className={s.finRowValue({ tone: "muted" })}>{formatBRL(d.valorCents)}</span>
                   </Link>
@@ -290,10 +290,10 @@ export function OfficeDashboard({ data, verFin }: { data: DashboardData; verFin:
 
           {/* Escritório */}
           <div className={s.panel}>
-            <PanelHead icon={Building} title="Escritório" href="/clientes" link="Ver clientes" />
+            <PanelHead icon={Building} title="Escritório" href="/contatos" link="Ver contatos" />
             <div className={s.statRow} style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
               <Stat label="Casos ativos" value={e.casosAtivos} />
-              <Stat label="Clientes" value={e.clientesTotal} />
+              <Stat label="Contatos" value={e.clientesTotal} />
             </div>
             {/* "Casos sem honorário" expõe receita potencial — só para quem vê o financeiro. */}
             {verFin && (

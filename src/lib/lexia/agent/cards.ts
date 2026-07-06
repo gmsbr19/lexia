@@ -166,13 +166,13 @@ function dispatch(toolName: string, _input: unknown, out: unknown): CardPayload 
 
   switch (toolName) {
     case "detalhe_cliente":
-      return { type: "entity", kind: "cliente", variant: "detail", rota: `/clientes/${(o.header as { id: number }).id}`, data: clienteDetail(o as unknown as ClienteDetailLike) }
+      return { type: "entity", kind: "cliente", variant: "detail", rota: `/contatos/${(o.header as { id: number }).id}`, data: clienteDetail(o as unknown as ClienteDetailLike) }
     case "listar_clientes":
-      return listCard("cliente", out as ClienteRowLike[], clienteRow, "/clientes")
+      return listCard("cliente", out as ClienteRowLike[], clienteRow, "/contatos")
 
     case "detalhe_caso": {
       const c = o as { id: number; clienteId?: number | null }
-      return { type: "entity", kind: "processo", variant: "detail", rota: c.clienteId ? `/clientes/${c.clienteId}` : "/casos", data: casoRow(o as unknown as CasoRowLike) }
+      return { type: "entity", kind: "processo", variant: "detail", rota: c.clienteId ? `/contatos/${c.clienteId}` : "/casos", data: casoRow(o as unknown as CasoRowLike) }
     }
     case "listar_casos":
       return listCard("processo", out as CasoRowLike[], casoRow, "/casos")

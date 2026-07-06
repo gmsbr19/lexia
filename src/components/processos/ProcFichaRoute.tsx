@@ -33,7 +33,7 @@ export function ProcFichaRoute({ detail, responsaveis, hoje }: { detail: Process
         detail={detail}
         hoje={hoje}
         onBack={() => router.push("/processos")}
-        openCliente={(id) => router.push(`/clientes/${id}`)}
+        openCliente={(id) => router.push(`/contatos/${id}`)}
         onLancarPrazo={() => setModal({ kind: "prazo" })}
         onTriar={(pub) => setModal({ kind: "triagem", pub })}
         refresh={() => router.refresh()}

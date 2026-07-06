@@ -31,7 +31,7 @@ describe("cardParaTool — clientes", () => {
       type: "entity",
       kind: "cliente",
       variant: "detail",
-      rota: "/clientes/42",
+      rota: "/contatos/42",
       data: { id: 42, nome: "Construtora Aurora", tipo: "pj", status: "pausado", cidade: "Campinas", uf: "SP", numCasos: 3, telefone: "19999990000", email: "contato@aurora.com" },
     })
   })
@@ -42,7 +42,7 @@ describe("cardParaTool — clientes", () => {
     expect(card?.type).toBe("entity-list")
     expect(card?.itens).toHaveLength(6)
     expect(card?.truncado).toBe(true)
-    expect(card?.rota).toBe("/clientes")
+    expect(card?.rota).toBe("/contatos")
   })
 
   it("lista com ≤6 itens não trunca (sem rota 'ver todos')", () => {
@@ -106,7 +106,7 @@ describe("cardParaTool — processo/caso (mesma família de card)", () => {
   it("detalhe_caso usa 'titulo' (não numeroCnj) e rota para o cliente quando houver clienteId", () => {
     const out = { id: 3, titulo: "Revisão contratual", tipo: "consultivo", status: "ativo", clienteId: 42 }
     const card = cardParaTool("detalhe_caso", {}, out) as Extract<ReturnType<typeof cardParaTool>, { type: "entity" }>
-    expect(card?.rota).toBe("/clientes/42")
+    expect(card?.rota).toBe("/contatos/42")
     expect(card?.data).toMatchObject({ titulo: "Revisão contratual", classe: "consultivo" })
   })
 

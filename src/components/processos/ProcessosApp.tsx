@@ -74,7 +74,7 @@ export function ProcessosApp({
 
   const nav: ProcNav = {
     openProcesso: (id) => router.push(`/processos/${id}`),
-    openCliente: (id) => router.push(`/clientes/${id}`),
+    openCliente: (id) => router.push(`/contatos/${id}`),
     setView: (v) => {
       setView(v)
       router.replace(v === "painel" ? "/processos" : `/processos?view=${v}`)
@@ -89,9 +89,9 @@ export function ProcessosApp({
 
   // Cross-module navigation used by the embedded CRM caso modal.
   const crmNav: CrmNav = {
-    navPage: (p) => router.push(`/${p}`),
-    openCliente: (id) => router.push(`/clientes/${id}`),
-    openClienteTab: (id) => router.push(`/clientes/${id}`),
+    navPage: (p) => router.push(p === "clientes" ? "/contatos" : `/${p}`),
+    openCliente: (id) => router.push(`/contatos/${id}`),
+    openClienteTab: (id) => router.push(`/contatos/${id}`),
     openCaso: (id) => abrirCaso(id),
     openContrato: (id) => router.push(`/contratos?contrato=${id}`),
     openProcesso: (id) => router.push(`/processos/${id}`),

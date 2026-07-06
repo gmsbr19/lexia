@@ -40,9 +40,10 @@ export function contextChips(page: string, hasCliente: boolean): string[] {
       ]
     case "tarefas":
       return ["O que tenho para fazer?", "Tarefas atrasadas", "Criar uma tarefa", "Minhas tarefas de hoje", "Tarefas sem responsável"]
+    case "contatos":
     case "clientes":
     case "cliente":
-      return ["Clientes com mais casos", "Buscar um cliente", "Criar novo cliente", "Clientes inadimplentes", "Clientes sem contato recente"]
+      return ["Contatos com mais casos", "Buscar um contato", "Criar novo contato", "Contatos inadimplentes", "Contatos sem contato recente"]
     default:
       return ["O que tenho hoje?", "Quem está devendo?", "Criar uma tarefa", "O que mudou nos meus processos?", "Resumo do escritório hoje"]
   }
@@ -91,9 +92,10 @@ export function contextPlaceholder(page: string, hasCliente: boolean): string {
       return "Pergunte sobre casos e processos — prazos, publicações, responsáveis, andamentos…"
     case "tarefas":
       return "Pergunte sobre tarefas ou crie uma nova…"
+    case "contatos":
     case "clientes":
     case "cliente":
-      return "Busque um cliente ou cadastre um novo…"
+      return "Busque um contato ou cadastre um novo…"
     default:
       return "Pergunte, busque ou diga o que fazer…"
   }
