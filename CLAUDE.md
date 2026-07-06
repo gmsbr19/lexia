@@ -145,6 +145,39 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **CRM · Mesclar 2 clientes (dedup) + rename "Clientes"→"Contatos" (rótulos + ROTA) (this session, VERIFIED
+  tsc 0, 461/461 testes, eslint sem achados novos, NO migration).** Dois pedidos. **Decisões travadas:**
+  (A-merge) o cliente duplicado é EXCLUÍDO de vez após migrar tudo; conflito de contato = mantém o cliente
+  escolhido, preenche só vazios. (B-rename) troca rótulos E a rota para `/contatos` (com redirect de
+  `/clientes`). **A — mesclar clientes:** função pura `planejarMesclagemCliente`
+  ([clientes/merge.ts](src/lib/clientes/merge.ts), backfill campo-a-campo só onde o alvo está vazio) +
+  `mesclarClientes(alvoId, duplicadoId)` ([clientes/mutations.ts](src/lib/clientes/mutations.ts)): numa
+  transação, repointa TODAS as FKs do duplicado→alvo (honorarios/lancamentos/leads/tarefas/eventos/
+  documentos/partes/projetos/clienteAnotacao via `clienteId`; casos via `clientePrincipalId`), faz o backfill
+  e HARD-DELETE do duplicado (nada fica órfão). Schema `mesclarClientesSchema` + rota
+  `POST /api/clientes/[id]/mesclar` (id = sobrevivente, body `{duplicadoId}`, `runMutation` action
+  "cliente.mesclar", roles admin/socio). UI: `CrmMesclarClientes` ([CrmQuickModals.tsx](src/components/crm/pages/CrmQuickModals.tsx),
+  escolhe o duplicado + confirma digitando o nome, espelha o `CrmAnonimizar`) + botão "Mesclar" (ícone
+  `gitMerge`, novo em [crm-icons.tsx](src/components/crm/crm-icons.tsx)) no cabeçalho do cliente
+  ([CrmClienteDetail.tsx](src/components/crm/pages/CrmClienteDetail.tsx) `onMesclar` prop) ligado no
+  [CrmRoutes.tsx](src/components/crm/CrmRoutes.tsx) (estado `mergeId`). Teste puro
+  [tests/clientes-merge.test.ts](tests/clientes-merge.test.ts). **B — Clientes→Contatos:** rota nova
+  `app/contatos/{page,[id]/page}.tsx` (cópia das de clientes) e `app/clientes/{page,[id]/page}.tsx` viraram
+  **redirects** (preservam ?query/?tab — deep links antigos de notificação/LexIA/bookmark seguem funcionando).
+  Rótulos "Cliente(s)"→"Contato(s)": sidebar/nav ([unified-nav.ts](src/components/shell/unified-nav.ts) href
+  `/contatos` + ROUTE_META + regex de detalhe; [shell-data.ts](src/components/shell/shell-data.ts)),
+  `CrmClientesPage` (título/botões/coluna/empty), modal Novo contato, **tela de lançamento do financeiro**
+  ([NovoLancamentoModal.tsx](src/components/financeiro/interativo/NovoLancamentoModal.tsx): "Cliente"→"Contato"
+  em entrada), OfficeDashboard, briefing, Spotlight/MentionPopover/LexiaChat PAGE_CTX/Suggestions (chave
+  `page` agora "contatos"). Pushes internos `/clientes/${id}`→`/contatos/${id}` em UnifiedShell/CrmRoutes/
+  ProcessosApp/ProcFichaRoute; `navPage` mapeia clientes→/contatos; LexIA links.ts/cards.ts→/contatos;
+  navegacao.ts whitelist ganhou `/contatos(/<id>)` (mantém `/clientes` legado p/ o redirect). **`/api/clientes`
+  e o modelo `Cliente` NÃO mudaram** (só rota de página + rótulos). Testes de card da LexIA atualizados p/
+  `/contatos`. **Verificado: tsc 0; 461/461 testes (4 novos de merge); eslint sem achados novos** (erros
+  set-state-in-effect/refs em UnifiedShell + CrmClienteDetail são PRÉ-EXISTENTES, confirmado via baseline).
+  **Sem migração. User action:** visual — o menu agora diz "Contatos" e abre `/contatos`; abrir um contato →
+  botão "Mesclar" (admin/sócio) → escolher duplicado → confirma → tudo migra e o duplicado some; a tela de
+  novo lançamento (entrada) diz "Contato"; deep links antigos `/clientes/...` redirecionam.
 - **CRM · Cliente — campo `origem` editável + integração com a mesclagem de lead (this session, VERIFIED
   tsc 0, 457/457 testes, eslint sem achados novos, migração 20260706120000_cliente_origem APLICADA).**
   `origem` só existia no `Lead`; o usuário precisava editar a origem do CLIENTE e que a mesclagem
