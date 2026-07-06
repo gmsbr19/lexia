@@ -5,7 +5,7 @@
 // arrows + a route-based tab strip + a per-page actions slot, plus the global AI
 // surfaces (LexIA orb/popup, Spotlight ⌘K, Settings). Each route renders its
 // content in the content area; there is no per-pane split (route-tabs model).
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { signOut } from "next-auth/react"
 import { apiSend } from "@/lib/client/api"
@@ -248,6 +248,23 @@ export function UnifiedShell({ children }: { children: ReactNode }) {
 
   // Páginas públicas sem shell (login + página de ativação do convite).
   const isLogin = pathname === "/login" || pathname.startsWith("/definir-senha")
+
+  // No editor de documentos, a sidebar global recolhe automaticamente p/ dar mais
+  // espaço ao editor; restaura o estado anterior ao sair. O toggle manual (Recolher
+  // menu) continua livre — só re-força ao entrar/sair do editor, não a cada render.
+  const isDocEditor = pathname.startsWith("/documents/doc/")
+  const collapsedRef = useRef(collapsed)
+  collapsedRef.current = collapsed
+  const preEditorCollapsed = useRef<boolean | null>(null)
+  useEffect(() => {
+    if (isDocEditor) {
+      if (preEditorCollapsed.current === null) preEditorCollapsed.current = collapsedRef.current
+      setCollapsed(true)
+    } else if (preEditorCollapsed.current !== null) {
+      setCollapsed(preEditorCollapsed.current)
+      preEditorCollapsed.current = null
+    }
+  }, [isDocEditor])
 
   useEffect(() => {
     if (isLogin) return
