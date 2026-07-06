@@ -145,6 +145,56 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **LexIA · Chat — implementação COMPLETA do handoff "Chat de IA" (24 módulos, 8 fases, this session,
+  VERIFIED tsc 0, 451/451 testes, eslint limpo, 1 migração ÚNICA)** (memories `project_lexia_bar`,
+  `project_lexia_agent`, `project_documents_module` — o editor de docs reusa o mesmo `LexiaChat` embutido).
+  Handoff de 2 rodadas (cards/padrões + "Robustez" 6 blocos) implementado passo a passo em 8 fases
+  verificadas independentemente (tsc+testes a cada uma); nada do chat anterior foi perdido. **Decisões
+  travadas com o usuário no planejamento:** entity cards automáticos a partir das tools de leitura (0
+  tokens extra); follow-ups via sentinela de texto `<sugestoes>` (não uma tool — ~30-60 tokens vs. 1 rodada
+  de API); ChoiceCard completo com tool `perguntar_usuario` + pausa/resume; 1 migração Prisma consolidada.
+  **Fase 1 (fundações):** migração `20260704184817_lexia_chat_v2` (`LexiaMensagem.feedback/meta`,
+  `LexiaConversa.fixada/contexto`, `LexiaAcaoPendente.kind/respostaJson` — a ÚNICA migração de todo o
+  projeto); `cc/` kit completo (CcKit tokens/linhas/cards + motion kit ThinkingOrb/reveals/ícones animados,
+  regra travada: keyframes SEMPRE sob `prefers-reduced-motion: no-preference`, nunca par webkit+standard
+  `backdrop-filter` — bug do Lightning CSS). **Fase 2 (composer unificado + markdown v2):** `LexiaComposer.tsx`
+  extraído — as 5 montagens (flutuante/lateral/tela-cheia/embutido no editor/`/lexia`) agora compartilham UM
+  composer; markdown completo (CodeBlock com copiar/colapsar, checkbox, blockquote, listas aninhadas, hr,
+  LongTable); `AiActionsBar` (copiar+feedback 👍👎) + `ModelSeal`. **Fase 3 (entity cards + timeline + diff):**
+  `agent/cards.ts` mapeia tool→card automaticamente (cliente/lead/lançamento/honorário/tarefa/processo/evento
+  + busca agrupada + insight/viz); `AgentTimeline` substitui os chips soltos de tool; `ConfirmCard` ganhou diff
+  riscado→novo nas edições. **Fase 4 (controle de geração — a mais arriscada):** `SysCard` (8 códigos de
+  erro: offline/sobrecarga/timeout/sem-chave/sessão/stream-caiu/modo-econômico/genérico) + `POST
+  /api/lexia/conversas/[id]/continuar` (serve Continuar-por-limite/Retomar-após-parar/Reconectar); 2 bugs
+  reais corrigidos: `sse.ts` sem guarda de `cancel()` (enqueue pós-desconexão) e o loop perdia o texto parcial
+  no aborto (agora vira bloco de verdade, com `meta.interrompida`); scroll do thread com auto-stick <28px +
+  pill "↓ Nova resposta". **Fase 5 (truncamento/retry):** editar a última pergunta inline (pencil no balão,
+  reenviar substitui — `truncarConversaDesde` deleta ≥id + expira pendentes numa transação); `RetryMenu`
+  (Tentar de novo/Modelo avançado/Ajustar tom-tamanho via `agent/modificadores.ts`, volátil); **gap real
+  corrigido durante a implementação:** o retry genérico da Fase 4 só reproduzia o último `send()` — depois
+  de um refazer que falhasse, "Tentar de novo" reenviava a pergunta ERRADA; unificado em `lastReplayRef`
+  (tagged union). **Fase 6 (ChoiceCard + follow-ups + proveniência — ÚNICA edição do prompt CACHEADO):**
+  nova tool `perguntar_usuario` (kind="pergunta" — pausa o turno como uma mutação mas sem `run`; resolve com
+  decisao="responder"); `FollowupsFilter` (holdback de streaming p/ nunca piscar `<sugest…` na tela, testado
+  com torture-test de chunk=1 caractere); `fontesParaTool`+rodapé de fontes citáveis; `ThoughtDisclosure`
+  ("Pensou por Xs", extended thinking); `TurnResult.meta` centraliza thinking/fontes/followups (refatorado a
+  partir dos campos soltos da Fase 4). **Fase 7 (composer poderoso):** `@` menções (Clientes/Processos/
+  Contratos via `/api/search`, popover com teclado, vira chip + injeta `<mencoes>` no turno) e `/` comandos;
+  `MicButton`+`useDitado` (Web Speech API, mesmo padrão do `RambleModal` de Tarefas); colar texto longo (>2500
+  chars) oferece "Anexar como .txt" (novo MIME `text/plain` decodifica p/ bloco de texto); contador de 4000
+  caracteres + bloqueio; prévia rica de anexo na bolha enviada. **Fase 8 (histórico v2 + welcome v2 + a11y):**
+  `HistoryDropdown` (busca accent-insensitive, fixar/renomear inline, skeleton); pools de sugestão maiores
+  com "↻ Renovar" + "Sugerido pra você"; **3 bugs REAIS de teclado corrigidos na varredura de a11y** — as
+  opções do ChoiceCard e a linha do HistoryDropdown eram `<div onClick>` sem suporte a teclado, e o `CcRow`
+  compartilhado (usado por TODAS as linhas de entity card) tinha o mesmo problema, corrigido uma vez só no
+  componente base; +anel de foco dourado (`:focus-visible`) em tudo que não usa `.btn`. **Verificado a cada
+  fase e no fim: `npx tsc --noEmit` 0 erros; `npm test` 451/451 (foram de 320 a 451 ao longo da sessão);
+  `npx eslint` no módulo LexIA inteiro limpo** (achados pré-existentes fora de escopo em `LexiaChat.tsx`
+  2 casos/`LexiaSpotlight.tsx` documentados e deliberadamente não tocados). **User action:** parar `next dev`
+  se ainda não aplicou a migração desta sessão → `npm run db:migrate` → `npm run db:generate` → `npm run dev`.
+  Visual: pedir algo ambíguo → ChoiceCard de opções; "@Nome" no composer → popover → chip; colar texto longo →
+  oferta .txt; ícone de mic (Chrome/Edge) → ditado; parar uma geração → Retomar/Refazer; abrir o menu do
+  histórico → busca + fixar (estrela) + renomear inline; Tab/Enter navegando cards e ChoiceCard sem mouse.
 - **Documentos — "docs2" editor redesign (handoff `lexia-handoff(4).zip`) + glass nos popups + passe nas abas
   (this session, tsc 0, 320/320 testes, NO migration)** (memory `project_documents_module`,
   `project_acrylic_surfaces`). README apontava p/ `LexIA - Documentos.html`, mas o `src/docs/docs2-*.jsx`
@@ -176,7 +226,17 @@ This Next (16.2.6) has breaking changes vs. training data — consult
   **Abas**: "Criar"→**"Novo documento"** + rótulo **"Módulo de Documentos"** à direita
   ([TabStrip](src/components/documents/page/tabs/TabStrip.tsx)); hero do CreateTab alinhado. **Método**: build
   direto + 1 workflow de revisão adversarial (4 dims, verify por achado) → **1 achado low confirmado e corrigido**
-  (selMarks obsoleto). **Verificado: `npx tsc --noEmit` 0 erros; `npm test` 320/320** (1 novo:
+  (selMarks obsoleto). **6 ajustes pós-visual (follow-up, tsc 0, 320 testes):** (1) campos do painel + inputs
+  dos popovers agora usam o kit de formulário `.f-in` ([fields.css.ts](src/components/documents/editor2/fields.css.ts):
+  `fInput`/`fieldChip`/`fieldChipInput` — borda + **anel dourado no foco**, `:focus-within` no chip); (2) controle
+  de **zoom com glass** (`lexGlassStrong`); (3) o toggle do painel de campos voltou p/ a **ESQUERDA** do cabeçalho
+  (o da LexIA fica à direita); (4) **zoom auto-fit**: a folha A4 encaixa na largura da coluna por padrão (ResizeObserver
+  re-encaixa ao abrir/fechar painel; zoom manual desliga o auto-fit; o botão do meio = "Ajustar à largura"); (5)
+  **economia de tokens** no editor: `prompt.ts` `<instrucoes_doc>` agora manda a IA agir SÓ pelas ferramentas (cards),
+  sem reescrever/concluir em prosa (responde vazio quando só há ações) — a notificação "concluiu" já era suprimida no
+  editor (`watchingRef=open`); (6) **"Editar com a LexIA"** na barra flutuante agora **foca o composer** (novo prop
+  `focusSeq` no `LexiaChat` + `taRef` no `AutoTextarea`) com um **pulse dourado** de feedback. **Verificado: `npx tsc
+  --noEmit` 0 erros; `npm test` 320/320** (1 novo:
   `tests/documents-field-types.test.ts`). **Sem migração. User action:** visual em `/documents/doc/[id]`: campo
   preenchido aparece no papel (sublinhado dourado); clicar num `{{campo}}` → popover glass; barra "Campo"/mira →
   popover novo campo; selecionar texto → barra flutuante (B/I/U + Editar com a LexIA) e destaque dourado quando a
