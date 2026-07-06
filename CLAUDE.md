@@ -145,6 +145,27 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **Comercial · fix: gastos de anúncios não contavam (duas categorias "Marketing") (this session, VERIFIED
+  tsc 0, 461/461 testes, eslint limpo, NO migration).** Sintoma: usuário lançou os gastos de Google/Meta de
+  junho (via Financeiro, categoria **"Marketing/Anúncios"**) e o módulo Comercial mostrava investimento zero.
+  **Causa raiz (diagnosticada consultando o dev.db):** existem DUAS categorias de marketing — a do app
+  **"Marketing"** (`astreaId app-cat-marketing`) e a importada do Astrea **"Marketing/Anúncios"** (astreaId
+  numérico, ids diferentes por ambiente). A query de ad-spend do Comercial só reconhecia gastos com
+  `campanhaId != null` OU `categoriaId == app-cat-marketing`, então TUDO lançado à mão sob "Marketing/Anúncios"
+  ficava invisível (não só junho — todo o histórico manual). **Fix ([lib/comercial/queries.ts](src/lib/comercial/queries.ts)):**
+  `marketingCategoriaId()` (singular, por astreaId) virou **`marketingCategoriaIds()`** (plural) — reconhece
+  QUALQUER categoria cujo nome, normalizado (accent-insensitive via `normalizar`), contenha "marketing"/
+  "anuncio" (novo helper `ehCategoriaMarketing`), além da app-cat-marketing; **casa por NOME, nunca por id
+  fixo** (ids diferem entre dev/prod). `spendWhere(ids[], …)` e o `spendOr` do dataset passaram a usar
+  `categoriaId: { in: ids }`. Sem migração — puro código de leitura. **Efeito colateral esperado (desejado):**
+  o histórico antigo sob "Marketing/Anúncios" também passa a contar → investimento/ROAS/ROI de meses
+  passados recalculam. **CAVEATS informados ao usuário:** (1) o Comercial filtra o gasto pela DATA do
+  lançamento (`dataLancamento`); se junho ainda aparecer zerado, conferir se a data do lançamento (não só o
+  vencimento) está em junho; (2) gasto lançado sem campanha vinculada conta no TOTAL/ROAS mas não na quebra
+  por-campanha — para atribuir a uma campanha, usar Comercial → "Registrar gasto" ou o import CSV da Meta.
+  **Usuário está em PRODUÇÃO** (o dev.db que li é separado) → o fix é código; ao subir, junho passa a contar.
+  **User action:** deploy do código → conferir `/comercial` em junho. Opcional: unificar as duas categorias
+  em produção p/ consistência futura.
 - **CRM · Mesclar 2 clientes (dedup) + rename "Clientes"→"Contatos" (rótulos + ROTA) (this session, VERIFIED
   tsc 0, 461/461 testes, eslint sem achados novos, NO migration).** Dois pedidos. **Decisões travadas:**
   (A-merge) o cliente duplicado é EXCLUÍDO de vez após migrar tudo; conflito de contato = mantém o cliente
