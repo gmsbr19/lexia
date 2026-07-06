@@ -928,7 +928,7 @@ export async function getContratos(): Promise<ContratoRow[]> {
       area: true,
       dataCriacao: true,
       clientePrincipalId: true,
-      clientePrincipal: { select: { nome: true } },
+      clientePrincipal: { select: { nome: true, origem: true } },
       honorarios: { select: { valorCents: true, status: true } },
       leads: { select: { origem: true, dataConversao: true } },
     },
@@ -939,13 +939,15 @@ export async function getContratos(): Promise<ContratoRow[]> {
     const recebidoCents = r.honorarios
       .filter((h) => h.status === "recebido")
       .reduce((a, h) => a + h.valorCents, 0)
-    // origem = a origem do lead convertido mais recente vinculado ao caso; casos
-    // diretos/importados (sem lead) ficam sem origem (exibidos como "Direto").
-    const origem =
+    // origem = a origem editada no cadastro do cliente; se não houver, cai para a
+    // origem do lead convertido mais recente vinculado ao caso; casos diretos/
+    // importados (sem cliente-origem nem lead) ficam sem origem ("Direto").
+    const origemLead =
       r.leads
         .slice()
         .sort((a, b) => (b.dataConversao?.getTime() ?? 0) - (a.dataConversao?.getTime() ?? 0))
         .find((l) => l.origem)?.origem ?? null
+    const origem = r.clientePrincipal?.origem ?? origemLead
     return {
       id: r.id,
       titulo: r.titulo,
