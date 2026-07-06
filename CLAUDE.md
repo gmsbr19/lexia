@@ -145,6 +145,59 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **CRM · Contratos — página refeita como LENTE COMERCIAL de Casos (this session, VERIFIED tsc 0, 456/456
+  testes, eslint limpo, NO migration).** A página `/contratos` mostrava honorários lançados (fee ledger);
+  o usuário queria uma tabela de contratos fechados com valor, área, origem etc. **Decisão travada com o
+  usuário:** *contrato = caso* (um contrato reúne vários honorários) — Casos = controle operacional,
+  Contratos = controle comercial (mesma entidade `Caso`, lente diferente). Datas: "data de fechamento" =
+  `Caso.dataCriacao` (Caso não tem `createdAt @default`; dataCriacao é o análogo de abertura do caso).
+  Mantido status de pagamento como coluna+filtro + KPIs financeiros. **Backend:** novo `ContratoRow`
+  ([finance/types.ts](src/lib/finance/types.ts)) + `getContratos()` ([finance/queries.ts](src/lib/finance/queries.ts))
+  — agrega `Σ honorários.valorCents` (contratado) e o subconjunto `status='recebido'` por caso, origem vem
+  do lead vinculado ao caso (`Lead.casoId`, mais recente por `dataConversao`; casos diretos/importados sem
+  lead → "Direto"). **`dataset.contratos` REPROPÓSITO** de `HonorarioRow[]`→`ContratoRow[]` — seguro: a
+  LISTA só era lida pela própria página; o modal de honorário (`openContrato`/`CrmContratoModal`), a aba
+  Contratos do cliente (`detail.honorarios`), Spotlight e notificações buscam por id/independente e seguem
+  intactos. `getHonorarios()` continua existindo (usado pela tool LexIA). CrmDataset atualizado nos DOIS
+  lugares ([lib/crm/dataset.ts](src/lib/crm/dataset.ts) + [crm-types.ts](src/components/crm/crm-types.ts)).
+  **UI** ([CrmContratosPage.tsx](src/components/crm/pages/CrmContratosPage.tsx), reescrita): colunas
+  Contrato·Área·Origem·Valor contratado·Pagamento·Fechado em; filtros busca + área (só as presentes, cor+label
+  via `useAreasStore`/`resolveAreaLabel`/`resolveAreaColor`) + origem (`ORIGEM_LABEL` de comercial) + tipo
+  (consultivo/litígio) + segmented de pagamento (Todos/Recebido/Parcial/Em aberto); ordenação clicável nas
+  colunas Valor e Fechado em (default: fechado em desc); KPIs Total contratado/Recebido/Em aberto/Ticket
+  médio; clique na linha → `nav.openCaso` (o `CrmCasoModal` já é renderizado pelo `ContratosRoute`). Novos
+  ícones `chevronUp`/`chevronsUpDown` em [crm-icons.tsx](src/components/crm/crm-icons.tsx). **Verificado:
+  tsc 0; 456/456 testes; eslint limpo** (1 aviso pré-existente `AcertoSocioLado` não relacionado). **Sem
+  migração. User action:** visual em `/contratos` — tabela de contratos (casos) com área/origem/valor/
+  pagamento; filtrar e ordenar; clicar abre o caso; o deep-link `/contratos?contrato=<honorarioId>` das
+  notificações ainda abre o modal de honorário.
+- **Comercial · Leads — "Mesclar com cliente existente" (this session, VERIFIED tsc 0, 456/456 testes,
+  eslint limpo, NO migration)** (memory to add: `project_comercial_leads`). Problem: a client already
+  registered as `Cliente` sometimes reappears as a `Lead` on a later Genions import (no dedup exists in
+  the importer), creating a duplicate record instead of recognizing the relationship. Added an explicit
+  manual merge action rather than automatic dedup. **Decisions locked with the user:** merging marks the
+  lead `etapa: "ganho"` (no `Honorário` is created — the client relationship already exists, unlike
+  `converterLead`); Cliente contact fields (`emails`/`telefones`) are backfilled ONLY when empty on the
+  Cliente (never overwrite curated data); any authenticated user can merge (same as the rest of Leads
+  CRUD today — no role gate). **Pure logic**: `src/lib/comercial/merge.ts` `planejarBackfillCliente`
+  (lead contact → Cliente patch, gap-filling only), tested in `tests/comercial-merge.test.ts` (5 cases).
+  **Mutation**: `mesclarLeadComCliente` in `src/lib/comercial/mutations.ts` (transaction: backfill Cliente
+  contact fields + `Lead.update({etapa:"ganho", dataConversao, clienteId, motivoPerda:null})`; reuses the
+  existing `notificarLeadConvertido` trigger on first transition into "ganho", same as `converterLead`).
+  **Route**: `POST /api/comercial/leads/[id]/mesclar` (`mesclarLeadSchema` in `schemas.ts`, `runMutation`
+  action `"lead.mesclar"`, no `roles` — matches every other Leads route). **Client picker**: `CmDataset.
+  clientes` was an unused `string[]` (dead field, no UI ever read it) — upgraded to `CmClienteOption[]`
+  (`{id,nome}`, already fetched via the existing `getClienteOptions()` call in `getComercialDataset`) so
+  the merge modal's searchable list needs **zero extra network round-trip** (client-side filter, same
+  pattern as the leads/campaigns tables already in the dataset). **UI**: new `CmMergeModal` in
+  `CmModals.tsx` (search input + filtered list, `cm-menu-item` rows, "Trocar" to reselect) wired as a new
+  `"Mesclar com cliente"` action (`gitMerge` icon, added to `cm-icons.tsx`) in the lead row's "⋯" menu
+  (`CmLeads.tsx`) → `ComercialApp.tsx` new `Modal` variant `"mesclar"` + `submitMesclar`. **Verified:
+  `npx tsc --noEmit` 0 errors; `npm test` 456/456 (5 new); `npx eslint` on all touched Comercial files
+  clean.** **User action:** visual in `/comercial` → Leads tab → a lead's "⋯" menu → "Mesclar com cliente"
+  → search + pick an existing client → Mesclar; confirm the lead now shows the linked cliente name and
+  etapa "Ganho" (no honorário created), and that the client's e-mail/telefone got backfilled only if they
+  were empty before.
 - **LexIA · Chat — implementação COMPLETA do handoff "Chat de IA" (24 módulos, 8 fases, this session,
   VERIFIED tsc 0, 451/451 testes, eslint limpo, 1 migração ÚNICA)** (memories `project_lexia_bar`,
   `project_lexia_agent`, `project_documents_module` — o editor de docs reusa o mesmo `LexiaChat` embutido).
