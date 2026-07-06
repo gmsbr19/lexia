@@ -145,6 +145,30 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **Comercial · fix: valor contratado de lead ganho = receita real do caso → honorário do lead → estimativa
+  (this session, VERIFIED tsc 0, 473/473 testes, eslint limpo, NO migration).** Investigando o dev.db do
+  usuário (caso Thiago) descobri o motivo real do "valor contratado R$ 0": o escritório fecha o contrato
+  **lançando a RECEITA no Financeiro** (`Lancamento` `tipo=entrada, subTipo=honorario`, ligado ao caso), NÃO
+  criando registro `Honorario`. O Thiago: Lead #37 entrou 08/06, ganho, cliente #512, **estimativa 2.400**,
+  mas casoId/honorarioId nulos; o caso#137 tem 0 `Honorario`; os R$2.400 estão em 2 entradas (lanc#456 R$2.200
+  subTipo honorário casoId=137 + lanc#465 R$200 "Consulta"). O `valorContratado` só lia `Honorario` → 0.
+  **Decisão do usuário: "Ambos"** — valor de um lead ganho segue, nesta ordem: (1) **receita REAL do caso** =
+  `Honorario`s do caso + entradas de honorário do caso NÃO espelhadas por um `Honorario` (novo `casoRevenueCents`
+  em [queries.ts](src/lib/comercial/queries.ts) filtra `lancamento.honorarios.length===0` p/ não contar em
+  dobro a entrada Astrea que espelha um Honorário importado); (2) **honorário ligado ao lead**; (3) **estimativa
+  do lead** (`valorEstimado` — o valor de fechamento digitado no fluxo rápido de "ganho"). Reverte a regra
+  anterior "só honorário real, sem estimativa" (que zerava leads recém-fechados). [valor.ts](src/lib/comercial/valor.ts)
+  `LeadValorInput` trocou `casoHonorariosCents`→`casoRevenueCents` +`estimadoCents`; dedup por caso mantida.
+  `casoRevenueInclude` (select compartilhado: honorarios + lancamentos entrada/honorario) alimenta
+  `getComercialKpis` (servidor: Início/LexIA) e `getComercialDataset` (cliente). **Verificado END-TO-END no
+  dev.db:** Thiago passou a valer **R$ 2.400** (via estimativa, pois o lead não está ligado ao caso; se vincular
+  o caso passa a ler os R$2.200 de receita real) e junho mostra Conversões 1 · Investimento R$ 9.192,28 · Valor
+  contratado R$ 2.400 · ROI −74% (cliente == servidor). Testes: [tests/comercial-valor.test.ts](tests/comercial-valor.test.ts)
+  reescrito p/ o novo shape + precedência (receita>honorário>estimativa, dedup, fallback do Thiago). Diagnóstico
+  [scripts/diagnostico-comercial.ts](scripts/diagnostico-comercial.ts) atualizado (mostra receita do caso +
+  estimativa + de onde o valor veio). **tsc 0; 473/473; eslint limpo; sem migração. User action:** deploy →
+  junho mostra R$ 2.400. Opcional: vincular o Lead #37 ao caso#137 (ou usar "Converter") p/ ler a receita real
+  lançada em vez da estimativa. Restam os 5 gastos de campanha #471–475 (venc nulo, lanç. julho) fora de junho.
 - **Comercial · fix: gastos de junho não apareciam + atribuição de conversão UNIFICADA por ENTRADA + default
   de data + diagnóstico (this session, VERIFIED tsc 0, 472/472 testes, eslint limpo, NO migration).** Sintoma:
   contrato ganho + gastos de anúncios lançados, mas junho mostrava Investimento R$ 0 E Valor contratado R$ 0.
