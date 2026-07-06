@@ -1,13 +1,13 @@
 // CRM client types. Backend view-models are imported TYPE-ONLY (fully erased at
 // compile → no server/prisma code reaches the client bundle). Workspace/route
 // types are defined here.
-import type { CasoRow, ContaOption, HonorarioRow, IdNome, SocioConta } from "@/lib/finance/types"
+import type { CasoRow, ContaOption, ContratoRow, IdNome, SocioConta } from "@/lib/finance/types"
 import type { ClienteRow } from "@/lib/finance/types"
 
 export type { ClienteDetail, ClienteCasoRow, ClienteTarefaRow } from "@/lib/clientes/types"
 export type { ProcessoMini } from "@/lib/processos/types"
 export type { CasoDetail, CasoTarefaRow, CasoFinanceiro } from "@/lib/casos/types"
-export type { HonorarioDetail, HonorarioRow, LancamentoRow, CasoRow, SocioConta, ContaOption, IdNome, CasoResponsavelInfo } from "@/lib/finance/types"
+export type { HonorarioDetail, HonorarioRow, ContratoRow, LancamentoRow, CasoRow, SocioConta, ContaOption, IdNome, CasoResponsavelInfo } from "@/lib/finance/types"
 export type { AgendaDataset, EventoRow, AgendaTarefaRow, EventoTipo } from "@/lib/agenda/types"
 export type { DocumentoRow } from "@/lib/documentos/types"
 export type { LexiaConversaRow, LexiaConversaDetail, LexiaMensagemRow, LexiaChatResult } from "@/lib/lexia/types"
@@ -22,7 +22,7 @@ export type Role = "admin" | "socio" | "advogado" | "estagiario" | "financeiro" 
 export interface CrmDataset {
   clientes: ClienteRow[]
   casos: CasoRow[]
-  contratos: HonorarioRow[]
+  contratos: ContratoRow[]
   socios: SocioConta[]
   clienteOptions: IdNome[]
   casoOptions: IdNome[]
