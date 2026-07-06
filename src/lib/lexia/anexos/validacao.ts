@@ -4,7 +4,8 @@
 
 /** MIME types aceitos no chat. Imagem/PDF a Anthropic lê nativamente (visão); o
  *  .docx NÃO é enviado ao modelo — o servidor o intercepta, converte com mammoth
- *  e importa direto para o editor (ver /api/lexia/chat). */
+ *  e importa direto para o editor (ver /api/lexia/chat). text/plain (Fase 7) vira
+ *  um bloco de TEXTO puro na mensagem — a oferta "colar longo → anexar .txt". */
 export const MIME_PERMITIDOS = [
   "image/png",
   "image/jpeg",
@@ -12,6 +13,7 @@ export const MIME_PERMITIDOS = [
   "image/gif",
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "text/plain",
 ] as const
 export type AnexoMime = (typeof MIME_PERMITIDOS)[number]
 
@@ -24,7 +26,7 @@ export const MAX_TOTAL_BYTES = 25 * 1024 * 1024 // 25 MB no total (limite da API
 
 /** Extensões aceitas, para o atributo `accept` do <input type=file>. */
 export const ACCEPT_ATTR =
-  ".png,.jpg,.jpeg,.webp,.gif,.pdf,.docx,image/*,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  ".png,.jpg,.jpeg,.webp,.gif,.pdf,.docx,.txt,image/*,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
 
 /** Forma mínima de um anexo que carrega bytes (entrada do chat / storage). */
 export interface AnexoEntrada {
@@ -43,6 +45,11 @@ export function ehPdf(mimeType: string): boolean {
 
 export function ehDocx(mimeType: string): boolean {
   return mimeType === MIME_DOCX
+}
+
+/** .txt (Fase 7) — vira um bloco de TEXTO puro na mensagem (não é visão/documento). */
+export function ehTexto(mimeType: string): boolean {
+  return mimeType === "text/plain"
 }
 
 export function mimePermitido(mimeType: string): mimeType is AnexoMime {
@@ -68,7 +75,7 @@ export function rotuloTamanho(bytes: number): string {
 export function validarAnexo(a: { nome: string; mimeType: string; dataBase64: string }): string | null {
   if (!a.dataBase64) return `"${a.nome}" está vazio`
   if (!mimePermitido(a.mimeType)) {
-    return `"${a.nome}" não é um formato suportado (use PNG, JPG, WEBP, GIF, PDF ou DOCX)`
+    return `"${a.nome}" não é um formato suportado (use PNG, JPG, WEBP, GIF, PDF, DOCX ou TXT)`
   }
   const bytes = bytesDeBase64(a.dataBase64)
   if (bytes > MAX_ANEXO_BYTES) {

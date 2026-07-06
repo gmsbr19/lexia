@@ -2,15 +2,18 @@
 // SERVER ONLY. O loop e o snapshot de confirmação já trabalham com
 // Anthropic.MessageParam[] de blocos, então basta montar a mensagem do usuário.
 import type Anthropic from "@anthropic-ai/sdk"
-import { ehPdf } from "@/lib/lexia/anexos/validacao"
+import { ehPdf, ehTexto } from "@/lib/lexia/anexos/validacao"
 
 interface AnexoComBytes {
   mimeType: string
   dataBase64: string
 }
 
-/** Um anexo → bloco image (visão) ou document (PDF). */
+/** Um anexo → bloco text (colar longo → .txt), document (PDF) ou image (visão). */
 export function anexoParaBloco(mimeType: string, base64: string): Anthropic.ContentBlockParam {
+  if (ehTexto(mimeType)) {
+    return { type: "text", text: Buffer.from(base64, "base64").toString("utf-8") }
+  }
   if (ehPdf(mimeType)) {
     return {
       type: "document",
