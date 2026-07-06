@@ -21,6 +21,7 @@ import type {
   ContaKind,
   ContaOption,
   ContasBalanco,
+  ContratoRow,
   DreRow,
   FluxoPoint,
   FluxoResumo,
@@ -910,6 +911,56 @@ export async function getCasos(): Promise<CasoRow[]> {
     }))
     // Most recently moved cases first; nulls sink to the bottom.
     .sort((a, b) => (b.ultimaMovimentacao ?? "").localeCompare(a.ultimaMovimentacao ?? ""))
+}
+
+// ── contratos (commercial lens over casos) ───────────────────────────────────
+// A contract = a Caso (a caso may bundle several honorários). Values are the SUM
+// of the caso's honorários (contracted) and the subset already 'recebido'. Origem
+// comes from a linked won-Lead (Lead.casoId); direct/imported casos have none.
+export async function getContratos(): Promise<ContratoRow[]> {
+  const rows = await prisma.caso.findMany({
+    where: { excluidoEm: null },
+    select: {
+      id: true,
+      titulo: true,
+      tipo: true,
+      status: true,
+      area: true,
+      dataCriacao: true,
+      clientePrincipalId: true,
+      clientePrincipal: { select: { nome: true } },
+      honorarios: { select: { valorCents: true, status: true } },
+      leads: { select: { origem: true, dataConversao: true } },
+    },
+    orderBy: { dataCriacao: "desc" },
+  })
+  return rows.map((r): ContratoRow => {
+    const valorContratadoCents = r.honorarios.reduce((a, h) => a + h.valorCents, 0)
+    const recebidoCents = r.honorarios
+      .filter((h) => h.status === "recebido")
+      .reduce((a, h) => a + h.valorCents, 0)
+    // origem = a origem do lead convertido mais recente vinculado ao caso; casos
+    // diretos/importados (sem lead) ficam sem origem (exibidos como "Direto").
+    const origem =
+      r.leads
+        .slice()
+        .sort((a, b) => (b.dataConversao?.getTime() ?? 0) - (a.dataConversao?.getTime() ?? 0))
+        .find((l) => l.origem)?.origem ?? null
+    return {
+      id: r.id,
+      titulo: r.titulo,
+      cliente: r.clientePrincipal?.nome ?? null,
+      clienteId: r.clientePrincipalId,
+      area: r.area,
+      origem,
+      tipo: r.tipo,
+      statusCaso: r.status,
+      dataFechamento: r.dataCriacao ? r.dataCriacao.toISOString() : null,
+      valorContratadoCents,
+      recebidoCents,
+      honorariosCount: r.honorarios.length,
+    }
+  })
 }
 
 // Entitlement-vs-cash settlement between the two sócios, net of sócio↔sócio
