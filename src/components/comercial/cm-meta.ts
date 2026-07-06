@@ -142,10 +142,18 @@ export interface CmKpiSet {
   cpl: number | null
   ticket: number | null
 }
+/** Won leads ATTRIBUTED to the period by ENTRY date (when the lead first
+ *  contacted us). A June lead counts for June even if it closes months later —
+ *  it was June's spend/strategy that brought it in. Same cohort model as the
+ *  funnel; keep every ad-acquisition metric on this basis. */
+function ganhosDoPeriodo(leads: CmDatasetLead[], sc: CmScope): CmDatasetLead[] {
+  return leads.filter((l) => l.etapa === "ganho" && sc.test(l.dataEntrada))
+}
+
 export function cmKpis(leads: CmDatasetLead[], gastos: CmDatasetGasto[], ref: CmRef, period: Periodo): CmKpiSet {
   const sc = cmScope(ref, period)
   const L = leads.filter((l) => sc.test(l.dataEntrada))
-  const ganhos = L.filter((l) => l.etapa === "ganho")
+  const ganhos = ganhosDoPeriodo(leads, sc)
   const investimento = gastos.filter((g) => sc.test(g.data)).reduce((a, g) => a + g.valorCents, 0)
   const leadsN = L.length
   const conv = ganhos.length
@@ -172,6 +180,8 @@ export function cmDeltaPct(cur: number | null, prev: number | null): number | nu
 export interface TrendBucket { label: string; leads: number; conv: number }
 export function cmTrend(leads: CmDatasetLead[], ref: CmRef, period: Periodo): TrendBucket[] {
   const sc = cmScope(ref, period)
+  // Leads AND their eventual conversões are plotted by ENTRY date (the cohort
+  // that entered that week/month), matching the entry-based KPIs.
   const L = leads.filter((l) => sc.test(l.dataEntrada))
   let buckets: TrendBucket[]
   if (period === "mes") {
@@ -207,6 +217,7 @@ export function cmChannels(dataset: Pick<CmDataset, "leads" | "gastos" | "campai
   const { leads, gastos, campaigns } = dataset
   const sc = cmScope(ref, period)
   const L = leads.filter((l) => sc.test(l.dataEntrada))
+  const G = ganhosDoPeriodo(leads, sc) // won leads by entry (contact) month
   const campPlat = new Map(campaigns.map((c) => [c.id, c.plataforma]))
   const spend: Record<string, number> = { google_ads: 0, meta_ads: 0 }
   gastos.filter((g) => sc.test(g.data)).forEach((g) => {
@@ -220,7 +231,7 @@ export function cmChannels(dataset: Pick<CmDataset, "leads" | "gastos" | "campai
   ]
   return defs.map((d) => {
     const rows = L.filter(d.test)
-    const ganhos = rows.filter((l) => l.etapa === "ganho")
+    const ganhos = G.filter(d.test)
     const valor = ganhos.reduce((a, g) => a + (g.valorContratadoCents || 0), 0)
     return { key: d.key, label: d.label, color: d.color, leads: rows.length, conversoes: ganhos.length, investimento: d.invest, valorContratado: valor, roas: d.invest ? valor / d.invest : null }
   })
@@ -274,6 +285,8 @@ export interface FunnelResult {
 }
 export function cmFunnel(leads: CmDatasetLead[], ref: CmRef, period: Periodo): FunnelResult {
   const sc = cmScope(ref, period)
+  // Cohort: leads that ENTERED in the period and where they are now — same
+  // entry-based attribution as the KPIs, so "Ganho" here == "Conversões".
   const L = leads.filter((l) => sc.test(l.dataEntrada))
   const stages: FunnelStage[] = CM_STAGES.map((s, i) => {
     const rows = L.filter((l) => reachOf(l.etapa) >= i)

@@ -109,7 +109,10 @@ export async function getComercialKpis(mes?: string, periodo: Periodo = "mes"): 
     prisma.lead.count({ where: { dataEntrada: { gte: start, lt: end } } }),
     prisma.lead.count({ where: { dataEntrada: { gte: ps, lt: pe } } }),
     prisma.lead.findMany({
-      where: { etapa: "ganho", dataConversao: { gte: start, lt: end } },
+      // Attribution by ENTRY date: a lead won this period is credited to the
+      // month it first contacted us (that spend/strategy brought it in), even
+      // if it closes later. Matches the client cmKpis + the funnel cohort.
+      where: { etapa: "ganho", dataEntrada: { gte: start, lt: end } },
       select: {
         id: true,
         casoId: true,
@@ -219,9 +222,10 @@ export async function getCampanhas(mes?: string, periodo: Periodo = "mes"): Prom
   const leadBy = new Map<number, { leads: number; conversoes: number; contratado: number }>()
   for (const l of leads) {
     if (l.campanhaId == null) continue
+    if (!inWindow(l.dataEntrada, start, end)) continue // attribute by entry (contact) month
     const cur = leadBy.get(l.campanhaId) ?? { leads: 0, conversoes: 0, contratado: 0 }
-    if (inWindow(l.dataEntrada, start, end)) cur.leads += 1
-    if (l.etapa === "ganho" && inWindow(l.dataConversao, start, end)) {
+    cur.leads += 1
+    if (l.etapa === "ganho") {
       cur.conversoes += 1
       cur.contratado += wonValue(l)
     }
@@ -258,7 +262,8 @@ export async function getOrigemBreakdown(mes?: string, periodo: Periodo = "mes")
   const [entered, won, spend] = await Promise.all([
     prisma.lead.findMany({ where: { dataEntrada: { gte: start, lt: end } }, select: { origem: true } }),
     prisma.lead.findMany({
-      where: { etapa: "ganho", dataConversao: { gte: start, lt: end } },
+      // Won leads credited by ENTRY month (same cohort attribution as the KPIs).
+      where: { etapa: "ganho", dataEntrada: { gte: start, lt: end } },
       select: { origem: true, valorEstimadoCents: true, honorario: { select: { valorCents: true } } },
     }),
     prisma.lancamento.findMany({

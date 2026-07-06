@@ -83,6 +83,25 @@ describe("cmKpis — happy path", () => {
   })
 })
 
+describe("cmKpis — conversões atribuídas pelo mês de ENTRADA (contato)", () => {
+  it("um lead que ENTROU no mês conta no mês mesmo fechando meses depois", () => {
+    // June's spend/strategy brought it in → it's June's win, whenever it closes.
+    const leads = [lead({ id: 1, etapa: "ganho", dataEntrada: "2026-06-10", dataConv: "2026-08-15", valorContratadoCents: 700_000 })]
+    const k = cmKpis(leads, [], REF, "mes")
+    expect(k.leads).toBe(1)
+    expect(k.conversoes).toBe(1)
+    expect(k.valorContratado).toBe(700_000)
+  })
+
+  it("um lead que entrou no mês anterior NÃO conta neste mês, mesmo fechando agora", () => {
+    const leads = [lead({ id: 1, etapa: "ganho", dataEntrada: "2026-05-20", dataConv: "2026-06-03", valorContratadoCents: 500_000 })]
+    const k = cmKpis(leads, [], REF, "mes")
+    expect(k.leads).toBe(0) // entrou em maio → é resultado de maio
+    expect(k.conversoes).toBe(0)
+    expect(k.valorContratado).toBe(0)
+  })
+})
+
 describe("cmDeltaPct", () => {
   it("handles zero/null previous values", () => {
     expect(cmDeltaPct(0, 0)).toBe(0)
