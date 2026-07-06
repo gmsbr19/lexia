@@ -1,7 +1,7 @@
 // LexIA chat — read layer. SERVER ONLY. Every query is scoped by the owner's
 // e-mail so users only ever see their own conversations.
 import { prisma } from "@/lib/db"
-import type { LexiaConversaDetail, LexiaConversaRow, LexiaMensagemRow, LexiaMsgRole, UiBlock } from "./types"
+import type { LexiaConversaDetail, LexiaConversaRow, LexiaMensagemRow, LexiaMsgRole, MsgMeta, UiBlock } from "./types"
 
 function parseBlocks(raw: string | null): UiBlock[] | undefined {
   if (!raw) return undefined
@@ -13,22 +13,44 @@ function parseBlocks(raw: string | null): UiBlock[] | undefined {
   }
 }
 
+function parseMeta(raw: string | null): MsgMeta | undefined {
+  if (!raw) return undefined
+  try {
+    return JSON.parse(raw) as MsgMeta
+  } catch {
+    return undefined
+  }
+}
+
+function parseContexto(raw: string | null): LexiaConversaRow["contexto"] {
+  if (!raw) return undefined
+  try {
+    return JSON.parse(raw) as LexiaConversaRow["contexto"]
+  } catch {
+    return undefined
+  }
+}
+
 export async function listConversas(userEmail: string): Promise<LexiaConversaRow[]> {
   const rows = await prisma.lexiaConversa.findMany({
     where: { userEmail },
     select: {
       id: true,
       titulo: true,
+      fixada: true,
+      contexto: true,
       createdAt: true,
       updatedAt: true,
       _count: { select: { mensagens: true } },
     },
-    orderBy: { updatedAt: "desc" },
+    orderBy: [{ fixada: "desc" }, { updatedAt: "desc" }],
     take: 100,
   })
   return rows.map((r) => ({
     id: r.id,
     titulo: r.titulo,
+    fixada: r.fixada,
+    contexto: parseContexto(r.contexto),
     criadaEm: r.createdAt.toISOString(),
     atualizadaEm: r.updatedAt.toISOString(),
     numMensagens: r._count.mensagens,
@@ -41,6 +63,8 @@ export async function getConversa(id: number, userEmail: string): Promise<LexiaC
     select: {
       id: true,
       titulo: true,
+      fixada: true,
+      contexto: true,
       createdAt: true,
       updatedAt: true,
       mensagens: {
@@ -50,6 +74,8 @@ export async function getConversa(id: number, userEmail: string): Promise<LexiaC
           content: true,
           blocks: true,
           model: true,
+          feedback: true,
+          meta: true,
           createdAt: true,
           anexos: { select: { nome: true, mimeType: true, tamanho: true }, orderBy: { id: "asc" } },
         },
@@ -66,10 +92,14 @@ export async function getConversa(id: number, userEmail: string): Promise<LexiaC
     blocks: parseBlocks(m.blocks),
     model: m.model,
     anexos: m.anexos.length ? m.anexos : undefined,
+    feedback: m.feedback as "up" | "down" | null,
+    meta: parseMeta(m.meta),
   }))
   return {
     id: r.id,
     titulo: r.titulo,
+    fixada: r.fixada,
+    contexto: parseContexto(r.contexto),
     criadaEm: r.createdAt.toISOString(),
     atualizadaEm: r.updatedAt.toISOString(),
     numMensagens: mensagens.length,

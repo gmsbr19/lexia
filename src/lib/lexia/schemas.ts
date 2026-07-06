@@ -32,6 +32,23 @@ export const documentoContextoSchema = z.object({
   selecao: documentoSelecaoSchema.optional(),
 })
 
+// "Ajustar" do RetryMenu (Fase 5): reformula a MESMA pergunta com uma instrução
+// extra volátil (nunca entra no CORE cacheado — ver agent/modificadores.ts).
+export const modificadorSchema = z.enum(["curta", "formal", "simples"])
+
+// Menções "@" do composer (Fase 7, D10): entidades citadas explicitamente — o
+// turno as prioriza como contexto principal (bloco <mencoes> volátil, fora do
+// CORE) e a LEXÍA não precisa chamar "buscar" de novo pelo mesmo nome.
+export const mencaoEntidadeSchema = z.object({
+  tipo: z.enum(["cliente", "processo", "contrato"]),
+  id: z.number().int().positive(),
+  nome: z.string().max(200),
+  rota: z.string().max(200),
+})
+export const contextoMencoesSchema = z.object({
+  entidades: z.array(mencaoEntidadeSchema).max(5),
+})
+
 export const lexiaChatSchema = z
   .object({
     conversaId: idOpt,
@@ -43,6 +60,11 @@ export const lexiaChatSchema = z
     agentMode: lexiaAgentModeSchema.optional(), // modo vivo do composer
     autoMode: z.boolean().optional(), // ligado: executa mutações sem confirmar
     documento: documentoContextoSchema.optional(), // contexto do editor flexível
+    // Editar pergunta / RetryMenu (Fase 5): id da mensagem do usuário (dona) a partir
+    // da qual truncar antes de reenviar — ela e tudo depois são descartados.
+    refazerDesdeMensagemId: idOpt,
+    modificador: modificadorSchema.optional(),
+    contexto: contextoMencoesSchema.optional(), // menções "@" do composer (Fase 7)
   })
   // Permite enviar só anexo (sem legenda), mas não uma mensagem totalmente vazia.
   .refine((b) => b.mensagem.trim().length > 0 || (b.anexos?.length ?? 0) > 0, {
@@ -70,14 +92,34 @@ export const lexiaPrefsSchema = z
   })
   .strict()
 
-export const acaoDecisaoSchema = z.object({
-  decisao: z.enum(["confirmar", "recusar"]),
-})
+// Resposta a um ChoiceCard (tool perguntar_usuario, Fase 6, D3) — 1-10 opções
+// marcadas e/ou um texto livre ("Outro"), pelo menos um dos dois presente.
+export const respostaEscolhaSchema = z
+  .object({
+    selecionadas: z.array(z.string().max(300)).max(10),
+    outro: z.string().max(300).optional(),
+  })
+  .refine((r) => r.selecionadas.length > 0 || !!r.outro?.trim(), { message: "Escolha ao menos uma opção", path: ["selecionadas"] })
+
+export const acaoDecisaoSchema = z
+  .object({
+    decisao: z.enum(["confirmar", "recusar", "responder"]),
+    resposta: respostaEscolhaSchema.optional(),
+  })
+  .refine((b) => b.decisao !== "responder" || !!b.resposta, { message: "Resposta obrigatória", path: ["resposta"] })
 
 export const conversaCreateSchema = z.object({
   titulo: z.string().max(200).nullish(),
 })
 
-export const conversaPatchSchema = z.object({
-  titulo: z.string().min(1).max(200),
+// titulo (renomear) e/ou fixada (Histórico v2, Fase 8) — ao menos um presente.
+export const conversaPatchSchema = z
+  .object({
+    titulo: z.string().min(1).max(200).optional(),
+    fixada: z.boolean().optional(),
+  })
+  .refine((b) => b.titulo !== undefined || b.fixada !== undefined, { message: "Nada para atualizar" })
+
+export const mensagemPatchSchema = z.object({
+  feedback: z.enum(["up", "down"]).nullable(),
 })

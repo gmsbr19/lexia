@@ -18,6 +18,7 @@ const LABELS: Record<string, string> = {
   comercial_resumo: "Consultando o comercial",
   listar_leads: "Listando leads",
   navegar: "Navegando",
+  perguntar_usuario: "Perguntando",
 }
 
 export function rotuloTool(name: string): string {

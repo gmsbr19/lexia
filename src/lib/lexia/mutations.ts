@@ -6,7 +6,7 @@ import { UserError } from "@/lib/errors"
 import { anexoParaBloco } from "./agent/anexos"
 import { getAnexoStore } from "./anexos/storage"
 import { bytesDeBase64, type AnexoEntrada } from "./anexos/validacao"
-import type { UiBlock } from "./types"
+import type { MsgMeta, UiBlock } from "./types"
 
 const TITULO_LEN = 60
 const HIST_MAX_MSGS = 30
@@ -15,7 +15,7 @@ const HIST_MAX_CHARS = 24_000
 // mais recente com anexos é reenviado — segura o custo de turnos seguintes).
 const HIST_MAX_ANEXO_BYTES = 12 * 1024 * 1024
 
-async function ownConversa(id: number, userEmail: string) {
+export async function ownConversa(id: number, userEmail: string) {
   const conversa = await prisma.lexiaConversa.findFirst({ where: { id, userEmail }, select: { id: true } })
   if (!conversa) throw new UserError("Conversa não encontrada")
   return conversa
@@ -28,6 +28,15 @@ export async function criarConversa(userEmail: string, titulo?: string | null) {
   })
 }
 
+/** Chip de entidade no histórico (Fase 7/8): guarda a ÚLTIMA menção "@" do
+ * turno — best-effort, chamado fire-and-forget (nunca deve quebrar o turno). */
+export async function atualizarContextoConversa(
+  id: number,
+  entidade: { tipo: string; id: number; nome: string; rota: string },
+): Promise<void> {
+  await prisma.lexiaConversa.update({ where: { id }, data: { contexto: JSON.stringify(entidade) } })
+}
+
 export async function renomearConversa(id: number, userEmail: string, titulo: string) {
   await ownConversa(id, userEmail)
   return prisma.lexiaConversa.update({
@@ -35,6 +44,12 @@ export async function renomearConversa(id: number, userEmail: string, titulo: st
     data: { titulo: titulo.trim().slice(0, 200) || null },
     select: { id: true, titulo: true },
   })
+}
+
+/** Fixa/desafixa uma conversa no topo do histórico (Histórico v2, Fase 8). */
+export async function fixarConversa(id: number, userEmail: string, fixada: boolean) {
+  await ownConversa(id, userEmail)
+  return prisma.lexiaConversa.update({ where: { id }, data: { fixada }, select: { id: true, fixada: true } })
 }
 
 export async function excluirConversa(id: number, userEmail: string) {
@@ -80,7 +95,7 @@ export async function persistUserMsg(conversaId: number, content: string, anexos
 
 export async function persistAssistantMsg(
   conversaId: number,
-  data: { text: string; blocks: UiBlock[]; model: string; inputTokens: number; outputTokens: number },
+  data: { text: string; blocks: UiBlock[]; model: string; inputTokens: number; outputTokens: number; meta?: MsgMeta },
 ) {
   const content = data.text.trim() || resumoBlocks(data.blocks)
   const row = await prisma.lexiaMensagem.create({
@@ -92,6 +107,7 @@ export async function persistAssistantMsg(
       model: data.model,
       inputTokens: data.inputTokens,
       outputTokens: data.outputTokens,
+      meta: data.meta ? JSON.stringify(data.meta) : undefined,
     },
     select: { id: true, createdAt: true },
   })
@@ -107,6 +123,38 @@ function resumoBlocks(blocks: UiBlock[]): string {
     if (b.type === "navigate") return `(abriu ${b.rota})`
   }
   return "(ação realizada)"
+}
+
+/**
+ * Editar pergunta / RetryMenu (Fase 5): descarta a mensagem `mensagemId` (deve
+ * ser do usuário, dona da conversa) e TUDO que veio depois — o chamador
+ * reenvia como um turno novo. Expira (não apaga) as ações pendentes criadas a
+ * partir dali, já que o cartão de confirmação que as mostrava desapareceu.
+ */
+export async function truncarConversaDesde(conversaId: number, userEmail: string, mensagemId: number): Promise<void> {
+  await ownConversa(conversaId, userEmail)
+  const ancora = await prisma.lexiaMensagem.findFirst({
+    where: { id: mensagemId, conversaId, role: "user" },
+    select: { id: true, createdAt: true },
+  })
+  if (!ancora) throw new UserError("Mensagem não encontrada")
+  await prisma.$transaction([
+    prisma.lexiaAcaoPendente.updateMany({
+      where: { conversaId, status: "pendente", createdAt: { gte: ancora.createdAt } },
+      data: { status: "expirada", resolvedAt: new Date() },
+    }),
+    prisma.lexiaMensagem.deleteMany({ where: { conversaId, id: { gte: mensagemId } } }),
+  ])
+}
+
+/** Registra 👍/👎 numa resposta da IA (AiActionsBar). Só o dono da conversa pode marcar. */
+export async function marcarFeedback(mensagemId: number, userEmail: string, feedback: "up" | "down" | null) {
+  const { count } = await prisma.lexiaMensagem.updateMany({
+    where: { id: mensagemId, role: "assistant", conversa: { userEmail } },
+    data: { feedback },
+  })
+  if (count === 0) throw new UserError("Mensagem não encontrada")
+  return { id: mensagemId, feedback }
 }
 
 /** Model used on the conversa's most recent assistant turn (resume stickiness). */
@@ -140,6 +188,40 @@ export async function marcarCartao(
     for (const b of arr) {
       if (b.type === "confirm" && b.acaoId === acaoId) {
         b.status = status
+        changed = true
+      }
+    }
+    if (changed) {
+      await prisma.lexiaMensagem.update({ where: { id: r.id }, data: { blocks: JSON.stringify(arr) } })
+      return
+    }
+  }
+}
+
+/** Flip a choice card's status (in the stored assistant blocks) after the user
+ * answers/expires — a "pergunta" analog of marcarCartao (Fase 6, D3). */
+export async function marcarEscolha(
+  conversaId: number,
+  acaoId: number,
+  status: "respondida" | "expirada",
+  resposta?: { selecionadas: string[]; outro?: string },
+): Promise<void> {
+  const rows = await prisma.lexiaMensagem.findMany({
+    where: { conversaId, role: "assistant", blocks: { not: null } },
+    select: { id: true, blocks: true },
+  })
+  for (const r of rows) {
+    let arr: UiBlock[]
+    try {
+      arr = JSON.parse(r.blocks ?? "[]")
+    } catch {
+      continue
+    }
+    let changed = false
+    for (const b of arr) {
+      if (b.type === "choice" && b.acaoId === acaoId) {
+        b.status = status
+        if (resposta) b.resposta = resposta
         changed = true
       }
     }

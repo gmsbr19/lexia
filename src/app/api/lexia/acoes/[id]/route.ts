@@ -11,7 +11,7 @@ import { RATE_LIMIT_MESSAGE, rateLimit } from "@/lib/rate-limit"
 import { parseId, readJson, type RouteCtx } from "@/lib/finance/api"
 import { parseBody } from "@/lib/validation"
 import { acaoDecisaoSchema } from "@/lib/lexia/schemas"
-import { marcarCartao, persistAssistantMsg, ultimoModelo } from "@/lib/lexia/mutations"
+import { marcarCartao, marcarEscolha, persistAssistantMsg, ultimoModelo } from "@/lib/lexia/mutations"
 import { mensagemErro } from "@/lib/lexia/agent/client"
 import { linkParaResultado, type ResultadoLink } from "@/lib/lexia/agent/links"
 import { carregarAcao, executarAcao, reservarAcao } from "@/lib/lexia/agent/pending"
@@ -39,10 +39,13 @@ export async function POST(req: Request, ctx: RouteCtx) {
 
   const { id } = await ctx.params
   let acaoId: number
-  let decisao: "confirmar" | "recusar"
+  let decisao: "confirmar" | "recusar" | "responder"
+  let resposta: { selecionadas: string[]; outro?: string } | undefined
   try {
     acaoId = parseId(id)
-    decisao = parseBody(acaoDecisaoSchema, await readJson(req)).decisao
+    const body = parseBody(acaoDecisaoSchema, await readJson(req))
+    decisao = body.decisao
+    resposta = body.resposta
   } catch (e) {
     if (e instanceof UserError) return NextResponse.json({ error: e.message }, { status: 400 })
     throw e
@@ -52,7 +55,19 @@ export async function POST(req: Request, ctx: RouteCtx) {
   return sseResponse(async (emit) => {
     try {
       const acao = await carregarAcao(acaoId, sessionUser.email)
-      const won = await reservarAcao(acaoId, decisao === "confirmar" ? "confirmada" : "recusada")
+      // "pergunta" (tool perguntar_usuario, Fase 6) só resolve com "responder";
+      // uma proposta de mutação normal nunca aceita "responder".
+      if (acao.kind === "pergunta" && decisao !== "responder") {
+        throw new UserError("Esta ação espera uma resposta")
+      }
+      if (acao.kind !== "pergunta" && decisao === "responder") {
+        throw new UserError("Ação inválida para esta proposta")
+      }
+
+      const won =
+        decisao === "responder"
+          ? await reservarAcao(acaoId, "respondida", JSON.stringify(resposta))
+          : await reservarAcao(acaoId, decisao === "confirmar" ? "confirmada" : "recusada")
       if (!won) throw new UserError("Esta ação já foi resolvida")
 
       emit({ type: "start", conversaId: acao.conversaId })
@@ -63,7 +78,12 @@ export async function POST(req: Request, ctx: RouteCtx) {
 
       let toolResult: Anthropic.ToolResultBlockParam
       let link: ResultadoLink | null = null
-      if (decisao === "confirmar") {
+      if (decisao === "responder") {
+        // Nada a executar — a resposta do usuário É o resultado (o modelo lê o
+        // JSON e segue narrando/agindo a partir dela).
+        toolResult = { type: "tool_result", tool_use_id: acao.toolUseId, content: JSON.stringify(resposta) }
+        await marcarEscolha(acao.conversaId, acaoId, "respondida", resposta)
+      } else if (decisao === "confirmar") {
         try {
           const result = await executarAcao(acao, sessionUser)
           toolResult = {
@@ -108,7 +128,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
         processosHabilitado: processosHabilitado(await getModulosConfig()),
       }
       const result = await runAgentTurn(agentCtx, messages, decision, emit)
-      if (teto.rebaixado) result.blocks.unshift({ type: "notice", text: MODO_ECONOMICO_AVISO })
+      if (teto.rebaixado) result.blocks.unshift({ type: "notice", text: MODO_ECONOMICO_AVISO, codigo: "modo-economico" })
       // Surface a deep-link to whatever the agent just created/changed (unless
       // the turn already paused on a fresh confirmation card).
       if (link && result.pendente === undefined) {
@@ -121,6 +141,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
         model: decision.model,
         inputTokens: result.usage.input,
         outputTokens: result.usage.output,
+        meta: result.meta,
       })
       emit({
         type: "done",
@@ -134,7 +155,8 @@ export async function POST(req: Request, ctx: RouteCtx) {
       if (!(e instanceof UserError)) {
         log.error({ acaoId, err: e instanceof Error ? `${e.name}: ${e.message}` : String(e) }, "lexia acao failed")
       }
-      emit({ type: "error", mensagem: mensagemErro(e) })
+      const { mensagem, codigo } = mensagemErro(e)
+      emit({ type: "error", mensagem, codigo })
     }
   })
 }
