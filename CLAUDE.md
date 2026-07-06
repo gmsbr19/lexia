@@ -145,6 +145,29 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **CRM · Cliente — campo `origem` editável + integração com a mesclagem de lead (this session, VERIFIED
+  tsc 0, 457/457 testes, eslint sem achados novos, migração 20260706120000_cliente_origem APLICADA).**
+  `origem` só existia no `Lead`; o usuário precisava editar a origem do CLIENTE e que a mesclagem
+  preenchesse. **Decisões travadas:** (1) mesclagem preenche a origem do cliente só se estiver vazia (mesma
+  regra do backfill de e-mail/telefone — nunca sobrescreve); (2) a tabela de Contratos passa a mostrar a
+  origem do cliente, com fallback à origem do lead vinculado ao caso. **Backend:** `Cliente.origem String?`
+  ([schema.prisma](prisma/schema.prisma), migração ADD COLUMN — a ÚNICA desta feature); reusa o vocabulário
+  do Lead (`ORIGEM_LABEL`/`LeadOrigem` de [comercial/types.ts](src/lib/comercial/types.ts)) — helper
+  `validOrigem` (aceita só chaves conhecidas, senão null) em [clientes/mutations.ts](src/lib/clientes/mutations.ts)
+  (create+update); campo propagado em [schemas.ts](src/lib/clientes/schemas.ts)/[types.ts](src/lib/clientes/types.ts)
+  (`ClienteHeader.origem`)/[queries.ts](src/lib/clientes/queries.ts) (select+header). Rotas `/api/clientes`
+  herdam automático. **Mesclagem:** [merge.ts](src/lib/comercial/merge.ts) `planejarBackfillCliente` ganhou
+  `origem` (backfill se vazia); [mesclarLeadComCliente](src/lib/comercial/mutations.ts) seleciona `origem` de
+  lead+cliente e aplica o patch. **Contratos:** [getContratos](src/lib/finance/queries.ts) agora resolve
+  `origem = clientePrincipal.origem ?? origemLead ?? null`. **UI:** seletor de Origem no modal Novo cliente
+  ([CrmQuickModals.tsx](src/components/crm/pages/CrmQuickModals.tsx), novo export `ORIGEM_OPTS`) e no form de
+  edição do cliente ([CrmClienteDetail.tsx](src/components/crm/pages/CrmClienteDetail.tsx): estado+seed+
+  payload) + linha de origem no cabeçalho do cliente (ícone target). **Verificado: tsc 0; 457/457 testes
+  (1 novo caso de backfill de origem); eslint sem achados novos** (2 erros set-state-in-effect + warnings
+  CrmLink/AcertoSocioLado são PRÉ-EXISTENTES, confirmado via baseline com git stash). **User action:** a
+  migração já foi aplicada nesta sessão (o usuário pausou o `next dev`); reiniciar o dev e conferir visual —
+  Novo cliente e Editar cliente têm o campo Origem; mesclar um lead num cliente sem origem preenche a origem
+  do lead; a tabela `/contratos` mostra a origem editada do cliente.
 - **CRM · Contratos — página refeita como LENTE COMERCIAL de Casos (this session, VERIFIED tsc 0, 456/456
   testes, eslint limpo, NO migration).** A página `/contratos` mostrava honorários lançados (fee ledger);
   o usuário queria uma tabela de contratos fechados com valor, área, origem etc. **Decisão travada com o
