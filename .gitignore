@@ -46,10 +46,17 @@ yarn-error.log*
 next-env.d.ts
 /templates
 
-# database (sqlite)
+# database (sqlite) — the db + its transient WAL/SHM sidecars are local-only.
+# WAL/SHM must NEVER be committed: a stale committed WAL re-corrupts the db on
+# checkout ("malformed database schema"). db-backup* = local corrupt-db backups.
 /prisma/*.db
 /prisma/*.db-journal
+/prisma/*.db-wal
+/prisma/*.db-shm
 *.db-journal
+*.db-wal
+*.db-shm
+/.db-backup*
 
 # cnj api recon samples (contêm PII real de intimações — nunca commitar; os
 # *.sample.json sintéticos usados pelos testes seguem versionados)
