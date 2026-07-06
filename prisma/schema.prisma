@@ -141,6 +141,7 @@ model Cliente {
   cep             String?
   emails          String? // ';'-joined
   telefones       String? // ';'-joined
+  origem          String? // como o cliente chegou (mesmo conjunto do Lead: google_ads|meta_ads|indicacao|organico|outro)
   casos           Caso[]
   honorarios      Honorario[]
   lancamentos     Lancamento[]

@@ -20,6 +20,7 @@ export const clienteCreateSchema = z.object({
   cep: z.string().max(15).nullish(),
   emails: strList.optional(),
   telefones: strList.optional(),
+  origem: z.string().max(20).nullish(),
 })
 
 export const clientePatchSchema = clienteCreateSchema.partial()

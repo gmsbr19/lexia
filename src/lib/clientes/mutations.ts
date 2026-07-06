@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto"
 import type { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/db"
 import { UserError } from "@/lib/errors"
+import { ORIGEM_LABEL } from "@/lib/comercial/types"
 
 function reqStr(v: unknown, name: string): string {
   if (typeof v !== "string" || !v.trim()) throw new UserError(`${name} obrigatório`)
@@ -27,6 +28,10 @@ function validTipo(v: unknown): "pf" | "pj" {
 function validClassificacao(v: unknown): "cliente" | "lead" {
   return v === "lead" ? "lead" : "cliente"
 }
+/** Coerce to a known origem key (same set as Lead) or null. Empty/unknown → null. */
+function validOrigem(v: unknown): string | null {
+  return typeof v === "string" && v in ORIGEM_LABEL ? v : null
+}
 
 export interface ClienteCreate {
   nome: string
@@ -44,6 +49,7 @@ export interface ClienteCreate {
   cep?: string | null
   emails?: string[]
   telefones?: string[]
+  origem?: string | null
 }
 
 export async function createCliente(input: ClienteCreate) {
@@ -65,6 +71,7 @@ export async function createCliente(input: ClienteCreate) {
       cep: optStr(input.cep),
       emails: joinList(input.emails),
       telefones: joinList(input.telefones),
+      origem: validOrigem(input.origem),
     },
   })
 }
@@ -88,5 +95,6 @@ export async function updateCliente(id: number, patch: ClientePatch) {
   if (patch.cep !== undefined) data.cep = optStr(patch.cep)
   if (patch.emails !== undefined) data.emails = joinList(patch.emails)
   if (patch.telefones !== undefined) data.telefones = joinList(patch.telefones)
+  if (patch.origem !== undefined) data.origem = validOrigem(patch.origem)
   return prisma.cliente.update({ where: { id }, data })
 }
