@@ -60,6 +60,8 @@ next-env.d.ts
 /prisma/dev.db.*
 /prisma/recover*.sql
 /prisma/recover*.txt
+# local pre-migration/pre-reconcile db backups (never commit — contain dev.db copies)
+/prisma/backup-*/
 
 # cnj api recon samples (contêm PII real de intimações — nunca commitar; os
 # *.sample.json sintéticos usados pelos testes seguem versionados)
