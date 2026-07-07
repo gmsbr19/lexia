@@ -65,4 +65,4 @@ next-env.d.ts
 
 # cnj api recon samples (contêm PII real de intimações — nunca commitar; os
 # *.sample.json sintéticos usados pelos testes seguem versionados)
-src/lib/processos/cnj/__fixtures__/*.latest.json
+src/lib/processos/cnj/__fixtures__/*.latest.jsonprisma/dev.db*

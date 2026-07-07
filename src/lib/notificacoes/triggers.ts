@@ -3,8 +3,9 @@
 // a mutation). Cada função tem try/catch total — chame-as com `void`, sem await.
 // Resolução de destinatários reusa recipients.ts; a escrita/emoção via service.ts.
 import { log } from "@/lib/log"
-import { emailDoUsuario, gestorEmails } from "./recipients"
+import { emailDoUsuario, gestorEmails, nomePorEmail } from "./recipients"
 import { type CriarNotificacaoInput, criarNotificacao } from "./service"
+import { msgTarefaAtribuida, msgTarefaConcluida } from "./tarefa-msg"
 
 async function entregar(input: CriarNotificacaoInput): Promise<void> {
   try {
@@ -35,17 +36,19 @@ export async function notificarTarefaAtribuida(p: {
   titulo: string
   responsavelId: number
   actorEmail?: string | null
+  prazo?: Date | null
 }): Promise<void> {
   try {
     const to = await emailDoUsuario(p.responsavelId)
     if (!to || (p.actorEmail && to === p.actorEmail)) return // não notifica auto-atribuição
+    const atorNome = await nomePorEmail(p.actorEmail)
     await entregar({
       userEmail: to,
       tipo: "tarefa",
       modulo: "tarefas",
       refTipo: "tarefa",
       refId: p.tarefaId,
-      mensagem: `Nova tarefa para você: "${p.titulo}"`,
+      mensagem: msgTarefaAtribuida({ atorNome, titulo: p.titulo, prazo: p.prazo }),
       actorEmail: p.actorEmail ?? null,
     })
   } catch (e) {
@@ -58,18 +61,20 @@ export async function notificarTarefaConcluida(p: {
   titulo: string
   criadoPorId: number | null
   actorEmail?: string | null
+  concluidoEm?: Date | null
 }): Promise<void> {
   try {
     if (!p.criadoPorId) return
     const to = await emailDoUsuario(p.criadoPorId)
     if (!to || (p.actorEmail && to === p.actorEmail)) return // quem concluiu é o próprio criador
+    const atorNome = await nomePorEmail(p.actorEmail) // quem concluiu (ator do evento)
     await entregar({
       userEmail: to,
       tipo: "tarefa",
       modulo: "tarefas",
       refTipo: "tarefa",
       refId: p.tarefaId,
-      mensagem: `Tarefa concluída: "${p.titulo}"`,
+      mensagem: msgTarefaConcluida({ atorNome, titulo: p.titulo, concluidoEm: p.concluidoEm }),
       actorEmail: p.actorEmail ?? null,
     })
   } catch (e) {

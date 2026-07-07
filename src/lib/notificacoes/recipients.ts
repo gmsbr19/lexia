@@ -37,3 +37,10 @@ export async function userIdPorEmail(email: string | null | undefined): Promise<
   const u = await prisma.user.findUnique({ where: { email }, select: { id: true } })
   return u?.id ?? null
 }
+
+/** Nome de um usuário por e-mail (p/ nomear o ator na mensagem), ou null. */
+export async function nomePorEmail(email: string | null | undefined): Promise<string | null> {
+  if (!email) return null
+  const u = await prisma.user.findUnique({ where: { email }, select: { nome: true } })
+  return u?.nome ?? null
+}

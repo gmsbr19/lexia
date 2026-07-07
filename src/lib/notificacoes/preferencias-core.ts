@@ -12,6 +12,27 @@ export interface NotifPrefs {
   navegador?: boolean
   /** só manda e-mail a partir desta severidade (default 'normal' = tudo) */
   emailMinPrioridade?: Prioridade
+  /** relatório diário de tarefas por e-mail — default LIGADO (opt-out) */
+  relatorioDiario?: boolean
+  /** horário do relatório diário, "HH:MM" — default "08:00" (casa por hora) */
+  relatorioHora?: string
+}
+
+/** Relatório diário: default LIGADO (só desliga se explicitamente false). */
+export function querRelatorioDiario(prefs: NotifPrefs): boolean {
+  return prefs.relatorioDiario !== false
+}
+
+/** Hora configurada do relatório (0–23); default 8h. Ignora os minutos. */
+export function horaRelatorio(prefs: NotifPrefs): number {
+  const raw = prefs.relatorioHora ?? "08:00"
+  const h = Number.parseInt(raw.slice(0, 2), 10)
+  return Number.isInteger(h) && h >= 0 && h <= 23 ? h : 8
+}
+
+/** Deve enviar o relatório agora? (opt-in ligado E a hora configurada casa). */
+export function deveEnviarRelatorio(prefs: NotifPrefs, horaAtual: number): boolean {
+  return querRelatorioDiario(prefs) && horaRelatorio(prefs) === horaAtual
 }
 
 export function parsePrefs(raw: string | null | undefined): NotifPrefs {

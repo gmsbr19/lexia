@@ -14,6 +14,11 @@ export const notifPrefsSchema = z
     email: z.partialRecord(moduloEnum, z.boolean()).optional(),
     navegador: z.boolean().optional(),
     emailMinPrioridade: z.enum(["normal", "alta", "critica"]).optional(),
+    relatorioDiario: z.boolean().optional(),
+    relatorioHora: z
+      .string()
+      .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Horário inválido (use HH:MM)")
+      .optional(),
   })
   .strict()
 

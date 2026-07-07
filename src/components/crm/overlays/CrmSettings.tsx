@@ -334,6 +334,7 @@ export function CrmSettings({
   function NotificacoesSection() {
     const [prefs, setPrefsState] = useState<NotifPrefs | null>(null)
     const [busy, setBusy] = useState(false)
+    const [testando, setTestando] = useState(false)
 
     useEffect(() => {
       let alive = true
@@ -366,6 +367,8 @@ export function CrmSettings({
       setPrefsState((p) => ({ ...(p ?? {}), navegador: next }))
     }
 
+    const relatorioOn = prefs.relatorioDiario !== false // default ligado (opt-out)
+
     const save = async () => {
       setBusy(true)
       try {
@@ -375,6 +378,18 @@ export function CrmSettings({
         toast(e instanceof Error ? e.message : "Erro", { tone: "neg", icon: "alertTriangle" })
       } finally {
         setBusy(false)
+      }
+    }
+
+    const enviarTeste = async () => {
+      setTestando(true)
+      try {
+        await apiSend("/api/notificacoes/relatorio-teste", "POST")
+        toast(`Relatório enviado para ${userEmail}`)
+      } catch (e) {
+        toast(e instanceof Error ? e.message : "Erro", { tone: "neg", icon: "alertTriangle" })
+      } finally {
+        setTestando(false)
       }
     }
 
@@ -420,6 +435,32 @@ export function CrmSettings({
               <option value="critica">Apenas crítica</option>
             </select>
           </CrmField>
+        </div>
+
+        <div style={{ marginTop: 20, paddingTop: 18, borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <CrmSwitch on={relatorioOn} onChange={() => setPrefsState((p) => ({ ...(p ?? {}), relatorioDiario: !relatorioOn }))} />
+            <div>
+              <div style={{ fontSize: 13, color: "var(--text)" }}>Relatório diário de tarefas por e-mail</div>
+              <div style={{ fontSize: 11.5, color: "var(--text-subtle)" }}>Resumo das suas tarefas atrasadas e com prazo para o dia. Sócios recebem também as atrasadas da equipe.</div>
+            </div>
+          </div>
+          {relatorioOn && (
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
+              <CrmField label="Enviar às">
+                <input
+                  type="time"
+                  className="input"
+                  value={prefs.relatorioHora ?? "08:00"}
+                  onChange={(e) => setPrefsState((p) => ({ ...(p ?? {}), relatorioHora: e.target.value || "08:00" }))}
+                  style={{ height: 36, maxWidth: 130 }}
+                />
+              </CrmField>
+              <button className="btn" onClick={enviarTeste} disabled={testando} style={{ height: 36 }}>
+                {testando ? "Enviando…" : "Enviar agora (teste)"}
+              </button>
+            </div>
+          )}
         </div>
 
         <button className="btn btn-primary" onClick={save} disabled={busy} style={{ marginTop: 16 }}>

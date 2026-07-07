@@ -76,7 +76,13 @@ export async function createTarefa(input: TarefaCreate, actorEmail?: string | nu
   })
   // Delegação: o executor designado é notificado (menos quando atribui a si mesmo).
   if (tarefa.responsavelId) {
-    void notificarTarefaAtribuida({ tarefaId: tarefa.id, titulo: tarefa.titulo, responsavelId: tarefa.responsavelId, actorEmail })
+    void notificarTarefaAtribuida({
+      tarefaId: tarefa.id,
+      titulo: tarefa.titulo,
+      responsavelId: tarefa.responsavelId,
+      actorEmail,
+      prazo: tarefa.prazo,
+    })
   }
   return tarefa
 }
@@ -157,11 +163,23 @@ export async function updateTarefa(id: number, patch: TarefaPatch, actorEmail?: 
     tarefa.responsavelId &&
     tarefa.responsavelId !== (antes?.responsavelId ?? null)
   ) {
-    void notificarTarefaAtribuida({ tarefaId: tarefa.id, titulo: tarefa.titulo, responsavelId: tarefa.responsavelId, actorEmail })
+    void notificarTarefaAtribuida({
+      tarefaId: tarefa.id,
+      titulo: tarefa.titulo,
+      responsavelId: tarefa.responsavelId,
+      actorEmail,
+      prazo: tarefa.prazo,
+    })
   }
   // Conclusão (transição para done) → o criador/delegante é notificado.
   if (tarefa.done && antes && !antes.done) {
-    void notificarTarefaConcluida({ tarefaId: tarefa.id, titulo: tarefa.titulo, criadoPorId: tarefa.criadoPorId, actorEmail })
+    void notificarTarefaConcluida({
+      tarefaId: tarefa.id,
+      titulo: tarefa.titulo,
+      criadoPorId: tarefa.criadoPorId,
+      actorEmail,
+      concluidoEm: tarefa.concluidoEm,
+    })
   }
   return tarefa
 }
