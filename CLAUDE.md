@@ -145,6 +145,42 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **Notificações de tarefas — mensagens específicas (quem/quando) + relatório diário por e-mail (this
+  session, VERIFIED tsc 0, 480/480 testes, eslint limpo, NO migration)** (memory `project_notifications`).
+  Pedido: as notificações de tarefa eram genéricas ("Nova tarefa para você", "Tarefa concluída") e não diziam
+  **quem delegou / quem concluiu / quando**; e faltava um **relatório diário por e-mail** das tarefas
+  atrasadas/do dia, com **horário + opt-in configuráveis**. **Decisões travadas:** relatório cobre minhas
+  tarefas + (sócio/admin) resumo das atrasadas da EQUIPE; "do dia" = por `prazo` (atrasadas + prazo hoje);
+  dia vazio → envia "tudo em dia"; opt-in **ligado por padrão** (opt-out), hora padrão **08:00**. Sem migração
+  (reusa `User.notifPrefs` JSON + k/v `AppSetting`). **Parte 1 (evento, app+e-mail juntos — o e-mail de evento
+  reusa `Notificacao.mensagem`):** novo módulo PURO [tarefa-msg.ts](src/lib/notificacoes/tarefa-msg.ts)
+  (`msgTarefaAtribuida` → "{Ator} delegou uma tarefa para você: … · vence DD/MM"; `msgTarefaConcluida` →
+  "{Ator} concluiu a tarefa: … · hoje às HH:MM" / "DD/MM às HH:MM"; fallback genérico sem nome do ator; datas
+  em SP). `nomePorEmail` novo em [recipients.ts](src/lib/notificacoes/recipients.ts); os 2 triggers em
+  [triggers.ts](src/lib/notificacoes/triggers.ts) resolvem o nome do ator e ganharam `prazo?`/`concluidoEm?`
+  (threaded de [tarefas/mutations.ts](src/lib/tarefas/mutations.ts) `create`/`updateTarefa` — `tarefa.prazo`/
+  `tarefa.concluidoEm`); skip rules e recipients INALTERADOS. **Parte 2 (relatório):** prefs `relatorioDiario`
+  (opt-out) + `relatorioHora` ("HH:MM") em [preferencias-core.ts](src/lib/notificacoes/preferencias-core.ts)
+  (+ helpers `querRelatorioDiario`/`horaRelatorio`/`deveEnviarRelatorio`, re-exportados por `preferencias.ts`)
+  + Zod em [schemas.ts](src/lib/notificacoes/schemas.ts). Orquestrador+e-mail PURO/testável em
+  [tarefas/relatorio.ts](src/lib/tarefas/relatorio.ts) (`enviarRelatoriosDiarios` — filtra por opt-in+hora+
+  marcador; `agruparPorPrazo`; `montarEmailRelatorio` via `renderEmail`/`emailCard`/`emailRow`/`emailButton`;
+  seção "Equipe — atrasadas" só p/ gestor; `horaAtualSP`). **Idempotência sem migração:** marcador `AppSetting`
+  key `relatorio-diario-enviado` = `{email:"YYYY-MM-DD"}`. Cron externo **de hora em hora** →
+  [/api/jobs/relatorio-diario](src/app/api/jobs/relatorio-diario/route.ts) (guard `X-Job-Token`, cópia do
+  padrão de `jobs/notificacoes`; só envia a quem casou a hora). Botão de teste →
+  [/api/notificacoes/relatorio-teste](src/app/api/notificacoes/relatorio-teste/route.ts) (envia AGORA só ao
+  usuário da sessão, ignora hora/opt-in/marcador). **Parte 3 (UI):** bloco novo em
+  [CrmSettings.tsx](src/components/crm/overlays/CrmSettings.tsx) `NotificacoesSection` — toggle "Relatório
+  diário de tarefas por e-mail" + `<input type=time>` "Enviar às" + botão "Enviar agora (teste)". **Deploy:**
+  linha `0 * * * *` documentada em [DEPLOY.md](DEPLOY.md) §6c. Testes puros novos:
+  [notificacoes-tarefa-msg.test.ts](tests/notificacoes-tarefa-msg.test.ts) +
+  [tarefas-relatorio.test.ts](tests/tarefas-relatorio.test.ts) (13). **Verificado: tsc 0; 480/480 testes;
+  eslint limpo. Sem migração. User action:** (1) adicionar o cron horário no VPS (DEPLOY.md §6c); (2) visual —
+  delegar/concluir uma tarefa de outro usuário → notificação nomeia quem+quando (toast/sino/e-mail);
+  Configurações → Notificações → "Relatório diário" (ligado por padrão) + horário + **"Enviar agora (teste)"**
+  → conferir o e-mail (Atrasadas/Para hoje; como sócio, seção da equipe; sem pendências → "tudo em dia").
+  Precisa de e-mail configurado (Graph/SMTP) p/ chegar de fato; sem backend, o mailer é noop (só loga).
 - **Comercial · fix: retorno (ROAS/ROI) não contava honorários lançados no caso (this session, VERIFIED
   tsc 0, 467/467 testes, eslint limpo, NO migration).** Sintoma: contrato ganho (Thiago José, mídia paga
   jun/26) com R$ 2.400 já recebidos NÃO aparecia como retorno no Comercial. **Causa raiz:** o valor de um
