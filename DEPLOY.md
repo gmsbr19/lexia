@@ -181,10 +181,28 @@ Defina `JOBS_TOKEN` no `.env` e adicione ao `crontab -e` (como `lexia`):
 ```bash
 # Notificações de prazos/compromissos (cedo, todo dia)
 0 7 * * *    curl -s -X POST -H "X-Job-Token: $JOBS_TOKEN" https://<dominio>/api/jobs/notificacoes
+# Relatório diário de tarefas por e-mail — DE HORA EM HORA (o endpoint só envia a
+# quem tem o opt-in ligado e cuja hora configurada casa; idempotente no dia).
+0 * * * *    curl -s -X POST -H "X-Job-Token: $JOBS_TOKEN" https://<dominio>/api/jobs/relatorio-diario
 # Captura CNJ — intimações (Comunica/DJEN) e andamentos (DataJud), dias úteis
 0 7 * * 1-5  curl -s -X POST -H "X-Job-Token: $JOBS_TOKEN" https://<dominio>/api/jobs/captura-intimacoes
 30 7 * * 1-5 curl -s -X POST -H "X-Job-Token: $JOBS_TOKEN" https://<dominio>/api/jobs/captura-andamentos
 ```
+
+**Windows (app hospedado no próprio PC, sem VPS):** não há crontab. Defina
+`JOBS_TOKEN` no `.env` e use o **Agendador de Tarefas** chamando o helper
+`scripts/jobs-local.ps1` (lê o token do `.env` e bate em `localhost:3000`).
+Registrar o relatório diário (de hora em hora) via PowerShell (uma vez):
+
+```powershell
+schtasks /Create /TN "Lexia - relatorio diario" /SC HOURLY `
+  /TR "powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\Users\thiag\Dev\lexia\scripts\jobs-local.ps1\" relatorio-diario" /F
+```
+
+Caveats: o app precisa estar rodando (`npm run start`/`npm run dev`) e o PC
+acordado na hora; marque "Executar assim que possível após um início perdido"
+nas propriedades da tarefa. Para as notificações de prazos, agende também
+`… jobs-local.ps1 notificacoes` (ex.: diário às 7h, `/SC DAILY /ST 07:00`).
 
 A captura de andamentos requer `DATAJUD_API_KEY` (chave pública do CNJ); sem ela,
 o job vira no-op. A de intimações requer ao menos uma OAB cadastrada (Processos →
