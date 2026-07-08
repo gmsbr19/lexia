@@ -176,7 +176,7 @@ describe("registry — deterministic, valid tool schemas", () => {
   })
 
   it("hides financial tools from the 'Equipe' (non-finance roles), keeps them for sócio/financeiro", () => {
-    const FIN = ["financeiro_resumo", "listar_lancamentos", "inadimplencia", "dre", "listar_honorarios", "detalhe_honorario", "criar_lancamento", "pagar_lancamento"]
+    const FIN = ["financeiro_resumo", "listar_lancamentos", "inadimplencia", "dre", "listar_honorarios", "detalhe_honorario", "criar_lancamento", "pagar_lancamento", "editar_lancamento"]
     const nomes = (role: string) => new Set(toApiTools(role).map((t) => t.name))
 
     const equipe = nomes("staff")
@@ -189,9 +189,15 @@ describe("registry — deterministic, valid tool schemas", () => {
       const vis = nomes(role)
       for (const n of FIN) expect(vis.has(n)).toBe(true)
     }
-    // 'acerto_socios'/'excluir_lancamento' continuam só para sócio (não financeiro)
-    expect(nomes("financeiro").has("acerto_socios")).toBe(false)
-    expect(nomes("socio").has("acerto_socios")).toBe(true)
+    // exclusões (single + lote) e acerto continuam só para sócio (não financeiro)
+    for (const n of ["acerto_socios", "excluir_lancamento", "excluir_lancamentos"]) {
+      expect(nomes("financeiro").has(n), n).toBe(false)
+      expect(nomes("socio").has(n), n).toBe(true)
+    }
+    // honorário = lançamento: editar/excluir usam as tools de lançamento
+    expect(nomes("financeiro").has("editar_lancamento")).toBe(true)
+    expect(nomes("admin").has("editar_honorario")).toBe(false)
+    expect(nomes("admin").has("excluir_honorario")).toBe(false)
   })
 
   it("modo 'pergunta' (somente leitura) remove TODAS as ferramentas de mutação", () => {

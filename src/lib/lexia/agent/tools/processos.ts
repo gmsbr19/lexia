@@ -20,7 +20,6 @@ import {
   rejeitarPrazo,
   updatePrazo,
   updateProcesso,
-  vincularHonorarioAProcesso,
   vincularPublicacao,
 } from "@/lib/processos/mutations"
 import { listMovimentosInbox, listPrazos, listProcessos, listPublicacoes, getProcessoDetail } from "@/lib/processos/queries"
@@ -529,40 +528,9 @@ export const processosTools = [
       return associarProcesso({ numeroCnj, partesNomes: nomes, clienteProvavel: i.cliente ?? null })
     },
   }),
-  defineTool({
-    name: "vincular_honorario_processo",
-    kind: "mutation",
-    roles: ["socio", "advogado"],
-    description:
-      "Conecta um honorário a um processo específico (mantém o texto legado; deixa o financeiro do processo consistente). " +
-      "Informe honorarioId e processoId. Para DESVINCULAR, use processoId = 0.",
-    schema: z.object({
-      honorarioId: idReq.describe("Id do honorário"),
-      processoId: z.number().int().min(0).describe("Id do processo; 0 = desvincular"),
-    }),
-    resumo: (i) => `Vincular honorário #${i.honorarioId} ao processo #${i.processoId}`,
-    montarConfirmacao: async (_ctx, i) => {
-      const h = await prisma.honorario.findUnique({ where: { id: i.honorarioId }, select: { descricao: true, valorCents: true } })
-      return {
-        resumo: i.processoId ? "Conectar honorário ao processo" : "Desvincular honorário do processo",
-        detalhes: [
-          { label: "Honorário", valor: h?.descricao ?? `#${i.honorarioId}` },
-          ...(h?.valorCents ? [{ label: "Valor", valor: brl(h.valorCents) }] : []),
-          ...(i.processoId ? [{ label: "Processo", valor: await rotuloProcesso(i.processoId) }] : []),
-        ],
-      }
-    },
-    run: async (ctx, i) => {
-      if (i.processoId) {
-        await negar(ctx, i.processoId)
-      } else {
-        // desvincular (processoId 0): exige acesso ao processo atualmente ligado
-        const h = await prisma.honorario.findUnique({ where: { id: i.honorarioId }, select: { processoId: true } })
-        if (h?.processoId) await negar(ctx, h.processoId)
-      }
-      return vincularHonorarioAProcesso(i.honorarioId, i.processoId || null)
-    },
-  }),
+  // (removido) vincular_honorario_processo — honorários agora são lançamentos
+  // (subTipo='honorario') que já carregam processoId; o vínculo a processo será
+  // um follow-up via processoId no LancamentoPatch.
   defineTool({
     name: "adicionar_parte_processo",
     kind: "mutation",

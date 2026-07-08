@@ -64,7 +64,6 @@ export function linkParaResultado(toolName: string, result: unknown, payload: un
     case "confirmar_prazo":
     case "rejeitar_prazo":
     case "vincular_publicacao":
-    case "vincular_honorario_processo":
     case "adicionar_parte_processo": {
       const pid = processoIdDe(result, payload)
       bruto = pid ? { rota: `/processos/${pid}`, label: "Ver processo" } : { rota: "/processos", label: "Ver processos" }
