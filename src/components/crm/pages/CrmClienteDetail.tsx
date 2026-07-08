@@ -43,7 +43,8 @@ import {
 import { crmDate, crmDateLong } from "../crm-fmt"
 import { verFinanceiro } from "@/lib/users/types"
 import { useModulosStore, processosHabilitado } from "@/lib/modulos/store"
-import { CrmDocumentoModal, CrmEventoModal, CrmLancamentoModal, CrmTarefaModal } from "./CrmClienteModals"
+import { CrmDocumentoModal, CrmEventoModal, CrmTarefaModal } from "./CrmClienteModals"
+import { LancamentosTable } from "@/components/financeiro/interativo/LancamentosTable"
 import { ORIGEM_OPTS } from "./CrmQuickModals"
 import { ORIGEM_LABEL } from "@/lib/comercial/types"
 import type {
@@ -72,7 +73,6 @@ interface Props {
 
 type ClienteModal =
   | { type: "tarefa"; tarefa?: ClienteTarefaRow | null }
-  | { type: "lancamento" }
   | { type: "evento"; evento?: EventoRow | null }
   | { type: "documento" }
   | null
@@ -484,22 +484,27 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
               <FxKpi label="A receber" value={<FxMoney cents={r.aReceberCents} plain size={24} />} icon="clock" accent="gold" />
               <FxKpi label="Vencido" value={<FxMoney cents={r.vencidoCents} plain size={24} />} icon="alertTriangle" tone={r.vencidoCents ? "neg" : undefined} />
             </div>
-            <FxCardTitle
-              title="Lançamentos do cliente"
-              sub={`${detail.lancamentos.length} lançamentos vinculados`}
-              right={
-                verFin ? (
-                  <button className="btn btn-secondary" onClick={() => setModal({ type: "lancamento" })} style={{ height: 32 }}>
-                    <Icon name="plus" size={14} />Novo lançamento
-                  </button>
-                ) : null
-              }
-            />
-            {lancSorted.length === 0
-              ? sectionCard(<CrmEmpty icon="wallet" title="Sem lançamentos" sub="Crie um lançamento vinculado a este cliente." />)
-              : sectionCard(lancSorted.map((l, i, arr) => (
-                <CrmLancRow key={l.id} l={l} onToggle={onToggleLanc} canBaixa={verFin} last={i === arr.length - 1} />
-              )))}
+            {verFin ? (
+              <LancamentosTable
+                rows={detail.lancamentos}
+                options={detail.lancOptions}
+                embedded
+                onRefresh={load}
+                lockCliente={{ id: clienteId, nome: detail.header.nome }}
+              />
+            ) : (
+              <>
+                <FxCardTitle
+                  title="Lançamentos do cliente"
+                  sub={`${detail.lancamentos.length} lançamentos vinculados`}
+                />
+                {lancSorted.length === 0
+                  ? sectionCard(<CrmEmpty icon="wallet" title="Sem lançamentos" sub="Crie um lançamento vinculado a este cliente." />)
+                  : sectionCard(lancSorted.map((l, i, arr) => (
+                    <CrmLancRow key={l.id} l={l} onToggle={onToggleLanc} canBaixa={verFin} last={i === arr.length - 1} />
+                  )))}
+              </>
+            )}
           </>
         )}
 
@@ -765,9 +770,6 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
           onClose={() => setModal(null)}
           onSaved={() => { void load(); onRefresh() }}
         />
-      )}
-      {modal?.type === "lancamento" && (
-        <CrmLancamentoModal clienteNome={c.nome} onClose={() => setModal(null)} onSaved={() => { void load(); onRefresh() }} />
       )}
       {modal?.type === "evento" && (
         <CrmEventoModal

@@ -189,18 +189,33 @@ export function LancamentosTable({
   rows: serverRows,
   options,
   initial,
+  lockCliente = null,
+  onRefresh,
+  embedded = false,
 }: {
   rows: LancamentoRow[]
   options: LancOptions
   initial?: InitialFilter
+  /** When set, create/edit hard-links to this cliente (cliente-scoped ledger). */
+  lockCliente?: { id: number; nome: string } | null
+  /** Called after a mutation instead of router.refresh() — used when rows come from a client-side fetch. */
+  onRefresh?: () => void
+  /** Render inside a normal-flow container (no full-height flex / no bottom-bar report). */
+  embedded?: boolean
 }) {
   const router = useRouter()
   const [, startTransition] = useTransition()
   const today = todayISO()
 
   // Report the totals footer height so the shell floats the LexIA pill above it.
+  // (Skipped when embedded — the ref stays detached so the hook no-ops.)
   const totalsRef = useRef<HTMLDivElement>(null)
   useReportBottomBar(totalsRef, "fin-totals")
+
+  const refresh = useCallback(() => {
+    if (onRefresh) onRefresh()
+    else startTransition(() => router.refresh())
+  }, [onRefresh, router, startTransition])
 
   const [rows, setRows] = useState(serverRows)
   useEffect(() => setRows(serverRows), [serverRows])
@@ -218,7 +233,12 @@ export function LancamentosTable({
   const [error, setError] = useState<string | null>(null)
   const [shown, setShown] = useState(PAGE)
 
-  const allCats = useMemo(() => [...new Set(rows.map((r) => r.cat).filter((x): x is string => !!x))].sort(), [rows])
+  // Categorias offered in the filter follow the selected Tipo — an "Entradas"
+  // view never lists expense-only categories (and vice-versa).
+  const allCats = useMemo(
+    () => [...new Set(rows.filter((r) => dir === "todos" || r.dir === dir).map((r) => r.cat).filter((x): x is string => !!x))].sort(),
+    [rows, dir],
+  )
 
   const visible = useMemo(
     () =>
@@ -264,12 +284,12 @@ export function LancamentosTable({
       setError(null)
       try {
         await fn()
-        startTransition(() => router.refresh())
+        refresh()
       } catch (e) {
         setError(e instanceof Error ? e.message : "Falha")
       }
     },
-    [router, startTransition],
+    [refresh],
   )
   const markPaid = useCallback((id: number) => act(() => send(`/api/financeiro/lancamentos/${id}/pagar`, "POST", {})), [act])
   const reabrir = useCallback((id: number) => act(() => send(`/api/financeiro/lancamentos/${id}/reabrir`, "POST", {})), [act])
@@ -298,10 +318,10 @@ export function LancamentosTable({
   const agingOpts: FacetOption[] = [{ value: "1–30 dias", label: "1–30 dias" }, { value: "31–60 dias", label: "31–60 dias" }, { value: "+60 dias", label: "+60 dias" }]
 
   return (
-    <div className={c.lancRoot}>
+    <div className={c.lancRoot} style={embedded ? { height: "auto" } : undefined}>
       {error && <div className={c.bulkBar} style={{ background: "rgba(192,73,47,0.1)", borderColor: "var(--fin-neg,#C0492F)", color: "var(--fin-neg,#C0492F)" }}>{error}</div>}
 
-      <div className={c.filterBar}>
+      <div className={c.filterBar} style={embedded ? { padding: "0 0 14px" } : undefined}>
         <div className={c.filterLeft}>
           <div className={c.searchWrap}>
             <div className={c.searchIcon}><Icon name="search" size={15} /></div>
@@ -309,7 +329,7 @@ export function LancamentosTable({
           </div>
           <div className={c.filterDivider} />
           <span className={c.filterFunnel}><Icon name="filter" size={15} /></span>
-          <FxFilter label="Tipo" value={dir} allValue="todos" onChange={(v) => setDir(v as DirF)} options={dirOpts} />
+          <FxFilter label="Tipo" value={dir} allValue="todos" onChange={(v) => { setDir(v as DirF); setCat("") }} options={dirOpts} />
           <FxFilter label="Status" value={stat} allValue="todos" onChange={(v) => setStat(v as StatF)} options={statOpts} />
           <FxFilter label="Categoria" value={cat} allValue="" onChange={setCat} options={catOpts} />
           <FxFilter label="Atraso" icon="clock" value={aging} allValue="" onChange={setAging} options={agingOpts} />
@@ -336,7 +356,7 @@ export function LancamentosTable({
         </div>
       )}
 
-      <div className={c.tableScroll}>
+      <div className={c.tableScroll} style={embedded ? { flex: "none", overflow: "visible", padding: 0 } : undefined}>
         <div className={c.tableCard}>
           <table className={c.table}>
             <thead>
@@ -383,31 +403,47 @@ export function LancamentosTable({
         )}
       </div>
 
-      <div className={c.totalsBar} ref={totalsRef}>
-        <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500 }}>{visible.length} {visible.length === 1 ? "lançamento" : "lançamentos"}</span>
-        <div className={c.totalCell}>
-          <div className={c.totalIcon} style={{ color: "var(--fin-pos,#2E9E5B)" }}><Icon name="arrowDownRight" size={15} /></div>
-          <div><div className={c.totalLabel}>Entradas</div><div className={c.totalValue} style={{ color: "var(--fin-pos,#2E9E5B)" }}>{fmtMoney(ent)}</div></div>
+      {embedded ? (
+        <div
+          className={c.num}
+          style={{
+            display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap",
+            padding: "12px 2px 2px", marginTop: 6, borderTop: "1px solid var(--border)",
+            fontSize: 12.5, color: "var(--text-muted)",
+          }}
+        >
+          <span style={{ fontWeight: 500 }}>{visible.length} {visible.length === 1 ? "lançamento" : "lançamentos"}</span>
+          <span style={{ marginLeft: "auto", display: "inline-flex", gap: 6 }}>Entradas <b style={{ fontWeight: 500, color: "var(--fin-pos,#2E9E5B)" }}>{fmtMoney(ent)}</b></span>
+          <span style={{ display: "inline-flex", gap: 6 }}>Saídas <b style={{ fontWeight: 500, color: "var(--fin-neg,#C0492F)" }}>{fmtMoney(sai)}</b></span>
+          <span style={{ display: "inline-flex", gap: 6 }}>Saldo <b style={{ fontWeight: 500, color: saldo >= 0 ? "var(--fin-pos,#2E9E5B)" : "var(--fin-neg,#C0492F)" }}>{fmtMoney(saldo)}</b></span>
         </div>
-        <div className={c.totalCell}>
-          <div className={c.totalIcon} style={{ color: "var(--fin-neg,#C0492F)" }}><Icon name="arrowUpRight" size={15} /></div>
-          <div><div className={c.totalLabel}>Saídas</div><div className={c.totalValue} style={{ color: "var(--fin-neg,#C0492F)" }}>{fmtMoney(sai)}</div></div>
-        </div>
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 30, height: 30, borderRadius: 10, background: saldo >= 0 ? "rgba(46,158,91,0.12)" : "rgba(192,73,47,0.12)", color: saldo >= 0 ? "var(--fin-pos,#2E9E5B)" : "var(--fin-neg,#C0492F)", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="sigma" size={15} /></div>
-          <div>
-            <div className={c.totalLabel}>Saldo do período</div>
-            <div className={c.totalValue} style={{ fontSize: 16, fontWeight: 500, color: saldo >= 0 ? "var(--fin-pos,#2E9E5B)" : "var(--fin-neg,#C0492F)" }}>{fmtMoney(saldo)}</div>
+      ) : (
+        <div className={c.totalsBar} ref={totalsRef}>
+          <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500 }}>{visible.length} {visible.length === 1 ? "lançamento" : "lançamentos"}</span>
+          <div className={c.totalCell}>
+            <div className={c.totalIcon} style={{ color: "var(--fin-pos,#2E9E5B)" }}><Icon name="arrowDownRight" size={15} /></div>
+            <div><div className={c.totalLabel}>Entradas</div><div className={c.totalValue} style={{ color: "var(--fin-pos,#2E9E5B)" }}>{fmtMoney(ent)}</div></div>
+          </div>
+          <div className={c.totalCell}>
+            <div className={c.totalIcon} style={{ color: "var(--fin-neg,#C0492F)" }}><Icon name="arrowUpRight" size={15} /></div>
+            <div><div className={c.totalLabel}>Saídas</div><div className={c.totalValue} style={{ color: "var(--fin-neg,#C0492F)" }}>{fmtMoney(sai)}</div></div>
+          </div>
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 30, height: 30, borderRadius: 10, background: saldo >= 0 ? "rgba(46,158,91,0.12)" : "rgba(192,73,47,0.12)", color: saldo >= 0 ? "var(--fin-pos,#2E9E5B)" : "var(--fin-neg,#C0492F)", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="sigma" size={15} /></div>
+            <div>
+              <div className={c.totalLabel}>Saldo do período</div>
+              <div className={c.totalValue} style={{ fontSize: 16, fontWeight: 500, color: saldo >= 0 ? "var(--fin-pos,#2E9E5B)" : "var(--fin-neg,#C0492F)" }}>{fmtMoney(saldo)}</div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {editRow && (
-        <NovoLancamentoModal options={options} edit={editRow} onClose={() => setEditRow(null)} onSaved={() => { setEditRow(null); startTransition(() => router.refresh()) }} />
+        <NovoLancamentoModal options={options} edit={editRow} lockCliente={lockCliente} onClose={() => setEditRow(null)} onSaved={() => { setEditRow(null); refresh() }} />
       )}
 
       {newOpen && (
-        <NovoLancamentoModal options={options} onClose={() => setNewOpen(false)} onSaved={() => { setNewOpen(false); startTransition(() => router.refresh()) }} />
+        <NovoLancamentoModal options={options} lockCliente={lockCliente} onClose={() => setNewOpen(false)} onSaved={() => { setNewOpen(false); refresh() }} />
       )}
     </div>
   )

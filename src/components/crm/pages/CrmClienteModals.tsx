@@ -5,14 +5,12 @@
 // re-fetches (the detail is client-fetched, so router.refresh alone won't show
 // the change). Tarefa supports create + edit + delete; the others are creates.
 import { useState } from "react"
-import { parseBRLToCents } from "@/lib/finance/money"
 import { emptyDoc } from "@/lib/documents/model/types"
-import { FxInput, FxLabel, FxModal, FxSegmented, FxSelect, FxTextarea, useCrmToast } from "../crm-kit"
+import { FxInput, FxLabel, FxModal, FxSelect, FxTextarea, useCrmToast } from "../crm-kit"
 import { Icon } from "../crm-icons"
 import {
   createDocumento,
   createEvento,
-  createLancamento,
   createTarefa,
   deleteEvento,
   deleteTarefa,
@@ -145,72 +143,6 @@ export function CrmTarefaModal({
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <div><FxLabel>Prazo</FxLabel><FxInput type="date" value={prazo} onChange={(e) => setPrazo(e.target.value)} /></div>
           <div><FxLabel>Responsável</FxLabel><FxSelect options={socioOpts(socios)} value={resp} onChange={(e) => setResp(e.target.value)} placeholder="—" /></div>
-        </div>
-      </div>
-    </FxModal>
-  )
-}
-
-// ───────────────────────── Lançamento (create, pre-linked) ─────────────────────────
-export function CrmLancamentoModal({
-  clienteNome,
-  onClose,
-  onSaved,
-}: {
-  clienteNome: string
-  onClose: () => void
-  onSaved: () => void
-}) {
-  const { toast } = useCrmToast()
-  const [dir, setDir] = useState<"in" | "out">("in")
-  const [desc, setDesc] = useState("")
-  const [valor, setValor] = useState("")
-  const [venc, setVenc] = useState(crmTodayISO())
-  const [busy, setBusy] = useState(false)
-
-  const save = async () => {
-    const valorCents = parseBRLToCents(valor)
-    if (!desc.trim()) return toast("Informe a descrição", { tone: "neg", icon: "alertTriangle" })
-    if (valorCents <= 0) return toast("Informe um valor", { tone: "neg", icon: "alertTriangle" })
-    setBusy(true)
-    try {
-      await createLancamento({ dir, desc: desc.trim(), valorCents, venc, party: clienteNome })
-      toast("Lançamento criado")
-      onSaved()
-      onClose()
-    } catch (e) {
-      toast(errMsg(e), { tone: "neg", icon: "alertTriangle" })
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <FxModal
-      title="Novo lançamento"
-      sub={`Vinculado a ${clienteNome}`}
-      onClose={onClose}
-      width={500}
-      footer={
-        <>
-          <button className="btn btn-ghost" onClick={onClose} disabled={busy}>Cancelar</button>
-          <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? "Salvando…" : "Salvar"}</button>
-        </>
-      }
-    >
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <div>
-          <FxLabel>Direção</FxLabel>
-          <FxSegmented
-            options={[{ value: "in", label: "A receber" }, { value: "out", label: "A pagar" }]}
-            value={dir}
-            onChange={(v) => setDir(v as "in" | "out")}
-          />
-        </div>
-        <div><FxLabel>Descrição</FxLabel><FxInput value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Descrição do lançamento" autoFocus /></div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <div><FxLabel hint="R$">Valor</FxLabel><FxInput value={valor} onChange={(e) => setValor(e.target.value)} inputMode="decimal" placeholder="0,00" /></div>
-          <div><FxLabel>Vencimento</FxLabel><FxInput type="date" value={venc} onChange={(e) => setVenc(e.target.value)} /></div>
         </div>
       </div>
     </FxModal>

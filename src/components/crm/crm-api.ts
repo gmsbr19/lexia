@@ -30,7 +30,8 @@ const mut = async <T = unknown>(url: string, method: string, body?: unknown): Pr
 // ── detail fetches ──
 export const fetchClienteDetail = (id: number) => get<ClienteDetail>(`/api/clientes/${id}`)
 export const fetchCasoDetail = (id: number) => get<CasoDetail>(`/api/casos/${id}`)
-export const fetchHonorarioDetail = (id: number) => get<HonorarioDetail>(`/api/financeiro/honorarios/${id}`)
+// Honorário = lançamento (subTipo='honorario'); the id here is a LANÇAMENTO id.
+export const fetchHonorarioDetail = (id: number) => get<HonorarioDetail>(`/api/financeiro/lancamentos/${id}/contrato`)
 export const fetchAgenda = (de: string, ate: string) => get<AgendaDataset>(`/api/agenda?de=${de}&ate=${ate}`)
 export const fetchDocumentos = (clienteId: number) => get<DocumentoRow[]>(`/api/documentos?clienteId=${clienteId}`)
 export const searchAll = (q: string) => get<SearchResults>(`/api/search?q=${encodeURIComponent(q)}`)
@@ -61,12 +62,10 @@ export const patchCaso = (id: number, body: unknown) => mut(`/api/casos/${id}`, 
 export const setResponsaveis = (id: number, responsaveis: { contaId: number; percentual: number }[]) =>
   mut(`/api/financeiro/casos/${id}/responsaveis`, "PATCH", { responsaveis })
 
-// ── honorário (contrato) mutations ──
+// ── honorário (contrato) mutations — id = LANÇAMENTO id (subTipo='honorario') ──
 export const pagarHonorario = (id: number, contaId: number, dataPagamento?: string | null) =>
-  mut(`/api/financeiro/honorarios/${id}/pagar`, "POST", { contaId, dataPagamento: dataPagamento ?? null })
-export const desmarcarHonorario = (id: number) => mut(`/api/financeiro/honorarios/${id}/desmarcar`, "POST")
-export const patchHonorario = (id: number, body: unknown) => mut(`/api/financeiro/honorarios/${id}`, "PATCH", body)
-export const createHonorario = (body: unknown) => mut(`/api/financeiro/honorarios`, "POST", body)
+  mut(`/api/financeiro/lancamentos/${id}/pagar`, "POST", { contaId, dataPagamento: dataPagamento ?? null })
+export const desmarcarHonorario = (id: number) => mut(`/api/financeiro/lancamentos/${id}/reabrir`, "POST")
 
 // ── lançamento mutations ──
 export const pagarLancamento = (id: number, dataPagamento?: string | null) =>

@@ -1,5 +1,5 @@
 import { pageShell, tabPanel } from "@/components/documents/page/documents-page.css"
-import { getCategoriaOptions, getClienteOptions, getContaOptions, getFornecedorOptions } from "@/lib/finance/queries"
+import { getCasoOptions, getCategoriaOptions, getClienteOptions, getContaOptions, getFornecedorOptions } from "@/lib/finance/queries"
 import { normalizePeriodo } from "@/lib/finance/periodo"
 import { FinanceiroTabStrip } from "./FinanceiroTabStrip"
 import { tabStripRow } from "./FinanceiroTabStrip.css"
@@ -28,13 +28,14 @@ export async function FinanceiroPage({ params }: { params: Params }) {
 
   let options: LancOptions | null = null
   if (isDesignTab) {
-    const [cats, clientes, fornecedores, contas] = await Promise.all([
+    const [cats, clientes, fornecedores, contas, casos] = await Promise.all([
       getCategoriaOptions(),
       getClienteOptions(),
       getFornecedorOptions(),
       getContaOptions(),
+      getCasoOptions(),
     ])
-    options = { cats, clientes: clientes.map((c) => c.nome), fornecedores, contas }
+    options = { cats, clientes: clientes.map((c) => c.nome), fornecedores, contas, casos: casos.map((c) => c.nome) }
   }
 
   const initial: InitialFilter = {

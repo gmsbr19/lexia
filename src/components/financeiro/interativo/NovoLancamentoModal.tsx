@@ -15,6 +15,51 @@ export interface LancOptions {
   clientes: string[]
   fornecedores: string[]
   contas: { id: number; nome: string }[]
+  casos: string[]
+}
+
+// Accent-insensitive searchable dropdown for the linked caso (follows the app's
+// input/menu tokens). Keeps free-text: typing filters the list AND is submittable
+// as-is, so a caso not yet in the list still links by name via resolveRefs.
+function CasoCombo({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: string[] }) {
+  const [open, setOpen] = useState(false)
+  const norm = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase()
+  const q = norm(value.trim())
+  const filtered = (q ? options.filter((o) => norm(o).includes(q)) : options).slice(0, 50)
+  return (
+    <div className={c.selectWrap}>
+      <input
+        className={c.input}
+        value={value}
+        onChange={(e) => { onChange(e.target.value); setOpen(true) }}
+        onFocus={() => setOpen(true)}
+        placeholder="Buscar caso ou digitar"
+        style={{ paddingRight: 34 }}
+      />
+      <div className={c.selectChevron}><Icon name="chevronDown" size={15} /></div>
+      {open && (
+        <>
+          <div className={c.menuScrim} onClick={() => setOpen(false)} />
+          <div className={c.facetMenu} style={{ left: 0, right: 0, minWidth: 0 }}>
+            {value.trim() && (
+              <button type="button" className={c.facetMenuItem} onClick={() => { onChange(""); setOpen(false) }}>
+                <span style={{ color: "var(--text-muted)" }}>Sem caso vinculado</span>
+              </button>
+            )}
+            {filtered.map((o) => (
+              <button key={o} type="button" className={c.facetMenuItem} onClick={() => { onChange(o); setOpen(false) }}>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o}</span>
+                {value === o && <span className={c.facetCheck}><Icon name="check" size={13} /></span>}
+              </button>
+            ))}
+            {filtered.length === 0 && (
+              <div style={{ padding: "8px 10px", fontSize: 12.5, color: "var(--text-subtle)" }}>Nenhum caso encontrado</div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
 }
 
 type Modo = "unica" | "mensal" | "parcelado"
@@ -27,18 +72,21 @@ export function NovoLancamentoModal({
   edit = null,
   initialDir = "in",
   options,
+  lockCliente = null,
 }: {
   onClose: () => void
   onSaved: () => void
   edit?: LancamentoRow | null
   initialDir?: LancDir
   options: LancOptions
+  /** When set, every save is hard-linked to this cliente (used by the cliente-scoped ledger). */
+  lockCliente?: { id: number; nome: string } | null
 }) {
   const isEdit = !!edit
   const [dir, setDir] = useState<LancDir>(edit ? edit.dir : initialDir)
   const [desc, setDesc] = useState(edit ? edit.desc : "")
   const [cat, setCat] = useState(edit?.cat ?? options.cats[0] ?? "")
-  const [party, setParty] = useState(edit?.party ?? "")
+  const [party, setParty] = useState(edit?.party ?? (lockCliente?.nome ?? ""))
   const [caso, setCaso] = useState(edit?.caso ?? "")
   const [contaId, setContaId] = useState<number | null>(edit?.contaId ?? null)
   const [valor, setValor] = useState(edit ? (edit.valorCents / 100).toFixed(2).replace(".", ",") : "")
@@ -73,15 +121,17 @@ export function NovoLancamentoModal({
     if (!valid) return
     setBusy(true)
     setError(null)
+    const clienteLocked = lockCliente && dir === "in"
     const payload = {
       dir,
       desc: desc.trim(),
       valorCents,
       venc,
       cat: cat || null,
-      party: party.trim() || null,
+      party: clienteLocked ? lockCliente.nome : party.trim() || null,
       caso: dir === "in" ? caso.trim() || null : null,
       contaId,
+      clienteId: lockCliente?.id ?? null,
       pago,
       pagoData: pago ? pagoData : null,
       modo,
@@ -162,15 +212,21 @@ export function NovoLancamentoModal({
             </div>
             <div className={c.field}>
               <div className={c.fieldLabel}><span className={c.fieldLabelText}>{dir === "in" ? "Contato" : "Fornecedor"}</span></div>
-              <input className={c.input} list="fx-party-list" value={party} onChange={(e) => setParty(e.target.value)} placeholder="Selecione ou digite" />
-              <datalist id="fx-party-list">{partyList.map((p) => <option key={p} value={p} />)}</datalist>
+              {lockCliente && dir === "in" ? (
+                <input className={c.input} value={lockCliente.nome} disabled title="Vinculado a este contato" style={{ opacity: 0.7, cursor: "not-allowed" }} />
+              ) : (
+                <>
+                  <input className={c.input} list="fx-party-list" value={party} onChange={(e) => setParty(e.target.value)} placeholder="Selecione ou digite" />
+                  <datalist id="fx-party-list">{partyList.map((p) => <option key={p} value={p} />)}</datalist>
+                </>
+              )}
             </div>
           </div>
 
           {dir === "in" && (
             <div className={c.field}>
               <div className={c.fieldLabel}><span className={c.fieldLabelText}>Caso vinculado</span><span className={c.fieldHint}>opcional</span></div>
-              <input className={c.input} value={caso} onChange={(e) => setCaso(e.target.value)} placeholder="Ex.: Contencioso trabalhista" />
+              <CasoCombo value={caso} onChange={setCaso} options={options.casos} />
             </div>
           )}
 

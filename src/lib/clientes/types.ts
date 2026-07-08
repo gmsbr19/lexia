@@ -11,6 +11,7 @@ import type {
   LancamentoRow,
 } from "@/lib/finance/types"
 import type { ProcessoMini } from "@/lib/processos/types"
+import type { LancOptions } from "@/components/financeiro/interativo/NovoLancamentoModal"
 import type { AnotacaoRow, EstadoCobranca } from "./cobranca-core"
 
 export interface ClienteHeader {
@@ -77,4 +78,6 @@ export interface ClienteDetail {
   anotacoes: AnotacaoRow[]
   /** Derived collection state (ativo / pausado até X / não cobrar). */
   cobranca: EstadoCobranca
+  /** Lookups for the cliente-scoped lançamentos table (categorias/contatos/fornecedores/contas). */
+  lancOptions: LancOptions
 }
