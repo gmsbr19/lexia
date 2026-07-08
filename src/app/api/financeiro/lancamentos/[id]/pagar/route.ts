@@ -10,8 +10,9 @@ export const dynamic = "force-dynamic"
 export async function POST(req: Request, ctx: RouteCtx) {
   const { id } = await ctx.params
   const body = await readJson(req)
+  const p = parseBody(pagarLancamentoSchema, body)
   return runMutation(
-    () => pagarLancamento(parseId(id), parseBody(pagarLancamentoSchema, body).dataPagamento ?? null),
+    () => pagarLancamento(parseId(id), { dataPagamento: p.dataPagamento ?? null, contaId: p.contaId ?? null }),
     { action: "lancamento.pagar", entity: "Lancamento", entityId: id, payload: body, roles: ROLES_FINANCEIRO },
   )
 }

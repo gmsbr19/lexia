@@ -40,6 +40,9 @@ export const novoLancamentoSchema = z.object({
   party: z.string().max(200).nullish(),
   caso: z.string().max(300).nullish(),
   contaId: idOpt,
+  clienteId: idOpt,
+  tipoHonorario: z.enum(["recorrente", "parcelado", "exito", "avista"]).nullish(),
+  valorLiquidoCents: money.optional(),
   pago: z.boolean().optional(),
   pagoData: dateStr.nullish(),
   modo: z.enum(["unica", "mensal", "parcelado"]).optional(),
@@ -49,6 +52,7 @@ export const novoLancamentoSchema = z.object({
 
 export const pagarLancamentoSchema = z.object({
   dataPagamento: dateStr.nullish(),
+  contaId: idOpt,
 })
 
 export const bulkLancamentosSchema = z.object({

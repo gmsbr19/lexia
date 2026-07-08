@@ -246,6 +246,8 @@ export interface ContratoRow {
   valorContratadoCents: number // Σ honorários vinculados ao caso
   recebidoCents: number // Σ honorários com status 'recebido'
   honorariosCount: number
+  casosCount: number // nº de casos NÃO-excluídos sob o contrato
+  unicoCasoId: number | null // caso id quando há exatamente 1 (navegação direta); senão null
 }
 
 /** Contrato modal: full honorário detail + its série de parcelas. */
