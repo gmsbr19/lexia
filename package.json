@@ -26,6 +26,7 @@
     "db:seed:projetos": "tsx scripts/seed-projetos.ts",
     "db:seed:documentos": "tsx scripts/seed-documentos.ts",
     "db:purge:processos:demo": "tsx scripts/purge-processos-demo.ts",
+    "db:backfill:honorarios": "tsx scripts/backfill-honorarios-lancamentos.ts",
     "db:import:genions": "tsx scripts/import-genions.ts",
     "db:import:meta": "tsx scripts/import-meta-campaigns.ts",
     "db:deploy": "prisma migrate deploy",

@@ -145,7 +145,108 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
-<<<<<<< HEAD
+- **Honorário = recebimento financeiro — Fase 1 do cutover `Honorario`→`Lancamento` (this session, VERIFIED
+  tsc 0, 495/495 testes, eslint sem achado novo; migração + backfill = passos do USUÁRIO).** O usuário
+  apontou que `Honorario` não deveria ser entidade separada — honorários são recebíveis (lançamentos entrada).
+  Confirmado: o `Lancamento` já é a fonte única de todo o dinheiro; `Honorario` era uma **camada paralela**
+  (o import da Astrea já cria o `Lancamento` entrada e liga `Honorario.lancamentoId`). **Decisões travadas:**
+  por fases (Fase 1 = cutover funcional, tabela `Honorario` fica **dormente**; Fase 2 = derrubar tabela +
+  código morto); **Contrato = visão derivada** (sem entidade nova). **Passo 0 (drift):** removidos os órfãos do
+  "Contrato entity" abandonado (`src/lib/finance/contrato.ts`, `scripts/backfill-contratos.ts`,
+  `scripts/diagnostico-contratos.ts`, `tests/finance-contrato.test.ts`) — some com os 5 erros de tsc
+  pré-existentes; a migração da Fase 1 reconcilia o schema↔DB (o `prisma migrate dev` gera o drop das tabelas
+  `Contrato`/`ContratoResponsavel` vazias + as colunas novas). **Schema:** `Lancamento` += `tipoHonorario`
+  (recorrente/parcelado/exito/avista), `valorLiquidoCents`, `metodoPagamento`, `@@index([subTipo])`; `Lead` +=
+  `lancamentoId` (relação `LeadLancamento`; `honorarioId` fica dormente). **Núcleo:** const `FEE =
+  {tipo:'entrada',subTipo:'honorario',isAnomalia:false}` + mapper PURO `lancamentoToHonorarioRow` e
+  `aggFeeTotals` em [honorario-map.ts](src/lib/finance/honorario-map.ts). **Leituras cortadas p/ FEE:**
+  `getHonorarios`/`getComposition`(group by tipoHonorario)/`getHonorarioTotals`/`getHonorarioDetail`(id agora é
+  de LANÇAMENTO; série+parcelas vêm do grupo de recorrência)/`getContratos`/`getCasosSemFee`/`getImportSummary`
+  em [finance/queries.ts](src/lib/finance/queries.ts); `getClienteDetail` ([clientes/queries.ts](src/lib/clientes/queries.ts));
+  `getCasoDetail` ([casos/queries.ts](src/lib/casos/queries.ts)); `search.ts` (contratos); `briefing.ts`
+  (ticket médio + casos-sem-honorário); comercial `receitaRecebidaCents` ([comercial/queries.ts](src/lib/comercial/queries.ts)).
+  **Escritas:** wrapper `createHonorarioLancamento` (permite valor 0) em [finance/mutations.ts](src/lib/finance/mutations.ts);
+  a rota `POST /api/financeiro/honorarios` (usada pelo botão "Lançar honorário") **repurposada** p/ criar
+  fee-lançamento; `converterLead` ([comercial/mutations.ts](src/lib/comercial/mutations.ts)) cria fee-lançamento
+  + seta `Lead.lancamentoId`; `pagarLancamento` aceita `contaId`; `novoLancamentoSchema`/`pagarLancamentoSchema`
+  estendidos. **Risco do id (honorário→lançamento) resolvido:** nova rota
+  [GET /api/financeiro/lancamentos/[id]/contrato](src/app/api/financeiro/lancamentos/[id]/contrato/route.ts) +
+  `crm-api` repontado (detalhe + pagar→`/pagar`, desmarcar→`/reabrir`); Spotlight/search já usam ids de
+  lançamento. **LexIA:** `listar_/detalhe_honorario` agora leem lançamentos; **removidas** `editar_honorario`/
+  `excluir_honorario` (redundantes) e `vincular_honorario_processo` (fee-lançamento já tem processoId). Backfill
+  NÃO destrutivo [scripts/backfill-honorarios-lancamentos.ts](scripts/backfill-honorarios-lancamentos.ts)
+  (`db:backfill:honorarios`): **só CARIMBA** o lançamento já ligado (metadado — verificado 288/288 já eram
+  subTipo='honorario', valores 1:1, ZERO duplicidade) + reponta `Lead.honorarioId`→`lancamentoId`. Os 13
+  honorários SEM lançamento (10 parcelas Lucilene R$10k, 2 avulsos sem cliente/caso R$25k, 1 stub R$0) foram
+  **DESCARTADOS por decisão do usuário** — o backfill NÃO cria lançamento p/ eles (somem das telas; a tabela
+  Honorario dormente é derrubada na Fase 2). Teste puro novo [tests/honorario-map.test.ts](tests/honorario-map.test.ts).
+  **DEFERIDO (Fase 2 / follow-up):** derrubar a tabela `Honorario` + rotas/mutations/schemas dormentes +
+  `Lead.honorarioId`; cortar as leituras de honorário do módulo **Processos** (`processos/{queries,associacao,
+  saude}.ts` — ainda leem `Honorario`; o módulo está desativado no ambiente do usuário) e o importer Astrea
+  (ainda cria `Honorario`; após re-import, rodar o backfill). **Verificado: tsc 0; 495/495; eslint só o aviso
+  pré-existente `AcertoSocioLado`. User action (REQUIRED — lock do Prisma no Windows):** parar `next dev` →
+  `npm run db:migrate` (gera/aplica: drop das tabelas Contrato vazias + colunas novas de Lancamento/Lead) →
+  `npm run db:generate` → **`npm run db:backfill:honorarios`** (1×) → `npm run dev`. Conferir: `/contratos` e a
+  aba Contratos do cliente listam os honorários (agora lançamentos); "Lançar honorário" num caso sem fee →
+  some da lista + aparece em Contratos; ganhar um lead com valor → cria fee-lançamento; LexIA (sócio) "liste os
+  honorários" vem dos lançamentos; abrir um contrato → modal com parcelas + "Marcar recebido".
+- **LexIA · Financeiro — tools de EDITAR/EXCLUIR faltando (não conseguia reagrupar parcelas/registrar
+  adiantamento) (this session, VERIFIED tsc 0, 497/497 testes, eslint limpo, NO migration)** (memory
+  `project_lexia_agent`). Sintoma do usuário: pediu p/ a LexIA registrar um adiantamento de honorários (10
+  parcelas de R$1k viram 3×R$3k + 1×R$1k) e ela "ficou buscando" e não conseguiu **editar** nem **excluir**
+  as parcelas excedentes. **Causa:** as tools financeiras da LexIA só tinham `criar_lancamento`/`pagar_lancamento`/
+  `excluir_lancamento` (single) — **sem editar_lancamento** e **sem NENHUMA tool de mutação de honorário** (só
+  os readonly `listar_honorarios`/`detalhe_honorario`), embora o backend já tivesse `updateLancamento`/
+  `bulkLancamentos`/`updateHonorario`/`deleteHonorario`. A enumeração já existia (`detalhe_cliente` devolve
+  TODOS os lançamentos+honorários do cliente com ids, em qualquer data — melhor que `listar_lancamentos`, que é
+  por período). **Fix ([tools/financeiro.ts](src/lib/lexia/agent/tools/financeiro.ts)):** 4 tools novas
+  (confirmation-gated) — **`editar_lancamento`** (patch parcial via `updateLancamento`: descrição/valor/
+  vencimento/status; reassina o valor pelo tipo) e **`editar_honorario`** (via `updateHonorario`, reusa
+  `honorarioPatchSchema`) sob `ROLES_FINANCEIRO`; **`excluir_lancamentos`** (LOTE, por lista de ids, via
+  `bulkLancamentos(ids,"excluir")`) e **`excluir_honorario`** (single) sob `["socio"]` (sensível, como
+  `excluir_lancamento`/`acerto_socios`). Descrições apontam p/ `detalhe_cliente` como fonte dos ids e citam o
+  caso de uso "reagrupar/adiantar honorários". A `recorrenteParent` self-relation é opcional (default SetNull →
+  excluir parcelas soltas é seguro; a UI interativa já faz isso). Registry auto-registra+gateia por `roles`
+  (sem name-set fixo p/ financeiro). Testes: `tests/lexia-agent.test.ts` estendido (editar_* p/ finance/sócio/
+  admin e ocultos p/ Equipe; excluir_lancamentos/excluir_honorario só sócio; financeiro pode editar mas não
+  excluir). **Verificado: tsc 0; 497/497; eslint limpo. Sem migração. User action:** pedir à LexIA (como
+  Sócio) "registre o adiantamento da cliente X: as 10 parcelas de 1k viraram 3 de 3k e 1 de 1k" → ela usa
+  `detalhe_cliente` p/ pegar os ids, `editar_lancamento` p/ ajustar valores e `excluir_lancamentos` p/ remover
+  as excedentes (cada mutação pede confirmação; exclusão em lote numa confirmação só).
+- **CRM · Cliente/Contato — CRUD completo de lançamentos (tabela do Financeiro reusada, travada no cliente) +
+  edição em lote (this session, VERIFIED tsc 0 nos arquivos tocados, 497/497 testes, eslint sem achados novos,
+  NO migration).** A aba Financeiro do detalhe do cliente tinha só uma lista somente-leitura (`CrmLancRow`) +
+  modal de criação enxuto. Agora, para **Sócio/Financeiro/Admin** (`verFinanceiro(role)`), renderiza a MESMA
+  `LancamentosTable` do Financeiro geral (CRUD + bulk pagar/reabrir/excluir + filtros Tipo/Status/Categoria/
+  Atraso + busca + CSV + totais), **travada no cliente atual**. Equipe (advogado/estagiário/staff) continua
+  somente-leitura (política `project_financeiro_visibilidade` preservada). Decisões do usuário: manter leitura
+  p/ Equipe; ambos os tipos (a receber E a pagar), idêntico ao Financeiro. **Reuso, não recriação:**
+  [LancamentosTable.tsx](src/components/financeiro/interativo/LancamentosTable.tsx) ganhou 3 props opcionais —
+  `lockCliente {id,nome}` (repassa ao modal, novo+edição), `onRefresh` (a tela do cliente recarrega via
+  `fetchClienteDetail`, não `router.refresh()`), e `embedded` (altura natural + sem padding lateral de 40px +
+  pula `useReportBottomBar`, pois a aba do CRM é fluxo normal com `maxWidth:1240`; overrides inline nas recipes
+  `lancRoot`/`filterBar`/`tableScroll`/`totalsBar`). [NovoLancamentoModal.tsx](src/components/financeiro/interativo/NovoLancamentoModal.tsx)
+  ganhou `lockCliente`: trava o campo "Contato" (dir "in") e SEMPRE anexa `clienteId` ao payload. **Robustez
+  (backend):** `criarLancamentos`/`editarLancamento` resolviam o cliente **por nome** (`resolveRefs`) — frágil
+  (nome não bate → `clienteId` nulo → o lançamento novo sumia da lista filtrada). Novo campo `clienteId` em
+  [schemas.ts](src/lib/finance/schemas.ts) `novoLancamentoSchema` (idOpt) + `NovoLancamentoInput`
+  ([mutations.ts](src/lib/finance/mutations.ts)); ambas as mutations usam `input.clienteId ?? refs.clienteId`
+  (Financeiro geral não envia → comportamento inalterado). **Dados:** `getClienteDetail`
+  ([clientes/queries.ts](src/lib/clientes/queries.ts)) agora roda `Promise.all` das 4 lookups
+  (`getCategoriaOptions/getClienteOptions/getFornecedorOptions/getContaOptions`) e devolve `lancOptions`
+  (`LancOptions`) no `ClienteDetail` ([clientes/types.ts](src/lib/clientes/types.ts); `crm-types.ts` re-exporta
+  automaticamente); rota `/api/clientes/[id]` herda. **Limpeza:** removido o `CrmLancamentoModal` órfão de
+  [CrmClienteModals.tsx](src/components/crm/pages/CrmClienteModals.tsx) + o union `{type:"lancamento"}` +
+  imports mortos (createLancamento/FxSegmented/parseBRLToCents). Teste novo
+  [tests/lancamento-cliente-scoped.test.ts](tests/lancamento-cliente-scoped.test.ts) (4 casos: `clienteId`
+  sobrevive ao parse do schema — guard contra a regressão que quebraria o vínculo). **Verificado: tsc 0 nos
+  arquivos tocados** (5 erros pré-existentes em `finance-contrato.ts/.test.ts` — WIP da entidade Contrato,
+  fora do escopo); **497/497 testes; eslint sem achados novos** (set-state-in-effect em LancamentosTable/
+  CrmClienteDetail são PRÉ-EXISTENTES, confirmado via baseline `git stash`). **Sem migração** (`clienteId` já
+  existe em `Lancamento`). **User action:** visual em `/contatos/[id]` → aba Financeiro como Sócio: tabela
+  idêntica à do Financeiro, só os lançamentos deste cliente; "Novo lançamento" com Contato travado → criar
+  aparece na lista sem recarregar a página; clicar numa linha → editar; menu ⋮ → excluir/reabrir; selecionar
+  várias → dar baixa/reabrir/excluir em lote. Logar como Equipe (ex.: `staff`) → segue somente-leitura.
 - **Comercial · fix: valor contratado de lead ganho = receita real do caso → honorário do lead → estimativa
   (this session, VERIFIED tsc 0, 473/473 testes, eslint limpo, NO migration).** Investigando o dev.db do
   usuário (caso Thiago) descobri o motivo real do "valor contratado R$ 0": o escritório fecha o contrato
@@ -203,7 +304,6 @@ This Next (16.2.6) has breaking changes vs. training data — consult
   mostra o investimento; para o VALOR aparecer, vincular o honorário ao lead ganho de junho (Converter/caso).
   Restam 5 gastos de campanha (#471–475, venc=null lançamento=julho) que caem em julho — re-datar se forem de
   junho; o diagnóstico aponta quais.
-=======
 - **Notificações de tarefas — mensagens específicas (quem/quando) + relatório diário por e-mail (this
   session, VERIFIED tsc 0, 480/480 testes, eslint limpo, NO migration)** (memory `project_notifications`).
   Pedido: as notificações de tarefa eram genéricas ("Nova tarefa para você", "Tarefa concluída") e não diziam
@@ -240,7 +340,6 @@ This Next (16.2.6) has breaking changes vs. training data — consult
   Configurações → Notificações → "Relatório diário" (ligado por padrão) + horário + **"Enviar agora (teste)"**
   → conferir o e-mail (Atrasadas/Para hoje; como sócio, seção da equipe; sem pendências → "tudo em dia").
   Precisa de e-mail configurado (Graph/SMTP) p/ chegar de fato; sem backend, o mailer é noop (só loga).
->>>>>>> 1bbadb22fbf38607a53599074a0069e3abe9ebff
 - **Comercial · fix: retorno (ROAS/ROI) não contava honorários lançados no caso (this session, VERIFIED
   tsc 0, 467/467 testes, eslint limpo, NO migration).** Sintoma: contrato ganho (Thiago José, mídia paga
   jun/26) com R$ 2.400 já recebidos NÃO aparecia como retorno no Comercial. **Causa raiz:** o valor de um
