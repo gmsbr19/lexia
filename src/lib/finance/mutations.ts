@@ -178,6 +178,9 @@ export interface LancamentoCreate {
   campanhaId?: number | null // ad-spend attribution (Comercial module)
   pagoPara?: string | null
   subTipo?: string | null
+  tipoHonorario?: string | null // fee bucket when subTipo='honorario'
+  valorLiquidoCents?: number | null
+  metodoPagamento?: string | null
   requestId?: string | null // client idempotency key — retried creates are no-ops
 }
 
@@ -217,7 +220,42 @@ export async function createLancamento(input: LancamentoCreate) {
       clienteId: input.clienteId ?? null,
       casoId: input.casoId ?? null,
       campanhaId: input.campanhaId ?? null,
+      tipoHonorario: input.tipoHonorario ?? null,
+      valorLiquidoCents: input.valorLiquidoCents ?? null,
+      metodoPagamento: input.metodoPagamento ?? null,
     },
+  })
+}
+
+/**
+ * A fee-receivable is just a Lancamento entrada with subTipo='honorario'.
+ * Single entry point for the app (CasosSemFee button + lead conversion) so we
+ * never create a `Honorario` row again (that entity is dormant → dropped in Fase 2).
+ */
+export async function createHonorarioLancamento(input: {
+  descricao: string
+  valorCents: number
+  dataVencimento?: string | null
+  tipoHonorario?: string | null
+  valorLiquidoCents?: number | null
+  clienteId?: number | null
+  casoId?: number | null
+  contaId?: number | null
+  requestId?: string | null
+}) {
+  return createLancamento({
+    tipo: "entrada",
+    status: "aberto",
+    subTipo: "honorario",
+    descricao: input.descricao,
+    valorCents: input.valorCents,
+    dataVencimento: input.dataVencimento ?? null,
+    tipoHonorario: input.tipoHonorario ?? "avista",
+    valorLiquidoCents: input.valorLiquidoCents ?? null,
+    clienteId: input.clienteId ?? null,
+    casoId: input.casoId ?? null,
+    contaId: input.contaId ?? null,
+    requestId: input.requestId ?? null,
   })
 }
 
@@ -267,11 +305,16 @@ function addMonthsISO(iso: string, n: number): string {
 }
 
 /** "Dar baixa" — mark a lançamento paid (status feito + dataPagamento). */
-export async function pagarLancamento(id: number, dataPagamento?: string | null) {
-  return prisma.lancamento.update({
-    where: { id },
-    data: { status: "feito", dataPagamento: toDate(dataPagamento) ?? new Date() },
-  })
+export async function pagarLancamento(
+  id: number,
+  opts?: { dataPagamento?: string | null; contaId?: number | null },
+) {
+  const data: Prisma.LancamentoUncheckedUpdateInput = {
+    status: "feito",
+    dataPagamento: toDate(opts?.dataPagamento) ?? new Date(),
+  }
+  if (opts?.contaId != null) data.contaId = opts.contaId
+  return prisma.lancamento.update({ where: { id }, data })
 }
 
 export async function reabrirLancamento(id: number) {
@@ -308,6 +351,9 @@ export interface NovoLancamentoInput {
   party?: string | null // cliente (in) / fornecedor (out)
   caso?: string | null
   contaId?: number | null // conta que recebeu (in) / pagou (out)
+  clienteId?: number | null // explicit cliente link (overrides name resolution — used by the cliente-scoped ledger)
+  tipoHonorario?: string | null // fee bucket (recorrente/parcelado/exito/avista) when dir='in'
+  valorLiquidoCents?: number | null
   pago?: boolean
   pagoData?: string | null
   modo?: "unica" | "mensal" | "parcelado"
@@ -387,9 +433,11 @@ export async function criarLancamentos(input: NovoLancamentoInput) {
         origem: "manual",
         recorrenteParentId: parentId,
         categoriaId: refs.categoriaId,
-        clienteId: refs.clienteId,
+        clienteId: input.clienteId ?? refs.clienteId,
         casoId: refs.casoId,
         contaId: input.contaId ?? null,
+        tipoHonorario: input.dir === "in" ? (input.tipoHonorario ?? "avista") : null,
+        valorLiquidoCents: input.dir === "in" ? (input.valorLiquidoCents ?? null) : null,
       }
       const lanc = await tx.lancamento.create({ data })
       if (i === 0 && modo !== "unica") parentId = lanc.id
@@ -420,9 +468,11 @@ export async function editarLancamento(id: number, input: NovoLancamentoInput) {
       dataPagamento: pago ? (toDate(input.pagoData) ?? new Date()) : null,
       pagoPara: refs.pagoPara,
       categoriaId: refs.categoriaId,
-      clienteId: refs.clienteId,
+      clienteId: input.clienteId ?? refs.clienteId,
       casoId: refs.casoId,
       contaId: input.contaId ?? null,
+      ...(input.tipoHonorario !== undefined ? { tipoHonorario: input.tipoHonorario } : {}),
+      ...(input.valorLiquidoCents !== undefined ? { valorLiquidoCents: input.valorLiquidoCents } : {}),
     },
   })
 }
@@ -640,7 +690,7 @@ export async function anonimizarCliente(id: number) {
     if (!cliente) throw new UserError("Cliente não encontrado")
 
     const removidos = await tx.lead.deleteMany({
-      where: { clienteId: id, etapa: { not: "ganho" }, honorarioId: null },
+      where: { clienteId: id, etapa: { not: "ganho" }, honorarioId: null, lancamentoId: null },
     })
     await tx.lead.updateMany({
       where: { clienteId: id },

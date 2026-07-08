@@ -284,33 +284,41 @@ export interface ConverterLeadInput {
   dataConversao?: string | null
 }
 
-/** Mark a lead won and link the Cliente / Caso / Honorário it converted into.
- *  When a contracted value is given (and no honorário is linked yet), creates a
- *  Honorário in Financeiro carrying that value (used by ROAS / ticket médio). */
+/** Mark a lead won and link the Cliente / Caso / fee-lançamento it converted into.
+ *  When a contracted value is given, creates a fee-lançamento (Lancamento entrada,
+ *  subTipo='honorario') carrying that value (used by ROAS / ticket médio). The
+ *  legacy `Honorario` entity is no longer created (dormant → dropped in Fase 2). */
 export async function converterLead(id: number, input: ConverterLeadInput, actorEmail?: string | null) {
   const dataConv = toDate(input.dataConversao) ?? new Date()
   const antes = await prisma.lead.findUnique({ where: { id }, select: { etapa: true } })
   const result = await prisma.$transaction(async (tx) => {
     const lead = await tx.lead.findUnique({ where: { id }, select: { id: true, nome: true } })
     if (!lead) throw new UserError("Lead não encontrado")
-    let honorarioId = optInt(input.honorarioId)
+    let lancamentoId: number | null = null
     const valor = typeof input.valorContratadoCents === "number" ? Math.abs(Math.round(input.valorContratadoCents)) : 0
-    if (!honorarioId && valor > 0) {
+    if (valor > 0) {
       const desc = input.casoTitulo?.trim() || input.clienteNome?.trim() || `Honorário — ${lead.nome}`
-      const hon = await tx.honorario.create({
+      const lanc = await tx.lancamento.create({
         data: {
-          astreaId: `app-hon-lead-${randomUUID()}`,
+          astreaId: `app-lanc-lead-${randomUUID()}`,
+          tipo: "entrada",
+          status: "aberto",
+          subTipo: "honorario",
           descricao: desc,
           valorCents: valor,
+          valorOriginalCents: valor,
           valorLiquidoCents: valor,
+          tipoHonorario: mapTipoHonorario(input.tipoHonorario),
+          dataLancamento: new Date(),
           dataVencimento: dataConv,
-          status: "lancado",
-          tipo: mapTipoHonorario(input.tipoHonorario),
+          isAnomalia: false,
+          geradoPorApp: true,
+          origem: "manual",
           clienteId: optInt(input.clienteId),
           casoId: optInt(input.casoId),
         },
       })
-      honorarioId = hon.id
+      lancamentoId = lanc.id
     }
     return tx.lead.update({
       where: { id },
@@ -319,7 +327,7 @@ export async function converterLead(id: number, input: ConverterLeadInput, actor
         dataConversao: dataConv,
         clienteId: optInt(input.clienteId),
         casoId: optInt(input.casoId),
-        honorarioId,
+        lancamentoId,
         motivoPerda: null,
       },
     })

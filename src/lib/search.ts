@@ -128,7 +128,8 @@ export async function searchAll(qRaw: string): Promise<SearchResults> {
       select: { id: true, nome: true, documento: true, tipo: true },
       orderBy: { nome: "asc" },
     }),
-    prisma.honorario.findMany({
+    prisma.lancamento.findMany({
+      where: { tipo: "entrada", subTipo: "honorario", isAnomalia: false },
       select: {
         id: true,
         descricao: true,
@@ -206,10 +207,10 @@ export async function searchAll(qRaw: string): Promise<SearchResults> {
       .slice(0, PER_GROUP)
       .map((r) => ({
         id: r.id,
-        descricao: r.descricao,
+        descricao: r.descricao ?? "Honorário",
         cliente: r.cliente?.nome ?? null,
-        valorCents: r.valorCents,
-        status: r.status,
+        valorCents: Math.abs(r.valorCents),
+        status: r.status === "feito" ? "recebido" : "lancado",
       })),
     tarefas: tarefas
       .filter((r) => contemNormalizado(nq, r.titulo))

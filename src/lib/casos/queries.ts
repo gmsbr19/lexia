@@ -4,7 +4,8 @@ import type { SessionUser } from "@/lib/auth/session"
 import { prisma } from "@/lib/db"
 import { type ListQuery, type Paginated, paginated } from "@/lib/list"
 import { listEventos } from "@/lib/agenda/queries"
-import type { HonorarioRow, HonorarioStatus, LancamentoRow } from "@/lib/finance/types"
+import type { HonorarioRow, LancamentoRow } from "@/lib/finance/types"
+import { lancamentoToHonorarioRow } from "@/lib/finance/honorario-map"
 import { scopeCasoWhere } from "@/lib/processos/rbac"
 import type { ProcessoMini, ProcessoStatus } from "@/lib/processos/types"
 import type { CasoDetail, CasoDocumentoRow, CasoListRow, CasoTarefaRow } from "./types"
@@ -124,19 +125,19 @@ export async function getCasoDetail(id: number): Promise<CasoDetail | null> {
       },
       orderBy: { dataVencimento: "desc" },
     }),
-    prisma.honorario.findMany({
-      where: { casoId: id },
+    prisma.lancamento.findMany({
+      where: { casoId: id, tipo: "entrada", subTipo: "honorario", isAnomalia: false },
       select: {
         id: true,
         descricao: true,
-        dataVencimento: true,
         valorCents: true,
         status: true,
-        tipo: true,
+        tipoHonorario: true,
+        dataVencimento: true,
         dataPagamento: true,
-        clienteId: true,
         contaId: true,
-        lancamentoId: true,
+        clienteId: true,
+        casoId: true,
         cliente: { select: { nome: true } },
         conta: { select: { nome: true } },
       },
@@ -221,22 +222,23 @@ export async function getCasoDetail(id: number): Promise<CasoDetail | null> {
     }
   })
 
-  const honorarios: HonorarioRow[] = honRows.map((r) => ({
-    id: r.id,
-    descricao: r.descricao,
-    cliente: r.cliente?.nome ?? null,
-    clienteId: r.clienteId,
-    caso: caso.titulo,
-    casoId: id,
-    vencimento: r.dataVencimento ? r.dataVencimento.toISOString() : null,
-    valorCents: r.valorCents,
-    status: (r.status ?? null) as HonorarioStatus | null,
-    tipo: (r.tipo ?? null) as HonorarioRow["tipo"],
-    dataPagamento: r.dataPagamento ? r.dataPagamento.toISOString() : null,
-    contaId: r.contaId,
-    conta: r.conta?.nome ?? null,
-    lancamentoId: r.lancamentoId,
-  }))
+  const honorarios: HonorarioRow[] = honRows.map((r) =>
+    lancamentoToHonorarioRow({
+      id: r.id,
+      descricao: r.descricao,
+      valorCents: r.valorCents,
+      status: r.status,
+      tipoHonorario: r.tipoHonorario,
+      dataVencimento: r.dataVencimento,
+      dataPagamento: r.dataPagamento,
+      contaId: r.contaId,
+      clienteId: r.clienteId,
+      casoId: r.casoId,
+      clienteNome: r.cliente?.nome ?? null,
+      casoTitulo: caso.titulo,
+      contaNome: r.conta?.nome ?? null,
+    }),
+  )
 
   const tarefas: CasoTarefaRow[] = tarefaRows.map((r) => ({
     id: r.id,

@@ -81,9 +81,9 @@ const OVERDUE_WHERE = (today: Date) => ({
 })
 
 async function ticketMedioCents(): Promise<number> {
-  const avg = await prisma.honorario.aggregate({
+  const avg = await prisma.lancamento.aggregate({
     _avg: { valorCents: true },
-    where: { valorCents: { gt: 0 } },
+    where: { tipo: "entrada", subTipo: "honorario", isAnomalia: false, valorCents: { gt: 0 } },
   })
   return Math.round(avg._avg.valorCents ?? 0)
 }
@@ -103,7 +103,7 @@ export async function getBriefing(): Promise<BriefingData> {
       by: ["clienteId"],
       where: { ...OVERDUE_WHERE(today), dataVencimento: { lt: cutoff60 } },
     }),
-    prisma.caso.count({ where: { status: "Ativo", honorarios: { none: {} } } }),
+    prisma.caso.count({ where: { status: "Ativo", lancamentos: { none: { tipo: "entrada", subTipo: "honorario" } } } }),
     ticketMedioCents(),
     getPrazosBriefing(today),
   ])
@@ -142,7 +142,7 @@ export async function getPlanoAcao(): Promise<PlanoAcaoData> {
       take: 2,
     }),
     prisma.caso.findMany({
-      where: { status: "Ativo", honorarios: { none: {} } },
+      where: { status: "Ativo", lancamentos: { none: { tipo: "entrada", subTipo: "honorario" } } },
       select: { id: true, titulo: true, clientePrincipal: { select: { nome: true } } },
       orderBy: { ultimaMovimentacao: "desc" },
     }),

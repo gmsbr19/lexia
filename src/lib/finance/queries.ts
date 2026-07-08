@@ -6,6 +6,7 @@ import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/db"
 import { computeAcertoSocios, emptyAcerto } from "./acerto"
 import { BUCKET_META, BUCKET_ORDER } from "./composicao"
+import { aggFeeTotals, lancamentoToHonorarioRow } from "./honorario-map"
 import { currentMes, inScope, periodRange } from "./periodo"
 import type {
   AcertoSocioLado,
@@ -27,7 +28,6 @@ import type {
   FluxoResumo,
   HonorarioDetail,
   HonorarioRow,
-  HonorarioStatus,
   HonorarioTotals,
   IdNome,
   ImportSummary,
@@ -72,6 +72,9 @@ function mesToDate(mes?: string | null): Date {
 }
 
 const REVENUE = { tipo: "entrada", isAnomalia: false } as const
+// A fee-receivable ("honorário") is a Lancamento entrada with subTipo='honorario'.
+// This is the single source for every honorário read (the Honorario table is dormant).
+const FEE = { tipo: "entrada", subTipo: "honorario", isAnomalia: false } as const
 // Balance-relevant rows: realized (feito) movements, excluding balance artifacts
 // (valor_inicial / "Compensação Sistema") BUT re-including internal transfers,
 // which are flagged isAnomalia=true yet still move an account's balance.
@@ -188,11 +191,11 @@ export async function getRevenueSeries(): Promise<MonthlyRevenuePoint[]> {
 
 // ── composição (fee composition) ─────────────────────────────────────────────
 export async function getComposition(): Promise<CompositionSlice[]> {
-  const grouped = await prisma.honorario.groupBy({ by: ["tipo"], _sum: { valorCents: true } })
+  const grouped = await prisma.lancamento.groupBy({ by: ["tipoHonorario"], where: FEE, _sum: { valorCents: true } })
   const byBucket = new Map<ComposicaoBucket, number>()
   for (const g of grouped) {
-    const bucket = (g.tipo ?? "avista") as ComposicaoBucket
-    byBucket.set(bucket, (byBucket.get(bucket) ?? 0) + (g._sum.valorCents ?? 0))
+    const bucket = (g.tipoHonorario ?? "avista") as ComposicaoBucket
+    byBucket.set(bucket, (byBucket.get(bucket) ?? 0) + Math.abs(g._sum.valorCents ?? 0))
   }
   const total = [...byBucket.values()].reduce((a, b) => a + b, 0)
   return BUCKET_ORDER.map((bucket) => {
@@ -314,7 +317,7 @@ export async function getBreakEven(): Promise<{ custoFixoMensalCents: number; re
 // ── casos sem fee ──────────────────────────────────────────────────────────────
 export async function getCasosSemFee(): Promise<CasoSemFeeRow[]> {
   const rows = await prisma.caso.findMany({
-    where: { status: "Ativo", excluidoEm: null, honorarios: { none: {} } },
+    where: { status: "Ativo", excluidoEm: null, lancamentos: { none: { tipo: "entrada", subTipo: "honorario" } } },
     select: {
       id: true,
       titulo: true,
@@ -345,13 +348,13 @@ export async function getImportSummary(): Promise<ImportSummary> {
     await Promise.all([
       prisma.cliente.count(),
       prisma.caso.count(),
-      prisma.honorario.count(),
+      prisma.lancamento.count({ where: FEE }),
       prisma.lancamento.count(),
       prisma.categoria.count(),
       prisma.conta.count(),
       prisma.centroCusto.count(),
       prisma.lancamento.count({ where: { isAnomalia: true } }),
-      prisma.caso.count({ where: { status: "Ativo", honorarios: { none: {} } } }),
+      prisma.caso.count({ where: { status: "Ativo", lancamentos: { none: { tipo: "entrada", subTipo: "honorario" } } } }),
     ])
   return { clientes, casos, honorarios, lancamentos, categorias, contas, centrosCusto, anomalias, casosSemFee }
 }
@@ -408,179 +411,121 @@ export async function getClientes(): Promise<ClienteRow[]> {
 }
 
 // ── contratos / honorários (MVP list) ────────────────────────────────────────
-export async function getHonorarios(): Promise<HonorarioRow[]> {
-  const rows = await prisma.honorario.findMany({
-    select: {
-      id: true,
-      descricao: true,
-      dataVencimento: true,
-      valorCents: true,
-      status: true,
-      tipo: true,
-      dataPagamento: true,
-      clienteId: true,
-      casoId: true,
-      contaId: true,
-      lancamentoId: true,
-      cliente: { select: { nome: true } },
-      caso: { select: { titulo: true } },
-      conta: { select: { nome: true } },
-    },
-    orderBy: { dataVencimento: "desc" },
-  })
-  return rows.map((r) => ({
-    id: r.id,
-    descricao: r.descricao,
-    cliente: r.cliente?.nome ?? null,
-    clienteId: r.clienteId,
-    caso: r.caso?.titulo ?? null,
-    casoId: r.casoId,
-    vencimento: r.dataVencimento ? r.dataVencimento.toISOString() : null,
-    valorCents: r.valorCents,
-    status: (r.status ?? null) as HonorarioStatus | null,
-    tipo: (r.tipo ?? null) as HonorarioRow["tipo"],
-    dataPagamento: r.dataPagamento ? r.dataPagamento.toISOString() : null,
-    contaId: r.contaId,
-    conta: r.conta?.nome ?? null,
-    lancamentoId: r.lancamentoId,
-  }))
-}
-
-// ── contrato modal: honorário detail + série de parcelas ─────────────────────
-const HON_ROW_SELECT = {
+// Shared prisma select for fee-lançamentos → mapped via lancamentoToHonorarioRow.
+const FEE_SELECT = {
   id: true,
   descricao: true,
-  dataVencimento: true,
   valorCents: true,
   status: true,
-  tipo: true,
+  tipoHonorario: true,
+  dataVencimento: true,
   dataPagamento: true,
+  contaId: true,
   clienteId: true,
   casoId: true,
-  contaId: true,
-  lancamentoId: true,
   cliente: { select: { nome: true } },
   caso: { select: { titulo: true } },
   conta: { select: { nome: true } },
-} satisfies Prisma.HonorarioSelect
+} as const
 
-type HonRowRecord = Prisma.HonorarioGetPayload<{ select: typeof HON_ROW_SELECT }>
-
-function toHonorarioRow(r: HonRowRecord): HonorarioRow {
-  return {
-    id: r.id,
-    descricao: r.descricao,
-    cliente: r.cliente?.nome ?? null,
-    clienteId: r.clienteId,
-    caso: r.caso?.titulo ?? null,
-    casoId: r.casoId,
-    vencimento: r.dataVencimento ? r.dataVencimento.toISOString() : null,
-    valorCents: r.valorCents,
-    status: (r.status ?? null) as HonorarioStatus | null,
-    tipo: (r.tipo ?? null) as HonorarioRow["tipo"],
-    dataPagamento: r.dataPagamento ? r.dataPagamento.toISOString() : null,
-    contaId: r.contaId,
-    conta: r.conta?.nome ?? null,
-    lancamentoId: r.lancamentoId,
-  }
+type FeeSelectRow = {
+  id: number
+  descricao: string | null
+  valorCents: number
+  status: string
+  tipoHonorario: string | null
+  dataVencimento: Date | null
+  dataPagamento: Date | null
+  contaId: number | null
+  clienteId: number | null
+  casoId: number | null
+  cliente: { nome: string } | null
+  caso: { titulo: string } | null
+  conta: { nome: string } | null
 }
 
-/** Parcela markers stripped for série grouping: "Honorários (3/12)" → "Honorários". */
-function descricaoBase(descricao: string): string {
-  return descricao
-    .replace(/\s*[(\[]?\d{1,3}\s*\/\s*\d{1,3}[)\]]?\s*$/, "")
-    .replace(/\s*[-·–]\s*parcela.*$/i, "")
-    .trim()
-    .toLowerCase()
+const feeRowToHonorario = (r: FeeSelectRow): HonorarioRow =>
+  lancamentoToHonorarioRow({
+    id: r.id,
+    descricao: r.descricao,
+    valorCents: r.valorCents,
+    status: r.status,
+    tipoHonorario: r.tipoHonorario,
+    dataVencimento: r.dataVencimento,
+    dataPagamento: r.dataPagamento,
+    contaId: r.contaId,
+    clienteId: r.clienteId,
+    casoId: r.casoId,
+    clienteNome: r.cliente?.nome ?? null,
+    casoTitulo: r.caso?.titulo ?? null,
+    contaNome: r.conta?.nome ?? null,
+  })
+
+export async function getHonorarios(): Promise<HonorarioRow[]> {
+  const rows = await prisma.lancamento.findMany({
+    where: FEE,
+    select: FEE_SELECT,
+    orderBy: { dataVencimento: "desc" },
+  })
+  return rows.map(feeRowToHonorario)
+}
+
+// ── contrato modal: honorário detail + série de parcelas (lançamento-backed) ──
+// `id` here is a LANÇAMENTO id (post-cutover). Both the série and the payment
+// schedule come from the recorrência group (parent + filhos) of fee-lançamentos.
+const FEE_DETAIL_SELECT = {
+  ...FEE_SELECT,
+  dataLancamento: true,
+  pagoPara: true,
+  recorrenteParentId: true,
+  valorLiquidoCents: true,
+  metodoPagamento: true,
+  responsavel: true,
+  categoria: { select: { nome: true } },
+} as const
+
+type FeeDetailRow = Prisma.LancamentoGetPayload<{ select: typeof FEE_DETAIL_SELECT }>
+
+function feeDetailToLancamentoRow(l: FeeDetailRow): LancamentoRow {
+  const vencDate = l.dataVencimento ?? l.dataLancamento
+  return {
+    id: l.id,
+    dir: "in",
+    desc: l.descricao ?? "—",
+    party: l.cliente?.nome ?? l.pagoPara ?? null,
+    caso: l.caso?.titulo ?? null,
+    cat: l.categoria?.nome ?? null,
+    venc: vencDate ? vencDate.toISOString() : null,
+    valorCents: Math.abs(l.valorCents),
+    pago: l.status === "feito",
+    pagoData: l.dataPagamento ? l.dataPagamento.toISOString() : null,
+    contaId: l.contaId,
+    conta: l.conta?.nome ?? null,
+    recorrente: l.recorrenteParentId != null,
+    grupo: "Recorrente",
+  }
 }
 
 export async function getHonorarioDetail(id: number): Promise<HonorarioDetail | null> {
-  const r = await prisma.honorario.findUnique({
-    where: { id },
-    select: {
-      ...HON_ROW_SELECT,
-      valorLiquidoCents: true,
-      responsavel: true,
-      pagamento: true,
-      processoTitulo: true,
-    },
-  })
+  const r = await prisma.lancamento.findFirst({ where: { id, ...FEE }, select: FEE_DETAIL_SELECT })
   if (!r) return null
 
-  // Série: siblings sharing cliente+caso+tipo+descrição-base (parcelado/recorrente only).
-  let serie: HonorarioRow[] = []
-  if (r.tipo === "parcelado" || r.tipo === "recorrente") {
-    const siblings = await prisma.honorario.findMany({
-      where: { tipo: r.tipo, clienteId: r.clienteId, casoId: r.casoId },
-      select: HON_ROW_SELECT,
-      orderBy: { dataVencimento: "asc" },
-    })
-    const base = descricaoBase(r.descricao)
-    serie = siblings
-      .filter((s) => !base || descricaoBase(s.descricao) === base)
-      .map(toHonorarioRow)
-    if (serie.length <= 1) serie = []
-  }
-
-  // Payment schedule: the linked lançamento's recorrência série (parent + filhos).
-  let parcelas: LancamentoRow[] = []
-  if (r.lancamentoId) {
-    const linked = await prisma.lancamento.findUnique({
-      where: { id: r.lancamentoId },
-      select: { id: true, recorrenteParentId: true },
-    })
-    if (linked) {
-      const rootId = linked.recorrenteParentId ?? linked.id
-      const ledger = await prisma.lancamento.findMany({
-        where: { OR: [{ id: rootId }, { recorrenteParentId: rootId }] },
-        select: {
-          id: true,
-          tipo: true,
-          status: true,
-          descricao: true,
-          valorCents: true,
-          dataVencimento: true,
-          dataLancamento: true,
-          dataPagamento: true,
-          pagoPara: true,
-          contaId: true,
-          cliente: { select: { nome: true } },
-          caso: { select: { titulo: true } },
-          categoria: { select: { nome: true } },
-          conta: { select: { nome: true } },
-        },
-        orderBy: { dataVencimento: "asc" },
-      })
-      if (ledger.length > 1) {
-        parcelas = ledger.map((l) => {
-          const vencDate = l.dataVencimento ?? l.dataLancamento
-          return {
-            id: l.id,
-            dir: l.tipo === "saida" ? ("out" as const) : ("in" as const),
-            desc: l.descricao ?? "—",
-            party: l.cliente?.nome ?? l.pagoPara ?? null,
-            caso: l.caso?.titulo ?? null,
-            cat: l.categoria?.nome ?? null,
-            venc: vencDate ? vencDate.toISOString() : null,
-            valorCents: Math.abs(l.valorCents),
-            pago: l.status === "feito",
-            pagoData: l.dataPagamento ? l.dataPagamento.toISOString() : null,
-            contaId: l.contaId,
-            conta: l.conta?.nome ?? null,
-            recorrente: true,
-            grupo: "Recorrente",
-          }
-        })
-      }
-    }
-  }
+  const rootId = r.recorrenteParentId ?? r.id
+  const group = await prisma.lancamento.findMany({
+    where: { OR: [{ id: rootId }, { recorrenteParentId: rootId }], ...FEE },
+    select: FEE_DETAIL_SELECT,
+    orderBy: { dataVencimento: "asc" },
+  })
+  const multi = group.length > 1
+  const serie: HonorarioRow[] = multi ? group.map(feeRowToHonorario) : []
+  const parcelas: LancamentoRow[] = multi ? group.map(feeDetailToLancamentoRow) : []
 
   return {
-    ...toHonorarioRow(r),
-    valorLiquidoCents: r.valorLiquidoCents,
+    ...feeRowToHonorario(r),
+    valorLiquidoCents: r.valorLiquidoCents ?? Math.abs(r.valorCents),
     responsavel: r.responsavel,
-    pagamento: r.pagamento,
-    processoTitulo: r.processoTitulo,
+    pagamento: r.metodoPagamento,
+    processoTitulo: null, // legacy Astrea string; not carried on the ledger
     serie,
     parcelas,
   }
@@ -655,12 +600,12 @@ export async function getTransferencias(limit = 100): Promise<TransferenciaRow[]
 // ── honorário totals (paid vs pending) ───────────────────────────────────────
 export async function getHonorarioTotals(): Promise<HonorarioTotals> {
   const [receb, pend] = await Promise.all([
-    prisma.honorario.aggregate({ _sum: { valorCents: true }, _count: true, where: { status: "recebido" } }),
-    prisma.honorario.aggregate({ _sum: { valorCents: true }, _count: true, where: { NOT: { status: "recebido" } } }),
+    prisma.lancamento.aggregate({ _sum: { valorCents: true }, _count: true, where: { ...FEE, status: "feito" } }),
+    prisma.lancamento.aggregate({ _sum: { valorCents: true }, _count: true, where: { ...FEE, status: "aberto" } }),
   ])
   return {
-    recebidoCents: receb._sum.valorCents ?? 0,
-    pendenteCents: pend._sum.valorCents ?? 0,
+    recebidoCents: Math.abs(receb._sum.valorCents ?? 0),
+    pendenteCents: Math.abs(pend._sum.valorCents ?? 0),
     countRecebido: receb._count,
     countPendente: pend._count,
   }
@@ -929,16 +874,13 @@ export async function getContratos(): Promise<ContratoRow[]> {
       dataCriacao: true,
       clientePrincipalId: true,
       clientePrincipal: { select: { nome: true, origem: true } },
-      honorarios: { select: { valorCents: true, status: true } },
+      lancamentos: { where: FEE, select: { valorCents: true, status: true } },
       leads: { select: { origem: true, dataConversao: true } },
     },
     orderBy: { dataCriacao: "desc" },
   })
   return rows.map((r): ContratoRow => {
-    const valorContratadoCents = r.honorarios.reduce((a, h) => a + h.valorCents, 0)
-    const recebidoCents = r.honorarios
-      .filter((h) => h.status === "recebido")
-      .reduce((a, h) => a + h.valorCents, 0)
+    const { contratadoCents: valorContratadoCents, recebidoCents } = aggFeeTotals(r.lancamentos)
     // origem = a origem editada no cadastro do cliente; se não houver, cai para a
     // origem do lead convertido mais recente vinculado ao caso; casos diretos/
     // importados (sem cliente-origem nem lead) ficam sem origem ("Direto").
@@ -960,7 +902,10 @@ export async function getContratos(): Promise<ContratoRow[]> {
       dataFechamento: r.dataCriacao ? r.dataCriacao.toISOString() : null,
       valorContratadoCents,
       recebidoCents,
-      honorariosCount: r.honorarios.length,
+      honorariosCount: r.lancamentos.length,
+      // getContratos is caso-per-row (contrato = caso), so exactly one caso per row.
+      casosCount: 1,
+      unicoCasoId: r.id,
     }
   })
 }

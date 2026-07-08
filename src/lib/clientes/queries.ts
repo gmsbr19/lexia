@@ -5,7 +5,9 @@ import { prisma } from "@/lib/db"
 import { getCobrancaCliente } from "./cobranca"
 import { getDocumentos } from "@/lib/documentos/queries"
 import { listEventos } from "@/lib/agenda/queries"
-import type { HonorarioRow, HonorarioStatus, LancamentoRow } from "@/lib/finance/types"
+import { getCategoriaOptions, getClienteOptions, getContaOptions, getFornecedorOptions } from "@/lib/finance/queries"
+import type { HonorarioRow, LancamentoRow } from "@/lib/finance/types"
+import { lancamentoToHonorarioRow } from "@/lib/finance/honorario-map"
 import type { ProcessoMini, ProcessoStatus } from "@/lib/processos/types"
 import type { ClienteCasoRow, ClienteDetail, ClienteHeader, ClienteResumo, ClienteTarefaRow } from "./types"
 
@@ -42,7 +44,7 @@ export async function getClienteDetail(id: number): Promise<ClienteDetail | null
   })
   if (!cliente) return null
 
-  const [lancRows, honRows, casoRows, tarefaRows, eventos, documentos, cobranca] = await Promise.all([
+  const [lancRows, honRows, casoRows, tarefaRows, eventos, documentos, cobranca, cats, clienteOpts, fornecedores, contas] = await Promise.all([
     prisma.lancamento.findMany({
       where: { clienteId: id, isAnomalia: false },
       select: {
@@ -64,19 +66,19 @@ export async function getClienteDetail(id: number): Promise<ClienteDetail | null
       },
       orderBy: { dataVencimento: "desc" },
     }),
-    prisma.honorario.findMany({
-      where: { clienteId: id },
+    prisma.lancamento.findMany({
+      where: { clienteId: id, tipo: "entrada", subTipo: "honorario", isAnomalia: false },
       select: {
         id: true,
         descricao: true,
-        dataVencimento: true,
         valorCents: true,
         status: true,
-        tipo: true,
+        tipoHonorario: true,
+        dataVencimento: true,
         dataPagamento: true,
-        casoId: true,
         contaId: true,
-        lancamentoId: true,
+        clienteId: true,
+        casoId: true,
         caso: { select: { titulo: true } },
         conta: { select: { nome: true } },
       },
@@ -130,6 +132,10 @@ export async function getClienteDetail(id: number): Promise<ClienteDetail | null
     listEventos({ clienteId: id }),
     getDocumentos({ clienteId: id }),
     getCobrancaCliente(id),
+    getCategoriaOptions(),
+    getClienteOptions(),
+    getFornecedorOptions(),
+    getContaOptions(),
   ])
 
   const header: ClienteHeader = {
@@ -173,22 +179,23 @@ export async function getClienteDetail(id: number): Promise<ClienteDetail | null
     }
   })
 
-  const honorarios: HonorarioRow[] = honRows.map((r) => ({
-    id: r.id,
-    descricao: r.descricao,
-    cliente: cliente.nome,
-    clienteId: id,
-    caso: r.caso?.titulo ?? null,
-    casoId: r.casoId,
-    vencimento: r.dataVencimento ? r.dataVencimento.toISOString() : null,
-    valorCents: r.valorCents,
-    status: (r.status ?? null) as HonorarioStatus | null,
-    tipo: (r.tipo ?? null) as HonorarioRow["tipo"],
-    dataPagamento: r.dataPagamento ? r.dataPagamento.toISOString() : null,
-    contaId: r.contaId,
-    conta: r.conta?.nome ?? null,
-    lancamentoId: r.lancamentoId,
-  }))
+  const honorarios: HonorarioRow[] = honRows.map((r) =>
+    lancamentoToHonorarioRow({
+      id: r.id,
+      descricao: r.descricao,
+      valorCents: r.valorCents,
+      status: r.status,
+      tipoHonorario: r.tipoHonorario,
+      dataVencimento: r.dataVencimento,
+      dataPagamento: r.dataPagamento,
+      contaId: r.contaId,
+      clienteId: r.clienteId,
+      casoId: r.casoId,
+      clienteNome: cliente.nome,
+      casoTitulo: r.caso?.titulo ?? null,
+      contaNome: r.conta?.nome ?? null,
+    }),
+  )
 
   const casos: ClienteCasoRow[] = casoRows.map((r) => ({
     id: r.id,
@@ -245,5 +252,6 @@ export async function getClienteDetail(id: number): Promise<ClienteDetail | null
     documentos,
     anotacoes: cobranca.anotacoes,
     cobranca: cobranca.estado,
+    lancOptions: { cats, clientes: clienteOpts.map((c) => c.nome), fornecedores, contas, casos: casoRows.map((c) => c.titulo) },
   }
 }

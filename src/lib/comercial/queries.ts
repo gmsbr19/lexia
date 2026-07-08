@@ -149,9 +149,9 @@ export async function getComercialKpis(mes?: string, periodo: Periodo = "mes"): 
       },
     }),
     prisma.lancamento.aggregate({ _sum: { valorCents: true }, where: spendWhere(marketingIds, start, end) }),
-    prisma.honorario.aggregate({
+    prisma.lancamento.aggregate({
       _sum: { valorCents: true },
-      where: { status: "recebido", dataPagamento: { gte: start, lt: end } },
+      where: { tipo: "entrada", subTipo: "honorario", isAnomalia: false, status: "feito", dataPagamento: { gte: start, lt: end } },
     }),
   ])
 
@@ -177,7 +177,7 @@ export async function getComercialKpis(mes?: string, periodo: Periodo = "mes"): 
     taxaConversaoPct: pct(conversoes, leads),
     investimentoCents,
     valorContratadoCents,
-    receitaRecebidaCents: recebido._sum.valorCents ?? 0,
+    receitaRecebidaCents: Math.abs(recebido._sum.valorCents ?? 0),
     roas: ratio(valorContratadoCents, investimentoCents),
     roiPct: pct(valorContratadoCents - investimentoCents, investimentoCents),
     cacCents: perUnit(investimentoCents, conversoes),
