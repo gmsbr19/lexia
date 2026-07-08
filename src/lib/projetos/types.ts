@@ -147,6 +147,16 @@ export interface DashDistribuicao {
   dias: string[] // ISO "YYYY-MM-DD", próximos N dias começando hoje
   linhas: DashDistribuicaoLinha[]
 }
+/** Conclusões recentes: tarefas concluídas por dia, por pessoa (janela para trás). */
+export interface DashConclusoesLinha {
+  membro: TeamMember
+  counts: number[] // tarefas concluídas em cada dia de `dias` (alinhado por índice)
+  total: number
+}
+export interface DashConclusoes {
+  dias: string[] // ISO "YYYY-MM-DD", últimos N dias terminando hoje
+  linhas: DashConclusoesLinha[]
+}
 export interface DashAreaResumo {
   area: string // chave
   projetosAtivos: number
@@ -158,6 +168,7 @@ export interface ProdutividadeDashboard {
   projetos: DashProjetoSaude[]
   carga: DashCargaMembro[]
   distribuicao: DashDistribuicao
+  conclusoes: DashConclusoes
   gargalos: DashGargalo[]
   porArea: DashAreaResumo[]
 }

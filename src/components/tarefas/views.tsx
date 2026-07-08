@@ -342,6 +342,30 @@ export const GROUP_OPTS: { id: GroupBy; label: string; icon: TfIconName }[] = [
   { id: "prioridade", label: "Prioridade", icon: "flag" },
 ]
 
+// ── ordenação (usada pela "Todas as tarefas") ─────────────────────────────────
+export type SortBy = "padrao" | "prazo" | "prioridade" | "titulo" | "criacao"
+export const SORT_OPTS: { id: SortBy; label: string; icon: TfIconName }[] = [
+  { id: "padrao", label: "Padrão (hora/prioridade)", icon: "clock" },
+  { id: "prazo", label: "Prazo", icon: "flag" },
+  { id: "prioridade", label: "Prioridade", icon: "flag" },
+  { id: "titulo", label: "Título (A–Z)", icon: "list" },
+  { id: "criacao", label: "Criação (recentes)", icon: "plus" },
+]
+export function taskComparator(sortBy: SortBy): (a: TaskRow, b: TaskRow) => number {
+  switch (sortBy) {
+    case "prazo":
+      return (a, b) => (a.prazo || "9999").localeCompare(b.prazo || "9999")
+    case "prioridade":
+      return (a, b) => a.prio - b.prio
+    case "titulo":
+      return (a, b) => a.titulo.localeCompare(b.titulo, "pt-BR", { sensitivity: "base" })
+    case "criacao":
+      return (a, b) => b.id - a.id
+    default:
+      return byTime
+  }
+}
+
 interface GroupHeader {
   dot?: string | null
   avatar?: number
@@ -353,7 +377,7 @@ interface Group {
   items: TaskRow[]
 }
 
-export function ListaView({ tasks, groupBy, hideDone, selectable, selectedIds, onSelect, ...cb }: { tasks: TaskRow[]; groupBy: GroupBy } & HideDone & Selectable & ViewCallbacks) {
+export function ListaView({ tasks, groupBy, sortBy = "padrao", hideDone, selectable, selectedIds, onSelect, ...cb }: { tasks: TaskRow[]; groupBy: GroupBy; sortBy?: SortBy } & HideDone & Selectable & ViewCallbacks) {
   const { projetos, socios } = useTarefasCtx()
   const vis = useVisibleTasks(tasks, hideDone)
   let groups: Group[] = []
@@ -418,7 +442,7 @@ export function ListaView({ tasks, groupBy, hideDone, selectable, selectedIds, o
           <AnimatedRows
             rows={g.items
               .slice()
-              .sort(byTime)
+              .sort(taskComparator(sortBy))
               .map((t) => ({
                 id: t.id,
                 el: <TaskRow task={t} showProject={groupBy !== "projeto"} selectable={selectable} selected={selectedIds?.has(t.id)} onSelect={onSelect} {...cb} />,
@@ -744,9 +768,9 @@ export function AgendaView({ tasks, onSchedule, ...cb }: { tasks: TaskRow[]; onS
   }
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "236px 1fr", gap: 16, alignItems: "start" }}>
-      {/* pool */}
-      <div className="card" style={{ padding: 14 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 300px", gap: 20, alignItems: "start" }}>
+      {/* pool — à direita */}
+      <div style={{ gridColumn: 2, borderLeft: "1px solid var(--border)", paddingLeft: 20, position: "sticky", top: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
           <Icon name="inbox" size={15} strokeWidth={1.9} style={{ color: "var(--text-muted)" }} />
           <span style={{ fontSize: 14, fontWeight: 500, color: "var(--text)" }}>A agendar hoje</span>
@@ -783,8 +807,8 @@ export function AgendaView({ tasks, onSchedule, ...cb }: { tasks: TaskRow[]; onS
         </div>
       </div>
 
-      {/* timeline — solta em qualquer horário (snap de 15 min) */}
-      <div className="card" style={{ padding: "8px 8px 8px 0", position: "relative" }}>
+      {/* timeline — à esquerda, ocupa o máximo de espaço; solta em qualquer horário (snap de 15 min) */}
+      <div style={{ gridColumn: 1, padding: "0 4px 0 0", position: "relative", minWidth: 0 }}>
         <div
           ref={gridRef}
           style={{ position: "relative" }}
@@ -901,6 +925,282 @@ export function AgendaView({ tasks, onSchedule, ...cb }: { tasks: TaskRow[]; onS
             )
           })}
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ── AGENDA DO DIA (redesenhada — Claude Design) ──────────────────────────────
+// Timeline de altura total com faixa de expediente, linha "agora" com auto-scroll,
+// blocos com detecção de sobreposição (lanes) e trilha lateral de "a agendar".
+// Usada no modo Agenda da tela Hoje. Navega dias (onSchedule recebe o dia alvo).
+const AG_START = 6 // primeira hora exibida
+const AG_END = 22 // última hora (linha final = 22:00)
+const AG_SLOT = 68 // altura por hora (px)
+const AG_GUTTER = 62 // largura da coluna de horas
+const AG_DUR = 50 // duração visual de um bloco (min)
+const AG_SNAP = 15 // snap ao soltar (min)
+const AG_WORK: [number, number] = [8, 19] // faixa de expediente destacada
+const agFmt = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`
+const agIso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+
+interface AgEvent { t: TaskRow; s: number; e: number; col: number; cols: number }
+// distribui blocos sobrepostos em colunas (lane packing por cluster)
+function agLayout(placed: TaskRow[]): AgEvent[] {
+  const evs: AgEvent[] = placed
+    .filter((t) => t.hora)
+    .map((t) => {
+      const [h, m] = (t.hora as string).split(":").map(Number)
+      const s = h * 60 + m
+      return { t, s, e: s + AG_DUR, col: 0, cols: 1 }
+    })
+    .sort((a, b) => a.s - b.s || a.t.prio - b.t.prio)
+  const clusters: AgEvent[][] = []
+  let cur: AgEvent[] = []
+  let curEnd = -1
+  evs.forEach((ev) => {
+    if (cur.length && ev.s >= curEnd) { clusters.push(cur); cur = []; curEnd = -1 }
+    cur.push(ev); curEnd = Math.max(curEnd, ev.e)
+  })
+  if (cur.length) clusters.push(cur)
+  clusters.forEach((cl) => {
+    const laneEnds: number[] = []
+    cl.forEach((ev) => {
+      let col = laneEnds.findIndex((end) => end <= ev.s)
+      if (col === -1) { col = laneEnds.length; laneEnds.push(ev.e) } else laneEnds[col] = ev.e
+      ev.col = col
+    })
+    cl.forEach((ev) => { ev.cols = laneEnds.length })
+  })
+  return evs
+}
+
+function AgStat({ value, label, tone }: { value: number; label: string; tone?: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+      <span style={{ fontSize: 20, fontWeight: 600, letterSpacing: "-0.02em", color: tone || "var(--text)", fontFeatureSettings: '"tnum"' }}>{value}</span>
+      <span style={{ fontSize: 12.5, color: "var(--text-subtle)", whiteSpace: "nowrap" }}>{label}</span>
+    </div>
+  )
+}
+
+// bloco de evento que adapta o conteúdo à largura/altura reais do container
+function AgBlock({ t, top, left, colW, hgt, color, cb }: { t: TaskRow; top: number; left: string; colW: string; hgt: number; color: string; cb: ViewCallbacks }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [size, setSize] = useState({ w: 0, h: hgt })
+  useEffect(() => {
+    const el = ref.current
+    if (!el || typeof ResizeObserver === "undefined") return
+    const ro = new ResizeObserver(([e]) => { const r = e.contentRect; setSize({ w: r.width, h: r.height }) })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  const tier = size.w >= 176 ? "full" : size.w >= 100 ? "mid" : "min"
+  const twoRows = tier === "full" && size.h >= 34
+  const pad = tier === "min" ? "4px 7px" : twoRows ? "6px 10px" : "5px 9px"
+  const checkSize = tier === "min" ? 15 : 16
+  return (
+    <div
+      ref={ref}
+      draggable
+      onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(t.id)) }}
+      onClick={() => cb.onOpen(t.id)}
+      className="lift-card"
+      title={t.titulo}
+      style={{
+        position: "absolute", top: top + 2, left, width: colW, height: hgt - 4,
+        background: "var(--surface)", border: "1px solid var(--border-strong)", borderLeft: `3px solid ${color}`,
+        borderRadius: 9, boxShadow: "var(--shadow-sm)", padding: pad, cursor: "grab",
+        overflow: "hidden", display: "flex", flexDirection: "column", gap: 3, justifyContent: twoRows ? "flex-start" : "center",
+        opacity: t.done ? 0.55 : 1, zIndex: 4,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: tier === "min" ? 6 : 8, minWidth: 0 }}>
+        <TaskCheck done={t.done} prio={t.prio} onToggle={() => cb.onToggle(t.id)} size={checkSize} />
+        <span style={{ flex: 1, minWidth: 0, fontSize: tier === "min" ? 12 : 12.5, fontWeight: 500, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textDecoration: t.done ? "line-through" : "none" }}>{t.titulo}</span>
+        {tier === "full" && t.responsavelId != null && <AssigneeAvatar id={t.responsavelId} size={18} />}
+        {tier === "mid" && <span style={{ fontSize: 11, color: "var(--text-subtle)", flexShrink: 0, fontFeatureSettings: '"tnum"' }}>{t.hora}</span>}
+      </div>
+      {twoRows && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 24, minWidth: 0 }}>
+          <span style={{ fontSize: 11, color: "var(--text-subtle)", flexShrink: 0, fontFeatureSettings: '"tnum"' }}>{t.hora}</span>
+          <LinkChip vinculo={t.vinculo} onClick={cb.onLinkClick} />
+          <PriorityFlag prio={t.prio} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function AgendaDia({
+  tasks,
+  onSchedule,
+  overdue,
+  ...cb
+}: { tasks: TaskRow[]; onSchedule: (id: number, hora: string, dateIso: string) => void; overdue?: ReactNode } & ViewCallbacks) {
+  const { projetoById } = useTarefasCtx()
+  const [sel, setSel] = useState(TODAY())
+  const [overMin, setOverMin] = useState<number | null>(null)
+  const gridRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const corDe = (t: TaskRow) => projetoById(t.projetoId)?.cor || "var(--accent)"
+
+  const isToday = sel === TODAY()
+  const selD = tParse(sel)
+  const dayTasks = tasks.filter((t) => t.data === sel)
+  const pool = dayTasks.filter((t) => !t.hora && !t.done)
+  const placed = dayTasks.filter((t) => t.hora)
+  const doneCount = placed.filter((t) => t.done).length
+  const events = agLayout(placed)
+
+  const now = new Date()
+  const nowMin = now.getHours() * 60 + now.getMinutes()
+  const nowVisible = isToday && nowMin >= AG_START * 60 && nowMin <= AG_END * 60
+
+  // auto-scroll: centraliza no "agora" (hoje) ou no início do expediente
+  useEffect(() => {
+    const sc = scrollRef.current
+    if (!sc) return
+    const target = nowVisible ? nowMin : AG_WORK[0] * 60
+    const y = ((target - AG_START * 60) / 60) * AG_SLOT - sc.clientHeight * 0.35
+    sc.scrollTop = Math.max(0, y)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sel])
+
+  const minuteFromEvent = (e: React.DragEvent): number => {
+    const rect = gridRef.current!.getBoundingClientRect()
+    const y = e.clientY - rect.top
+    let m = AG_START * 60 + (y / AG_SLOT) * 60
+    m = Math.round(m / AG_SNAP) * AG_SNAP
+    return Math.max(AG_START * 60, Math.min(AG_END * 60 - AG_SNAP, m))
+  }
+  const dropAt = (e: React.DragEvent) => {
+    e.preventDefault()
+    const id = e.dataTransfer.getData("text/plain")
+    if (id) onSchedule(Number(id), agFmt(minuteFromEvent(e)), sel)
+    setOverMin(null)
+  }
+  const shiftDay = (n: number) => {
+    const d = tParse(sel)
+    d.setDate(d.getDate() + n)
+    setSel(agIso(d))
+  }
+
+  const navBtn: React.CSSProperties = { width: 30, height: 30, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 8, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--text-muted)", cursor: "pointer" }
+  const HOURS_AG = Array.from({ length: AG_END - AG_START + 1 }, (_, i) => AG_START + i)
+  const totalH = (AG_END - AG_START) * AG_SLOT
+
+  return (
+    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+      {/* header */}
+      <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 20, padding: "8px 28px 18px", borderBottom: "1px solid var(--border)" }}>
+        <div style={{ minWidth: 0 }}>
+          <h1 style={{ margin: 0, fontSize: 23, fontWeight: 600, letterSpacing: "-0.025em", color: "var(--text)", whiteSpace: "nowrap" }}>Agenda do dia</h1>
+          <div style={{ marginTop: 4, fontSize: 13, color: "var(--text-muted)", textTransform: "capitalize" }}>
+            {WD_LONG[selD.getDay()]}{selD.getDay() > 0 && selD.getDay() < 6 ? "-feira" : ""}, {selD.getDate()} {MO[selD.getMonth()]}
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <button style={navBtn} onClick={() => shiftDay(-1)} aria-label="Dia anterior"><Icon name="chevronLeft" size={16} /></button>
+          <button
+            style={{ ...navBtn, width: "auto", padding: "0 14px", fontSize: 12.5, fontWeight: 500, fontFamily: "var(--font-sans)", color: isToday ? "var(--text-subtle)" : "var(--accent)", borderColor: isToday ? "var(--border-strong)" : "var(--border-gold)" }}
+            onClick={() => setSel(TODAY())}
+          >
+            Hoje
+          </button>
+          <button style={navBtn} onClick={() => shiftDay(1)} aria-label="Próximo dia"><Icon name="chevronRight" size={16} /></button>
+        </div>
+        <div style={{ flex: 1 }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 26 }}>
+          <AgStat value={placed.length} label="agendadas" />
+          <AgStat value={doneCount} label="concluídas" tone={doneCount ? "var(--ok)" : undefined} />
+          <AgStat value={pool.length} label="a agendar" tone={pool.length ? "var(--accent)" : undefined} />
+        </div>
+      </div>
+
+      {overdue != null && <div style={{ flexShrink: 0, padding: "14px 28px 0" }}>{overdue}</div>}
+
+      {/* body */}
+      <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
+        {/* timeline */}
+        <div ref={scrollRef} className="side-scroll" style={{ flex: 1, minWidth: 0, overflowY: "auto", position: "relative" }}>
+          <div
+            ref={gridRef}
+            style={{ position: "relative", height: totalH, margin: "6px 20px 30px 0" }}
+            onDragOver={(e) => { e.preventDefault(); setOverMin(minuteFromEvent(e)) }}
+            onDragLeave={(e) => { if (gridRef.current && !gridRef.current.contains(e.relatedTarget as Node)) setOverMin(null) }}
+            onDrop={dropAt}
+          >
+            {/* faixa de expediente */}
+            <div style={{ position: "absolute", left: AG_GUTTER, right: 0, top: (AG_WORK[0] - AG_START) * AG_SLOT, height: (AG_WORK[1] - AG_WORK[0]) * AG_SLOT, background: "var(--bg-soft)", opacity: 0.5, pointerEvents: "none" }} />
+            {/* linhas de hora + meia-hora */}
+            {HOURS_AG.map((h, i) => (
+              <div key={h} style={{ position: "absolute", left: 0, right: 0, top: i * AG_SLOT, height: AG_SLOT, pointerEvents: "none" }}>
+                <div style={{ position: "absolute", left: 0, right: 0, top: 0, borderTop: "1px solid var(--border)" }} />
+                {i < HOURS_AG.length - 1 && <div style={{ position: "absolute", left: AG_GUTTER, right: 0, top: AG_SLOT / 2, borderTop: "1px dashed var(--border)", opacity: 0.4 }} />}
+                <span style={{ position: "absolute", left: 0, top: -7, width: AG_GUTTER - 12, textAlign: "right", fontSize: 11, fontWeight: 500, color: "var(--text-subtle)", fontFeatureSettings: '"tnum"' }}>{String(h).padStart(2, "0")}:00</span>
+              </div>
+            ))}
+            {/* borda vertical do gutter */}
+            <div style={{ position: "absolute", left: AG_GUTTER, top: 0, bottom: 0, borderLeft: "1px solid var(--border)", pointerEvents: "none" }} />
+            {/* indicador de soltura */}
+            {overMin != null && (
+              <div style={{ position: "absolute", left: AG_GUTTER, right: 0, top: ((overMin - AG_START * 60) / 60) * AG_SLOT, height: 0, borderTop: "2px dashed var(--accent)", zIndex: 6, pointerEvents: "none" }}>
+                <span style={{ position: "absolute", left: 8, top: -10, fontSize: 11, fontWeight: 600, background: "var(--accent)", color: "var(--brand-navy)", padding: "1px 7px", borderRadius: 6, fontFeatureSettings: '"tnum"' }}>{agFmt(overMin)}</span>
+              </div>
+            )}
+            {/* linha agora */}
+            {nowVisible && (
+              <div style={{ position: "absolute", left: AG_GUTTER - 6, right: 0, top: ((nowMin - AG_START * 60) / 60) * AG_SLOT, height: 0, borderTop: "2px solid var(--crit)", zIndex: 5, pointerEvents: "none" }}>
+                <span style={{ position: "absolute", left: -2, top: -5, width: 9, height: 9, borderRadius: "50%", background: "var(--crit)" }} />
+              </div>
+            )}
+            {/* blocos */}
+            {events.map(({ t, s, cols, col }) => {
+              const top = ((s - AG_START * 60) / 60) * AG_SLOT
+              const h = (AG_DUR / 60) * AG_SLOT
+              const laneGap = 5
+              const colW = `calc((100% - ${AG_GUTTER}px - ${(cols - 1) * laneGap}px) / ${cols})`
+              const left = `calc(${AG_GUTTER}px + (${colW} + ${laneGap}px) * ${col})`
+              return <AgBlock key={t.id} t={t} top={top} left={left} colW={colW} hgt={h} color={corDe(t)} cb={cb} />
+            })}
+          </div>
+        </div>
+
+        {/* trilha "a agendar" */}
+        {pool.length > 0 && (
+          <div className="side-scroll" style={{ width: 300, flexShrink: 0, borderLeft: "1px solid var(--border)", overflowY: "auto", padding: "18px 18px 30px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+              <Icon name="inbox" size={15} strokeWidth={1.9} style={{ color: "var(--text-muted)" }} />
+              <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>A agendar</span>
+              <span style={{ fontSize: 12, color: "var(--text-subtle)", fontFeatureSettings: '"tnum"' }}>{pool.length}</span>
+            </div>
+            <p style={{ margin: "0 0 14px", fontSize: 11.5, color: "var(--text-subtle)", lineHeight: 1.45 }}>Arraste para um horário na agenda ←</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+              {pool.map((t) => (
+                <div
+                  key={t.id}
+                  draggable
+                  onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(t.id)) }}
+                  onClick={() => cb.onOpen(t.id)}
+                  className="card pool-card"
+                  style={{ padding: "10px 11px", cursor: "grab", borderColor: "var(--border)", borderLeft: `3px solid ${corDe(t)}` }}
+                >
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                    <Icon name="gripVertical" size={14} style={{ color: "var(--text-subtle)", flexShrink: 0, marginTop: 2 }} />
+                    <span style={{ flex: 1, fontSize: 12.5, fontWeight: 500, color: "var(--text)", lineHeight: 1.35, minWidth: 0 }}>{t.titulo}</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, paddingLeft: 22 }}>
+                    <PriorityFlag prio={t.prio} />
+                    <PrazoChip prazo={t.prazo} done={t.done} compact />
+                    <div style={{ flex: 1 }} />
+                    {t.responsavelId != null && <AssigneeAvatar id={t.responsavelId} size={18} />}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

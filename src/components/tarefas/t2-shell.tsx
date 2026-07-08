@@ -230,9 +230,8 @@ export function TasksSidebar({
         <SideItem icon="inbox" label="Entrada" count={counts.entrada} active={nav.view === "entrada"} onClick={() => to("entrada")} />
         <SideItem icon="calendarDay" label="Hoje" count={counts.hoje} active={nav.view === "hoje"} onClick={() => to("hoje")} />
         <SideItem icon="calendarRange" label="Em breve" active={nav.view === "embreve"} onClick={() => to("embreve")} />
-        <SideItem icon="calendarClock" label="Agenda do dia" active={nav.view === "agenda"} onClick={() => to("agenda")} />
         <SideItem icon="list" label="Todas as tarefas" active={nav.view === "todas"} onClick={() => to("todas")} />
-        <SideItem icon="barChart" label="Dashboard" active={nav.view === "dashboard"} onClick={() => to("dashboard")} />
+        <SideItem icon="barChart" label="Equipe" active={nav.view === "dashboard"} onClick={() => to("dashboard")} />
         <SideItem icon="copy" label="Modelos" active={nav.view === "templates"} onClick={() => to("templates")} />
 
         {favs.length > 0 && <SideGroupLabel label="Favoritos" />}

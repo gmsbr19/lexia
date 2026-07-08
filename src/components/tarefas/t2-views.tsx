@@ -4,16 +4,18 @@
 // design's t2-views.jsx + o ArchivedProjectsView do projetos-tabs.jsx). Todas
 // recebem a lista já sob os filtros GLOBAIS (Mostrar) e aplicam hideDone com a
 // janela de graça compartilhada (conclusão colapsa/esvanece em vez de sumir).
-import { useState } from "react"
+import { useRef, useState } from "react"
 import type { ProjetoView } from "@/lib/projetos/types"
 import type { TaskRow } from "@/lib/tarefas/types"
 import { deriveRollup } from "@/components/projetos/pj-meta"
 import { ProjectIcon, useAreaLabel } from "@/components/projetos/pj-kit"
 import { Icon } from "./tf-icons"
 import { MONTHS_LONG, TODAY, WD, tDiff, tIso, tParse } from "./tf-meta"
-import { AnimatedRows, useVisibleTasks, type ViewCallbacks } from "./views"
+import { AgendaDia, AnimatedRows, useVisibleTasks, type ViewCallbacks } from "./views"
 import { InlineAdd, OverdueBlock, T2Empty, T2SectionHead, byTimeV2, dayHeading, t2Rows } from "./t2-rows"
 import { T2Frame, T2Title } from "./t2-shell"
+
+export type HojeMode = "lista" | "agenda"
 
 export interface T2ViewProps {
   tasks: TaskRow[]
@@ -23,12 +25,37 @@ export interface T2ViewProps {
   onReschedule: () => void
 }
 
-// ── HOJE ─────────────────────────────────────────────────────────────────────
-export function HojeV2({ tasks, hideDone, cb, onQuickAdd, onReschedule }: T2ViewProps) {
-  const vis = useVisibleTasks(tasks, hideDone)
+// ── HOJE (fundida com a Agenda do dia via modo lista/agenda) ─────────────────
+// A escolha Minhas/Equipe vem do menu "Mostrar" (prop onlyMine). No modo AGENDA só
+// entram tarefas minhas — não dá p/ agendar horário de terceiros, nem devem aparecer
+// na timeline. Tarefas atrasadas ficam agrupadas no topo em AMBOS os modos.
+export function HojeV2({
+  tasks,
+  hideDone,
+  cb,
+  onQuickAdd,
+  onReschedule,
+  meId,
+  mode,
+  onlyMine,
+  onSchedule,
+}: T2ViewProps & { meId: number | null; mode: HojeMode; onlyMine: boolean; onSchedule: (id: number, hora: string, dateIso?: string) => void }) {
+  const mine = mode === "agenda" ? true : onlyMine
+  const scoped = mine && meId != null ? tasks.filter((t) => t.responsavelId === meId) : tasks
+  const vis = useVisibleTasks(scoped, hideDone)
   const overdue = vis.filter((t) => !t.done && t.data && tDiff(t.data) < 0).sort(byTimeV2)
   const today = vis.filter((t) => t.data && tDiff(t.data) === 0).sort(byTimeV2)
   const open = overdue.length + today.filter((t) => !t.done).length
+  if (mode === "agenda") {
+    return (
+      <AgendaDia
+        tasks={scoped}
+        onSchedule={onSchedule}
+        overdue={overdue.length > 0 ? <OverdueBlock tasks={overdue} cb={cb} onReschedule={onReschedule} /> : null}
+        {...cb}
+      />
+    )
+  }
   return (
     <T2Frame>
       <T2Title title="Hoje" sub={`${open} tarefa${open !== 1 ? "s" : ""}`} />
@@ -43,12 +70,13 @@ export function HojeV2({ tasks, hideDone, cb, onQuickAdd, onReschedule }: T2View
   )
 }
 
-// ── EM BREVE ─────────────────────────────────────────────────────────────────
+// ── EM BREVE (cabeçalho fixo; tabs de dia linkadas às seções via scroll suave) ──
 export function EmBreveV2({ tasks, hideDone, cb, onQuickAdd, onReschedule }: T2ViewProps) {
   const todayIso = TODAY()
   const [anchor, setAnchor] = useState(todayIso) // dia central da faixa semanal visível
-  const [selected, setSelected] = useState(todayIso)
+  const [selected, setSelected] = useState(todayIso) // dia com realce (último clicado)
   const vis = useVisibleTasks(tasks, hideDone)
+  const sectionRefs = useRef<Map<string, HTMLDivElement>>(new Map())
 
   const anchorD = tParse(anchor)
   const weekStart = new Date(anchorD)
@@ -62,12 +90,14 @@ export function EmBreveV2({ tasks, hideDone, cb, onQuickAdd, onReschedule }: T2V
   const overdue = vis.filter((t) => !t.done && t.data && tDiff(t.data) < 0).sort(byTimeV2)
   const openCount = (dIso: string) => vis.filter((t) => t.data === dIso && !t.done).length
 
-  // seções diárias: do dia selecionado em diante, 8 dias
-  const days = Array.from({ length: 8 }, (_, i) => {
-    const d = tParse(selected)
-    d.setDate(d.getDate() + i)
-    return tIso(d)
-  })
+  // seções = os mesmos dias da faixa que são hoje ou futuro (link 1:1 com as tabs)
+  const days = strip.map(tIso).filter((dIso) => tDiff(dIso) >= 0)
+  const weekIncludesToday = strip.some((d) => tIso(d) === todayIso)
+
+  const goToDay = (dIso: string) => {
+    setSelected(dIso)
+    sectionRefs.current.get(dIso)?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }
   const shiftWeek = (n: number) => {
     const start = new Date(weekStart)
     start.setDate(start.getDate() + n * 7)
@@ -82,102 +112,113 @@ export function EmBreveV2({ tasks, hideDone, cb, onQuickAdd, onReschedule }: T2V
 
   return (
     <T2Frame>
-      <T2Title title="Em breve" />
-      {/* mês + faixa da semana */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-        <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em", color: "var(--text)" }}>
-          {MONTHS_LONG[anchorD.getMonth()]} {anchorD.getFullYear()}
-        </span>
-        <div style={{ flex: 1 }} />
-        <button className="btn btn-ghost btn-sm" onClick={() => shiftWeek(-1)} style={{ width: 28, padding: 0 }}>
-          <Icon name="chevronLeft" size={15} />
-        </button>
-        <button
-          className="btn btn-ghost btn-sm"
-          onClick={() => {
-            setAnchor(todayIso)
-            setSelected(todayIso)
-          }}
-          style={{ fontSize: 12, padding: "0 10px" }}
-        >
-          Hoje
-        </button>
-        <button className="btn btn-ghost btn-sm" onClick={() => shiftWeek(1)} style={{ width: 28, padding: 0 }}>
-          <Icon name="chevronRight" size={15} />
-        </button>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", borderBottom: "1px solid var(--border)", marginBottom: 22 }}>
-        {strip.map((d) => {
-          const dIso = tIso(d)
-          const isSel = dIso === selected
-          const isPast = tDiff(dIso) < 0
-          const n = openCount(dIso)
-          return (
-            <div
-              key={dIso}
-              onClick={() => !isPast && setSelected(dIso)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6,
-                padding: "8px 0 10px",
-                cursor: isPast ? "default" : "pointer",
-                borderBottom: isSel ? "2px solid var(--accent)" : "2px solid transparent",
-                marginBottom: -1,
-                color: isPast ? "var(--text-subtle)" : isSel ? "var(--text)" : "var(--text-muted)",
-                fontSize: 13,
-                fontWeight: isSel ? 600 : 500,
-                opacity: isPast ? 0.55 : 1,
-              }}
-            >
-              {WD[d.getDay()].replace(/^./, (c) => c.toUpperCase())} {d.getDate()}
-              {n > 0 && !isPast && (
-                <span
-                  style={{
-                    minWidth: 18,
-                    height: 18,
-                    padding: "0 5px",
-                    borderRadius: 6,
-                    fontSize: 11,
-                    fontWeight: 600,
-                    fontFeatureSettings: '"tnum"',
-                    background: dIso === todayIso ? "var(--accent-soft)" : "var(--bg-sunken)",
-                    color: dIso === todayIso ? "var(--accent)" : "var(--text-subtle)",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  {n}
-                </span>
-              )}
-            </div>
-          )
-        })}
+      {/* cabeçalho fixo: título + mês + faixa da semana */}
+      <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--bg)", paddingTop: 2, margin: "-2px -4px 22px", paddingLeft: 4, paddingRight: 4 }}>
+        <T2Title title="Em breve" />
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+          <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em", color: "var(--text)" }}>
+            {MONTHS_LONG[anchorD.getMonth()]} {anchorD.getFullYear()}
+          </span>
+          <div style={{ flex: 1 }} />
+          <button className="btn btn-ghost btn-sm" onClick={() => shiftWeek(-1)} style={{ width: 28, padding: 0 }}>
+            <Icon name="chevronLeft" size={15} />
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => {
+              setAnchor(todayIso)
+              goToDay(todayIso)
+            }}
+            style={{ fontSize: 12, padding: "0 10px" }}
+          >
+            Hoje
+          </button>
+          <button className="btn btn-ghost btn-sm" onClick={() => shiftWeek(1)} style={{ width: 28, padding: 0 }}>
+            <Icon name="chevronRight" size={15} />
+          </button>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", borderBottom: "1px solid var(--border)" }}>
+          {strip.map((d) => {
+            const dIso = tIso(d)
+            const isSel = dIso === selected
+            const isPast = tDiff(dIso) < 0
+            const n = openCount(dIso)
+            return (
+              <div
+                key={dIso}
+                onClick={() => !isPast && goToDay(dIso)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  padding: "8px 0 10px",
+                  cursor: isPast ? "default" : "pointer",
+                  borderBottom: isSel ? "2px solid var(--accent)" : "2px solid transparent",
+                  marginBottom: -1,
+                  color: isPast ? "var(--text-subtle)" : isSel ? "var(--text)" : "var(--text-muted)",
+                  fontSize: 13,
+                  fontWeight: isSel ? 600 : 500,
+                  opacity: isPast ? 0.55 : 1,
+                }}
+              >
+                {WD[d.getDay()].replace(/^./, (c) => c.toUpperCase())} {d.getDate()}
+                {n > 0 && !isPast && (
+                  <span
+                    style={{
+                      minWidth: 18,
+                      height: 18,
+                      padding: "0 5px",
+                      borderRadius: 6,
+                      fontSize: 11,
+                      fontWeight: 600,
+                      fontFeatureSettings: '"tnum"',
+                      background: dIso === todayIso ? "var(--accent-soft)" : "var(--bg-sunken)",
+                      color: dIso === todayIso ? "var(--accent)" : "var(--text-subtle)",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {n}
+                  </span>
+                )}
+              </div>
+            )
+          })}
+        </div>
       </div>
 
-      {selected === todayIso && <OverdueBlock tasks={overdue} cb={cb} onReschedule={onReschedule} />}
+      {weekIncludesToday && <OverdueBlock tasks={overdue} cb={cb} onReschedule={onReschedule} />}
 
       {days.map((dIso) => {
         const items = vis.filter((t) => t.data === dIso).sort(byTimeV2)
         const openN = items.filter((t) => !t.done).length
         return (
-          <div key={dIso} style={{ marginBottom: 26 }}>
+          <div
+            key={dIso}
+            ref={(el) => {
+              if (el) sectionRefs.current.set(dIso, el)
+              else sectionRefs.current.delete(dIso)
+            }}
+            style={{ marginBottom: 26, scrollMarginTop: 118 }}
+          >
             <T2SectionHead label={dayHeading(dIso)} count={openN || null} />
             <AnimatedRows rows={t2Rows(items, cb)} />
             <InlineAdd onClick={() => onQuickAdd(dIso)} />
           </div>
         )
       })}
+      {!days.length && <T2Empty title="Nada em breve" sub="Sem tarefas agendadas nesta semana. Navegue para outra semana ou adicione uma tarefa." />}
     </T2Frame>
   )
 }
 
 // ── ENTRADA ──────────────────────────────────────────────────────────────────
-export function EntradaV2({ tasks, cb, onQuickAdd }: Omit<T2ViewProps, "onReschedule" | "hideDone">) {
-  // A Entrada mostra só o que está aberto; concluir colapsa com a janela de graça.
-  const inbox = tasks.filter((t) => t.projetoId == null)
+export function EntradaV2({ tasks, cb, onQuickAdd, meId }: Omit<T2ViewProps, "onReschedule" | "hideDone"> & { meId: number | null }) {
+  // Caixa de entrada = capturas minhas sem projeto e SEM DATA (o prazo é
+  // irrelevante). Só o que está aberto; concluir colapsa com a janela de graça.
+  const inbox = tasks.filter((t) => t.projetoId == null && !t.data && t.responsavelId === meId)
   const vis = useVisibleTasks(inbox, true)
   const open = vis.filter((t) => !t.done)
   return (

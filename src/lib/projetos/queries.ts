@@ -12,6 +12,8 @@ import { contarAtrasadas, progressoProjeto, saudeProjeto } from "./template"
 import type {
   DashAreaResumo,
   DashCargaMembro,
+  DashConclusoes,
+  DashConclusoesLinha,
   DashDistribuicao,
   DashDistribuicaoLinha,
   DashGargalo,
@@ -303,6 +305,21 @@ export async function getProdutividadeDashboard(): Promise<ProdutividadeDashboar
     .sort((a, b) => b.total - a.total)
   const distribuicao: DashDistribuicao = { dias, linhas }
 
+  // ── Conclusões recentes: tarefas concluídas por dia, por pessoa (últimos 14 dias) ──
+  const JANELA = 14
+  const diasConcl = Array.from({ length: JANELA }, (_, i) => addDiasISO(hoje, -(JANELA - 1 - i)))
+  const concluidas = tarefas.filter((t) => t.done && t.concluidoEm)
+  const linhasConcl: DashConclusoesLinha[] = socios
+    .map((m) => {
+      const minhas = concluidas.filter((t) => t.responsavelId === m.id)
+      const counts = diasConcl.map((d) => minhas.filter((t) => dISO(t.concluidoEm) === d).length)
+      const total = counts.reduce((a, b) => a + b, 0)
+      return { membro: m, counts, total }
+    })
+    .filter((l) => l.total > 0)
+    .sort((a, b) => b.total - a.total)
+  const conclusoes: DashConclusoes = { dias: diasConcl, linhas: linhasConcl }
+
   // ── Gargalos: tarefas paradas em doing/review (proxy: dias desde a última alteração) ──
   const gargalos: DashGargalo[] = tarefas
     .filter((t) => !t.done && (t.status === "doing" || t.status === "review"))
@@ -335,6 +352,7 @@ export async function getProdutividadeDashboard(): Promise<ProdutividadeDashboar
     projetos: projSaude,
     carga,
     distribuicao,
+    conclusoes,
     gargalos,
     porArea,
   }

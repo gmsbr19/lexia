@@ -249,22 +249,25 @@ export function UnifiedShell({ children }: { children: ReactNode }) {
   // Páginas públicas sem shell (login + página de ativação do convite).
   const isLogin = pathname === "/login" || pathname.startsWith("/definir-senha")
 
-  // No editor de documentos, a sidebar global recolhe automaticamente p/ dar mais
-  // espaço ao editor; restaura o estado anterior ao sair. O toggle manual (Recolher
-  // menu) continua livre — só re-força ao entrar/sair do editor, não a cada render.
+  // No editor de documentos e no módulo de Tarefas, a sidebar global recolhe
+  // automaticamente p/ dar mais espaço ao módulo (que tem sua própria sidebar);
+  // restaura o estado anterior ao sair. O toggle manual (Recolher menu) continua
+  // livre — só re-força ao entrar/sair, não a cada render.
   const isDocEditor = pathname.startsWith("/documents/doc/")
+  const isTarefas = pathname.startsWith("/tarefas") || pathname.startsWith("/projetos")
+  const autoCollapse = isDocEditor || isTarefas
   const collapsedRef = useRef(collapsed)
   collapsedRef.current = collapsed
   const preEditorCollapsed = useRef<boolean | null>(null)
   useEffect(() => {
-    if (isDocEditor) {
+    if (autoCollapse) {
       if (preEditorCollapsed.current === null) preEditorCollapsed.current = collapsedRef.current
       setCollapsed(true)
     } else if (preEditorCollapsed.current !== null) {
       setCollapsed(preEditorCollapsed.current)
       preEditorCollapsed.current = null
     }
-  }, [isDocEditor])
+  }, [autoCollapse])
 
   useEffect(() => {
     if (isLogin) return

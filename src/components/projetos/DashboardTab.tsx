@@ -74,7 +74,7 @@ export function DashboardTab({
   if (loading && !data) {
     return (
       <PageFrame>
-        <PageHeader title="Dashboard" sub="Produtividade da equipe nos projetos ativos · histórico e próximos dias" />
+        <PageHeader title="Equipe" sub="Produtividade da equipe nos projetos ativos · histórico e próximos dias" />
         <div style={{ textAlign: "center", padding: "70px 20px", color: "var(--text-subtle)", fontSize: 13 }}>Carregando indicadores…</div>
       </PageFrame>
     )
@@ -82,7 +82,7 @@ export function DashboardTab({
   if (error || !data) {
     return (
       <PageFrame>
-        <PageHeader title="Dashboard" sub="Produtividade da equipe" />
+        <PageHeader title="Equipe" sub="Produtividade da equipe" />
         <ErrorBanner onRetry={onRetry}>Não foi possível carregar os indicadores.</ErrorBanner>
       </PageFrame>
     )
@@ -98,10 +98,13 @@ export function DashboardTab({
     const d = tParse(iso)
     return `${d.getDate()} ${MO[d.getMonth()]}`
   }
+  const diasConcl = data.conclusoes.dias
+  const conclCols = `132px repeat(${diasConcl.length}, minmax(22px, 1fr)) 46px`
+  const hojeConcl = diasConcl[diasConcl.length - 1]
 
   return (
     <PageFrame>
-      <PageHeader title="Dashboard" sub="Produtividade da equipe nos projetos ativos · últimos 7 dias" />
+      <PageHeader title="Equipe" sub="Produtividade da equipe nos projetos ativos · últimos 7 dias" />
 
       <div className="kpi-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 22 }}>
         <KpiCard label="Projetos ativos" value={k.projetosAtivos} icon="layoutGrid" sub={`${projetos.length} no total`} />
@@ -279,6 +282,47 @@ export function DashboardTab({
           <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 12, fontSize: 11.5, color: "var(--text-subtle)" }}>
             <Icon name="alertCircle" size={13} strokeWidth={1.9} />
             {semPrazoTotal} tarefa{semPrazoTotal === 1 ? "" : "s"} aberta{semPrazoTotal === 1 ? "" : "s"} sem prazo definido — não aparece{semPrazoTotal === 1 ? "" : "m"} na distribuição.
+          </div>
+        )}
+      </div>
+
+      {/* Conclusões por pessoa */}
+      <div className="card" style={{ padding: 16, marginTop: 16 }}>
+        <CardTitle title="Conclusões por pessoa" sub="Tarefas concluídas por dia · últimos 14 dias (até hoje)" />
+        {!data.conclusoes.linhas.length ? (
+          <div style={{ padding: "18px 0", textAlign: "center", fontSize: 13, color: "var(--text-subtle)" }}>Nenhuma tarefa concluída no período.</div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <div style={{ minWidth: 620 }}>
+              <div style={{ display: "grid", gridTemplateColumns: conclCols, gap: 4, alignItems: "end", marginBottom: 7 }}>
+                <span />
+                {diasConcl.map((d) => {
+                  const dt = tParse(d)
+                  const today = d === hojeConcl
+                  const weekend = dt.getDay() === 0 || dt.getDay() === 6
+                  return (
+                    <div key={d} style={{ textAlign: "center", lineHeight: 1.25, fontSize: 10, color: today ? "var(--accent)" : weekend ? "var(--text-subtle)" : "var(--text-muted)", fontWeight: today ? 600 : 500 }}>
+                      <div style={{ textTransform: "uppercase", letterSpacing: "0.02em" }}>{WD[dt.getDay()]}</div>
+                      <div style={{ fontFeatureSettings: '"tnum"' }}>{dt.getDate()}</div>
+                    </div>
+                  )
+                })}
+                <div style={{ textAlign: "center", fontSize: 10, fontWeight: 500, color: "var(--text-subtle)", textTransform: "uppercase", letterSpacing: "0.03em" }}>Total</div>
+              </div>
+              {data.conclusoes.linhas.map((l) => (
+                <div key={l.membro.id} style={{ display: "grid", gridTemplateColumns: conclCols, gap: 4, alignItems: "center", marginBottom: 4 }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+                    <AssigneeAvatar id={l.membro.id} size={20} />
+                    <span style={{ fontSize: 12, fontWeight: 500, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.membro.first}</span>
+                  </span>
+                  {l.counts.map((c, i) => {
+                    const dt = tParse(diasConcl[i])
+                    return <HeatCell key={diasConcl[i]} count={c} today={diasConcl[i] === hojeConcl} weekend={dt.getDay() === 0 || dt.getDay() === 6} title={`${l.membro.first} · ${diaTitulo(diasConcl[i])}: ${c} concluída${c === 1 ? "" : "s"}`} />
+                  })}
+                  <div style={{ textAlign: "center", fontSize: 13, fontWeight: 600, color: "var(--text)", fontFeatureSettings: '"tnum"' }}>{l.total}</div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>

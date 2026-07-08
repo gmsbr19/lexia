@@ -145,6 +145,50 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **Tarefas — 6 ajustes de UX no módulo (this session, VERIFIED tsc 0, 495/495 testes, eslint sem achados
+  novos, NO migration)** (memory `project_tarefas_module`). Pedido do usuário, 6 pontos: (1) **Entrada** =
+  caixa de entrada real → só tarefas MINHAS, **sem DATA** (o prazo é irrelevante — tarefa com prazo mas sem
+  data continua na Entrada) e sem projeto. `EntradaV2` ([t2-views.tsx](src/components/tarefas/t2-views.tsx))
+  filtra `projetoId==null && !data && responsavelId===meId`; recebe `meId` por prop; contador da sidebar em
+  [ProjetosWorkspace.tsx](src/components/projetos/ProjetosWorkspace.tsx) alinhado. (2) **Hoje** = padrão
+  **Minhas** + **fundida com a Agenda do dia**: o item "Agenda do dia" saiu da sidebar
+  ([t2-shell.tsx](src/components/tarefas/t2-shell.tsx)); o `HojeV2` ganhou `mode: "lista"|"agenda"` + `onlyMine`
+  (ambos vivem no workspace: `hojeMode`/`hojeOnlyMine`). O menu **Mostrar** (só quando `nav.view==="hoje"`)
+  tem a seção "Visualização" (Lista/Agenda) E "Exibir" (**Minhas/Equipe**, default Minhas — a pedido do usuário
+  foi p/ dentro do Mostrar, NÃO um segmented no cabeçalho; oculto em modo agenda). **Modo agenda só mostra
+  tarefas MINHAS** (`mine = mode==="agenda" ? true : onlyMine` — não dá p/ agendar horário de terceiros nem
+  devem aparecer na timeline). **Atrasadas agrupadas no topo em AMBOS os modos** (`OverdueBlock` antes do
+  corpo da agenda também). **Agenda redesenhada** — o modo agenda usa o novo componente **`AgendaDia`**
+  ([views.tsx](src/components/tarefas/views.tsx), portado do handoff Claude Design "LexIA · Tarefas v2"):
+  timeline de ALTURA TOTAL (6h–22h, 68px/h) com scroll interno + **auto-scroll p/ o "agora"**, faixa de
+  expediente (8–19h), linhas de hora + meia-hora, **lane-packing de sobreposição** (`agLayout` distribui
+  blocos que colidem em colunas), blocos `AgBlock` que **adaptam o conteúdo à largura/altura reais**
+  (ResizeObserver, tiers full/mid/min), header com **navegação de dia** (‹ Hoje ›) + stats
+  (agendadas/concluídas/a agendar), e a trilha "a agendar" à DIREITA (300px, só quando há pool). `onSchedule`
+  ganhou 3º arg opcional `dateIso` (o `schedule` do workspace usa `dateIso ?? TODAY()`) p/ agendar no dia
+  navegado. A `AgendaView` antiga fica só no `ProjectCanvas`. (3) **Em breve**: cabeçalho (título+mês+faixa
+  de dias) vira **sticky** (`position:sticky; top:0; background:var(--bg)`); as seções agora batem 1:1 com os
+  7 dias da faixa (hoje/futuro) via `sectionRefs` (Map por ISO); clicar numa tab faz **scroll suave**
+  (`scrollIntoView({behavior:"smooth"})`) + realce; `scrollMarginTop:118` compensa o header. (4) **Todas as
+  tarefas** ([CrossTarefasTab.tsx](src/components/projetos/CrossTarefasTab.tsx)): removido o input de nova
+  tarefa (`QuickAddBar`) e o seletor de visões (`ViewSwitcher`) — vira **só a `ListaView`** agrupada; +**busca**
+  (`contemNormalizado`/`normalizar` de [lib/text.ts](src/lib/text.ts), acento-insensível sobre título+notas) e
+  +**ordenação** (novo `SortBy`/`SORT_OPTS`/`taskComparator` em views.tsx: padrão/prazo/prioridade/título/
+  criação-por-id; `ListaView` aceita `sortBy`); mantém filtros projeto/status/responsável + Minhas/Equipe +
+  Concluídas + Selecionar + Agrupar. (5) **Dashboard → "Equipe"** (rótulo na sidebar + títulos do
+  [DashboardTab.tsx](src/components/projetos/DashboardTab.tsx); query param `?tab=dashboard` inalterado) +
+  novo card **"Conclusões por pessoa"** (heatmap, **últimos 14 dias**): backend `conclusoes` em
+  [projetos/queries.ts](src/lib/projetos/queries.ts) (`done && concluidoEm` por dia/pessoa, reusa
+  `concluidoEm` já buscado — **sem migração**) + tipos `DashConclusoes`/`DashConclusoesLinha`
+  ([projetos/types.ts](src/lib/projetos/types.ts)); UI reusa o `HeatCell` existente. (6) **Sidebar GLOBAL
+  colapsa** ao abrir `/tarefas` (e `/projetos`): [UnifiedShell.tsx](src/components/shell/UnifiedShell.tsx)
+  estende o padrão backup-and-restore do editor de docs (`autoCollapse = isDocEditor || isTarefas`), restaura
+  ao sair. **Verificado: tsc 0; 495/495 testes; eslint só achados PRÉ-EXISTENTES** (set-state-in-effect +
+  refs-during-render em ProjetosWorkspace/UnifiedShell + `overlays` unused — confirmado via baseline `git
+  stash`). **Sem migração. User action:** visual em `/tarefas` — Entrada (minhas/sem data/sem projeto); Hoje
+  em Minhas + Mostrar→Lista/Agenda (timeline grande à esquerda); Em breve com header fixo + clicar dia rola;
+  Todas com busca/ordenar/agrupar/filtrar; Equipe com o heatmap de conclusões; sidebar global recolhe ao
+  entrar.
 - **Honorário = recebimento financeiro — Fase 1 do cutover `Honorario`→`Lancamento` (this session, VERIFIED
   tsc 0, 495/495 testes, eslint sem achado novo; migração + backfill = passos do USUÁRIO).** O usuário
   apontou que `Honorario` não deveria ser entidade separada — honorários são recebíveis (lançamentos entrada).

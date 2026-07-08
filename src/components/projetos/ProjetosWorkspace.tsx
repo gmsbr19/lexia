@@ -18,12 +18,11 @@ import { TaskDetailModal } from "@/components/tarefas/TaskDetailModal"
 import { QuickAddModal, type NovaTarefa } from "@/components/tarefas/QuickAddModal"
 import { RambleModal } from "@/components/tarefas/RambleModal"
 import { TasksSidebar, T2Frame, T2Title, type T2Nav } from "@/components/tarefas/t2-shell"
-import { dayHeading } from "@/components/tarefas/t2-rows"
-import { ArchivedProjectsView, EmBreveV2, EntradaV2, HojeV2 } from "@/components/tarefas/t2-views"
+import { ArchivedProjectsView, EmBreveV2, EntradaV2, HojeV2, type HojeMode } from "@/components/tarefas/t2-views"
 import { Icon } from "@/components/tarefas/tf-icons"
 import { AssigneeAvatar, Menu, MenuItem } from "@/components/tarefas/tf-kit"
 import { TODAY, tDiff } from "@/components/tarefas/tf-meta"
-import { AgendaView, type ViewCallbacks } from "@/components/tarefas/views"
+import { type ViewCallbacks } from "@/components/tarefas/views"
 import type { TarefaPatch } from "@/lib/tarefas/mutations"
 import {
   PRIO,
@@ -85,7 +84,27 @@ interface GlobalFilters {
   hideDone: boolean
 }
 
-function MostrarBtn({ f, setF, socios }: { f: GlobalFilters; setF: (fn: (f: GlobalFilters) => GlobalFilters) => void; socios: TeamMember[] }) {
+function MostrarBtn({
+  f,
+  setF,
+  socios,
+  showViz,
+  hojeMode,
+  setHojeMode,
+  hojeOnlyMine,
+  setHojeOnlyMine,
+  meId,
+}: {
+  f: GlobalFilters
+  setF: (fn: (f: GlobalFilters) => GlobalFilters) => void
+  socios: TeamMember[]
+  showViz?: boolean
+  hojeMode?: HojeMode
+  setHojeMode?: (m: HojeMode) => void
+  hojeOnlyMine?: boolean
+  setHojeOnlyMine?: (v: boolean) => void
+  meId?: number | null
+}) {
   const active = f.assignee != null || f.prio != null || f.hideDone
   return (
     <Menu align="right" width={250} trigger={
@@ -112,6 +131,26 @@ function MostrarBtn({ f, setF, socios }: { f: GlobalFilters; setF: (fn: (f: Glob
     }>
       {() => (
         <>
+          {showViz && setHojeMode && (
+            <>
+              <div style={{ padding: "5px 9px 3px", fontSize: 10, fontWeight: 500, color: "var(--text-subtle)", textTransform: "uppercase", letterSpacing: "0.07em" }}>Visualização</div>
+              <MenuItem icon="list" label="Lista" active={hojeMode === "lista"} onClick={() => setHojeMode("lista")} />
+              <MenuItem icon="calendarClock" label="Agenda" active={hojeMode === "agenda"} onClick={() => setHojeMode("agenda")} />
+              {setHojeOnlyMine && hojeMode !== "agenda" && (
+                <>
+                  <div style={{ padding: "5px 9px 3px", fontSize: 10, fontWeight: 500, color: "var(--text-subtle)", textTransform: "uppercase", letterSpacing: "0.07em" }}>Exibir</div>
+                  <MenuItem
+                    label="Minhas"
+                    active={!!hojeOnlyMine}
+                    right={meId != null ? <AssigneeAvatar id={meId} size={17} title={false} /> : undefined}
+                    onClick={() => setHojeOnlyMine(true)}
+                  />
+                  <MenuItem icon="users" label="Equipe" active={!hojeOnlyMine} onClick={() => setHojeOnlyMine(false)} />
+                </>
+              )}
+              <div style={{ height: 1, background: "var(--border)", margin: "5px 0" }} />
+            </>
+          )}
           <MenuItem
             icon={f.hideDone ? "eye" : "checkCircle"}
             label={f.hideDone ? "Mostrar concluídas" : "Ocultar concluídas"}
@@ -179,6 +218,8 @@ export function ProjetosWorkspace({
     return { view: "hoje", projectId: null }
   })
   const [f, setF] = useState<GlobalFilters>({ assignee: null, prio: null, hideDone: false })
+  const [hojeMode, setHojeMode] = useState<HojeMode>("lista")
+  const [hojeOnlyMine, setHojeOnlyMine] = useState(true)
   const [sideOpen, setSideOpen] = useState(false)
   const [openId, setOpenId] = useState<number | null>(null)
   const [quickAdd, setQuickAdd] = useState<{ presetDate: string | null; presetProject: number | null } | null>(null)
@@ -319,7 +360,7 @@ export function ProjetosWorkspace({
     if (t) commit(id, { done: !t.done })
   }
   const move = (id: number, status: TaskStatus) => commit(id, { status })
-  const schedule = (id: number, hora: string) => commit(id, { data: TODAY(), hora })
+  const schedule = (id: number, hora: string, dateIso?: string) => commit(id, { data: dateIso ?? TODAY(), hora })
   const onLinkClick = (v: VinculoRef) => flash(`${v.tipo === "caso" ? "Caso" : "Cliente"}: ${v.nome}`)
   const del = (id: number) => {
     setTasks((ts) => ts.filter((t) => t.id !== id))
@@ -672,7 +713,7 @@ export function ProjetosWorkspace({
 
   const counts = {
     hoje: tasks.filter((t) => !t.done && t.data && tDiff(t.data) <= 0).length,
-    entrada: tasks.filter((t) => !t.done && t.projetoId == null).length,
+    entrada: tasks.filter((t) => !t.done && t.projetoId == null && !t.data && t.responsavelId === meId).length,
   }
   const openCountProj = (pid: number) => tasks.filter((t) => t.projetoId === pid && !t.done).length
   const selProj = nav.view === "projeto" ? projetosView.find((p) => p.id === nav.projectId) ?? null : null
@@ -711,19 +752,23 @@ export function ProjetosWorkspace({
                 Limpar filtros
               </span>
             )}
-            <MostrarBtn f={f} setF={setF} socios={socios} />
+            <MostrarBtn
+              f={f}
+              setF={setF}
+              socios={socios}
+              showViz={nav.view === "hoje"}
+              hojeMode={hojeMode}
+              setHojeMode={setHojeMode}
+              hojeOnlyMine={hojeOnlyMine}
+              setHojeOnlyMine={setHojeOnlyMine}
+              meId={meId}
+            />
           </div>
 
           <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-            {nav.view === "hoje" && <HojeV2 tasks={filtered} {...t2ViewProps} />}
+            {nav.view === "hoje" && <HojeV2 tasks={filtered} {...t2ViewProps} meId={meId} mode={hojeMode} onlyMine={hojeOnlyMine} onSchedule={schedule} />}
             {nav.view === "embreve" && <EmBreveV2 tasks={filtered} {...t2ViewProps} />}
-            {nav.view === "entrada" && <EntradaV2 tasks={filtered} cb={cb} onQuickAdd={onQuickAdd} />}
-            {nav.view === "agenda" && (
-              <T2Frame wide>
-                <T2Title title="Agenda do dia" sub={dayHeading(TODAY())} />
-                <AgendaView tasks={filteredHard} onSchedule={schedule} {...cb} />
-              </T2Frame>
-            )}
+            {nav.view === "entrada" && <EntradaV2 tasks={filtered} cb={cb} onQuickAdd={onQuickAdd} meId={meId} />}
             {nav.view === "todas" && (
               <div style={{ flex: 1, minWidth: 0, overflowY: "auto" }}>
                 <CrossTarefasTab
@@ -732,9 +777,6 @@ export function ProjetosWorkspace({
                   socios={socios}
                   meId={meId}
                   cb={cb}
-                  onMove={move}
-                  onSchedule={schedule}
-                  onAdd={addTask}
                   selectMode={selectMode}
                   setSelectMode={setSelectMode}
                   selectedIds={selected}

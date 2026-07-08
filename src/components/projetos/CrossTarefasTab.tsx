@@ -1,16 +1,16 @@
 "use client"
 
-// Projetos & Tarefas — the "Tarefas" tab: every task across all projects, in the
-// same five views, with quick-add + filters (incl. a DYNAMIC project filter by
-// projetoId) + multi-select for bulk edit.
+// Projetos & Tarefas — a "Todas as tarefas": lista única e flexível de tarefas de
+// qualquer projeto, com busca, agrupamento, ordenação e filtros (projeto/status/
+// responsável + Minhas/Equipe) + seleção múltipla para edição em lote. Sem input de
+// nova tarefa e sem seletor de visões (só a lista agrupada).
 import { useState, type CSSProperties } from "react"
-import { PRIO, type TaskRow, type TaskStatus, type TeamMember } from "@/lib/tarefas/types"
+import { type TaskRow, type TaskStatus, type TeamMember } from "@/lib/tarefas/types"
 import type { ProjetoView } from "@/lib/projetos/types"
+import { contemNormalizado, normalizar } from "@/lib/text"
 import { Icon } from "@/components/tarefas/tf-icons"
-import { AssigneeAvatar, Menu, MenuItem, ViewSwitcher, type ViewId } from "@/components/tarefas/tf-kit"
-import { dataLabel, parseQuickAdd } from "@/components/tarefas/tf-meta"
-import type { NovaTarefa } from "@/components/tarefas/QuickAddModal"
-import { AgendaView, CalendarioView, GROUP_OPTS, HojeView, ListaView, QuadroView, type GroupBy, type ViewCallbacks } from "@/components/tarefas/views"
+import { AssigneeAvatar, Menu, MenuItem } from "@/components/tarefas/tf-kit"
+import { GROUP_OPTS, ListaView, SORT_OPTS, type GroupBy, type SortBy, type ViewCallbacks } from "@/components/tarefas/views"
 import { FilterBtn, PageFrame, PageHeader } from "./pj-kit"
 import { statusMeta, STATUS } from "@/lib/tarefas/types"
 
@@ -31,86 +31,12 @@ const segBtn = (on: boolean): CSSProperties => ({
   fontFamily: "var(--font-sans)",
 })
 
-function QuickAddBar({ socios, projetos, onAdd }: { socios: TeamMember[]; projetos: ProjetoView[]; onAdd: (t: NovaTarefa) => void }) {
-  const [v, setV] = useState("")
-  const ativos = projetos.filter((p) => p.status !== "arquivado")
-  const parsed = v.trim() ? parseQuickAdd(v, { socios, projetos: ativos }) : null
-  const hasTokens = parsed && (parsed.projetoId != null || parsed.responsavelId != null || parsed.prio || parsed.data || parsed.hora)
-  const member = parsed?.responsavelId != null ? socios.find((m) => m.id === parsed.responsavelId) : null
-  const proj = parsed?.projetoId != null ? projetos.find((p) => p.id === parsed.projetoId) : null
-  const submit = () => {
-    if (!parsed || !parsed.titulo) return
-    onAdd({
-      titulo: parsed.titulo,
-      notes: null,
-      data: parsed.data,
-      hora: parsed.hora,
-      prazo: null,
-      prio: parsed.prio ?? 4,
-      responsavelId: parsed.responsavelId,
-      projetoId: parsed.projetoId,
-      reminder: null,
-    })
-    setV("")
-  }
-  return (
-    <div className="card" style={{ padding: hasTokens ? "11px 14px 9px" : "11px 14px", marginBottom: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-        <Icon name="plus" size={17} strokeWidth={2} style={{ color: "var(--accent)", flexShrink: 0 }} />
-        <input
-          value={v}
-          onChange={(e) => setV(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") submit() }}
-          placeholder="Adicionar tarefa…  ex.: Protocolar recurso amanhã 14h #trabalhista @joão !alta"
-          style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontSize: 14, color: "var(--text)" }}
-        />
-        <span style={{ fontSize: 11, color: "var(--text-subtle)", whiteSpace: "nowrap" }}>#projeto · @pessoa · !prioridade · data</span>
-        <button className="btn btn-primary" onClick={submit} disabled={!parsed || !parsed.titulo} style={{ height: 30, fontSize: 12, opacity: parsed && parsed.titulo ? 1 : 0.5 }}>Adicionar</button>
-      </div>
-      {hasTokens && parsed && (
-        <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 9, paddingTop: 9, borderTop: "1px solid var(--border)", flexWrap: "wrap" }}>
-          <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>Detectado:</span>
-          {parsed.data && (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 500, color: "var(--accent)", background: "var(--accent-soft)", padding: "2px 8px", borderRadius: 999 }}>
-              <Icon name="calendar" size={11} />
-              {dataLabel(parsed.data)}
-              {parsed.hora ? ` ${parsed.hora}` : ""}
-            </span>
-          )}
-          {proj && (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 500, color: "var(--text-muted)", background: "var(--bg-sunken)", padding: "2px 8px", borderRadius: 999 }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: proj.cor || "var(--text-muted)" }} />
-              {proj.nome}
-            </span>
-          )}
-          {member && (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 500, color: "var(--text-muted)", background: "var(--bg-sunken)", padding: "2px 8px 2px 4px", borderRadius: 999 }}>
-              <AssigneeAvatar id={member.id} size={15} title={false} />
-              {member.first}
-            </span>
-          )}
-          {parsed.assigneeAmbiguous && <span style={{ fontSize: 11, color: "var(--fin-neg)" }}>responsável ambíguo</span>}
-          {parsed.prio && (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 500, color: PRIO[parsed.prio].color, background: "var(--bg-sunken)", padding: "2px 8px", borderRadius: 999 }}>
-              <Icon name="flag" size={10} strokeWidth={2.2} />
-              {PRIO[parsed.prio].label}
-            </span>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
 export function CrossTarefasTab({
   tasks,
   projetos,
   socios,
   meId,
   cb,
-  onMove,
-  onSchedule,
-  onAdd,
   selectMode,
   setSelectMode,
   selectedIds,
@@ -121,16 +47,14 @@ export function CrossTarefasTab({
   socios: TeamMember[]
   meId: number | null
   cb: ViewCallbacks
-  onMove: (id: number, status: TaskStatus) => void
-  onSchedule: (id: number, hora: string) => void
-  onAdd: (t: NovaTarefa) => void
   selectMode: boolean
   setSelectMode: (v: boolean) => void
   selectedIds: Set<number>
   onSelect: (id: number) => void
 }) {
-  const [view, setView] = useState<ViewId>("hoje")
+  const [q, setQ] = useState("")
   const [groupBy, setGroupBy] = useState<GroupBy>("projeto")
+  const [sortBy, setSortBy] = useState<SortBy>("padrao")
   const [fProjetoId, setFProjetoId] = useState<number | "none" | null>(null)
   const [fStatus, setFStatus] = useState<TaskStatus | null>(null)
   const [fAssignee, setFAssignee] = useState<number | null>(null)
@@ -142,47 +66,55 @@ export function CrossTarefasTab({
   else if (fProjetoId != null) scoped = scoped.filter((t) => t.projetoId === fProjetoId)
   if (fStatus) scoped = scoped.filter((t) => t.status === fStatus)
   if (fAssignee != null) scoped = scoped.filter((t) => t.responsavelId === fAssignee)
+  const needle = normalizar(q)
+  if (needle) scoped = scoped.filter((t) => contemNormalizado(needle, t.titulo, t.notes))
 
-  const selectable = view === "lista" || view === "hoje"
   const fProj = typeof fProjetoId === "number" ? projetos.find((p) => p.id === fProjetoId) : null
 
   return (
     <PageFrame>
-      <PageHeader title="Todas as tarefas" sub="De qualquer projeto — nas mesmas visões, com filtros" />
-
-      <QuickAddBar socios={socios} projetos={projetos} onAdd={onAdd} />
+      <PageHeader title="Todas as tarefas" sub="De qualquer projeto — busque, agrupe, ordene e filtre" />
 
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
-        <ViewSwitcher view={view} setView={setView} />
-        <div style={{ flex: 1 }} />
-        {selectable && (
-          <button
-            onClick={() => setHideDone(!hideDone)}
-            title={hideDone ? "Mostrar tarefas concluídas" : "Ocultar tarefas concluídas"}
-            style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 32, padding: "0 11px", borderRadius: 9, cursor: "pointer", border: `1px solid ${!hideDone ? "var(--accent)" : "var(--border-strong)"}`, background: !hideDone ? "var(--accent-soft)" : "var(--surface)", fontSize: 12, fontWeight: 500, color: !hideDone ? "var(--accent)" : "var(--text-muted)", whiteSpace: "nowrap", fontFamily: "var(--font-sans)" }}
-          >
-            <Icon name={hideDone ? "eyeOff" : "eye"} size={14} strokeWidth={1.85} />
-            Concluídas
-          </button>
-        )}
-        {selectable && (
-          <button
-            onClick={() => setSelectMode(!selectMode)}
-            style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 32, padding: "0 11px", borderRadius: 9, cursor: "pointer", border: `1px solid ${selectMode ? "var(--accent)" : "var(--border-strong)"}`, background: selectMode ? "var(--accent-soft)" : "var(--surface)", fontSize: 12, fontWeight: 500, color: selectMode ? "var(--accent)" : "var(--text-muted)", whiteSpace: "nowrap", fontFamily: "var(--font-sans)" }}
-          >
-            <Icon name="checkSquare" size={14} strokeWidth={1.85} />
-            {selectMode ? "Selecionando" : "Selecionar"}
-          </button>
-        )}
+        <div style={{ position: "relative", flex: "1 1 220px", minWidth: 200 }}>
+          <Icon name="search" size={15} strokeWidth={1.85} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: "var(--text-subtle)", pointerEvents: "none" }} />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar tarefas…"
+            style={{ width: "100%", height: 32, padding: "0 11px 0 32px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface)", fontSize: 13, color: "var(--text)", outline: "none", fontFamily: "var(--font-sans)" }}
+          />
+          {q && (
+            <button onClick={() => setQ("")} title="Limpar busca" style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", border: "none", background: "transparent", cursor: "pointer", color: "var(--text-subtle)", padding: 4, lineHeight: 0 }}>
+              <Icon name="x" size={14} strokeWidth={2} />
+            </button>
+          )}
+        </div>
+        <button
+          onClick={() => setHideDone(!hideDone)}
+          title={hideDone ? "Mostrar tarefas concluídas" : "Ocultar tarefas concluídas"}
+          style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 32, padding: "0 11px", borderRadius: 9, cursor: "pointer", border: `1px solid ${!hideDone ? "var(--accent)" : "var(--border-strong)"}`, background: !hideDone ? "var(--accent-soft)" : "var(--surface)", fontSize: 12, fontWeight: 500, color: !hideDone ? "var(--accent)" : "var(--text-muted)", whiteSpace: "nowrap", fontFamily: "var(--font-sans)" }}
+        >
+          <Icon name={hideDone ? "eyeOff" : "eye"} size={14} strokeWidth={1.85} />
+          Concluídas
+        </button>
+        <button
+          onClick={() => setSelectMode(!selectMode)}
+          style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 32, padding: "0 11px", borderRadius: 9, cursor: "pointer", border: `1px solid ${selectMode ? "var(--accent)" : "var(--border-strong)"}`, background: selectMode ? "var(--accent-soft)" : "var(--surface)", fontSize: 12, fontWeight: 500, color: selectMode ? "var(--accent)" : "var(--text-muted)", whiteSpace: "nowrap", fontFamily: "var(--font-sans)" }}
+        >
+          <Icon name="checkSquare" size={14} strokeWidth={1.85} />
+          {selectMode ? "Selecionando" : "Selecionar"}
+        </button>
         <div style={{ display: "flex", gap: 3, background: "var(--bg-soft)", borderRadius: 9, padding: 3, border: "1px solid var(--border)" }}>
           <button onClick={() => setOnlyMine(true)} style={segBtn(onlyMine)}>{meId != null && <AssigneeAvatar id={meId} size={16} title={false} />}Minhas</button>
           <button onClick={() => setOnlyMine(false)} style={segBtn(!onlyMine)}><Icon name="users" size={14} strokeWidth={1.85} />Equipe</button>
         </div>
-        {view === "lista" && (
-          <Menu align="right" width={190} trigger={<FilterBtn icon="layoutGrid" label={`Agrupar: ${GROUP_OPTS.find((g) => g.id === groupBy)?.label}`} />}>
-            {(close) => GROUP_OPTS.map((g) => <MenuItem key={g.id} icon={g.icon} label={g.label} active={groupBy === g.id} onClick={() => { setGroupBy(g.id); close() }} />)}
-          </Menu>
-        )}
+        <Menu align="right" width={200} trigger={<FilterBtn icon="layoutGrid" label={`Agrupar: ${GROUP_OPTS.find((g) => g.id === groupBy)?.label}`} />}>
+          {(close) => GROUP_OPTS.map((g) => <MenuItem key={g.id} icon={g.icon} label={g.label} active={groupBy === g.id} onClick={() => { setGroupBy(g.id); close() }} />)}
+        </Menu>
+        <Menu align="right" width={220} trigger={<FilterBtn active={sortBy !== "padrao"} icon="sliders">{`Ordenar: ${SORT_OPTS.find((s) => s.id === sortBy)?.label.replace(/ \(.*\)$/, "")}`}</FilterBtn>}>
+          {(close) => SORT_OPTS.map((s) => <MenuItem key={s.id} icon={s.icon} label={s.label} active={sortBy === s.id} onClick={() => { setSortBy(s.id); close() }} />)}
+        </Menu>
         <Menu
           align="right"
           width={240}
@@ -229,11 +161,7 @@ export function CrossTarefasTab({
         </Menu>
       </div>
 
-      {view === "hoje" && <HojeView tasks={scoped} hideDone={hideDone} {...cb} selectable={selectMode && selectable} selectedIds={selectedIds} onSelect={onSelect} />}
-      {view === "lista" && <ListaView tasks={scoped} groupBy={groupBy} hideDone={hideDone} {...cb} selectable={selectMode && selectable} selectedIds={selectedIds} onSelect={onSelect} />}
-      {view === "quadro" && <QuadroView tasks={scoped} onMove={onMove} {...cb} />}
-      {view === "calendario" && <CalendarioView tasks={scoped} {...cb} />}
-      {view === "agenda" && <AgendaView tasks={scoped} onSchedule={onSchedule} {...cb} />}
+      <ListaView tasks={scoped} groupBy={groupBy} sortBy={sortBy} hideDone={hideDone} {...cb} selectable={selectMode} selectedIds={selectedIds} onSelect={onSelect} />
     </PageFrame>
   )
 }
