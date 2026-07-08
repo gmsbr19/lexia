@@ -305,15 +305,21 @@ model Lancamento {
   processoId              Int? // per-processo financials (Processos module)
   processo                Processo?    @relation(fields: [processoId], references: [id])
   naturezaLegal           String? // 'honorario_contratual'|'honorario_exito'|'sucumbencia'|'custa'|'despesa_reembolsavel' (metadata; finance KPIs ignore it)
+  // Honorário metadata (a fee-receivable is a Lancamento entrada with subTipo='honorario'):
+  tipoHonorario           String? // 'recorrente'|'parcelado'|'exito'|'avista' (composição bucket)
+  valorLiquidoCents       Int? // Astrea "Valor líquido" (null for non-fees)
+  metodoPagamento         String? // Astrea "Pagamento" method
   campanhaId              Int? // ad-spend attribution (Comercial module)
   campanha                Campanha?    @relation(fields: [campanhaId], references: [id])
   honorarios              Honorario[]
+  leads                   Lead[]         @relation("LeadLancamento")
   transferenciaSaida      Transferencia? @relation("TransfSaida")
   transferenciaEntrada    Transferencia? @relation("TransfEntrada")
   createdAt               DateTime       @default(now())
   updatedAt               DateTime       @default(now()) @updatedAt
 
   @@index([tipo, status])
+  @@index([subTipo])
   @@index([dataVencimento])
   @@index([dataPagamento])
   @@index([processoId])
@@ -409,8 +415,10 @@ model Lead {
   cliente            Cliente?   @relation(fields: [clienteId], references: [id])
   casoId             Int?
   caso               Caso?      @relation(fields: [casoId], references: [id])
-  honorarioId        Int?
+  honorarioId        Int? // legado (dormente) — substituído por lancamentoId; removido na Fase 2
   honorario          Honorario? @relation(fields: [honorarioId], references: [id])
+  lancamentoId       Int? // fee-lançamento que o lead virou ao ser ganho (valor contratado p/ ROAS)
+  lancamento         Lancamento? @relation("LeadLancamento", fields: [lancamentoId], references: [id])
   observacoes        String?
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
