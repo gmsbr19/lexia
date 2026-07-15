@@ -13,7 +13,7 @@ export type { DocumentoRow } from "@/lib/documentos/types"
 export type { LexiaConversaRow, LexiaConversaDetail, LexiaMensagemRow, LexiaChatResult } from "@/lib/lexia/types"
 export type { SearchResults } from "@/lib/search"
 export type { UserRow } from "@/lib/users/types"
-export type { EscritorioConfig, ImportacaoInfo, ModulosConfig } from "@/lib/settings"
+export type { EscritorioConfig, ImportacaoInfo, ModulosConfig, NotificacoesConfig } from "@/lib/settings"
 
 export type Role = "admin" | "socio" | "advogado" | "estagiario" | "financeiro" | "staff"
 
