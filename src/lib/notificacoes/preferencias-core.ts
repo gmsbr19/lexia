@@ -16,6 +16,18 @@ export interface NotifPrefs {
   relatorioDiario?: boolean
   /** horário do relatório diário, "HH:MM" — default "08:00" (casa por hora) */
   relatorioHora?: string
+  /**
+   * Cópia de supervisão ao sócio quando OUTRA pessoa conclui uma tarefa que ele
+   * não criou — default LIGADO (opt-out). Só vale quando a regra do escritório
+   * (AppSetting `notificacoes.tarefaConcluidaGestores`) está ligada; desligar o
+   * módulo `tarefas` em `app`/`email` continua mandando em tudo.
+   */
+  tarefasConclusaoEquipe?: boolean
+}
+
+/** Conclusões de tarefas da equipe: default LIGADO (só desliga se explicitamente false). */
+export function querConclusoesEquipe(prefs: NotifPrefs): boolean {
+  return prefs.tarefasConclusaoEquipe !== false
 }
 
 /** Relatório diário: default LIGADO (só desliga se explicitamente false). */

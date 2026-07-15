@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest"
-import { parsePrefs, permiteApp, permiteEmail } from "@/lib/notificacoes/preferencias-core"
+import { parsePrefs, permiteApp, permiteEmail, querConclusoesEquipe } from "@/lib/notificacoes/preferencias-core"
 import { notifPrefsSchema } from "@/lib/notificacoes/schemas"
 import { prioridadeRank } from "@/lib/notificacoes/types"
+import { avisarGestoresConclusao } from "@/lib/settings"
 
 describe("notifPrefsSchema (PATCH parcial)", () => {
   it("aceita um patch parcial de módulos (o cliente manda só o que mexeu)", () => {
@@ -46,6 +47,25 @@ describe("permiteEmail (default LIGADO, opt-out + limiar)", () => {
     expect(permiteEmail(p, "processos", "normal")).toBe(false)
     expect(permiteEmail(p, "processos", "alta")).toBe(true)
     expect(permiteEmail(p, "processos", "critica")).toBe(true)
+  })
+})
+
+describe("querConclusoesEquipe (cópia de supervisão ao sócio, default LIGADO)", () => {
+  it("liga por padrão; só desliga com false explícito", () => {
+    expect(querConclusoesEquipe({})).toBe(true)
+    expect(querConclusoesEquipe({ tarefasConclusaoEquipe: true })).toBe(true)
+    expect(querConclusoesEquipe({ tarefasConclusaoEquipe: false })).toBe(false)
+  })
+  it("é aceito pelo schema (que é .strict())", () => {
+    expect(notifPrefsSchema.safeParse({ tarefasConclusaoEquipe: false }).success).toBe(true)
+  })
+})
+
+describe("avisarGestoresConclusao (regra do escritório, default LIGADO)", () => {
+  it("liga por padrão; só desliga com false explícito", () => {
+    expect(avisarGestoresConclusao({})).toBe(true)
+    expect(avisarGestoresConclusao({ tarefaConcluidaGestores: true })).toBe(true)
+    expect(avisarGestoresConclusao({ tarefaConcluidaGestores: false })).toBe(false)
   })
 })
 

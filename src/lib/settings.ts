@@ -76,6 +76,30 @@ export function processosHabilitado(cfg: ModulosConfig): boolean {
   return cfg.processos !== false
 }
 
+// ── notificações (regras do escritório, definidas pelo admin) ────────────────
+export const notificacoesSchema = z
+  .object({
+    // absent/true = sócios avisados de toda tarefa concluída; false = só o criador
+    tarefaConcluidaGestores: z.boolean().optional(),
+  })
+  .strict()
+
+export type NotificacoesConfig = z.infer<typeof notificacoesSchema>
+
+const NOTIFICACOES_KEY = "notificacoes"
+
+export async function getNotificacoesConfig(): Promise<NotificacoesConfig> {
+  return (await getSetting<NotificacoesConfig>(NOTIFICACOES_KEY)) ?? {}
+}
+
+export async function setNotificacoesConfig(cfg: NotificacoesConfig): Promise<{ key: string }> {
+  return setSetting(NOTIFICACOES_KEY, cfg)
+}
+
+export function avisarGestoresConclusao(cfg: NotificacoesConfig): boolean {
+  return cfg.tarefaConcluidaGestores !== false
+}
+
 // ── importação status (sourced from the audit trail) ─────────────────────────
 export interface ImportacaoInfo {
   resumo: ImportSummary

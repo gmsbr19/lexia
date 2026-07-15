@@ -17,6 +17,7 @@ import type {
   LexiaConversaDetail,
   LexiaConversaRow,
   ModulosConfig,
+  NotificacoesConfig,
   SearchResults,
   UserRow,
 } from "./crm-types"
@@ -105,6 +106,8 @@ export const getEscritorio = () => get<EscritorioConfig>(`/api/settings/escritor
 export const putEscritorio = (body: EscritorioConfig) => mut(`/api/settings/escritorio`, "PUT", body)
 export const getModulosConfig = () => get<ModulosConfig>(`/api/settings/modulos`)
 export const putModulosConfig = (body: ModulosConfig) => mut(`/api/settings/modulos`, "PUT", body)
+export const getNotificacoesConfig = () => get<NotificacoesConfig>(`/api/settings/notificacoes`)
+export const putNotificacoesConfig = (body: NotificacoesConfig) => mut(`/api/settings/notificacoes`, "PUT", body)
 export const getImportacao = () => get<ImportacaoInfo>(`/api/settings/importacao`)
 export const getConsumo = (periodo: ConsumoPeriodo, force = false) =>
   get<ConsumoData>(`/api/consumo?periodo=${periodo}${force ? "&force=1" : ""}`)

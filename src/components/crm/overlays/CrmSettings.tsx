@@ -23,6 +23,8 @@ import {
   getImportacao,
   getModulosConfig,
   putModulosConfig,
+  getNotificacoesConfig,
+  putNotificacoesConfig,
   listUsers,
   listAreasComUso,
   createAreaAdmin,
@@ -43,6 +45,7 @@ import type {
   EscritorioConfig,
   ImportacaoInfo,
   ModulosConfig,
+  NotificacoesConfig,
   Role,
   UserRow,
 } from "../crm-types"
@@ -333,6 +336,8 @@ export function CrmSettings({
   // ─────────────────────────── Notificações (preferências do usuário) ───────────────────────────
   function NotificacoesSection() {
     const [prefs, setPrefsState] = useState<NotifPrefs | null>(null)
+    const [regra, setRegra] = useState<NotificacoesConfig>({}) // regra do escritório (admin)
+    const [regraBusy, setRegraBusy] = useState(false)
     const [busy, setBusy] = useState(false)
     const [testando, setTestando] = useState(false)
 
@@ -341,6 +346,9 @@ export function CrmSettings({
       apiSend<NotifPrefs>("/api/notificacoes/preferencias", "GET")
         .then((p) => { if (alive) setPrefsState(p ?? {}) })
         .catch(() => { if (alive) setPrefsState({}) })
+      getNotificacoesConfig()
+        .then((c) => { if (alive) setRegra(c ?? {}) })
+        .catch(() => { /* mantém o default (ligado) */ })
       return () => { alive = false }
     }, [])
 
@@ -368,6 +376,25 @@ export function CrmSettings({
     }
 
     const relatorioOn = prefs.relatorioDiario !== false // default ligado (opt-out)
+    const regraOn = regra.tarefaConcluidaGestores !== false // default ligado (opt-out)
+    const conclusoesOn = prefs.tarefasConclusaoEquipe !== false // default ligado (opt-out)
+    const gestor = role === "admin" || role === "socio"
+
+    // Regra do escritório: salva na hora (otimista), como a seção Módulos.
+    const toggleRegra = async () => {
+      const next: NotificacoesConfig = { ...regra, tarefaConcluidaGestores: !regraOn }
+      setRegra(next)
+      setRegraBusy(true)
+      try {
+        await putNotificacoesConfig(next)
+        toast(next.tarefaConcluidaGestores ? "Sócios serão avisados" : "Aviso aos sócios desligado")
+      } catch (e) {
+        setRegra(regra)
+        toast(e instanceof Error ? e.message : "Erro", { tone: "neg", icon: "alertTriangle" })
+      } finally {
+        setRegraBusy(false)
+      }
+    }
 
     const save = async () => {
       setBusy(true)
@@ -413,6 +440,15 @@ export function CrmSettings({
               </span>
             </div>
           ))}
+          {gestor && regraOn && (
+            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px 10px 30px", borderTop: "1px solid var(--border)", background: "var(--bg-sunken)" }}>
+              <CrmSwitch on={conclusoesOn} onChange={() => setPrefsState((p) => ({ ...(p ?? {}), tarefasConclusaoEquipe: !conclusoesOn }))} />
+              <div>
+                <div style={{ fontSize: 13, color: "var(--text)" }}>Conclusões de tarefas da equipe</div>
+                <div style={{ fontSize: 11.5, color: "var(--text-subtle)" }}>Avisa quando outra pessoa conclui uma tarefa, mesmo que você não a tenha criado. Desligar aqui mantém as demais notificações de tarefa.</div>
+              </div>
+            </div>
+          )}
         </div>
 
         <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 14 }}>
@@ -466,6 +502,20 @@ export function CrmSettings({
         <button className="btn btn-primary" onClick={save} disabled={busy} style={{ marginTop: 16 }}>
           {busy ? "Salvando…" : "Salvar preferências"}
         </button>
+
+        {role === "admin" && (
+          <div style={{ marginTop: 24, paddingTop: 18, borderTop: "1px solid var(--border)" }}>
+            <SectionTitle>Regra do escritório</SectionTitle>
+            <SectionSub>Vale para todos os sócios. Cada um pode desligar a cópia nas próprias preferências acima.</SectionSub>
+            <div className="card" style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px" }}>
+              <CrmSwitch on={regraOn} onChange={() => void toggleRegra()} disabled={regraBusy} />
+              <div>
+                <div style={{ fontSize: 13, color: "var(--text)" }}>Avisar os sócios de toda tarefa concluída</div>
+                <div style={{ fontSize: 11.5, color: "var(--text-subtle)" }}>Sócios recebem no app e por e-mail sempre que outra pessoa concluir uma tarefa, independente de quem a criou. Desligado, só quem criou a tarefa é avisado.</div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
