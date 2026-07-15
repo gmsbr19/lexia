@@ -3,6 +3,8 @@
 // a mutation). Cada função tem try/catch total — chame-as com `void`, sem await.
 // Resolução de destinatários reusa recipients.ts; a escrita/emoção via service.ts.
 import { log } from "@/lib/log"
+import { avisarGestoresConclusao, getNotificacoesConfig } from "@/lib/settings"
+import { getPrefs, querConclusoesEquipe } from "./preferencias"
 import { emailDoUsuario, gestorEmails, nomePorEmail } from "./recipients"
 import { type CriarNotificacaoInput, criarNotificacao } from "./service"
 import { msgTarefaAtribuida, msgTarefaConcluida } from "./tarefa-msg"
@@ -56,6 +58,12 @@ export async function notificarTarefaAtribuida(p: {
   }
 }
 
+/**
+ * Conclusão de tarefa → avisa (a) quem criou/delegou a tarefa e (b), quando a
+ * regra do escritório está ligada, os sócios como supervisão — mesmo que não
+ * tenham criado a tarefa. Ninguém é avisado da própria conclusão, e o criador
+ * sócio recebe uma vez só.
+ */
 export async function notificarTarefaConcluida(p: {
   tarefaId: number
   titulo: string
@@ -64,19 +72,35 @@ export async function notificarTarefaConcluida(p: {
   concluidoEm?: Date | null
 }): Promise<void> {
   try {
-    if (!p.criadoPorId) return
-    const to = await emailDoUsuario(p.criadoPorId)
-    if (!to || (p.actorEmail && to === p.actorEmail)) return // quem concluiu é o próprio criador
+    const destinos = new Set<string>()
+
+    const criador = await emailDoUsuario(p.criadoPorId)
+    // pula quando quem concluiu é o próprio criador
+    if (criador && !(p.actorEmail && criador === p.actorEmail)) destinos.add(criador)
+
+    if (avisarGestoresConclusao(await getNotificacoesConfig())) {
+      for (const gestor of await gestorEmails()) {
+        if (!gestor || destinos.has(gestor)) continue
+        if (p.actorEmail && gestor === p.actorEmail) continue
+        if (!querConclusoesEquipe(await getPrefs(gestor))) continue // opt-out pessoal
+        destinos.add(gestor)
+      }
+    }
+    if (destinos.size === 0) return
+
     const atorNome = await nomePorEmail(p.actorEmail) // quem concluiu (ator do evento)
-    await entregar({
-      userEmail: to,
-      tipo: "tarefa",
-      modulo: "tarefas",
-      refTipo: "tarefa",
-      refId: p.tarefaId,
-      mensagem: msgTarefaConcluida({ atorNome, titulo: p.titulo, concluidoEm: p.concluidoEm }),
-      actorEmail: p.actorEmail ?? null,
-    })
+    const mensagem = msgTarefaConcluida({ atorNome, titulo: p.titulo, concluidoEm: p.concluidoEm })
+    for (const to of destinos) {
+      await entregar({
+        userEmail: to,
+        tipo: "tarefa",
+        modulo: "tarefas",
+        refTipo: "tarefa",
+        refId: p.tarefaId,
+        mensagem,
+        actorEmail: p.actorEmail ?? null,
+      })
+    }
   } catch (e) {
     log.error({ err: e instanceof Error ? e.message : String(e) }, "notificarTarefaConcluida falhou")
   }
