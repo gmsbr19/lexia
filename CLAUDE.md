@@ -145,6 +145,39 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **Notificações · sócios avisados de toda tarefa concluída (this session, VERIFIED tsc 0, 483/483 testes,
+  eslint sem achados novos, NO migration)** (memory `project_notifications`). Pedido do admin: os sócios
+  precisam saber sempre que **alguém que não eles** conclui uma tarefa, **independente de quem criou**, no app
+  e no e-mail. Antes, [notificarTarefaConcluida](src/lib/notificacoes/triggers.ts) avisava **só o criador**
+  (`criadoPorId`) — sócio que não criou nunca ficava sabendo. **Decisões travadas:** regra **ligada por
+  padrão** (admin desliga); o sócio tem **opt-out aninhado** — desliga só as conclusões da equipe (segue
+  recebendo as demais notificações de tarefa) ou desliga o módulo Tarefas inteiro e não recebe nada.
+  **Regra global (admin)** em [settings.ts](src/lib/settings.ts): `notificacoesSchema`/`NotificacoesConfig`/
+  key `notificacoes` + `getNotificacoesConfig`/`setNotificacoesConfig` + predicado puro
+  `avisarGestoresConclusao(cfg) => cfg.tarefaConcluidaGestores !== false` (cópia do padrão de `modulos`, k/v
+  `AppSetting` → **sem migração**); rota nova [/api/settings/notificacoes](src/app/api/settings/notificacoes/route.ts)
+  (GET qualquer autenticado — a tela de prefs lê p/ decidir o que mostrar; PUT `runMutation` `roles:["admin"]`,
+  action `settings.notificacoes`). **Pref pessoal** `tarefasConclusaoEquipe` (opt-out) em
+  [preferencias-core.ts](src/lib/notificacoes/preferencias-core.ts) + helper puro `querConclusoesEquipe`
+  (re-exportado por `preferencias.ts`) + Zod em [schemas.ts](src/lib/notificacoes/schemas.ts) (o schema é
+  `.strict()` e `setPrefs` substitui o blob inteiro → campo novo exige schema + UI). **Fan-out** (único ponto
+  de política, no trigger): monta um `Set` de destinatários = criador (regra de hoje intacta, pula o ator) +
+  gestores via `gestorEmails()` quando a regra global está ligada, pulando o ator, quem já está no Set (sócio
+  criador não recebe 2×) e quem tem `querConclusoesEquipe === false`; mesma mensagem de `msgTarefaConcluida`
+  (já nomeia quem+quando), prioridade `normal` (`baixa` nunca envia e-mail), sem grupoKey/dedupeKey. Os
+  toggles App/E-mail do módulo `tarefas` seguem mandando em tudo (via `criarNotificacao`). `tarefas/mutations.ts`
+  NÃO mudou. **UI** ([CrmSettings.tsx](src/components/crm/overlays/CrmSettings.tsx) `NotificacoesSection`):
+  linha aninhada e indentada sob a tabela de módulos ("Conclusões de tarefas da equipe", só p/ admin/sócio e só
+  quando a regra global está ligada — senão seria inerte), salva no botão de prefs que já existe; + card
+  "Regra do escritório" (só admin) com salvamento **otimista sem botão** espelhando `ModulosSection`
+  (`get/putNotificacoesConfig` novos em [crm-api.ts](src/components/crm/crm-api.ts)). Testes puros novos em
+  [notificacoes-prefs.test.ts](tests/notificacoes-prefs.test.ts) (3). **Verificado: tsc 0; 483/483 testes;
+  eslint sem achados novos** (`_realRole`/`_dataset` em CrmSettings são PRÉ-EXISTENTES). **Sem migração.
+  User action:** visual — concluir uma tarefa como usuário A → um sócio B que não criou recebe toast/sino +
+  e-mail nomeando quem concluiu e quando; quem concluiu não recebe; criador recebe uma vez só. Configurações →
+  Notificações → desligar "Conclusões de tarefas da equipe" (sócio) → para essa cópia mas segue recebendo
+  tarefa delegada; como admin, "Regra do escritório" → desligar → volta ao comportamento antigo (só o criador).
+  E-mail exige Graph/SMTP (sem backend o mailer é noop, só loga).
 - **Honorário = recebimento financeiro — Fase 1 do cutover `Honorario`→`Lancamento` (this session, VERIFIED
   tsc 0, 495/495 testes, eslint sem achado novo; migração + backfill = passos do USUÁRIO).** O usuário
   apontou que `Honorario` não deveria ser entidade separada — honorários são recebíveis (lançamentos entrada).
