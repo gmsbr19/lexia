@@ -19,6 +19,7 @@ export const notifPrefsSchema = z
       .string()
       .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Horário inválido (use HH:MM)")
       .optional(),
+    tarefasConclusaoEquipe: z.boolean().optional(),
   })
   .strict()
 

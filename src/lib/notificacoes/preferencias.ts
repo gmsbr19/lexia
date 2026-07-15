@@ -9,6 +9,7 @@ export {
   querRelatorioDiario,
   horaRelatorio,
   deveEnviarRelatorio,
+  querConclusoesEquipe,
 } from "./preferencias-core"
 export type { NotifPrefs } from "./preferencias-core"
 
