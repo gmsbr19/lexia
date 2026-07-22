@@ -394,6 +394,7 @@ export async function getClientes(): Promise<ClienteRow[]> {
       cpfCnpj: true,
       cidade: true,
       uf: true,
+      origem: true,
       _count: { select: { casos: true } },
     },
     orderBy: { nome: "asc" },
@@ -407,6 +408,7 @@ export async function getClientes(): Promise<ClienteRow[]> {
     cidade: r.cidade,
     uf: r.uf,
     numCasos: r._count.casos,
+    origem: r.origem,
   }))
 }
 

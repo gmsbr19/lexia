@@ -100,6 +100,31 @@ export async function updateCliente(id: number, patch: ClientePatch) {
   return prisma.cliente.update({ where: { id }, data })
 }
 
+// ── lote (bulk edit — Fase 2 do CRM Comercial) ────────────────────────────────
+export interface ClientesLote {
+  ids: number[]
+  tipo?: string
+  classificacao?: string
+  origem?: string | null
+}
+
+/** Bulk edit across many Contatos. Deliberately minimal: só os 3 campos sem
+ *  caso de uso identidade-específica (nome/cpfCnpj/endereço ficam de fora) e
+ *  SEM exclusão em lote — Cliente não tem hard-delete nem no single-record
+ *  hoje, então inventar bulk-delete seria uma capacidade nova e mais
+ *  perigosa que qualquer coisa que já existe (ver CLAUDE.md §11 Fase 2). */
+export async function bulkUpdateClientes(input: ClientesLote) {
+  const ids = (input.ids ?? []).filter((n) => Number.isInteger(n) && n > 0)
+  if (!ids.length) throw new UserError("Selecione ao menos um contato")
+  const data: Prisma.ClienteUncheckedUpdateManyInput = {}
+  if (input.tipo !== undefined) data.tipo = validTipo(input.tipo)
+  if (input.classificacao !== undefined) data.classificacao = validClassificacao(input.classificacao)
+  if (input.origem !== undefined) data.origem = validOrigem(input.origem)
+  if (Object.keys(data).length === 0) throw new UserError("Nenhuma alteração informada")
+  const r = await prisma.cliente.updateMany({ where: { id: { in: ids } }, data })
+  return { atualizados: r.count }
+}
+
 const MERGE_SELECT = {
   apelido: true,
   cpfCnpj: true,
