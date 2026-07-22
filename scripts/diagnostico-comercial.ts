@@ -106,29 +106,26 @@ async function main() {
     select: {
       id: true, nome: true, casoId: true, dataEntrada: true, dataConversao: true,
       valorEstimadoCents: true,
-      honorario: { select: { valorCents: true } },
+      lancamento: { select: { valorCents: true } },
       caso: {
         select: {
           titulo: true,
-          honorarios: { select: { valorCents: true } },
-          lancamentos: { where: { tipo: "entrada", subTipo: "honorario" }, select: { valorCents: true, honorarios: { select: { id: true } } } },
+          lancamentos: { where: { tipo: "entrada", subTipo: "honorario", isAnomalia: false }, select: { valorCents: true } },
         },
       },
     },
   })
-  // receita real do caso = honorários + entradas de honorário não espelhadas por um Honorário
+  // receita real do caso = soma dos fee-lançamentos do caso
   const casoRev = (c: (typeof ganhos)[number]["caso"]) => {
     if (!c) return 0
-    const fees = c.honorarios.reduce((a, h) => a + h.valorCents, 0)
-    const manual = c.lancamentos.filter((l) => l.honorarios.length === 0).reduce((a, l) => a + Math.abs(l.valorCents), 0)
-    return fees + manual
+    return c.lancamentos.reduce((a, l) => a + Math.abs(l.valorCents), 0)
   }
   const valorMap = valorContratadoPorLead(
     ganhos.map((l) => ({
       id: l.id,
       casoId: l.casoId,
       conv: l.dataConversao?.getTime() ?? 0,
-      honorarioCents: l.honorario?.valorCents ?? 0,
+      honorarioCents: l.lancamento?.valorCents ?? 0,
       casoRevenueCents: casoRev(l.caso),
       estimadoCents: l.valorEstimadoCents ?? 0,
     })),
@@ -136,7 +133,7 @@ async function main() {
   if (ganhos.length === 0) console.log("(nenhum lead ganho com entrada ou conversão neste mês)")
   for (const l of ganhos) {
     const rev = casoRev(l.caso)
-    const hon = l.honorario?.valorCents ?? 0
+    const hon = l.lancamento?.valorCents ?? 0
     const valor = valorMap.get(l.id) ?? 0
     console.log(
       `\n  Lead #${l.id} "${l.nome}"` +
