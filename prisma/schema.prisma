@@ -108,7 +108,6 @@ model Conta {
   createdAt             DateTime        @default(now())
   updatedAt             DateTime        @default(now()) @updatedAt
   lancamentos           Lancamento[]
-  honorarios            Honorario[]
   custosFixos           CustoFixo[]
   transferenciasOrigem  Transferencia[]   @relation("TransfOrigem")
   transferenciasDestino Transferencia[]   @relation("TransfDestino")
@@ -143,7 +142,7 @@ model Cliente {
   telefones       String? // ';'-joined
   origem          String? // como o cliente chegou (mesmo conjunto do Lead: google_ads|meta_ads|indicacao|organico|outro)
   casos           Caso[]
-  honorarios      Honorario[]
+  contratos       Contrato[]
   lancamentos     Lancamento[]
   leads           Lead[]
   tarefas         Tarefa[]
@@ -202,7 +201,11 @@ model Caso {
   dataCriacao        DateTime?
   ultimaMovimentacao DateTime?
   excluidoEm         DateTime? // soft-delete marker (legal data is never physically removed)
-  honorarios         Honorario[]
+  // O contrato (documento assinado) que este caso pertence. Nullable: um caso pode
+  // existir sem contrato vinculado. Um contrato pode reunir vários casos (ex.: um
+  // condomínio com assessoria mensal + uma ação de obrigação de fazer).
+  contratoId         Int?
+  contrato           Contrato?    @relation(fields: [contratoId], references: [id])
   lancamentos        Lancamento[]
   responsaveis       CasoResponsavel[]
   leads              Lead[]
@@ -217,6 +220,32 @@ model Caso {
   @@index([tipo])
   @@index([area])
   @@index([responsavelUserId])
+  @@index([contratoId])
+}
+
+// O documento assinado entre o escritório e o cliente que define os honorários e
+// o serviço contratado. UM contrato pode reunir VÁRIOS casos (ex.: um condomínio
+// com assessoria mensal + uma ação de obrigação de fazer); um caso pode não ter
+// contrato (litígios avulsos, importados, etc.). O financeiro de cada caso é
+// individual (fee-lançamentos ligados ao caso); o financeiro do CONTRATO é a soma
+// dos financeiros dos casos vinculados — nunca persistido, sempre derivado na
+// leitura (mesma regra de saúde/progresso de Projeto).
+model Contrato {
+  id             Int         @id @default(autoincrement())
+  clienteId      Int?
+  cliente        Cliente?    @relation(fields: [clienteId], references: [id])
+  titulo         String? // rótulo opcional; a UI cai para o nome do cliente/caso quando ausente
+  dataFechamento DateTime // quando o contrato foi assinado/fechado — agrupa a lista por mês
+  observacoes    String?
+  excluidoEm     DateTime? // soft-delete marker
+  casos          Caso[]
+  documentos     Documento[] // o(s) documento(s) assinado(s) vinculado(s) (opcional)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @default(now()) @updatedAt
+
+  @@index([clienteId])
+  @@index([dataFechamento])
+  @@index([excluidoEm])
 }
 
 // Operator-entered (NOT in the Astrea backup). Per-caso profit split between the
@@ -234,40 +263,6 @@ model CasoResponsavel {
 
   @@unique([casoId, contaId])
   @@index([casoId])
-}
-
-model Honorario {
-  id                Int         @id @default(autoincrement())
-  astreaId          String      @unique
-  descricao         String
-  dataVencimento    DateTime?
-  valorCents        Int         @default(0)
-  valorLiquidoCents Int         @default(0)
-  status            String? // 'lancado' | 'recebido'
-  tipo              String? // composição bucket: 'recorrente' | 'parcelado' | 'exito' | 'avista'
-  pagamento         String?
-  responsavel       String?
-  processoTitulo    String? // raw Astrea "Processo" string (title, not an id) — kept as legacy/fallback
-  processoId        Int? // structured link to a Processo (additive; resolves "Bradesco x Marcelo Lopes")
-  processo          Processo?   @relation(fields: [processoId], references: [id])
-  entradaAstreaId   String? // Astrea id linking to a Lancamento
-  casoId            Int?
-  caso              Caso?       @relation(fields: [casoId], references: [id])
-  clienteId         Int?
-  cliente           Cliente?    @relation(fields: [clienteId], references: [id])
-  lancamentoId      Int? // many honorários may map to one Astrea "Entrada"
-  lancamento        Lancamento? @relation(fields: [lancamentoId], references: [id])
-  dataPagamento     DateTime? // operator-set: when this honorário was actually paid
-  contaId           Int? // which account received the payment
-  conta             Conta?      @relation(fields: [contaId], references: [id])
-  leads             Lead[]
-  createdAt         DateTime    @default(now())
-  updatedAt         DateTime    @default(now()) @updatedAt
-
-  @@index([status])
-  @@index([tipo])
-  @@index([contaId])
-  @@index([processoId])
 }
 
 model Lancamento {
@@ -311,7 +306,6 @@ model Lancamento {
   metodoPagamento         String? // Astrea "Pagamento" method
   campanhaId              Int? // ad-spend attribution (Comercial module)
   campanha                Campanha?    @relation(fields: [campanhaId], references: [id])
-  honorarios              Honorario[]
   leads                   Lead[]         @relation("LeadLancamento")
   transferenciaSaida      Transferencia? @relation("TransfSaida")
   transferenciaEntrada    Transferencia? @relation("TransfEntrada")
@@ -394,7 +388,7 @@ model Campanha {
 
 // A sales lead, sourced from the Genions CRM via idempotent CSV import (upsert by
 // `genionsId`) or entered manually. Moves through the funnel via `etapa`; on win
-// it links to the Cliente / Caso / Honorário it converted into (the Honorário
+// it links to the Cliente / Caso / fee-Lançamento it converted into (`lancamento`
 // carries the contracted value used by ROAS / ticket médio).
 model Lead {
   id                 Int        @id @default(autoincrement())
@@ -415,8 +409,6 @@ model Lead {
   cliente            Cliente?   @relation(fields: [clienteId], references: [id])
   casoId             Int?
   caso               Caso?      @relation(fields: [casoId], references: [id])
-  honorarioId        Int? // legado (dormente) — substituído por lancamentoId; removido na Fase 2
-  honorario          Honorario? @relation(fields: [honorarioId], references: [id])
   lancamentoId       Int? // fee-lançamento que o lead virou ao ser ganho (valor contratado p/ ROAS)
   lancamento         Lancamento? @relation("LeadLancamento", fields: [lancamentoId], references: [id])
   observacoes        String?
@@ -540,6 +532,8 @@ model Documento {
   templateRef DocumentoTemplate? @relation(fields: [templateId], references: [id])
   timbradoId Int?
   timbrado  Timbrado? @relation(fields: [timbradoId], references: [id])
+  contratoId Int? // o contrato (documento assinado) que este registro representa, quando aplicável
+  contrato  Contrato? @relation(fields: [contratoId], references: [id])
   criadoPor String? // actor e-mail
   versoes   DocumentoVersao[]
   createdAt DateTime @default(now())
@@ -550,6 +544,7 @@ model Documento {
   @@index([status])
   @@index([processoId])
   @@index([templateId])
+  @@index([contratoId])
 }
 
 // Reusable document template — the DB-backed replacement for the hardcoded
@@ -745,7 +740,6 @@ model Processo {
   eventos           Evento[]
   tarefas           Tarefa[]
   lancamentos       Lancamento[]
-  honorarios        Honorario[]
   anotacoes         Anotacao[]
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
