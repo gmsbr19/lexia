@@ -10,6 +10,7 @@ import type {
   AgendaDataset,
   CasoDetail,
   ClienteDetail,
+  ContratoDetail,
   DocumentoRow,
   EscritorioConfig,
   HonorarioDetail,
@@ -33,6 +34,11 @@ export const fetchClienteDetail = (id: number) => get<ClienteDetail>(`/api/clien
 export const fetchCasoDetail = (id: number) => get<CasoDetail>(`/api/casos/${id}`)
 // Honorário = lançamento (subTipo='honorario'); the id here is a LANÇAMENTO id.
 export const fetchHonorarioDetail = (id: number) => get<HonorarioDetail>(`/api/financeiro/lancamentos/${id}/contrato`)
+// Contrato = o documento assinado (pode reunir vários casos); id de CONTRATO.
+export const fetchContratoDetail = (id: number) => get<ContratoDetail>(`/api/contratos/${id}`)
+export const createContrato = (body: unknown) => mut<{ id: number }>(`/api/contratos`, "POST", body)
+export const patchContrato = (id: number, body: unknown) => mut(`/api/contratos/${id}`, "PATCH", body)
+export const deleteContrato = (id: number) => mut(`/api/contratos/${id}`, "DELETE")
 export const fetchAgenda = (de: string, ate: string) => get<AgendaDataset>(`/api/agenda?de=${de}&ate=${ate}`)
 export const fetchDocumentos = (clienteId: number) => get<DocumentoRow[]>(`/api/documentos?clienteId=${clienteId}`)
 export const searchAll = (q: string) => get<SearchResults>(`/api/search?q=${encodeURIComponent(q)}`)

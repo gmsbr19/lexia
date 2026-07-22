@@ -13,7 +13,7 @@ import { CrmCasosPage } from "./pages/CrmCasosPage"
 import { CrmContratosPage } from "./pages/CrmContratosPage"
 import { CrmAgendaPage } from "./pages/CrmAgendaPage"
 import { CrmCasoModal } from "./pages/CrmCasoModal"
-import { CrmContratoModal } from "./pages/CrmContratoModal"
+import { CrmContratoModal, CrmNovoContratoModal } from "./pages/CrmContratoModal"
 import { CrmQuickCliente, CrmAnonimizar, CrmMesclarClientes } from "./pages/CrmQuickModals"
 import type { ClienteTab, CrmDataset, CrmNav } from "./crm-types"
 
@@ -107,11 +107,24 @@ export function CasosRoute({ dataset, openCaso }: { dataset: CrmDataset; openCas
 }
 
 export function ContratosRoute({ dataset, openContrato }: { dataset: CrmDataset; openContrato?: number }) {
+  const router = useRouter()
   const { nav, modals } = useCrmRouteNav(dataset, { contrato: openContrato })
+  const [novo, setNovo] = useState(false)
   return (
     <>
-      <CrmContratosPage dataset={dataset} nav={nav} />
+      <CrmContratosPage dataset={dataset} nav={nav} onNovo={() => setNovo(true)} />
       {modals}
+      {novo && (
+        <CrmNovoContratoModal
+          dataset={dataset}
+          onClose={() => setNovo(false)}
+          onCreated={(id) => {
+            setNovo(false)
+            router.refresh()
+            nav.openContrato(id)
+          }}
+        />
+      )}
     </>
   )
 }

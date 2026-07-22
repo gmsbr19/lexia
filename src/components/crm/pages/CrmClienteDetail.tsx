@@ -374,7 +374,7 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
     { id: "cobranca", label: "Cobrança & notas", icon: "handshake", badge: detail.anotacoes.length || null },
     { id: "tarefas", label: "Tarefas", icon: "listChecks", badge: detail.tarefas.length || null },
     ...(processosOk ? [{ id: "casos", label: "Casos & Processos", icon: "briefcase", badge: detail.casos.length || null } as FxTabDef] : []),
-    { id: "contratos", label: "Contratos", icon: "receipt", badge: detail.honorarios.length || null },
+    { id: "contratos", label: "Contratos", icon: "receipt", badge: detail.contratos.length || null },
     { id: "eventos", label: "Eventos", icon: "calendar", badge: detail.eventos.length || null },
     { id: "documentos", label: "Documentos", icon: "fileText", badge: detail.documentos.length || null },
   ]
@@ -672,20 +672,20 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
 
         {tab === "contratos" && (
           <>
-            <FxCardTitle title="Contratos & honorários" sub={`${detail.honorarios.length} contrato(s)`} />
-            {detail.honorarios.length === 0
+            <FxCardTitle title="Contratos" sub={`${detail.contratos.length} contrato(s) · o documento assinado, pode reunir mais de um caso`} />
+            {detail.contratos.length === 0
               ? sectionCard(<CrmEmpty icon="receipt" title="Sem contratos" />)
-              : sectionCard(detail.honorarios.map((h, i) => (
-                <CrmRow key={h.id} onClick={() => nav.openContrato(h.id)} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 16px", borderTop: i ? "1px solid var(--border)" : "none" }}>
+              : sectionCard(detail.contratos.map((c, i) => (
+                <CrmRow key={c.id} onClick={() => nav.openContrato(c.id)} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 16px", borderTop: i ? "1px solid var(--border)" : "none" }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{h.descricao}</div>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.titulo}</div>
                     <div style={{ fontSize: 12, color: "var(--text-subtle)", marginTop: 2 }}>
-                      {h.caso || "Sem caso"}{h.vencimento ? ` · vence ${crmDate(h.vencimento)}` : ""}
+                      {c.casosCount} {c.casosCount === 1 ? "caso" : "casos"}{c.dataFechamento ? ` · fechado em ${crmDate(c.dataFechamento)}` : ""}
                     </div>
                   </div>
-                  <CrmContratoStatus status={h.status} venc={h.vencimento} />
+                  <CrmContratoStatus status={c.recebidoCents >= c.valorContratadoCents && c.valorContratadoCents > 0 ? "recebido" : "lancado"} venc={c.dataFechamento} />
                   <span style={{ fontSize: 13, fontWeight: 500, fontVariantNumeric: "tabular-nums", color: "var(--text)", width: 110, textAlign: "right" }}>
-                    <FxMoney cents={h.valorCents} plain />
+                    <FxMoney cents={c.valorContratadoCents} plain />
                   </span>
                   <Icon name="chevronRight" size={16} style={{ color: "var(--text-subtle)" }} />
                 </CrmRow>

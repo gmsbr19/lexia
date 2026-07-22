@@ -1,9 +1,10 @@
 "use client"
 
-// LexIA · CRM — Contratos (lente COMERCIAL). Um contrato = um Caso (que pode
-// reunir vários honorários); esta página é o controle comercial (valor
-// contratado, área, origem, pagamento, data de fechamento), enquanto a página de
-// Casos é o controle operacional. Clique numa linha abre o caso.
+// LexIA · CRM — Contratos. Um Contrato é o DOCUMENTO ASSINADO entre o escritório
+// e o cliente; pode reunir vários casos (ex.: um condomínio com assessoria
+// mensal + uma ação de obrigação de fazer) e um caso pode não ter contrato. A
+// lista é agrupada por mês de fechamento (mais recente primeiro). Clique numa
+// linha abre o contrato (casos + honorários + totais).
 import { useMemo, useState } from "react"
 import {
   CrmBadge,
@@ -19,6 +20,7 @@ import {
 } from "../crm-kit"
 import { Icon } from "../crm-icons"
 import { crmDate, crmMoney } from "../crm-fmt"
+import { groupContratosByMonth } from "@/lib/finance/contrato-group"
 import type { ContratoRow, CrmDataset, CrmNav } from "../crm-types"
 import { resolveAreaColor, resolveAreaLabel, useAreasStore } from "@/lib/areas/store"
 import { ORIGEM_LABEL, type LeadOrigem } from "@/lib/comercial/types"
@@ -26,6 +28,7 @@ import { ORIGEM_LABEL, type LeadOrigem } from "@/lib/comercial/types"
 interface Props {
   dataset: CrmDataset
   nav: CrmNav
+  onNovo?: () => void
 }
 
 // Contrato · Área · Origem · Valor · Pagamento · Fechado em
@@ -47,7 +50,9 @@ function origemLabel(k: string | null): string {
 
 type SortKey = "data" | "valor"
 
-export function CrmContratosPage({ dataset, nav }: Props) {
+const CAN_CRIAR: Props["dataset"]["role"][] = ["admin", "socio", "financeiro"]
+
+export function CrmContratosPage({ dataset, nav, onNovo }: Props) {
   const areas = useAreasStore((s) => s.areas)
   const [q, setQ] = useState("")
   const [pag, setPag] = useState("todos")
@@ -110,12 +115,23 @@ export function CrmContratosPage({ dataset, nav }: Props) {
   }
 
   const hasFilter = !!(pag !== "todos" || area || origem || tipo || nq)
+  const visibleRows = rows.slice(0, 200)
+  const groups = useMemo(() => groupContratosByMonth(visibleRows), [visibleRows])
+  const canCriar = CAN_CRIAR.includes(dataset.role)
 
   return (
     <FxFrame>
       <CrmPageHead
         title="Contratos"
-        sub={`${contratos.length} contratos · controle comercial (um contrato reúne os honorários do caso)`}
+        sub={`${contratos.length} contratos · o documento assinado; um contrato pode reunir um ou mais casos`}
+        right={
+          canCriar && onNovo ? (
+            <button className="btn btn-primary" onClick={onNovo}>
+              <Icon name="plus" size={14} />
+              Novo contrato
+            </button>
+          ) : undefined
+        }
       />
       <CrmKpiRow
         kpis={[
@@ -168,83 +184,109 @@ export function CrmContratosPage({ dataset, nav }: Props) {
           </button>
         )}
       </div>
-      <div className="card" style={{ overflow: "hidden" }}>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: CRM_CON_COLS,
-            gap: 14,
-            padding: "11px 18px",
-            borderBottom: "1px solid var(--border)",
-            background: "var(--bg-soft)",
-          }}
-        >
-          <Hd label="Contrato" />
-          <Hd label="Área" />
-          <Hd label="Origem" />
-          <Hd label="Valor" align="right" sortActive={sortKey === "valor"} dir={sortDir} onSort={() => toggleSort("valor")} />
-          <Hd label="Pagamento" />
-          <Hd label="Fechado em" sortActive={sortKey === "data"} dir={sortDir} onSort={() => toggleSort("data")} />
-        </div>
-        {rows.length === 0 ? (
+      {rows.length === 0 ? (
+        <div className="card" style={{ overflow: "hidden" }}>
           <CrmEmpty icon="receipt" title="Nenhum contrato encontrado" sub="Ajuste a busca ou os filtros." />
-        ) : (
-          rows.slice(0, 80).map((c, i) => {
-            const cor = resolveAreaColor(areas, c.area)
-            return (
-              <CrmRow
-                key={c.id}
-                onClick={() => nav.openCaso(c.id)}
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+          {groups.map((g) => (
+            <div key={g.key}>
+              <div
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: CRM_CON_COLS,
-                  gap: 14,
-                  padding: "12px 18px",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  color: "var(--text-muted)",
+                  textTransform: "capitalize",
+                  marginBottom: 8,
+                  display: "flex",
                   alignItems: "center",
-                  borderTop: i ? "1px solid var(--border)" : "none",
+                  gap: 8,
                 }}
               >
-                <div style={{ minWidth: 0 }}>
-                  <div style={ellip(13, "var(--text)", 500)}>{c.titulo}</div>
-                  <div style={{ fontSize: 12, color: "var(--text-subtle)", marginTop: 2, display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.cliente || "—"}</span>
-                    {c.tipo && <CrmCasoTipoPill tipo={c.tipo} />}
-                  </div>
+                {g.label}
+                <span style={{ color: "var(--text-subtle)", fontWeight: 400 }}>({g.rows.length})</span>
+              </div>
+              <div className="card" style={{ overflow: "hidden" }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: CRM_CON_COLS,
+                    gap: 14,
+                    padding: "11px 18px",
+                    borderBottom: "1px solid var(--border)",
+                    background: "var(--bg-soft)",
+                  }}
+                >
+                  <Hd label="Contrato" />
+                  <Hd label="Área" />
+                  <Hd label="Origem" />
+                  <Hd label="Valor" align="right" sortActive={sortKey === "valor"} dir={sortDir} onSort={() => toggleSort("valor")} />
+                  <Hd label="Pagamento" />
+                  <Hd label="Fechado em" sortActive={sortKey === "data"} dir={sortDir} onSort={() => toggleSort("data")} />
                 </div>
-                <div style={{ minWidth: 0 }}>
-                  {c.area ? (
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)", overflow: "hidden" }}>
-                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: cor || "var(--text-subtle)", flexShrink: 0 }} />
-                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{resolveAreaLabel(areas, c.area)}</span>
-                    </span>
-                  ) : (
-                    <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>—</span>
-                  )}
-                </div>
-                <div style={ellip(12, "var(--text-muted)")}>{origemLabel(c.origem)}</div>
-                <div style={{ textAlign: "right", minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)", fontVariantNumeric: "tabular-nums" }}>
-                    {crmMoney(c.valorContratadoCents)}
-                  </div>
-                  {c.honorariosCount > 0 && (
-                    <div style={{ fontSize: 11, color: "var(--text-subtle)", marginTop: 2 }}>
-                      {c.honorariosCount} {c.honorariosCount === 1 ? "honorário" : "honorários"}
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <PagamentoBadge p={pagamentoDe(c)} />
-                </div>
-                <div style={{ fontSize: 12, color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
-                  {c.dataFechamento ? crmDate(c.dataFechamento) : "—"}
-                </div>
-              </CrmRow>
-            )
-          })
-        )}
-      </div>
+                {g.rows.map((c, i) => {
+                  const cor = resolveAreaColor(areas, c.area)
+                  return (
+                    <CrmRow
+                      key={c.id}
+                      onClick={() => nav.openContrato(c.id)}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: CRM_CON_COLS,
+                        gap: 14,
+                        padding: "12px 18px",
+                        alignItems: "center",
+                        borderTop: i ? "1px solid var(--border)" : "none",
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div style={ellip(13, "var(--text)", 500)}>{c.titulo}</div>
+                        <div style={{ fontSize: 12, color: "var(--text-subtle)", marginTop: 2, display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.cliente || "—"}</span>
+                          {c.tipo && <CrmCasoTipoPill tipo={c.tipo} />}
+                          {c.casosCount > 1 && (
+                            <span style={{ fontSize: 11, color: "var(--text-subtle)", flexShrink: 0 }}>· {c.casosCount} casos</span>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        {c.area ? (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)", overflow: "hidden" }}>
+                            <span style={{ width: 8, height: 8, borderRadius: "50%", background: cor || "var(--text-subtle)", flexShrink: 0 }} />
+                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{resolveAreaLabel(areas, c.area)}</span>
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>—</span>
+                        )}
+                      </div>
+                      <div style={ellip(12, "var(--text-muted)")}>{origemLabel(c.origem)}</div>
+                      <div style={{ textAlign: "right", minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)", fontVariantNumeric: "tabular-nums" }}>
+                          {crmMoney(c.valorContratadoCents)}
+                        </div>
+                        {c.honorariosCount > 0 && (
+                          <div style={{ fontSize: 11, color: "var(--text-subtle)", marginTop: 2 }}>
+                            {c.honorariosCount} {c.honorariosCount === 1 ? "honorário" : "honorários"}
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <PagamentoBadge p={pagamentoDe(c)} />
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
+                        {c.dataFechamento ? crmDate(c.dataFechamento) : "—"}
+                      </div>
+                    </CrmRow>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       <div style={{ fontSize: 12, color: "var(--text-subtle)", textAlign: "center", marginTop: 14 }}>
-        {Math.min(rows.length, 80)} de {rows.length} contratos
+        {Math.min(rows.length, 200)} de {rows.length} contratos
       </div>
     </FxFrame>
   )
