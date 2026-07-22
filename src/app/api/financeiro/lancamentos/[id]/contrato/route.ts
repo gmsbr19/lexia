@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic"
 /**
  * GET /api/financeiro/lancamentos/[id]/contrato — the "contrato" (honorário)
  * detail + série de parcelas for a fee-lançamento (subTipo='honorario'). Backs
- * the CrmContratoModal after the Honorario→Lancamento cutover.
+ * the CrmHonorarioModal (a honorário is a fee-lançamento, not the Contrato entity).
  */
 export async function GET(_req: Request, ctx: RouteCtx) {
   const denied = await guardRequest()
