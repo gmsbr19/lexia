@@ -8,7 +8,8 @@ import { UserError } from "@/lib/errors"
 import { writeAudit } from "@/lib/finance/api"
 import { log } from "@/lib/log"
 import { assertRateLimit, RateLimitError } from "@/lib/rate-limit"
-import { comCacheBreakpoints } from "./cache"
+import { deveAutoExecutar } from "./auto"
+import { comCacheBreakpoints, compactarHistorico } from "./cache"
 import { cardParaTool } from "./cards"
 import { getAnthropic } from "./client"
 import { dedupFontes, fontesParaTool } from "./fontes"
@@ -24,6 +25,11 @@ import type { DocOp } from "@/lib/documents/model/ops"
 import type { CampoDetectado } from "@/lib/documents/model/campos"
 
 const MAX_ITER = 8
+// Em modo automático (mutações executam inline, sem cartão) uma tarefa de CRUD em
+// massa pode encadear várias criações num turno só — um orçamento maior evita o
+// ping-pong de "Continue" (cada reinício re-disparava a verificação do estado).
+// As tools de LOTE já reduzem drasticamente o nº de iterações necessárias.
+const MAX_ITER_AUTO = 20
 // Cap defensivo no texto do raciocínio persistido (ThoughtDisclosure) — evita
 // um blob de meta gigante quando o "adaptive thinking" pensa bastante.
 const PENSAMENTO_MAX = 4000
@@ -72,7 +78,8 @@ export async function runAgentTurn(
   let pensamentoFim = 0
   let usouDocTool = false
 
-  for (let iter = 0; iter < MAX_ITER; iter++) {
+  const maxIter = ctx.autoMode ? MAX_ITER_AUTO : MAX_ITER
+  for (let iter = 0; iter < maxIter; iter++) {
     // Só o texto DESTA iteração (zerado a cada volta, JÁ filtrado do sentinela
     // de sugestões) — no aborto, vira o bloco de texto parcial; `text` (fora do
     // loop) segue acumulando o turno inteiro (bruto, p/ extrairFollowups no fim).
@@ -85,7 +92,10 @@ export async function runAgentTurn(
         // Explicit cache breakpoints on the recent history (see comCacheBreakpoints)
         // so the growing conversation prefix is reused across loop iterations and
         // turns. The system block (1h TTL) already caches the big stable prefix.
-        messages: comCacheBreakpoints(messages),
+        // Compacta os dumps de leitura antigos ANTES de marcar os breakpoints —
+        // corta o reenvio O(n²) de estado (o maior dreno em CRUD em massa) sem
+        // mutar o array real (o snapshot de pending fica fiel).
+        messages: comCacheBreakpoints(compactarHistorico(messages)),
         ...(tools ? { tools } : {}),
         ...(decision.effort ? { output_config: { effort: decision.effort } } : {}),
         ...(decision.model === "claude-haiku-4-5" ? {} : { thinking: { type: "adaptive" as const } }),
@@ -178,9 +188,6 @@ export async function runAgentTurn(
     // Pausa por pergunta (Fase 6, D3) — mesma exclusividade "uma coisa por vez"
     // que uma proposta de mutação; as duas competem pelo ÚNICO pause do turno.
     let pergunta: { tu: Anthropic.ToolUseBlock; input: { pergunta: string; opcoes: string[]; multipla?: boolean; permitirOutro?: boolean } } | null = null
-    // Auto-mode: one mutation is executed inline per assistant message; further
-    // mutations in the same message are deferred to the next iteration.
-    let didAutoMutation = false
 
     for (const tu of toolUses) {
       const tool = getTool(tu.name)
@@ -219,16 +226,15 @@ export async function runAgentTurn(
       if (tool.kind === "mutation") {
         // MODO AUTOMÁTICO: executa a mutação na hora, sem cartão de confirmação,
         // reusando as mesmas garantias do caminho confirmado (role já checado
-        // acima; rate-limit + auditoria aqui). Uma por mensagem. EXCEÇÕES que
-        // SEMPRE pedem confirmação mesmo com auto ligado: o modo "plano"
-        // (que prometeu aprovação) e ações DESTRUTIVAS/irreversíveis (excluir/
-        // anonimizar) — segurança humana antes de um write sem volta.
-        if (ctx.autoMode && ctx.mode !== "plano" && !ehDestrutiva(tu.name)) {
-          if (didAutoMutation) {
-            resolved.push({ type: "tool_result", tool_use_id: tu.id, content: "Proponha uma ação por vez.", is_error: true })
-            continue
-          }
-          didAutoMutation = true
+        // acima; rate-limit + auditoria aqui). VÁRIAS mutações não-destrutivas na
+        // MESMA mensagem executam em sequência — deixa a IA criar um projeto com
+        // várias seções/tarefas de uma vez (o modelo já emite as chamadas em
+        // paralelo depois que o container existe), sem gastar iterações à toa. As
+        // EXCEÇÕES que SEMPRE pedem confirmação mesmo com auto ligado caem no
+        // caminho de proposta abaixo: o modo "plano" (que prometeu aprovação) e as
+        // ações DESTRUTIVAS/irreversíveis (excluir/anonimizar) — segurança humana
+        // antes de um write sem volta (a proposta segue exclusiva, uma por turno).
+        if (deveAutoExecutar(ctx.autoMode, ctx.mode, tu.name)) {
           emit({ type: "tool", id: tu.id, name: tu.name, label, status: "run" })
           try {
             assertRateLimit(ctx.user.email, `lexia.${tu.name}`)
@@ -438,7 +444,3 @@ function truncate(s: string, max = 8000): string {
   return s.length > max ? `${s.slice(0, max)}…(resultado truncado)` : s
 }
 
-/** Ações irreversíveis (excluir/anonimizar) — sempre confirmadas, mesmo em auto-mode. */
-function ehDestrutiva(name: string): boolean {
-  return /^excluir_/.test(name) || /anonim/.test(name)
-}

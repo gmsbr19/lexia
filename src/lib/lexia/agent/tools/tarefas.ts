@@ -4,7 +4,7 @@
 import { z } from "zod"
 import { prisma } from "@/lib/db"
 import { getTarefasDataset } from "@/lib/tarefas/queries"
-import { createTarefa, deleteTarefa, updateTarefa } from "@/lib/tarefas/mutations"
+import { createTarefa, createTarefas, deleteTarefa, updateTarefa } from "@/lib/tarefas/mutations"
 import { idOpt, idReq } from "@/lib/validation"
 import { dataBr, diffRow, nomeUsuario } from "../confirmar"
 import { defineTool } from "../types"
@@ -40,11 +40,34 @@ const tarefaChatSchema = z.object({
   prio: z.number().int().min(1).max(4).optional().describe("Prioridade 1=Urgente .. 4=Normal (padrão 3)"),
   projeto: z.string().max(40).optional().describe("Área: inbox/trab/soc/trib/civ/int"),
   projetoId: idOpt.describe("Id do projeto (container) ao qual vincular a tarefa — via listar_projetos"),
+  secaoId: idOpt.describe("Id da seção do projeto (coluna) — via detalhe_projeto; requer projetoId"),
   data: dataISO.optional().describe("Data planejada para fazer (opcional, diferente do prazo)"),
   hora: z.string().max(10).optional(),
   casoId: idOpt.describe("Vincular a um caso (id via buscar)"),
   clienteId: idOpt.describe("Vincular a um cliente (id via buscar)"),
 })
+
+// Mapeia um item do schema de chat → payload de criação (compartilhado por
+// criar_tarefa e criar_tarefas_lote, para o padrão obrigatório ficar idêntico).
+function chatParaTarefa(i: z.infer<typeof tarefaChatSchema>) {
+  return {
+    titulo: i.titulo,
+    notes: i.descricao,
+    responsavelId: i.responsavelId,
+    prazo: i.prazo,
+    prio: i.prio ?? 3,
+    projeto: i.projeto,
+    projetoId: i.projetoId ?? null,
+    secaoId: i.secaoId ?? null,
+    data: i.data ?? null,
+    hora: i.hora ?? null,
+    casoId: i.casoId ?? null,
+    clienteId: i.clienteId ?? null,
+    dor: i.dor.map((text) => ({ text, done: false })),
+    dod: i.dod.map((text) => ({ text, done: false })),
+    ai: true,
+  }
+}
 
 export const tarefasTools = [
   defineTool({
@@ -85,31 +108,39 @@ export const tarefasTools = [
         { label: "Critérios", valor: `${i.dor.length} DoR · ${i.dod.length} DoD` },
       ],
     }),
-    run: async (ctx, i) =>
-      createTarefa(
+    run: async (ctx, i) => createTarefa(chatParaTarefa(i), ctx.user.email),
+  }),
+  defineTool({
+    name: "criar_tarefas_lote",
+    description:
+      "Cria VÁRIAS tarefas de UMA vez (prefira isto a repetir criar_tarefa quando forem muitas — muito mais rápido e barato). " +
+      "CADA tarefa segue o MESMO padrão obrigatório de criar_tarefa (título 'verbo + objeto', descrição, responsável, prazo, DoR e DoD, com 3 a 5 critérios cada que VOCÊ redige). " +
+      "Vincule cada uma a projeto/seção (projetoId/secaoId) quando indicado — os ids das seções vêm de criar_secoes_lote ou detalhe_projeto. " +
+      "NÃO dispara notificação individual por tarefa. Se faltar QUALQUER campo em QUALQUER tarefa, pergunte ao usuário antes — nunca invente responsável nem prazo.",
+    kind: "mutation",
+    schema: z.object({
+      tarefas: z.array(tarefaChatSchema).min(1).max(50).describe("Tarefas a criar (cada uma no padrão obrigatório do escritório)"),
+    }),
+    resumo: (i) => `Criar ${i.tarefas.length} tarefas`,
+    montarConfirmacao: async (_ctx, i) => ({
+      resumo: `Criar ${i.tarefas.length} tarefas`,
+      detalhes: [
+        { label: "Tarefas", valor: String(i.tarefas.length) },
         {
-          titulo: i.titulo,
-          notes: i.descricao,
-          responsavelId: i.responsavelId,
-          prazo: i.prazo,
-          prio: i.prio ?? 3,
-          projeto: i.projeto,
-          projetoId: i.projetoId ?? null,
-          data: i.data ?? null,
-          hora: i.hora ?? null,
-          casoId: i.casoId ?? null,
-          clienteId: i.clienteId ?? null,
-          dor: i.dor.map((text) => ({ text, done: false })),
-          dod: i.dod.map((text) => ({ text, done: false })),
-          ai: true,
+          label: "Exemplos",
+          valor: i.tarefas.slice(0, 4).map((t) => t.titulo).join(" · ") + (i.tarefas.length > 4 ? " …" : ""),
         },
-        ctx.user.email,
-      ),
+      ],
+    }),
+    run: async (ctx, i) => createTarefas(i.tarefas.map(chatParaTarefa), ctx.user.email),
   }),
   defineTool({
     name: "editar_tarefa",
     kind: "mutation",
-    description: "Edita uma tarefa (id via listar_tarefas). Envie só o que muda: titulo, prazo, prio (1=Urgente..4=Normal), status (todo/doing/review/done), notes.",
+    description:
+      "Edita uma tarefa (id via listar_tarefas). Envie só o que muda: titulo, prazo, prio (1=Urgente..4=Normal), " +
+      "status (todo/doing/review/done), notes. Para mover a tarefa: projetoId (container, via listar_projetos) e/ou " +
+      "secaoId (coluna, via detalhe_projeto). Trocar de projeto zera a seção antiga; a seção precisa pertencer ao projeto.",
     schema: z.object({
       id: idReq.describe("Id da tarefa"),
       titulo: z.string().min(2).max(300).optional(),
@@ -117,6 +148,8 @@ export const tarefasTools = [
       prio: z.number().int().min(1).max(4).optional(),
       status: z.enum(["todo", "doing", "review", "done"]).optional(),
       notes: z.string().max(4000).optional(),
+      projetoId: idOpt.describe("Mover para este projeto (via listar_projetos)"),
+      secaoId: idOpt.describe("Mover para esta seção (via detalhe_projeto; requer que pertença ao projeto)"),
     }),
     resumo: (i) => `Editar tarefa #${i.id}`,
     montarConfirmacao: async (_ctx, i) => {
@@ -129,7 +162,12 @@ export const tarefasTools = [
       ].filter((d): d is NonNullable<typeof d> => d != null)
       return { resumo: "Editar tarefa", detalhes: det.length ? det : undefined }
     },
-    run: async (ctx, i) => updateTarefa(i.id, { titulo: i.titulo, prazo: i.prazo, prio: i.prio, status: i.status, notes: i.notes }, ctx.user.email),
+    run: async (ctx, i) =>
+      updateTarefa(
+        i.id,
+        { titulo: i.titulo, prazo: i.prazo, prio: i.prio, status: i.status, notes: i.notes, projetoId: i.projetoId, secaoId: i.secaoId },
+        ctx.user.email,
+      ),
   }),
   defineTool({
     name: "excluir_tarefa",
