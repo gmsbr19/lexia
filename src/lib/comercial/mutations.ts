@@ -276,7 +276,6 @@ function mapTipoHonorario(v?: string | null): string {
 export interface ConverterLeadInput {
   clienteId?: number | null
   casoId?: number | null
-  honorarioId?: number | null
   valorContratadoCents?: number | null
   tipoHonorario?: string | null
   clienteNome?: string | null

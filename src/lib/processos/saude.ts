@@ -39,7 +39,7 @@ export async function getSaudeProcessos(user: SessionUser): Promise<SaudeProcess
   const scope = await scopeProcessoWhere(user)
   const podeFin = veTudo(user.role) // honorários/publicações 'a vincular' são office-wide
 
-  const [dismissed, semPartes, semCliente, prazosSemResp, pubsPendentes, honSemProc] = await Promise.all([
+  const [dismissed, semPartes, semCliente, prazosSemResp, pubsPendentes] = await Promise.all([
     dispensadas(),
     prisma.processo.findMany({
       where: { AND: [scope, { excluidoEm: null }, { partes: { none: {} } }] },
@@ -65,13 +65,6 @@ export async function getSaudeProcessos(user: SessionUser): Promise<SaudeProcess
           take: CAP + 1,
         })
       : Promise.resolve([] as { id: number; numeroProcessoBruto: string | null }[]),
-    podeFin
-      ? prisma.honorario.findMany({
-          where: { processoId: null, processoTitulo: { not: null } },
-          select: { id: true, descricao: true, processoTitulo: true },
-          take: CAP + 1,
-        })
-      : Promise.resolve([] as { id: number; descricao: string; processoTitulo: string | null }[]),
   ])
 
   const grupos: SaudeGrupo[] = []
@@ -121,17 +114,6 @@ export async function getSaudeProcessos(user: SessionUser): Promise<SaudeProcess
       chave: `reconcile:pub:${pub.id}`,
     })),
   )
-  add(
-    { id: "hon-sem-proc", titulo: "Honorários sem processo", descricao: "Honorários ligados apenas por texto — conecte-os a um processo específico.", icon: "fileText", tone: "neutro" },
-    honSemProc.map((h) => ({
-      id: h.id,
-      titulo: h.descricao,
-      sub: h.processoTitulo ? `${h.processoTitulo} · sem vínculo` : "sem vínculo",
-      href: `/financeiro?tab=honorarios`,
-      chave: `reconcile:hon:${h.id}`,
-    })),
-  )
-
   return { grupos, total: grupos.reduce((s, g) => s + g.itens.length, 0), geradoEm: new Date().toISOString() }
 }
 

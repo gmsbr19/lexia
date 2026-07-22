@@ -91,7 +91,7 @@ export const financeiroTools = [
     name: "listar_honorarios",
     kind: "readonly",
     roles: ROLES_FINANCEIRO,
-    description: "Lista os honorários (contratos) e os totais pago/pendente. Use para 'contratos', 'honorários a receber'.",
+    description: "Lista os honorários (recebíveis do ledger) e os totais pago/pendente. Use para 'honorários a receber', 'quanto falta receber'.",
     schema: z.object({ limite }),
     run: async (_ctx, { limite: l }) => ({ totais: await getHonorarioTotals(), itens: cap(await getHonorarios(), l) }),
   }),

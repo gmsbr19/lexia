@@ -59,7 +59,6 @@ export const mesclarLeadSchema = z.object({
 export const converterLeadSchema = z.object({
   clienteId: idOpt,
   casoId: idOpt,
-  honorarioId: idOpt,
   valorContratadoCents: money.nullish(),
   tipoHonorario: z.string().max(60).nullish(),
   clienteNome: z.string().max(200).nullish(),

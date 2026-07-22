@@ -7,7 +7,7 @@ import type {
   CasoTipo,
   Classificacao,
   ClienteTipo,
-  HonorarioRow,
+  ContratoRow,
   LancamentoRow,
 } from "@/lib/finance/types"
 import type { ProcessoMini } from "@/lib/processos/types"
@@ -69,7 +69,8 @@ export interface ClienteDetail {
   header: ClienteHeader
   resumo: ClienteResumo
   lancamentos: LancamentoRow[]
-  honorarios: HonorarioRow[]
+  /** Contratos (documentos assinados) deste cliente. */
+  contratos: ContratoRow[]
   casos: ClienteCasoRow[]
   tarefas: ClienteTarefaRow[]
   eventos: EventoRow[]

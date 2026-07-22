@@ -204,8 +204,8 @@ export async function deleteProcesso(id: number) {
     prisma.andamento.updateMany({ where: { processoId: id, excluidoEm: null }, data: { excluidoEm: now } }),
     prisma.publicacao.updateMany({ where: { processoId: id, excluidoEm: null }, data: { excluidoEm: now } }),
     prisma.anotacao.updateMany({ where: { processoId: id, excluidoEm: null }, data: { excluidoEm: now } }),
-    // drop the structured honorário link so the honorário re-surfaces as "sem processo"
-    prisma.honorario.updateMany({ where: { processoId: id }, data: { processoId: null } }),
+    // drop the structured fee-lançamento link so the honorário re-surfaces as "sem processo"
+    prisma.lancamento.updateMany({ where: { processoId: id }, data: { processoId: null } }),
     prisma.evento.updateMany({ where: { processoId: id, status: { not: "cancelado" } }, data: { status: "cancelado" } }),
     // tombstone the CNJ so the global @unique index frees up — re-creating/re-syncing
     // the same CNJ after deletion must not hit P2002 (soft-delete = logically gone).
@@ -858,22 +858,6 @@ export async function vincularPublicacao(pubId: number, processoId: number) {
   if (!pub) throw new UserError("Publicação não encontrada")
   if (!proc) throw new UserError("Processo não encontrado")
   return prisma.publicacao.update({ where: { id: pubId }, data: { processoId } })
-}
-
-/**
- * Conecta (ou desconecta, com processoId null) um honorário a um Processo específico.
- * O texto livre `processoTitulo` (legado Astrea) é mantido; este é o vínculo estruturado
- * que torna o financeiro do processo consistente (resolve "Bradesco x Marcelo Lopes").
- */
-export async function vincularHonorarioAProcesso(honorarioId: number, processoId: number | null) {
-  const hon = await prisma.honorario.findUnique({ where: { id: honorarioId }, select: { id: true } })
-  if (!hon) throw new UserError("Honorário não encontrado")
-  const pid = optId(processoId)
-  if (pid) {
-    const proc = await prisma.processo.findFirst({ where: { id: pid, excluidoEm: null }, select: { id: true } })
-    if (!proc) throw new UserError("Processo não encontrado")
-  }
-  return prisma.honorario.update({ where: { id: honorarioId }, data: { processoId: pid } })
 }
 
 // ── Anotação ─────────────────────────────────────────────────────────────────

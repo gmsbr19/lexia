@@ -109,8 +109,8 @@ export async function deleteCaso(id: number) {
     prisma.andamento.updateMany({ where: { processoId: { in: procIds }, excluidoEm: null }, data: { excluidoEm: now } }),
     prisma.publicacao.updateMany({ where: { processoId: { in: procIds }, excluidoEm: null }, data: { excluidoEm: now } }),
     prisma.anotacao.updateMany({ where: { OR: [{ casoId: id }, { processoId: { in: procIds } }], excluidoEm: null }, data: { excluidoEm: now } }),
-    // drop the structured honorário link (re-surfaces them as "sem processo")
-    prisma.honorario.updateMany({ where: { processoId: { in: procIds } }, data: { processoId: null } }),
+    // drop the structured fee-lançamento link (re-surfaces them as "sem processo")
+    prisma.lancamento.updateMany({ where: { processoId: { in: procIds } }, data: { processoId: null } }),
     // tombstone each processo's CNJ (frees the global @unique index) + soft-delete
     ...procs.map((p) =>
       prisma.processo.update({

@@ -53,33 +53,23 @@ function origemKey(v: string): LeadOrigem {
   return v === "google_ads" || v === "meta_ads" || v === "indicacao" || v === "organico" ? v : "outro"
 }
 
-// Contracted value of a won lead: the linked honorário, else the lead estimate.
-type ValuedLead = { valorEstimadoCents: number | null; honorario: { valorCents: number } | null }
-const wonValue = (l: ValuedLead) => l.honorario?.valorCents ?? l.valorEstimadoCents ?? 0
+// Contracted value of a won lead: the linked fee-lançamento, else the lead estimate.
+type ValuedLead = { valorEstimadoCents: number | null; lancamento: { valorCents: number } | null }
+const wonValue = (l: ValuedLead) => l.lancamento?.valorCents ?? l.valorEstimadoCents ?? 0
 
-// Real revenue booked to a caso: its Honorário records PLUS income Lançamentos
-// typed as honorário that AREN'T already mirrored by a Honorário (a Lançamento
-// carrying honorarios is the Astrea entrada behind an imported Honorário —
-// counting both would double-count). Lets the office's manual "entrada"
-// bookings (how new contracts are recorded) feed the acquisition value.
-type CasoRevenueSel = {
-  honorarios: { valorCents: number }[]
-  lancamentos: { valorCents: number; honorarios: { id: number }[] }[]
-} | null
+// Real revenue booked to a caso: the sum of its fee-lançamentos (entrada,
+// subTipo='honorario'). Lets the office's manual "entrada" bookings (how new
+// contracts are recorded) feed the acquisition value.
+type CasoRevenueSel = { lancamentos: { valorCents: number }[] } | null
 function casoRevenueCents(caso: CasoRevenueSel): number {
   if (!caso) return 0
-  const fees = caso.honorarios.reduce((a, h) => a + h.valorCents, 0)
-  const manualIncome = caso.lancamentos
-    .filter((l) => l.honorarios.length === 0)
-    .reduce((a, l) => a + Math.abs(l.valorCents), 0)
-  return fees + manualIncome
+  return caso.lancamentos.reduce((a, l) => a + Math.abs(l.valorCents), 0)
 }
 // Caso select shared by the two contracted-value call sites.
 const casoRevenueInclude = {
-  honorarios: { select: { valorCents: true } },
   lancamentos: {
-    where: { tipo: "entrada", subTipo: "honorario" } as const,
-    select: { valorCents: true, honorarios: { select: { id: true } } },
+    where: { tipo: "entrada", subTipo: "honorario", isAnomalia: false } as const,
+    select: { valorCents: true },
   },
 } as const
 
@@ -144,7 +134,7 @@ export async function getComercialKpis(mes?: string, periodo: Periodo = "mes"): 
         casoId: true,
         dataConversao: true,
         valorEstimadoCents: true,
-        honorario: { select: { valorCents: true } },
+        lancamento: { select: { valorCents: true } },
         caso: { select: casoRevenueInclude },
       },
     }),
@@ -163,7 +153,7 @@ export async function getComercialKpis(mes?: string, periodo: Periodo = "mes"): 
       id: g.id,
       casoId: g.casoId,
       conv: g.dataConversao?.getTime() ?? 0,
-      honorarioCents: g.honorario?.valorCents ?? 0,
+      honorarioCents: g.lancamento?.valorCents ?? 0,
       casoRevenueCents: casoRevenueCents(g.caso),
       estimadoCents: g.valorEstimadoCents ?? 0,
     })),
@@ -191,7 +181,7 @@ export async function getFunil(mes?: string, periodo: Periodo = "mes"): Promise<
   const { start, end } = periodRange(mes ?? currentMes(), periodo)
   const leads = await prisma.lead.findMany({
     where: { dataEntrada: { gte: start, lt: end } },
-    select: { etapa: true, valorEstimadoCents: true, honorario: { select: { valorCents: true } } },
+    select: { etapa: true, valorEstimadoCents: true, lancamento: { select: { valorCents: true } } },
   })
   const top = leads.length
   // reached[i]: leads that got at least to funnel stage i. Everyone "entered"
@@ -234,7 +224,7 @@ export async function getCampanhas(mes?: string, periodo: Periodo = "mes"): Prom
         dataEntrada: true,
         dataConversao: true,
         valorEstimadoCents: true,
-        honorario: { select: { valorCents: true } },
+        lancamento: { select: { valorCents: true } },
       },
     }),
     prisma.lancamento.findMany({
@@ -291,7 +281,7 @@ export async function getOrigemBreakdown(mes?: string, periodo: Periodo = "mes")
     prisma.lead.findMany({
       // Won leads credited by ENTRY month (same cohort attribution as the KPIs).
       where: { etapa: "ganho", dataEntrada: { gte: start, lt: end } },
-      select: { origem: true, valorEstimadoCents: true, honorario: { select: { valorCents: true } } },
+      select: { origem: true, valorEstimadoCents: true, lancamento: { select: { valorCents: true } } },
     }),
     prisma.lancamento.findMany({
       where: spendWhere(marketingIds, start, end),
@@ -362,7 +352,7 @@ export async function getLeads(mes?: string, periodo: Periodo = "mes", filters: 
       casoId: true,
       campanha: { select: { nome: true } },
       cliente: { select: { nome: true } },
-      honorario: { select: { valorCents: true } },
+      lancamento: { select: { valorCents: true } },
     },
   })
 
@@ -376,7 +366,7 @@ export async function getLeads(mes?: string, periodo: Periodo = "mes", filters: 
     campanha: r.campanha?.nome ?? null,
     etapa: r.etapa as LeadEtapa,
     valorEstimadoCents: r.valorEstimadoCents,
-    valorContratadoCents: r.honorario?.valorCents ?? null,
+    valorContratadoCents: r.lancamento?.valorCents ?? null,
     dataEntrada: iso(r.dataEntrada),
     dataConversao: iso(r.dataConversao),
     motivoPerda: r.motivoPerda,
@@ -478,7 +468,7 @@ export async function getComercialDataset(): Promise<CmDataset> {
         casoId: true,
         cliente: { select: { nome: true } },
         caso: { select: { titulo: true, ...casoRevenueInclude } },
-        honorario: { select: { valorCents: true } },
+        lancamento: { select: { valorCents: true } },
       },
     }),
     prisma.lancamento.findMany({
@@ -498,7 +488,7 @@ export async function getComercialDataset(): Promise<CmDataset> {
         id: l.id,
         casoId: l.casoId,
         conv: l.dataConversao?.getTime() ?? 0,
-        honorarioCents: l.honorario?.valorCents ?? 0,
+        honorarioCents: l.lancamento?.valorCents ?? 0,
         casoRevenueCents: casoRevenueCents(l.caso),
         estimadoCents: l.valorEstimadoCents ?? 0,
       })),

@@ -363,8 +363,10 @@ export async function getProcessoDetail(id: number, user: SessionUser): Promise<
       }
     })
     const entradas = mapped.filter((l) => l.dir === "in")
-    const hons = await prisma.honorario.findMany({
-      where: { processoId: id },
+    // Honorários (fee-lançamentos) estruturadamente ligados a este processo — o id
+    // devolvido é de LANÇAMENTO (Honorario é dormente, substituído pelo ledger).
+    const hons = await prisma.lancamento.findMany({
+      where: { processoId: id, tipo: "entrada", subTipo: "honorario", isAnomalia: false },
       orderBy: { dataVencimento: "desc" },
       select: { id: true, descricao: true, valorCents: true, status: true },
     })
@@ -372,7 +374,7 @@ export async function getProcessoDetail(id: number, user: SessionUser): Promise<
       recebidoCents: entradas.filter((l) => l.pago).reduce((a, l) => a + l.valorCents, 0),
       abertoCents: entradas.filter((l) => !l.pago).reduce((a, l) => a + l.valorCents, 0),
       lancamentos: mapped,
-      honorarios: hons.map((h) => ({ id: h.id, descricao: h.descricao, valorCents: h.valorCents, status: h.status })),
+      honorarios: hons.map((h) => ({ id: h.id, descricao: h.descricao ?? "Honorário", valorCents: Math.abs(h.valorCents), status: h.status === "feito" ? "recebido" : "lancado" })),
     }
   }
 

@@ -29,7 +29,7 @@ export function linkParaNotificacao(
     case "lead":
       return "/comercial?tab=leads"
     case "documento":
-      return refId ? `/contratos?contrato=${refId}` : "/documents"
+      return refId ? `/documents/doc/${refId}` : "/documents"
     case "captura":
       return "/processos?view=captura"
     default:

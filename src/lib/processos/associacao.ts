@@ -110,15 +110,16 @@ export async function clientesPorNome(nomes: string[]): Promise<ClienteSugerido[
     .map((r) => ({ id: r.id, nome: r.nome, cpfCnpj: r.cpfCnpj, via: "nome" }))
 }
 
-/** Honorários já lançados no caso (candidatos a conectar ao processo). */
+/** Honorários (fee-lançamentos) já lançados no caso, ainda sem processo estruturado
+ *  (candidatos a conectar). O id devolvido é de LANÇAMENTO (Honorario é dormente). */
 export async function honorariosDoCaso(casoId: number): Promise<HonorarioSugerido[]> {
-  const rows = await prisma.honorario.findMany({
-    where: { casoId, processoId: null },
+  const rows = await prisma.lancamento.findMany({
+    where: { casoId, processoId: null, tipo: "entrada", subTipo: "honorario", isAnomalia: false },
     select: { id: true, descricao: true, valorCents: true },
     orderBy: { dataVencimento: "desc" },
     take: 10,
   })
-  return rows.map((r) => ({ id: r.id, descricao: r.descricao, valorCents: r.valorCents, via: "caso" }))
+  return rows.map((r) => ({ id: r.id, descricao: r.descricao ?? "Honorário", valorCents: Math.abs(r.valorCents), via: "caso" }))
 }
 
 // ── orquestrador ────────────────────────────────────────────────────────────────

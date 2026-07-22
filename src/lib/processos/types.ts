@@ -228,7 +228,7 @@ export interface ProcessoFinanceiro {
   recebidoCents: number
   abertoCents: number
   lancamentos: ProcessoLancamentoRow[]
-  /** Honorários conectados a este processo (via Honorario.processoId). */
+  /** Honorários (fee-lançamentos) conectados a este processo (via Lancamento.processoId). */
   honorarios: ProcessoHonorarioRow[]
 }
 

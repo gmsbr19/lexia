@@ -5,9 +5,14 @@ import { prisma } from "@/lib/db"
 import { getCobrancaCliente } from "./cobranca"
 import { getDocumentos } from "@/lib/documentos/queries"
 import { listEventos } from "@/lib/agenda/queries"
-import { getCategoriaOptions, getClienteOptions, getContaOptions, getFornecedorOptions } from "@/lib/finance/queries"
-import type { HonorarioRow, LancamentoRow } from "@/lib/finance/types"
-import { lancamentoToHonorarioRow } from "@/lib/finance/honorario-map"
+import {
+  getCategoriaOptions,
+  getClienteOptions,
+  getContaOptions,
+  getContratosPorCliente,
+  getFornecedorOptions,
+} from "@/lib/finance/queries"
+import type { LancamentoRow } from "@/lib/finance/types"
 import type { ProcessoMini, ProcessoStatus } from "@/lib/processos/types"
 import type { ClienteCasoRow, ClienteDetail, ClienteHeader, ClienteResumo, ClienteTarefaRow } from "./types"
 
@@ -44,7 +49,7 @@ export async function getClienteDetail(id: number): Promise<ClienteDetail | null
   })
   if (!cliente) return null
 
-  const [lancRows, honRows, casoRows, tarefaRows, eventos, documentos, cobranca, cats, clienteOpts, fornecedores, contas] = await Promise.all([
+  const [lancRows, contratos, casoRows, tarefaRows, eventos, documentos, cobranca, cats, clienteOpts, fornecedores, contas] = await Promise.all([
     prisma.lancamento.findMany({
       where: { clienteId: id, isAnomalia: false },
       select: {
@@ -66,24 +71,7 @@ export async function getClienteDetail(id: number): Promise<ClienteDetail | null
       },
       orderBy: { dataVencimento: "desc" },
     }),
-    prisma.lancamento.findMany({
-      where: { clienteId: id, tipo: "entrada", subTipo: "honorario", isAnomalia: false },
-      select: {
-        id: true,
-        descricao: true,
-        valorCents: true,
-        status: true,
-        tipoHonorario: true,
-        dataVencimento: true,
-        dataPagamento: true,
-        contaId: true,
-        clienteId: true,
-        casoId: true,
-        caso: { select: { titulo: true } },
-        conta: { select: { nome: true } },
-      },
-      orderBy: { dataVencimento: "desc" },
-    }),
+    getContratosPorCliente(id),
     prisma.caso.findMany({
       where: { clientePrincipalId: id, excluidoEm: null },
       select: {
@@ -179,24 +167,6 @@ export async function getClienteDetail(id: number): Promise<ClienteDetail | null
     }
   })
 
-  const honorarios: HonorarioRow[] = honRows.map((r) =>
-    lancamentoToHonorarioRow({
-      id: r.id,
-      descricao: r.descricao,
-      valorCents: r.valorCents,
-      status: r.status,
-      tipoHonorario: r.tipoHonorario,
-      dataVencimento: r.dataVencimento,
-      dataPagamento: r.dataPagamento,
-      contaId: r.contaId,
-      clienteId: r.clienteId,
-      casoId: r.casoId,
-      clienteNome: cliente.nome,
-      casoTitulo: r.caso?.titulo ?? null,
-      contaNome: r.conta?.nome ?? null,
-    }),
-  )
-
   const casos: ClienteCasoRow[] = casoRows.map((r) => ({
     id: r.id,
     titulo: r.titulo,
@@ -245,7 +215,7 @@ export async function getClienteDetail(id: number): Promise<ClienteDetail | null
     header,
     resumo,
     lancamentos,
-    honorarios,
+    contratos,
     casos,
     tarefas,
     eventos,

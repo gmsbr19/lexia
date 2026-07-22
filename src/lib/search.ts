@@ -1,9 +1,10 @@
 // Global search powering the Spotlight-style ⌘K modal — grouped, live results
-// over clientes / casos / contratos (honorários) / tarefas / lançamentos.
-// SQLite `contains` maps to LIKE (ASCII case-insensitive), which matches the
-// dataset (~hundreds of rows per entity) without an index strategy. Static
-// page/action results live client-side in the modal. SERVER ONLY.
+// over clientes / casos / contratos / tarefas / lançamentos. SQLite `contains`
+// maps to LIKE (ASCII case-insensitive), which matches the dataset (~hundreds
+// of rows per entity) without an index strategy. Static page/action results
+// live client-side in the modal. SERVER ONLY.
 import { prisma } from "@/lib/db"
+import { getContratos } from "@/lib/finance/queries"
 import { contemNormalizado, normalizar } from "@/lib/text"
 
 const PER_GROUP = 8
@@ -24,6 +25,8 @@ export interface SearchCasoHit {
   status: string | null
   numeroProcesso: string | null
 }
+/** A Contrato (documento assinado; pode reunir vários casos) — não confundir
+ *  com um honorário/recebível individual (achável via `lancamentos`). */
 export interface SearchContratoHit {
   id: number
   descricao: string
@@ -128,17 +131,7 @@ export async function searchAll(qRaw: string): Promise<SearchResults> {
       select: { id: true, nome: true, documento: true, tipo: true },
       orderBy: { nome: "asc" },
     }),
-    prisma.lancamento.findMany({
-      where: { tipo: "entrada", subTipo: "honorario", isAnomalia: false },
-      select: {
-        id: true,
-        descricao: true,
-        valorCents: true,
-        status: true,
-        cliente: { select: { nome: true } },
-      },
-      orderBy: { dataVencimento: "desc" },
-    }),
+    getContratos(),
     prisma.tarefa.findMany({
       select: { id: true, titulo: true, status: true, prio: true, prazo: true },
       orderBy: [{ done: "asc" }, { prazo: "asc" }],
@@ -203,14 +196,14 @@ export async function searchAll(qRaw: string): Promise<SearchResults> {
         tipo: r.tipo,
       })),
     contratos: contratos
-      .filter((r) => contemNormalizado(nq, r.descricao, r.cliente?.nome))
+      .filter((r) => contemNormalizado(nq, r.titulo, r.cliente))
       .slice(0, PER_GROUP)
       .map((r) => ({
         id: r.id,
-        descricao: r.descricao ?? "Honorário",
-        cliente: r.cliente?.nome ?? null,
-        valorCents: Math.abs(r.valorCents),
-        status: r.status === "feito" ? "recebido" : "lancado",
+        descricao: r.titulo,
+        cliente: r.cliente,
+        valorCents: r.valorContratadoCents,
+        status: r.valorContratadoCents > 0 && r.recebidoCents >= r.valorContratadoCents ? "recebido" : "lancado",
       })),
     tarefas: tarefas
       .filter((r) => contemNormalizado(nq, r.titulo))

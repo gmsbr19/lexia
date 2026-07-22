@@ -116,7 +116,7 @@ const MERGE_SELECT = {
 } as const
 
 /** Merge a duplicate Cliente (`duplicadoId`) into the surviving one (`alvoId`):
- *  re-point EVERY reference (casos, honorários, lançamentos, tarefas, eventos,
+ *  re-point EVERY reference (casos, contratos, lançamentos, tarefas, eventos,
  *  documentos, partes, projetos, leads, anotações) to the survivor, backfill the
  *  survivor's empty contact fields from the duplicate, then hard-delete the now
  *  fully-drained duplicate. Nothing is orphaned. The AuditLog entry (action
@@ -134,9 +134,9 @@ export async function mesclarClientes(alvoId: number, duplicadoId: number) {
     // Re-point every reference from the duplicate to the survivor.
     const where = { clienteId: duplicadoId }
     const data = { clienteId: alvoId }
-    const [honorarios, lancamentos, leads, tarefas, eventos, documentos, partes, projetos, anotacoes, casos] =
+    const [contratos, lancamentos, leads, tarefas, eventos, documentos, partes, projetos, anotacoes, casos] =
       await Promise.all([
-        tx.honorario.updateMany({ where, data }),
+        tx.contrato.updateMany({ where, data }),
         tx.lancamento.updateMany({ where, data }),
         tx.lead.updateMany({ where, data }),
         tx.tarefa.updateMany({ where, data }),
@@ -157,7 +157,7 @@ export async function mesclarClientes(alvoId: number, duplicadoId: number) {
       alvoId,
       duplicadoId,
       movidos: {
-        honorarios: honorarios.count,
+        contratos: contratos.count,
         lancamentos: lancamentos.count,
         leads: leads.count,
         tarefas: tarefas.count,
