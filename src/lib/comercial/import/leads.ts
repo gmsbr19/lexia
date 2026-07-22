@@ -15,6 +15,7 @@ import type { PrismaClient } from "@prisma/client"
 import { cleanNull, parseCsvText, readCsv } from "@/lib/finance/import/parse-csv"
 import { parseBr, parseIso } from "@/lib/finance/import/dates"
 import { toCents } from "@/lib/finance/money"
+import { resolverOuCriarCliente } from "../contato"
 import type { LeadEtapa, LeadOrigem, Plataforma } from "../types"
 
 export interface LeadImportSummary {
@@ -22,6 +23,7 @@ export interface LeadImportSummary {
   novos: number
   atualizados: number
   campanhasCriadas: number
+  clientesCriados: number
   porEtapa: Record<string, number>
 }
 
@@ -84,7 +86,7 @@ export async function importLeadsFromText(prisma: PrismaClient, csvText: string)
 }
 
 async function importLeadRows(prisma: PrismaClient, rows: Record<string, string>[]): Promise<LeadImportSummary> {
-  const summary: LeadImportSummary = { total: 0, novos: 0, atualizados: 0, campanhasCriadas: 0, porEtapa: {} }
+  const summary: LeadImportSummary = { total: 0, novos: 0, atualizados: 0, campanhasCriadas: 0, clientesCriados: 0, porEtapa: {} }
   const campanhaCache = new Map<string, number>() // `${plataforma}::${nome}` → id
 
   async function resolveCampanha(nome: string | null, plataforma: Plataforma): Promise<number | null> {
@@ -135,6 +137,17 @@ async function importLeadRows(prisma: PrismaClient, rows: Record<string, string>
       .filter(Boolean)
       .join(" · ")
 
+    // Genions carries no e-mail column — telefone (digits-only) is the dedup
+    // key. NEVER re-resolve an already-linked lead (preserves a link set by
+    // converterLead/mesclarLeadComCliente on a re-import of the same Protocolo).
+    const existing = await prisma.lead.findUnique({ where: { genionsId }, select: { id: true, clienteId: true } })
+    let clienteId = existing?.clienteId ?? null
+    if (!clienteId) {
+      const resolved = await resolverOuCriarCliente(prisma, { nome, email: null, telefone, origem })
+      clienteId = resolved.id
+      if (resolved.criado) summary.clientesCriados += 1
+    }
+
     const data = {
       nome,
       telefone,
@@ -146,9 +159,9 @@ async function importLeadRows(prisma: PrismaClient, rows: Record<string, string>
       dataConversao: etapa === "ganho" ? dataConclusao ?? dataEntrada : null,
       motivoPerda: etapa === "perdido" ? classifDesc ?? classificacao : null,
       observacoes: obs || null,
+      clienteId,
     }
 
-    const existing = await prisma.lead.findUnique({ where: { genionsId }, select: { id: true } })
     await prisma.lead.upsert({ where: { genionsId }, create: { genionsId, ...data }, update: data })
 
     summary.total += 1

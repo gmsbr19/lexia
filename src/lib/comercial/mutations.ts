@@ -4,13 +4,14 @@
 // double-count. App-created rows follow the same conventions as Financeiro.
 // SERVER ONLY (imports prisma).
 import { randomUUID } from "node:crypto"
+import type { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/db"
 import { UserError } from "@/lib/errors"
 import { createLancamento } from "@/lib/finance/mutations"
-import { notificarLeadConvertido } from "@/lib/notificacoes/triggers"
+import { notificarLeadConvertido, notificarOportunidadeAtribuida } from "@/lib/notificacoes/triggers"
+import { resolverOuCriarCliente } from "./contato"
 import { planejarBackfillCliente } from "./merge"
 import {
-  LEAD_ETAPAS,
   MARKETING_CATEGORIA_ASTREA_ID,
   PLATAFORMA_LABEL,
   type CampanhaStatus,
@@ -52,8 +53,12 @@ function asStatus(v: unknown): CampanhaStatus {
 function asOrigem(v: unknown): LeadOrigem {
   return ORIGENS.includes(v as LeadOrigem) ? (v as LeadOrigem) : "outro"
 }
+// Open stages are configurable (see settings.ts pipelineSchema) — etapa is a
+// free-form key at this layer; only shape (non-empty, trimmed) is enforced
+// here. The Zod route schema already caps length; setPipelineConfig rejects
+// the 2 reserved terminal keys from ever being reused as an open stage.
 function asEtapa(v: unknown): LeadEtapa {
-  return LEAD_ETAPAS.includes(v as LeadEtapa) ? (v as LeadEtapa) : "novo"
+  return typeof v === "string" && v.trim() ? v.trim() : "novo"
 }
 
 /** Upsert the auto-managed "Marketing" expense categoria; returns its id. */
@@ -167,6 +172,10 @@ export async function registrarGasto(input: RegistrarGastoInput) {
   })
 }
 
+function asTemperatura(v: unknown): string | null {
+  return v === "quente" || v === "morno" || v === "frio" ? v : null
+}
+
 // ── Leads (funnel) ───────────────────────────────────────────────────────────
 export interface LeadCreate {
   nome: string
@@ -179,25 +188,62 @@ export interface LeadCreate {
   dataEntrada?: string | null
   observacoes?: string | null
   area?: string | null
+  responsavelUserId?: number | null
+  proximaAcaoEm?: string | null
+  proximaAcaoNota?: string | null
+  temperatura?: string | null
+  potencialFinanceiro?: string | null
+  urgenciaNivel?: string | null
+  poderDecisao?: string | null
+  jurisdicao?: string | null
+  viabilidade?: string | null
+  contratoEnviado?: boolean
 }
 
-export async function createLead(input: LeadCreate) {
+/** Creates a lead/oportunidade — ALWAYS resolves or creates the Cliente
+ *  (Contato) it belongs to (dedup by e-mail/telefone; see ./contato.ts), so
+ *  no oportunidade is ever left without a person behind it. Notifies the
+ *  owner when one is assigned at creation. */
+export async function createLead(input: LeadCreate, actorEmail?: string | null) {
   const etapa = asEtapa(input.etapa)
-  return prisma.lead.create({
-    data: {
-      nome: reqStr(input.nome, "nome"),
-      email: input.email?.trim() || null,
-      telefone: input.telefone?.trim() || null,
-      origem: asOrigem(input.origem),
-      campanhaId: optInt(input.campanhaId),
-      etapa,
-      valorEstimadoCents: typeof input.valorEstimadoCents === "number" ? input.valorEstimadoCents : null,
-      dataEntrada: toDate(input.dataEntrada) ?? new Date(),
-      dataConversao: etapa === "ganho" ? new Date() : null,
-      observacoes: input.observacoes?.trim() || null,
-      area: input.area?.trim() || null,
-    },
+  const nome = reqStr(input.nome, "nome")
+  const email = input.email?.trim() || null
+  const telefone = input.telefone?.trim() || null
+  const origem = asOrigem(input.origem)
+  const responsavelUserId = optInt(input.responsavelUserId)
+  const lead = await prisma.$transaction(async (tx) => {
+    const { id: clienteId } = await resolverOuCriarCliente(tx, { nome, email, telefone, origem })
+    return tx.lead.create({
+      data: {
+        nome,
+        email,
+        telefone,
+        origem,
+        campanhaId: optInt(input.campanhaId),
+        etapa,
+        valorEstimadoCents: typeof input.valorEstimadoCents === "number" ? input.valorEstimadoCents : null,
+        dataEntrada: toDate(input.dataEntrada) ?? new Date(),
+        dataConversao: etapa === "ganho" ? new Date() : null,
+        observacoes: input.observacoes?.trim() || null,
+        area: input.area?.trim() || null,
+        responsavelUserId,
+        proximaAcaoEm: toDate(input.proximaAcaoEm),
+        proximaAcaoNota: input.proximaAcaoNota?.trim() || null,
+        temperatura: asTemperatura(input.temperatura),
+        potencialFinanceiro: input.potencialFinanceiro?.trim() || null,
+        urgenciaNivel: input.urgenciaNivel?.trim() || null,
+        poderDecisao: input.poderDecisao?.trim() || null,
+        jurisdicao: input.jurisdicao?.trim() || null,
+        viabilidade: input.viabilidade?.trim() || null,
+        contratoEnviadoEm: input.contratoEnviado ? new Date() : null,
+        clienteId,
+      },
+    })
   })
+  if (responsavelUserId) {
+    void notificarOportunidadeAtribuida({ leadId: lead.id, nome: lead.nome, responsavelUserId, actorEmail })
+  }
+  return lead
 }
 
 export interface LeadPatch {
@@ -210,10 +256,26 @@ export interface LeadPatch {
   dataEntrada?: string | null
   observacoes?: string | null
   area?: string | null
+  responsavelUserId?: number | null
+  proximaAcaoEm?: string | null
+  proximaAcaoNota?: string | null
+  temperatura?: string | null
+  potencialFinanceiro?: string | null
+  urgenciaNivel?: string | null
+  poderDecisao?: string | null
+  jurisdicao?: string | null
+  viabilidade?: string | null
+  contratoEnviado?: boolean
 }
 
-export async function updateLead(id: number, patch: LeadPatch) {
-  return prisma.lead.update({
+/** Edits the lead's own fields — does NOT re-resolve/re-link the Cliente
+ *  (the link is set once, at creation/import/conversion; see ./contato.ts).
+ *  Notifies the new owner when responsavelUserId changes to a different user. */
+export async function updateLead(id: number, patch: LeadPatch, actorEmail?: string | null) {
+  const antes = patch.responsavelUserId !== undefined || patch.contratoEnviado !== undefined
+    ? await prisma.lead.findUnique({ where: { id }, select: { responsavelUserId: true, contratoEnviadoEm: true } })
+    : null
+  const lead = await prisma.lead.update({
     where: { id },
     data: {
       ...(patch.nome !== undefined ? { nome: reqStr(patch.nome, "nome") } : {}),
@@ -227,8 +289,25 @@ export async function updateLead(id: number, patch: LeadPatch) {
       ...(patch.dataEntrada !== undefined ? { dataEntrada: toDate(patch.dataEntrada) ?? new Date() } : {}),
       ...(patch.observacoes !== undefined ? { observacoes: patch.observacoes?.trim() || null } : {}),
       ...(patch.area !== undefined ? { area: patch.area?.trim() || null } : {}),
+      ...(patch.responsavelUserId !== undefined ? { responsavelUserId: optInt(patch.responsavelUserId) } : {}),
+      ...(patch.proximaAcaoEm !== undefined ? { proximaAcaoEm: toDate(patch.proximaAcaoEm) } : {}),
+      ...(patch.proximaAcaoNota !== undefined ? { proximaAcaoNota: patch.proximaAcaoNota?.trim() || null } : {}),
+      ...(patch.temperatura !== undefined ? { temperatura: asTemperatura(patch.temperatura) } : {}),
+      ...(patch.potencialFinanceiro !== undefined ? { potencialFinanceiro: patch.potencialFinanceiro?.trim() || null } : {}),
+      ...(patch.urgenciaNivel !== undefined ? { urgenciaNivel: patch.urgenciaNivel?.trim() || null } : {}),
+      ...(patch.poderDecisao !== undefined ? { poderDecisao: patch.poderDecisao?.trim() || null } : {}),
+      ...(patch.jurisdicao !== undefined ? { jurisdicao: patch.jurisdicao?.trim() || null } : {}),
+      ...(patch.viabilidade !== undefined ? { viabilidade: patch.viabilidade?.trim() || null } : {}),
+      ...(patch.contratoEnviado !== undefined
+        ? { contratoEnviadoEm: patch.contratoEnviado ? antes?.contratoEnviadoEm ?? new Date() : null }
+        : {}),
     },
   })
+  const novoResp = optInt(patch.responsavelUserId)
+  if (patch.responsavelUserId !== undefined && novoResp && novoResp !== antes?.responsavelUserId) {
+    void notificarOportunidadeAtribuida({ leadId: lead.id, nome: lead.nome, responsavelUserId: novoResp, actorEmail })
+  }
+  return lead
 }
 
 export async function deleteLead(id: number) {
@@ -248,20 +327,38 @@ export async function moverEtapa(id: number, etapa: LeadEtapa, actorEmail?: stri
       ...(next === "ganho"
         ? { dataConversao: cur.dataConversao ?? new Date() }
         : { dataConversao: null }),
-      ...(next === "perdido" ? {} : { motivoPerda: null }),
+      // Sair de 'perdido' (reabrir) limpa também a flag de perda automática —
+      // reversão manual do escritório, auditada via runMutation/AuditLog.
+      ...(next === "perdido" ? {} : { motivoPerda: null, motivoPerdaCategoria: null, perdidoAutomatico: false }),
     },
   })
   // Conversão (entrou em 'ganho' agora) → avisa os gestores.
   if (next === "ganho" && cur.etapa !== "ganho") {
     void notificarLeadConvertido({ leadId: id, nome: lead.nome, actorEmail })
   }
+  if (cur.etapa === "perdido" && next !== "perdido") {
+    await prisma.oportunidadeAtividade.create({
+      data: { leadId: id, tipo: "nota", descricao: "Lead reaberto — reversão da marcação de Perdido." },
+    })
+  }
   return lead
 }
 
-export async function marcarPerdido(id: number, motivo?: string | null) {
+export async function marcarPerdido(
+  id: number,
+  motivo?: string | null,
+  motivoCategoria?: string | null,
+  opts?: { automatico?: boolean },
+) {
   return prisma.lead.update({
     where: { id },
-    data: { etapa: "perdido", motivoPerda: motivo?.trim() || null, dataConversao: null },
+    data: {
+      etapa: "perdido",
+      motivoPerda: motivo?.trim() || null,
+      motivoPerdaCategoria: motivoCategoria?.trim() || null,
+      dataConversao: null,
+      perdidoAutomatico: !!opts?.automatico,
+    },
   })
 }
 
@@ -292,8 +389,11 @@ export async function converterLead(id: number, input: ConverterLeadInput, actor
   const dataConv = toDate(input.dataConversao) ?? new Date()
   const antes = await prisma.lead.findUnique({ where: { id }, select: { etapa: true } })
   const result = await prisma.$transaction(async (tx) => {
-    const lead = await tx.lead.findUnique({ where: { id }, select: { id: true, nome: true } })
+    const lead = await tx.lead.findUnique({ where: { id }, select: { id: true, nome: true, clienteId: true } })
     if (!lead) throw new UserError("Lead não encontrado")
+    // Every lead already resolves to a Contato at creation/import — fall back
+    // to it instead of nulling the link out when the caller omits clienteId.
+    const clienteId = optInt(input.clienteId) ?? lead.clienteId
     let lancamentoId: number | null = null
     const valor = typeof input.valorContratadoCents === "number" ? Math.abs(Math.round(input.valorContratadoCents)) : 0
     if (valor > 0) {
@@ -314,7 +414,7 @@ export async function converterLead(id: number, input: ConverterLeadInput, actor
           isAnomalia: false,
           geradoPorApp: true,
           origem: "manual",
-          clienteId: optInt(input.clienteId),
+          clienteId,
           casoId: optInt(input.casoId),
         },
       })
@@ -325,7 +425,7 @@ export async function converterLead(id: number, input: ConverterLeadInput, actor
       data: {
         etapa: "ganho",
         dataConversao: dataConv,
-        clienteId: optInt(input.clienteId),
+        clienteId,
         casoId: optInt(input.casoId),
         lancamentoId,
         motivoPerda: null,
@@ -378,4 +478,66 @@ export async function mesclarLeadComCliente(id: number, input: MesclarLeadInput,
     void notificarLeadConvertido({ leadId: id, nome: result.nome, actorEmail })
   }
   return result
+}
+
+// ── lote (bulk edit de oportunidades) ──────────────────────────────────────────
+export interface LeadsLote {
+  ids: number[]
+  etapa?: LeadEtapa
+  responsavelUserId?: number | null
+  temperatura?: string | null
+  area?: string | null
+  excluir?: boolean
+}
+
+/** Bulk edit across many oportunidades, or delete the selection — replaces the
+ *  client-side per-id loop (1 round-trip). Moving to 'ganho'/'perdido' is
+ *  REJECTED here — those carry per-lead side effects (fee-lançamento,
+ *  dataConversao, notification) that only the single-lead flows
+ *  (Converter/Marcar perdido) apply correctly; only open-stage moves are safe
+ *  as a raw bulk update. Notifies each newly-assigned dono, mirroring
+ *  updateLead (a bulk reassignment must not go silent just because it's bulk). */
+export async function bulkUpdateLeads(input: LeadsLote, actorEmail?: string | null) {
+  const ids = (input.ids ?? []).filter((n) => Number.isInteger(n) && n > 0)
+  if (!ids.length) throw new UserError("Selecione ao menos uma oportunidade")
+  if (input.excluir) {
+    const r = await prisma.lead.deleteMany({ where: { id: { in: ids } } })
+    return { excluidas: r.count }
+  }
+  const data: Prisma.LeadUncheckedUpdateManyInput = {}
+  if (input.etapa !== undefined) {
+    // Compara o valor JÁ APARADO (mesmo que será persistido) — comparar o cru
+    // permite burlar o guard com espaços (" ganho" não bate na igualdade, mas
+    // asEtapa() aparava e gravava "ganho" mesmo assim).
+    const next = asEtapa(input.etapa)
+    if (next === "ganho" || next === "perdido") {
+      throw new UserError("Use Converter/Marcar perdido para mudar para ganho/perdido — cada oportunidade precisa de detalhes próprios")
+    }
+    data.etapa = next
+    data.dataConversao = null
+    data.motivoPerda = null
+    data.motivoPerdaCategoria = null
+  }
+  const novoResp = input.responsavelUserId !== undefined ? optInt(input.responsavelUserId) : undefined
+  if (input.responsavelUserId !== undefined) data.responsavelUserId = novoResp
+  if (input.temperatura !== undefined) data.temperatura = asTemperatura(input.temperatura)
+  if (input.area !== undefined) data.area = input.area?.trim() || null
+  if (Object.keys(data).length === 0) throw new UserError("Nenhuma alteração informada")
+
+  // Snapshot "antes" só quando o dono está mudando, para notificar só quem de
+  // fato ganhou um dono NOVO (espelha o guard de updateLead).
+  const antes = novoResp
+    ? await prisma.lead.findMany({ where: { id: { in: ids } }, select: { id: true, nome: true, responsavelUserId: true } })
+    : []
+
+  const r = await prisma.lead.updateMany({ where: { id: { in: ids } }, data })
+
+  if (novoResp) {
+    for (const l of antes) {
+      if (l.responsavelUserId !== novoResp) {
+        void notificarOportunidadeAtribuida({ leadId: l.id, nome: l.nome, responsavelUserId: novoResp, actorEmail })
+      }
+    }
+  }
+  return { atualizadas: r.count }
 }

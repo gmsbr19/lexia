@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { guardRequest } from "@/lib/auth/session"
+import { guardRequest, sessionEmail } from "@/lib/auth/session"
 import { getLeads } from "@/lib/comercial/queries"
 import { createLead } from "@/lib/comercial/mutations"
 import { leadCreateSchema } from "@/lib/comercial/schemas"
@@ -31,7 +31,8 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const body = await readJson(req)
-  return runMutation(() => createLead(parseBody(leadCreateSchema, body)), {
+  const actor = (await sessionEmail()) ?? undefined
+  return runMutation(() => createLead(parseBody(leadCreateSchema, body), actor), {
     action: "lead.criar",
     entity: "Lead",
     payload: body,
