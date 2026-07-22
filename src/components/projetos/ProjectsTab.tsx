@@ -18,7 +18,6 @@ import {
   GROUP_OPTS,
   HojeView,
   ListaView,
-  QuadroView,
   type GroupBy,
   type ViewCallbacks,
 } from "@/components/tarefas/views"
@@ -34,7 +33,9 @@ import {
   SaudeChip,
   SkelRow,
 } from "./pj-kit"
+import { SecoesBoard } from "./SecoesBoard"
 import { tDiff } from "@/components/tarefas/tf-meta"
+import type { TfIconName } from "@/components/tarefas/tf-icons"
 
 // ── project header ──────────────────────────────────────────────────────────────
 function ProjectHeader({
@@ -149,7 +150,6 @@ export function ProjectCanvas({
   proj,
   tasks,
   cb,
-  onMove,
   onSchedule,
   onRename,
   onEdit,
@@ -158,6 +158,13 @@ export function ProjectCanvas({
   onLinkClick,
   canEdit,
   onNewTask,
+  onAssignSecao,
+  onAddSecao,
+  onRenameSecao,
+  onRecolorSecao,
+  onDeleteSecao,
+  onReorderSecoes,
+  onNewTaskInSection,
   selectMode,
   setSelectMode,
   selectedIds,
@@ -166,7 +173,6 @@ export function ProjectCanvas({
   proj: ProjetoView
   tasks: TaskRow[]
   cb: ViewCallbacks
-  onMove: (id: number, status: TaskStatus) => void
   onSchedule: (id: number, hora: string) => void
   onRename: (name: string) => void
   onEdit: () => void
@@ -175,14 +181,23 @@ export function ProjectCanvas({
   onLinkClick: () => void
   canEdit: boolean
   onNewTask: () => void
+  onAssignSecao: (id: number, secaoId: number | null) => void
+  onAddSecao: (nome: string) => void
+  onRenameSecao: (id: number, nome: string) => void
+  onRecolorSecao: (id: number, cor: string | null) => void
+  onDeleteSecao: (id: number) => void
+  onReorderSecoes: (ids: number[]) => void
+  onNewTaskInSection: (secaoId: number | null) => void
   selectMode: boolean
   setSelectMode: (v: boolean) => void
   selectedIds: Set<number>
   onSelect: (id: number) => void
 }) {
-  const { meId, socios } = useTarefasCtx()
+  const { meId, socios, secoesDoProjeto } = useTarefasCtx()
   const [ui, setUi] = useState<CanvasUi>({ view: "lista", groupBy: "prazo", fStatus: null, fAssignee: null, onlyMine: false, hideDone: true })
   const set = <K extends keyof CanvasUi>(k: K, v: CanvasUi[K]) => setUi((u) => ({ ...u, [k]: v }))
+  const secoes = secoesDoProjeto(proj.id)
+  const groupOpts: { id: GroupBy; label: string; icon: TfIconName }[] = [...GROUP_OPTS, { id: "secao", label: "Seção", icon: "layoutGrid" }]
 
   const all = tasks.filter((t) => t.projetoId === proj.id)
   const live = deriveRollup(proj.id, tasks)
@@ -202,8 +217,8 @@ export function ProjectCanvas({
           <ViewSwitcher view={ui.view} setView={(v) => set("view", v)} />
           <div style={{ flex: 1 }} />
           {ui.view === "lista" && (
-            <Menu align="right" width={190} trigger={<FilterBtn icon="layoutGrid" label={`Agrupar: ${GROUP_OPTS.find((g) => g.id === ui.groupBy)?.label}`} />}>
-              {(close) => GROUP_OPTS.map((g) => <MenuItem key={g.id} icon={g.icon} label={g.label} active={ui.groupBy === g.id} onClick={() => { set("groupBy", g.id); close() }} />)}
+            <Menu align="right" width={190} trigger={<FilterBtn icon="layoutGrid" label={`Agrupar: ${groupOpts.find((g) => g.id === ui.groupBy)?.label}`} />}>
+              {(close) => groupOpts.map((g) => <MenuItem key={g.id} icon={g.icon} label={g.label} active={ui.groupBy === g.id} onClick={() => { set("groupBy", g.id); close() }} />)}
             </Menu>
           )}
           <Menu align="right" width={200} trigger={<FilterBtn active={!!ui.fStatus} icon="circleDot">{ui.fStatus ? statusMeta(ui.fStatus).label : "Status"}</FilterBtn>}>
@@ -261,8 +276,23 @@ export function ProjectCanvas({
         ) : (
           <>
             {ui.view === "hoje" && <HojeView tasks={projTasks} hideDone={ui.hideDone} {...cb} selectable={selectable} selectedIds={selectedIds} onSelect={onSelect} />}
-            {ui.view === "lista" && <ListaView tasks={projTasks} groupBy={ui.groupBy} hideDone={ui.hideDone} {...cb} selectable={selectable} selectedIds={selectedIds} onSelect={onSelect} />}
-            {ui.view === "quadro" && <QuadroView tasks={projTasks} onMove={onMove} {...cb} />}
+            {ui.view === "lista" && <ListaView tasks={projTasks} groupBy={ui.groupBy} secoes={secoes} onAddInSection={onNewTaskInSection} hideDone={ui.hideDone} {...cb} selectable={selectable} selectedIds={selectedIds} onSelect={onSelect} />}
+            {ui.view === "quadro" && (
+              <SecoesBoard
+                proj={proj}
+                tasks={projTasks}
+                secoes={secoes}
+                cb={cb}
+                canEdit={canEdit}
+                onAssign={onAssignSecao}
+                onAddSecao={onAddSecao}
+                onRenameSecao={onRenameSecao}
+                onRecolorSecao={onRecolorSecao}
+                onDeleteSecao={onDeleteSecao}
+                onReorderSecoes={onReorderSecoes}
+                onNewTaskInSection={onNewTaskInSection}
+              />
+            )}
             {ui.view === "calendario" && <CalendarioView tasks={projTasks} {...cb} />}
             {ui.view === "agenda" && <AgendaView tasks={projTasks} onSchedule={onSchedule} {...cb} />}
           </>

@@ -35,7 +35,7 @@ import {
   type TeamMember,
   type VinculoRef,
 } from "@/lib/tarefas/types"
-import type { ProdutividadeDashboard, ProjetosDataset, ProjetoView, TemplateView } from "@/lib/projetos/types"
+import type { ProdutividadeDashboard, ProjetosDataset, ProjetoView, SecaoView, TemplateView } from "@/lib/projetos/types"
 import { BulkBar, type BulkField, type ModuleTab } from "./pj-kit"
 import { CrossTarefasTab } from "./CrossTarefasTab"
 import { CanvasSkeleton, NoProjectsState, ProjectCanvas } from "./ProjectsTab"
@@ -145,6 +145,7 @@ function MostrarBtn({ f, setF, socios }: { f: GlobalFilters; setF: (fn: (f: Glob
 export interface WorkspaceDataset {
   tarefas: TaskRow[]
   projetos: ProjetoView[]
+  secoes: SecaoView[]
   socios: TeamMember[]
   casos: IdNome[]
   clientes: IdNome[]
@@ -169,6 +170,7 @@ export function ProjetosWorkspace({
 
   const [tasks, setTasks] = useState<TaskRow[]>(dataset.tarefas)
   const [projetos, setProjetos] = useState<ProjetoView[]>(dataset.projetos)
+  const [secoes, setSecoes] = useState<SecaoView[]>(dataset.secoes)
   const [nav, setNav] = useState<T2Nav>(() => {
     if (initialTab === "projetos") {
       const pid = initialProjetoId ?? dataset.projetos.find((p) => p.status !== "arquivado")?.id ?? dataset.projetos[0]?.id ?? null
@@ -225,6 +227,7 @@ export function ProjetosWorkspace({
 
   useEffect(() => setTasks(dataset.tarefas), [dataset.tarefas])
   useEffect(() => setProjetos(dataset.projetos), [dataset.projetos])
+  useEffect(() => setSecoes(dataset.secoes), [dataset.secoes])
   useEffect(() => {
     if (!toast) return
     const t = setTimeout(() => setToast(""), 3400)
@@ -347,6 +350,7 @@ export function ProjetosWorkspace({
     casoId: null,
     clienteId: null,
     projetoId: (body.projetoId as number | null) ?? null,
+    secaoId: (body.secaoId as number | null) ?? null,
     vinculo: null,
     ordem: 0,
   })
@@ -418,6 +422,7 @@ export function ProjetosWorkspace({
       casoId: t.casoId,
       clienteId: t.clienteId,
       projetoId: t.projetoId,
+      secaoId: t.secaoId,
     }
     try {
       const res = await send<{ result?: { id?: number } }>("/api/tarefas", "POST", body)
@@ -486,6 +491,7 @@ export function ProjetosWorkspace({
     try {
       const d = await send<ProjetosDataset>("/api/projetos", "GET")
       setProjetos(d.projetos)
+      setSecoes(d.secoes)
     } catch {
       /* keep current */
     }
@@ -567,6 +573,61 @@ export function ProjetosWorkspace({
     void send(`/api/projetos/${id}`, "PATCH", { nome }).catch(() => flash("Erro ao renomear projeto"))
   }
 
+  // ── seções (colunas do quadro / grupos da lista, por projeto) ───────────────────
+  const addSecao = async (projetoId: number, nome: string) => {
+    const tempId = -Date.now() // id otimista negativo até o servidor responder
+    const arr = secoes.filter((s) => s.projetoId === projetoId)
+    const ordem = arr.length ? Math.max(...arr.map((s) => s.ordem)) + 1 : 0
+    setSecoes((ss) => [...ss, { id: tempId, projetoId, nome, cor: null, ordem }])
+    try {
+      const res = await send<{ result?: { id?: number } }>(`/api/projetos/${projetoId}/secoes`, "POST", { nome })
+      const id = res?.result?.id
+      if (id) setSecoes((ss) => ss.map((s) => (s.id === tempId ? { ...s, id } : s)))
+      else await reloadProjetos()
+    } catch {
+      setSecoes((ss) => ss.filter((s) => s.id !== tempId))
+      flash("Erro ao criar seção")
+    }
+  }
+  const patchSecao = (id: number, patch: Partial<SecaoView>, body: Record<string, unknown>) => {
+    const s = secoes.find((x) => x.id === id)
+    if (!s) return
+    setSecoes((ss) => ss.map((x) => (x.id === id ? { ...x, ...patch } : x)))
+    void send(`/api/projetos/${s.projetoId}/secoes/${id}`, "PATCH", body).catch(() => flash("Erro ao salvar seção"))
+  }
+  const renameSecao = (id: number, nome: string) => patchSecao(id, { nome }, { nome })
+  const recolorSecao = (id: number, cor: string | null) => patchSecao(id, { cor }, { cor })
+  const deleteSecao = async (id: number) => {
+    const s = secoes.find((x) => x.id === id)
+    if (!s) return
+    setSecoes((ss) => ss.filter((x) => x.id !== id))
+    setTasks((ts) => ts.map((t) => (t.secaoId === id ? { ...t, secaoId: null } : t))) // espelha o onDelete: SetNull
+    try {
+      await send(`/api/projetos/${s.projetoId}/secoes/${id}`, "DELETE")
+    } catch {
+      flash("Erro ao excluir seção")
+    }
+  }
+  const reorderSecoes = (projetoId: number, ids: number[]) => {
+    const pos = new Map(ids.map((id, i) => [id, i]))
+    setSecoes((ss) => ss.map((s) => (s.projetoId === projetoId && pos.has(s.id) ? { ...s, ordem: pos.get(s.id)! } : s)))
+    void send(`/api/projetos/${projetoId}/secoes/reordenar`, "PUT", { ids }).catch(() => flash("Erro ao reordenar seções"))
+  }
+  const assignSecao = (id: number, secaoId: number | null) => commit(id, { secaoId })
+  const newTaskInSection = async (projetoId: number, secaoId: number | null) => {
+    const body = { titulo: "Nova tarefa", projeto: "inbox", responsavelId: meId, prio: 4, projetoId, secaoId }
+    try {
+      const res = await send<{ result?: { id?: number } }>("/api/tarefas", "POST", body)
+      const id = res?.result?.id
+      if (id) {
+        setTasks((ts) => [makeRow(id, body), ...ts])
+        setOpenId(id)
+      }
+    } catch {
+      flash("Erro ao criar tarefa")
+    }
+  }
+
   // ── templates ─────────────────────────────────────────────────────────────────
   const loadTemplates = async () => {
     if (templates || tplLoading) return
@@ -582,22 +643,28 @@ export function ProjetosWorkspace({
   }
   useEffect(() => { if (nav.view === "templates") void loadTemplates() }, [nav.view])
 
-  const templatePayload = (form: TemplateFormValue) => ({
-    nome: form.nome,
-    descricao: form.descricao,
-    area: form.area,
-    cor: form.cor,
-    icone: form.icone,
-    itens: form.itens.map((it) => ({
-      titulo: it.titulo,
-      prio: it.prio,
-      responsavelPlaceholder: it.responsavelPlaceholder || null,
-      offsetDias: it.offsetDiasUteis,
-      base: it.base,
-      dor: it.dor,
-      dod: it.dod,
-    })),
-  })
+  const templatePayload = (form: TemplateFormValue) => {
+    // secaoKey (estável) → secaoOrdem (índice na lista de seções, = ordem salva).
+    const ordemPorKey = new Map(form.secoes.map((s, i) => [s.key, i]))
+    return {
+      nome: form.nome,
+      descricao: form.descricao,
+      area: form.area,
+      cor: form.cor,
+      icone: form.icone,
+      secoes: form.secoes.map((s) => ({ nome: s.nome, cor: s.cor })),
+      itens: form.itens.map((it) => ({
+        titulo: it.titulo,
+        prio: it.prio,
+        responsavelPlaceholder: it.responsavelPlaceholder || null,
+        offsetDias: it.offsetDiasUteis,
+        base: it.base,
+        dor: it.dor,
+        dod: it.dod,
+        secaoOrdem: it.secaoKey != null ? ordemPorKey.get(it.secaoKey) ?? null : null,
+      })),
+    }
+  }
   const saveTemplate = async (form: TemplateFormValue) => {
     try {
       if (form.id) {
@@ -680,7 +747,7 @@ export function ProjetosWorkspace({
 
   return (
     <div className={`${tfRoot} t2-workspace`}>
-      <TarefasProvider socios={socios} casos={casos} clientes={clientes} projetos={projetosView} meId={meId}>
+      <TarefasProvider socios={socios} casos={casos} clientes={clientes} projetos={projetosView} secoes={secoes} meId={meId}>
         <div className={`t2-scrim${sideOpen ? " is-open" : ""}`} onClick={() => setSideOpen(false)} />
         <div className={`t2-side-wrap${sideOpen ? " is-open" : ""}`}>
           <TasksSidebar
@@ -788,7 +855,6 @@ export function ProjetosWorkspace({
                   proj={selProj}
                   tasks={filteredHard}
                   cb={cb}
-                  onMove={move}
                   onSchedule={schedule}
                   onRename={(name) => renameProject(selProj.id, name)}
                   onEdit={() => setProjModal({ projeto: selProj })}
@@ -797,6 +863,13 @@ export function ProjetosWorkspace({
                   onLinkClick={() => selProj.vinculo && onLinkClick(selProj.vinculo)}
                   canEdit={canEdit}
                   onNewTask={() => newTaskInProject(selProj.id)}
+                  onAssignSecao={assignSecao}
+                  onAddSecao={(nome) => void addSecao(selProj.id, nome)}
+                  onRenameSecao={renameSecao}
+                  onRecolorSecao={recolorSecao}
+                  onDeleteSecao={(id) => void deleteSecao(id)}
+                  onReorderSecoes={(ids) => reorderSecoes(selProj.id, ids)}
+                  onNewTaskInSection={(secaoId) => void newTaskInSection(selProj.id, secaoId)}
                   selectMode={selectMode}
                   setSelectMode={setSelectMode}
                   selectedIds={selected}

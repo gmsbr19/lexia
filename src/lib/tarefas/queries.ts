@@ -75,6 +75,7 @@ export async function getTarefasDataset(): Promise<TarefasDataset> {
         casoId: true,
         clienteId: true,
         projetoId: true,
+        secaoId: true,
         ordem: true,
         caso: { select: { titulo: true } },
         cliente: { select: { nome: true } },
@@ -113,6 +114,7 @@ export async function getTarefasDataset(): Promise<TarefasDataset> {
       clienteId: r.clienteId,
       // projeto excluído (soft-delete) → trata como "sem projeto" (a tarefa nunca some).
       projetoId: r.projetoRef && !r.projetoRef.excluidoEm ? r.projetoId : null,
+      secaoId: r.projetoRef && !r.projetoRef.excluidoEm ? r.secaoId : null,
       vinculo,
       ordem: r.ordem,
     }

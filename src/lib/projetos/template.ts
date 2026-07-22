@@ -16,6 +16,7 @@ export interface TemplateItemInput {
   dor?: string[]
   dod?: string[]
   ordem?: number
+  secaoOrdem?: number | null // índice da seção-modelo (propagado até a instanciação)
 }
 
 export interface ItemInstanciado extends TemplateItemInput {

@@ -20,6 +20,15 @@ export const projetoCreateSchema = z.object({
 
 export const projetoPatchSchema = projetoCreateSchema.partial()
 
+// Seções personalizadas de um projeto (colunas do quadro / grupos da lista).
+export const secaoCreateSchema = z.object({
+  nome: z.string().min(1).max(120),
+  cor: z.string().max(40).nullish(),
+  ordem: z.number().int().optional(),
+})
+export const secaoPatchSchema = secaoCreateSchema.partial()
+export const reordenarSecoesSchema = z.object({ ids: z.array(idReq).min(1).max(100) })
+
 // Bulk edit of tasks (F4): apply ONE of the listed fields across many tasks.
 export const tarefasLoteSchema = z.object({
   ids: z.array(idReq).min(1).max(200),
@@ -42,6 +51,13 @@ const templateItemSchema = z.object({
   base: z.enum(["inicio", "anterior"]).optional(),
   dor: z.array(z.string().min(1)).max(12).optional(),
   dod: z.array(z.string().min(1)).max(12).optional(),
+  secaoOrdem: z.number().int().min(0).max(99).nullish(), // índice da seção-modelo
+})
+
+// Seção-modelo do template.
+const templateSecaoSchema = z.object({
+  nome: z.string().min(1).max(120),
+  cor: z.string().max(40).nullish(),
 })
 
 export const templateCreateSchema = z.object({
@@ -52,6 +68,7 @@ export const templateCreateSchema = z.object({
   icone: z.string().max(40).nullish(),
   ativo: z.boolean().optional(),
   itens: z.array(templateItemSchema).max(100).optional(),
+  secoes: z.array(templateSecaoSchema).max(30).optional(),
 })
 
 export const templatePatchSchema = templateCreateSchema.partial()

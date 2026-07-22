@@ -36,6 +36,12 @@ export interface TemplateItemForm {
   base: TemplateBase
   dor: string[]
   dod: string[]
+  secaoKey: string | null // ref estável à seção-modelo (mapeado p/ ordem no salvamento)
+}
+export interface TemplateSecaoForm {
+  key: string
+  nome: string
+  cor: string | null
 }
 export interface TemplateFormValue {
   id?: number
@@ -45,6 +51,7 @@ export interface TemplateFormValue {
   cor: string
   icone: string
   itens: TemplateItemForm[]
+  secoes: TemplateSecaoForm[]
 }
 export interface InstanciarPayload {
   templateId: number
@@ -58,24 +65,31 @@ export interface InstanciarPayload {
 
 let _k = 0
 const newKey = () => `it${++_k}`
-const toForm = (tpl: TemplateView | null): TemplateFormValue => ({
-  id: tpl?.id,
-  nome: tpl?.nome ?? "",
-  descricao: tpl?.descricao ?? "",
-  area: tpl?.area ?? "soc",
-  cor: tpl?.cor ?? "#1F3A6E",
-  icone: tpl?.icone ?? "folder",
-  itens: (tpl?.itens ?? []).map((it) => ({
-    key: newKey(),
-    titulo: it.titulo,
-    prio: it.prio,
-    responsavelPlaceholder: it.responsavelPlaceholder ?? "",
-    offsetDiasUteis: it.offsetDiasUteis,
-    base: it.base,
-    dor: it.dor,
-    dod: it.dod,
-  })),
-})
+const toForm = (tpl: TemplateView | null): TemplateFormValue => {
+  // Seções com key estável; o item liga-se à seção pela `ordem` (secaoOrdem → key).
+  const secoes: TemplateSecaoForm[] = (tpl?.secoes ?? []).map((s) => ({ key: newKey(), nome: s.nome, cor: s.cor }))
+  const keyPorOrdem = new Map((tpl?.secoes ?? []).map((s, i) => [s.ordem, secoes[i].key]))
+  return {
+    id: tpl?.id,
+    nome: tpl?.nome ?? "",
+    descricao: tpl?.descricao ?? "",
+    area: tpl?.area ?? "soc",
+    cor: tpl?.cor ?? "#1F3A6E",
+    icone: tpl?.icone ?? "folder",
+    secoes,
+    itens: (tpl?.itens ?? []).map((it) => ({
+      key: newKey(),
+      titulo: it.titulo,
+      prio: it.prio,
+      responsavelPlaceholder: it.responsavelPlaceholder ?? "",
+      offsetDiasUteis: it.offsetDiasUteis,
+      base: it.base,
+      dor: it.dor,
+      dod: it.dod,
+      secaoKey: it.secaoOrdem != null ? keyPorOrdem.get(it.secaoOrdem) ?? null : null,
+    })),
+  }
+}
 
 const miniSeg = (on: boolean): CSSProperties => ({
   height: 24,
@@ -204,9 +218,36 @@ function CritEditor({ label, sub, items, onChange }: { label: string; sub: strin
   )
 }
 
+function SecaoMenu({ secoes, secaoKey, onChange }: { secoes: TemplateSecaoForm[]; secaoKey: string | null; onChange: (key: string | null) => void }) {
+  const sel = secoes.find((s) => s.key === secaoKey) ?? null
+  return (
+    <Menu
+      align="right"
+      width={200}
+      trigger={
+        <span className="picker-mini" style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 30, padding: "0 9px", borderRadius: 8, border: "1px solid var(--border-strong)", background: "var(--surface)", cursor: "pointer", fontSize: 12, fontWeight: 500, color: sel ? "var(--text)" : "var(--text-subtle)", whiteSpace: "nowrap", maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis" }}>
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: sel?.cor || "var(--text-subtle)", flexShrink: 0 }} />
+          {sel?.nome || "Sem seção"}
+          <Icon name="chevronDown" size={12} />
+        </span>
+      }
+    >
+      {(close) => (
+        <>
+          <MenuItem dot="var(--text-subtle)" label="Sem seção" active={secaoKey == null} onClick={() => { onChange(null); close() }} />
+          {secoes.map((s) => (
+            <MenuItem key={s.key} dot={s.cor || "var(--text-muted)"} label={s.nome || "(sem nome)"} active={secaoKey === s.key} onClick={() => { onChange(s.key); close() }} />
+          ))}
+        </>
+      )}
+    </Menu>
+  )
+}
+
 function TemplateItemRow({
   item,
   index,
+  secoes,
   onChange,
   onRemove,
   dragHandlers,
@@ -214,6 +255,7 @@ function TemplateItemRow({
 }: {
   item: TemplateItemForm
   index: number
+  secoes: TemplateSecaoForm[]
   onChange: (p: Partial<TemplateItemForm>) => void
   onRemove: () => void
   dragHandlers: { onDragStart: (e: React.DragEvent) => void; onDragOver: (e: React.DragEvent) => void; onDragEnd: () => void }
@@ -226,6 +268,7 @@ function TemplateItemRow({
         <span className="tpl-grip" style={{ color: "var(--text-subtle)", flexShrink: 0, display: "flex" }}><Icon name="gripVertical" size={16} /></span>
         <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text-subtle)", width: 18, fontFeatureSettings: '"tnum"', flexShrink: 0 }}>{index + 1}</span>
         <input value={item.titulo} onChange={(e) => onChange({ titulo: e.target.value })} placeholder="Título da tarefa" style={{ flex: 1, minWidth: 0, border: "none", outline: "none", background: "transparent", fontSize: 13, fontWeight: 500, color: "var(--text)" }} />
+        {secoes.length > 0 && <SecaoMenu secoes={secoes} secaoKey={item.secaoKey} onChange={(key) => onChange({ secaoKey: key })} />}
         <PrioMenu prio={item.prio} onChange={(n) => onChange({ prio: n })} />
         <span className="tpl-prazo" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
           <Icon name="flag" size={12} strokeWidth={1.85} />+{item.offsetDiasUteis}d · {item.base === "inicio" ? "início" : "anterior"}
@@ -280,8 +323,29 @@ export function TemplateEditor({ tpl, onClose, onSave }: { tpl: TemplateView | n
   const addItem = () =>
     setForm((f) => ({
       ...f,
-      itens: [...f.itens, { key: newKey(), titulo: "", prio: 3, responsavelPlaceholder: "", offsetDiasUteis: 2, base: f.itens.length ? "anterior" : "inicio", dor: [], dod: [] }],
+      itens: [...f.itens, { key: newKey(), titulo: "", prio: 3, responsavelPlaceholder: "", offsetDiasUteis: 2, base: f.itens.length ? "anterior" : "inicio", dor: [], dod: [], secaoKey: null }],
     }))
+  // ── seções-modelo ──
+  const addSecao = () => setForm((f) => ({ ...f, secoes: [...f.secoes, { key: newKey(), nome: "", cor: null }] }))
+  const setSecao = (i: number, patch: Partial<TemplateSecaoForm>) =>
+    setForm((f) => ({ ...f, secoes: f.secoes.map((s, j) => (j === i ? { ...s, ...patch } : s)) }))
+  const removeSecao = (i: number) =>
+    setForm((f) => {
+      const key = f.secoes[i]?.key
+      return {
+        ...f,
+        secoes: f.secoes.filter((_, j) => j !== i),
+        itens: f.itens.map((it) => (it.secaoKey === key ? { ...it, secaoKey: null } : it)), // itens da seção removida → sem seção
+      }
+    })
+  const moveSecao = (i: number, dir: -1 | 1) =>
+    setForm((f) => {
+      const j = i + dir
+      if (j < 0 || j >= f.secoes.length) return f
+      const a = [...f.secoes]
+      ;[a[i], a[j]] = [a[j], a[i]]
+      return { ...f, secoes: a }
+    })
   const reorder = (from: number, to: number) =>
     setForm((f) => {
       const a = [...f.itens]
@@ -333,6 +397,44 @@ export function TemplateEditor({ tpl, onClose, onSave }: { tpl: TemplateView | n
             </div>
           </div>
 
+          {/* Seções-modelo → viram colunas do quadro ao instanciar */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <Icon name="layoutGrid" size={16} strokeWidth={1.9} style={{ color: "var(--text-muted)" }} />
+            <span style={{ fontSize: 14, fontWeight: 500, color: "var(--text)" }}>Seções</span>
+            <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>{form.secoes.length}</span>
+            <span style={{ flex: 1 }} />
+            <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>viram colunas do quadro ao instanciar</span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+            {form.secoes.map((s, i) => (
+              <div key={s.key} className="card" style={{ padding: "7px 10px", display: "flex", alignItems: "center", gap: 8, borderColor: "var(--border)" }}>
+                <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text-subtle)", width: 16, fontFeatureSettings: '"tnum"', flexShrink: 0 }}>{i + 1}</span>
+                <Menu width={180} trigger={
+                  <span style={{ width: 22, height: 22, borderRadius: 6, border: "1px solid var(--border-strong)", display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+                    <span style={{ width: 12, height: 12, borderRadius: "50%", background: s.cor || "var(--text-subtle)" }} />
+                  </span>
+                }>
+                  {(close) => (
+                    <div style={{ display: "flex", gap: 6, padding: "8px 9px", flexWrap: "wrap", width: 168 }}>
+                      <button onClick={() => { setSecao(i, { cor: null }); close() }} title="Sem cor" style={{ width: 22, height: 22, borderRadius: 6, background: "transparent", border: `1px solid ${s.cor ? "var(--border-strong)" : "var(--text)"}`, cursor: "pointer" }} />
+                      {COLOR_CHOICES.map((c) => (
+                        <button key={c} onClick={() => { setSecao(i, { cor: c }); close() }} style={{ width: 22, height: 22, borderRadius: 6, background: c, border: s.cor === c ? "2px solid var(--text)" : "2px solid transparent", cursor: "pointer" }} />
+                      ))}
+                    </div>
+                  )}
+                </Menu>
+                <input value={s.nome} onChange={(e) => setSecao(i, { nome: e.target.value })} placeholder="Nome da seção" style={{ flex: 1, minWidth: 0, border: "none", outline: "none", background: "transparent", fontSize: 13, fontWeight: 500, color: "var(--text)" }} />
+                <button onClick={() => moveSecao(i, -1)} disabled={i === 0} className="btn btn-ghost" style={{ width: 26, height: 26, padding: 0, opacity: i === 0 ? 0.4 : 1 }} title="Mover para cima"><Icon name="chevronUp" size={14} /></button>
+                <button onClick={() => moveSecao(i, 1)} disabled={i === form.secoes.length - 1} className="btn btn-ghost" style={{ width: 26, height: 26, padding: 0, opacity: i === form.secoes.length - 1 ? 0.4 : 1 }} title="Mover para baixo"><Icon name="chevronDown" size={14} /></button>
+                <button onClick={() => removeSecao(i)} className="btn btn-ghost" style={{ width: 26, height: 26, padding: 0, color: "var(--text-subtle)" }} title="Remover seção"><Icon name="x" size={15} /></button>
+              </div>
+            ))}
+          </div>
+          <button onClick={addSecao} className="btn btn-secondary" style={{ marginBottom: 22, height: 34, fontSize: 12.5 }}>
+            <Icon name="plus" size={14} strokeWidth={2} />
+            Adicionar seção
+          </button>
+
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
             <Icon name="listChecks" size={16} strokeWidth={1.9} style={{ color: "var(--text-muted)" }} />
             <span style={{ fontSize: 14, fontWeight: 500, color: "var(--text)" }}>Tarefas do template</span>
@@ -346,6 +448,7 @@ export function TemplateEditor({ tpl, onClose, onSave }: { tpl: TemplateView | n
                 key={it.key}
                 item={it}
                 index={i}
+                secoes={form.secoes}
                 dragging={dragIdx === i}
                 onChange={(p) => setItem(i, p)}
                 onRemove={() => removeItem(i)}

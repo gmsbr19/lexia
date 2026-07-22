@@ -5,8 +5,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { AnimatePresence, motion } from "motion/react"
 import { PRIO, STATUS, type TaskPrio, type TaskRow, type TaskStatus, type VinculoRef } from "@/lib/tarefas/types"
+import type { SecaoView } from "@/lib/projetos/types"
 import { Icon, type TfIconName } from "./tf-icons"
 import { useTarefasCtx } from "./TarefasContext"
+import { InlineAdd } from "./t2-rows"
 import { MO, MONTHS_LONG, TODAY, WD_LONG, byTime, tDiff, tParse } from "./tf-meta"
 import {
   AssigneeAvatar,
@@ -334,7 +336,7 @@ export function HojeView({ tasks, hideDone, selectable, selectedIds, onSelect, .
 }
 
 // ── LISTA (agrupável) ─────────────────────────────────────────────────────────
-export type GroupBy = "projeto" | "responsavel" | "prazo" | "prioridade"
+export type GroupBy = "projeto" | "responsavel" | "prazo" | "prioridade" | "secao"
 export const GROUP_OPTS: { id: GroupBy; label: string; icon: TfIconName }[] = [
   { id: "projeto", label: "Projeto", icon: "inbox" },
   { id: "responsavel", label: "Responsável", icon: "user" },
@@ -351,14 +353,43 @@ interface Group {
   key: string | number
   header: GroupHeader
   items: TaskRow[]
+  secaoId?: number | null // presente só no agrupamento por seção (habilita "adicionar aqui")
 }
 
-export function ListaView({ tasks, groupBy, hideDone, selectable, selectedIds, onSelect, ...cb }: { tasks: TaskRow[]; groupBy: GroupBy } & HideDone & Selectable & ViewCallbacks) {
+export function ListaView({
+  tasks,
+  groupBy,
+  hideDone,
+  selectable,
+  selectedIds,
+  onSelect,
+  secoes,
+  onAddInSection,
+  ...cb
+}: {
+  tasks: TaskRow[]
+  groupBy: GroupBy
+  secoes?: SecaoView[] // só usado quando groupBy === "secao"
+  onAddInSection?: (secaoId: number | null) => void
+} & HideDone & Selectable & ViewCallbacks) {
   const { projetos, socios } = useTarefasCtx()
   const vis = useVisibleTasks(tasks, hideDone)
+  const [collapsed, setCollapsed] = useState<Set<string | number>>(new Set())
+  const bySecao = groupBy === "secao"
   let groups: Group[] = []
 
-  if (groupBy === "projeto") {
+  if (groupBy === "secao") {
+    // Uma coluna por seção (ordenada) + "Sem seção". Sempre mostra todas as seções.
+    groups = [
+      ...(secoes ?? []).map((s) => ({
+        key: `s${s.id}`,
+        header: { dot: s.cor || "var(--text-muted)", label: s.nome },
+        items: vis.filter((t) => t.secaoId === s.id),
+        secaoId: s.id,
+      })),
+      { key: "sem", header: { dot: "var(--text-subtle)", label: "Sem seção" }, items: vis.filter((t) => t.secaoId == null), secaoId: null },
+    ]
+  } else if (groupBy === "projeto") {
     groups = [
       { key: "inbox", header: { dot: "var(--text-subtle)", label: "Entrada" }, items: vis.filter((t) => t.projetoId == null) },
       ...projetos.map((p) => ({
@@ -397,41 +428,69 @@ export function ListaView({ tasks, groupBy, hideDone, selectable, selectedIds, o
     groups = defs.map(([k, label, dot]) => ({ key: k, header: { dot, label }, items: vis.filter((t) => bucket(t) === k) }))
   }
 
-  groups = groups.filter((g) => g.items.length)
-  if (!groups.length) return <EmptyState icon="list" title="Nenhuma tarefa" sub="Ajuste os filtros ou adicione uma tarefa." />
+  // Por seção mantém TODOS os grupos (colunas vazias existem p/ receber tarefas);
+  // nos demais agrupamentos, some com os grupos vazios.
+  if (!bySecao) groups = groups.filter((g) => g.items.length)
+  if (!groups.length)
+    return <EmptyState icon="list" title="Nenhuma tarefa" sub={bySecao ? "Crie uma seção ou adicione uma tarefa." : "Ajuste os filtros ou adicione uma tarefa."} />
+
+  const toggleCollapse = (key: string | number) =>
+    setCollapsed((s) => {
+      const n = new Set(s)
+      if (n.has(key)) n.delete(key)
+      else n.add(key)
+      return n
+    })
 
   return (
     <div>
-      {groups.map((g) => (
-        <RowGroup key={g.key}>
-          <SectionHeader
-            icon={!g.header.dot && g.header.avatar == null ? "circleDot" : undefined}
-            label={
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                {g.header.dot && <span style={{ width: 9, height: 9, borderRadius: "50%", background: g.header.dot }} />}
-                {g.header.avatar != null && <AssigneeAvatar id={g.header.avatar} size={18} title={false} />}
-                {g.header.label}
-              </span>
-            }
-            count={g.items.length}
-          />
-          <AnimatedRows
-            rows={g.items
-              .slice()
-              .sort(byTime)
-              .map((t) => ({
-                id: t.id,
-                el: <TaskRow task={t} showProject={groupBy !== "projeto"} selectable={selectable} selected={selectedIds?.has(t.id)} onSelect={onSelect} {...cb} />,
-              }))}
-          />
-        </RowGroup>
-      ))}
+      {groups.map((g) => {
+        const isCollapsed = bySecao && collapsed.has(g.key)
+        return (
+          <RowGroup key={g.key}>
+            <SectionHeader
+              icon={!g.header.dot && g.header.avatar == null ? "circleDot" : undefined}
+              label={
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                  {bySecao && (
+                    <button
+                      onClick={() => toggleCollapse(g.key)}
+                      aria-label={isCollapsed ? "Expandir seção" : "Recolher seção"}
+                      style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--text-subtle)", display: "inline-flex", padding: 0 }}
+                    >
+                      <Icon name={isCollapsed ? "chevronRight" : "chevronDown"} size={14} />
+                    </button>
+                  )}
+                  {g.header.dot && <span style={{ width: 9, height: 9, borderRadius: "50%", background: g.header.dot }} />}
+                  {g.header.avatar != null && <AssigneeAvatar id={g.header.avatar} size={18} title={false} />}
+                  {g.header.label}
+                </span>
+              }
+              count={g.items.length}
+            />
+            {!isCollapsed && (
+              <>
+                <AnimatedRows
+                  rows={g.items
+                    .slice()
+                    .sort(byTime)
+                    .map((t) => ({
+                      id: t.id,
+                      el: <TaskRow task={t} showProject={groupBy !== "projeto" && !bySecao} selectable={selectable} selected={selectedIds?.has(t.id)} onSelect={onSelect} {...cb} />,
+                    }))}
+                />
+                {bySecao && onAddInSection && <InlineAdd onClick={() => onAddInSection(g.secaoId ?? null)} />}
+              </>
+            )}
+          </RowGroup>
+        )
+      })}
     </div>
   )
 }
 
 // ── QUADRO (Kanban com drag) ──────────────────────────────────────────────────
-function KanbanCard({
+export function KanbanCard({
   task,
   dragging,
   onDragStart,
