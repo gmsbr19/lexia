@@ -30,6 +30,9 @@ const EXT_MIME: Record<string, string> = {
   webp: "image/webp",
   gif: "image/gif",
   pdf: "application/pdf",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  txt: "text/plain",
 }
 
 function inferirMime(file: File): string {
@@ -66,7 +69,7 @@ export async function lerArquivos(files: FileList | File[], jaAnexados: ClientAn
     }
     const mimeType = inferirMime(file)
     if (!mimePermitido(mimeType)) {
-      erros.push(`"${file.name}" não é um formato suportado (use PNG, JPG, WEBP, GIF ou PDF)`)
+      erros.push(`"${file.name}" não é um formato suportado (use PNG, JPG, WEBP, GIF, PDF, DOCX, XLSX ou TXT)`)
       continue
     }
     let dataBase64: string

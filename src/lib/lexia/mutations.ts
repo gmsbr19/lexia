@@ -289,7 +289,7 @@ export async function carregarHistorico(
       }
       bytes += bytesDeBase64(base64)
       if (bytes > HIST_MAX_ANEXO_BYTES) break
-      blocos.push(anexoParaBloco(a.mimeType, base64))
+      blocos.push(await anexoParaBloco(a.mimeType, base64))
     }
     if (blocos.length) {
       const msg = messages[anexoIndex]
