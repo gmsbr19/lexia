@@ -230,24 +230,58 @@ export interface HonorarioRow {
   lancamentoId: number | null // settling cash-ledger row
 }
 
-/** Commercial lens over a Caso: one contract = one caso (a caso may bundle
- *  several honorários). Powers the /contratos list (área/origem/valor
- *  contratado/pagamento). Distinct from HonorarioRow (the fee ledger). */
+/** The signed fee agreement. One contract may bundle SEVERAL casos (e.g. a
+ *  condomínio with monthly assessoria + a lawsuit); a caso may have no contract.
+ *  Values are ALWAYS derived: Σ fee-lançamentos of every linked caso. Powers the
+ *  /contratos list (grouped by month) and the Contratos tab on a cliente.
+ *  Distinct from HonorarioRow (a single fee-lançamento/recebível). */
 export interface ContratoRow {
-  id: number // caso id
-  titulo: string
+  id: number // contrato id
+  titulo: string // Contrato.titulo, ou o título do único caso, ou o nome do cliente
   cliente: string | null
   clienteId: number | null
-  area: string | null // AreaDireito chave (resolved to label client-side)
-  origem: string | null // lead origem key when the contract came from a won lead; null = direto
-  tipo: string | null // 'consultivo' | 'litigio'
-  statusCaso: string | null
-  dataFechamento: string | null // ISO — Caso.dataCriacao (when the case/contract was opened)
-  valorContratadoCents: number // Σ honorários vinculados ao caso
+  area: string | null // AreaDireito chave do único caso (ambíguo com vários → null)
+  origem: string | null // cliente.origem, senão a origem do lead ganho mais recente entre os casos
+  tipo: string | null // 'consultivo' | 'litigio' do único caso (ambíguo com vários → null)
+  statusCaso: string | null // status do único caso (ambíguo com vários → null)
+  dataFechamento: string | null // ISO — Contrato.dataFechamento
+  valorContratadoCents: number // Σ honorários de TODOS os casos vinculados
   recebidoCents: number // Σ honorários com status 'recebido'
   honorariosCount: number
-  casosCount: number // nº de casos NÃO-excluídos sob o contrato
+  casosCount: number // nº de casos NÃO-excluídos vinculados ao contrato
   unicoCasoId: number | null // caso id quando há exatamente 1 (navegação direta); senão null
+}
+
+export interface ContratoCasoDetail {
+  id: number
+  titulo: string
+  tipo: string | null
+  status: string | null
+  area: string | null
+  valorContratadoCents: number
+  recebidoCents: number
+  honorarios: HonorarioRow[]
+}
+
+export interface ContratoDocumentoRef {
+  id: number
+  nome: string
+  formato: string | null
+  status: string
+}
+
+/** Contrato detail: casos vinculados (com seus honorários) + documentos + totais. */
+export interface ContratoDetail {
+  id: number
+  titulo: string | null
+  cliente: string | null
+  clienteId: number | null
+  dataFechamento: string | null // ISO
+  observacoes: string | null
+  valorContratadoCents: number
+  recebidoCents: number
+  casos: ContratoCasoDetail[]
+  documentos: ContratoDocumentoRef[]
 }
 
 /** Contrato modal: full honorário detail + its série de parcelas. */
@@ -387,6 +421,7 @@ export interface CasoRow {
   honorariosCents: number // total of 'in' lançamentos linked to the caso
   honorariosCount: number
   responsaveis: CasoResponsavelInfo[] // sócio split
+  contratoId: number | null // contrato vinculado, se houver (null = caso livre/sem contrato)
 }
 
 export interface SocioConta {

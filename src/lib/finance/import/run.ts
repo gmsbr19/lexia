@@ -28,12 +28,6 @@ function mapSubTipo(v: string | null): string | null {
   if (t.includes("inicial")) return "valor_inicial"
   return null
 }
-function mapHonStatus(v: string | null): string | null {
-  const t = lc(v)
-  if (t.includes("receb")) return "recebido"
-  if (t.includes("lanc") || t.includes("lanç")) return "lancado"
-  return null
-}
 function resolve(map: Map<string, number>, key: string | null): number | null {
   if (!key) return null
   return map.get(key) ?? null
@@ -209,18 +203,27 @@ export async function importAstrea(prisma: PrismaClient, dir: string): Promise<I
     await prisma.lancamento.update({ where: { id: dbId }, data: { recorrenteParentId: parentId } })
   }
 
-  // 7) Honorários — link to its Lançamento via the "Entrada" id; derive
-  //    cliente/caso from that link; title-match Caso only as a fallback.
+  // 7) Honorários.csv carries fee-specific metadata (valor líquido, tipo de
+  //    composição, forma de pagamento) for the Lançamento its "Entrada" id points
+  //    to. The `Honorario` entity is dormant (dropped in Fase 2) — this pass only
+  //    CARIMBS that metadata onto the already-imported Lançamento (never creates a
+  //    standalone row). Rows with no resolvable Entrada are discarded, same
+  //    decision as the one-time Fase 1 backfill (unattached honorários never
+  //    surfaced on the ledger anyway).
   for (const r of csv("Honorários.csv")) {
     const astreaId = cleanNull(r["Código"])
     if (!astreaId) continue
     const entradaAstreaId = cleanNull(r["Entrada"])
     const lancamentoId = resolve(lancMap, entradaAstreaId)
+    if (!lancamentoId) continue
     const linkMeta = entradaAstreaId ? lancMeta.get(entradaAstreaId) : undefined
     const processoTitulo = cleanNull(r["Processo"])
+    const descricao = cleanNull(r["Descrição"]) ?? "Honorário"
 
-    let clienteId = linkMeta?.clienteId ?? null
+    // Fallback caso/cliente link by título match, only when the Entrada itself
+    // didn't already carry one (mirrors the old Honorario fallback).
     let casoId = linkMeta?.casoId ?? null
+    let clienteId = linkMeta?.clienteId ?? null
     if (!casoId && processoTitulo) {
       const match = await prisma.caso.findFirst({
         where: { titulo: processoTitulo },
@@ -232,37 +235,32 @@ export async function importAstrea(prisma: PrismaClient, dir: string): Promise<I
       }
     }
 
-    const descricao = cleanNull(r["Descrição"]) ?? "Honorário"
-    const data = {
-      descricao,
-      dataVencimento: parseBr(r["Data de vencimento"]),
-      valorCents: toCents(r["Valor"]),
-      valorLiquidoCents: toCents(r["Valor líquido"]),
-      status: mapHonStatus(cleanNull(r["Status"])),
-      tipo: classifyComposicao({ descricao, isRecorrente: linkMeta?.isRecorrente ?? false }),
-      pagamento: cleanNull(r["Pagamento"]),
-      responsavel: user(cleanNull(r["Responsável"])),
-      processoTitulo,
-      entradaAstreaId,
-      lancamentoId,
-      casoId,
-      clienteId,
-    }
-    await prisma.honorario.upsert({ where: { astreaId }, create: { astreaId, ...data }, update: data })
+    await prisma.lancamento.update({
+      where: { id: lancamentoId },
+      data: {
+        subTipo: "honorario",
+        valorLiquidoCents: toCents(r["Valor líquido"]),
+        tipoHonorario: classifyComposicao({ descricao, isRecorrente: linkMeta?.isRecorrente ?? false }),
+        metodoPagamento: cleanNull(r["Pagamento"]),
+        ...(casoId != null ? { casoId } : {}),
+        ...(clienteId != null ? { clienteId } : {}),
+      },
+    })
   }
 
   // ── final summary via DB counts (accurate after idempotent upserts) ─────────
+  const FEE_WHERE = { tipo: "entrada", subTipo: "honorario", isAnomalia: false } as const
   const [clientes, casos, honorarios, lancamentos, categorias, contas, centrosCusto, anomalias, casosSemFee] =
     await Promise.all([
       prisma.cliente.count(),
       prisma.caso.count(),
-      prisma.honorario.count(),
+      prisma.lancamento.count({ where: FEE_WHERE }),
       prisma.lancamento.count(),
       prisma.categoria.count(),
       prisma.conta.count(),
       prisma.centroCusto.count(),
       prisma.lancamento.count({ where: { isAnomalia: true } }),
-      prisma.caso.count({ where: { status: "Ativo", honorarios: { none: {} } } }),
+      prisma.caso.count({ where: { status: "Ativo", lancamentos: { none: FEE_WHERE } } }),
     ])
   return { clientes, casos, honorarios, lancamentos, categorias, contas, centrosCusto, anomalias, casosSemFee }
 }

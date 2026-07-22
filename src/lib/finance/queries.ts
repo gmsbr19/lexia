@@ -6,7 +6,7 @@ import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/db"
 import { computeAcertoSocios, emptyAcerto } from "./acerto"
 import { BUCKET_META, BUCKET_ORDER } from "./composicao"
-import { aggFeeTotals, lancamentoToHonorarioRow } from "./honorario-map"
+import { aggFeeTotals, contratoToRow, lancamentoToHonorarioRow } from "./honorario-map"
 import { currentMes, inScope, periodRange } from "./periodo"
 import type {
   AcertoSocioLado,
@@ -22,6 +22,7 @@ import type {
   ContaKind,
   ContaOption,
   ContasBalanco,
+  ContratoDetail,
   ContratoRow,
   DreRow,
   FluxoPoint,
@@ -827,6 +828,7 @@ export async function getCasos(): Promise<CasoRow[]> {
       responsavel: true,
       ultimaMovimentacao: true,
       dataCriacao: true,
+      contratoId: true,
       clientePrincipal: { select: { nome: true } },
       responsaveis: {
         select: { contaId: true, percentual: true, conta: { select: { nome: true, titular: true, ordem: true } } },
@@ -849,6 +851,7 @@ export async function getCasos(): Promise<CasoRow[]> {
       ultimaMovimentacao: (r.ultimaMovimentacao ?? r.dataCriacao)?.toISOString() ?? null,
       honorariosCents: r.lancamentos.reduce((a, l) => a + Math.abs(l.valorCents), 0),
       honorariosCount: r.lancamentos.length,
+      contratoId: r.contratoId,
       responsaveis: r.responsaveis
         .slice()
         .sort((a, b) => a.conta.ordem - b.conta.ordem)
@@ -858,56 +861,134 @@ export async function getCasos(): Promise<CasoRow[]> {
     .sort((a, b) => (b.ultimaMovimentacao ?? "").localeCompare(a.ultimaMovimentacao ?? ""))
 }
 
-// ── contratos (commercial lens over casos) ───────────────────────────────────
-// A contract = a Caso (a caso may bundle several honorários). Values are the SUM
-// of the caso's honorários (contracted) and the subset already 'recebido'. Origem
-// comes from a linked won-Lead (Lead.casoId); direct/imported casos have none.
+// ── contratos (o documento assinado; pode reunir vários casos) ───────────────
+// Um Contrato é a fonte de verdade comercial: 1 contrato → N casos (Caso.contratoId
+// nullable — um caso pode não ter contrato). O financeiro do contrato é SEMPRE
+// derivado: soma dos fee-lançamentos dos casos vinculados (contratado) e o
+// subconjunto já 'recebido'. Ver ./honorario-map contratoToRow (puro, testado).
+const CONTRATO_CASOS_SELECT = {
+  where: { excluidoEm: null },
+  select: {
+    id: true,
+    titulo: true,
+    tipo: true,
+    status: true,
+    area: true,
+    lancamentos: { where: FEE, select: { valorCents: true, status: true } },
+    leads: { select: { origem: true, dataConversao: true } },
+  },
+} as const
+
 export async function getContratos(): Promise<ContratoRow[]> {
-  const rows = await prisma.caso.findMany({
+  const rows = await prisma.contrato.findMany({
     where: { excluidoEm: null },
     select: {
       id: true,
       titulo: true,
-      tipo: true,
-      status: true,
-      area: true,
-      dataCriacao: true,
-      clientePrincipalId: true,
-      clientePrincipal: { select: { nome: true, origem: true } },
-      lancamentos: { where: FEE, select: { valorCents: true, status: true } },
-      leads: { select: { origem: true, dataConversao: true } },
+      dataFechamento: true,
+      clienteId: true,
+      cliente: { select: { nome: true, origem: true } },
+      casos: CONTRATO_CASOS_SELECT,
     },
-    orderBy: { dataCriacao: "desc" },
+    orderBy: { dataFechamento: "desc" },
   })
-  return rows.map((r): ContratoRow => {
-    const { contratadoCents: valorContratadoCents, recebidoCents } = aggFeeTotals(r.lancamentos)
-    // origem = a origem editada no cadastro do cliente; se não houver, cai para a
-    // origem do lead convertido mais recente vinculado ao caso; casos diretos/
-    // importados (sem cliente-origem nem lead) ficam sem origem ("Direto").
-    const origemLead =
-      r.leads
-        .slice()
-        .sort((a, b) => (b.dataConversao?.getTime() ?? 0) - (a.dataConversao?.getTime() ?? 0))
-        .find((l) => l.origem)?.origem ?? null
-    const origem = r.clientePrincipal?.origem ?? origemLead
-    return {
+  return rows.map((r) =>
+    contratoToRow({
       id: r.id,
       titulo: r.titulo,
-      cliente: r.clientePrincipal?.nome ?? null,
-      clienteId: r.clientePrincipalId,
-      area: r.area,
-      origem,
-      tipo: r.tipo,
-      statusCaso: r.status,
-      dataFechamento: r.dataCriacao ? r.dataCriacao.toISOString() : null,
-      valorContratadoCents,
+      dataFechamento: r.dataFechamento,
+      clienteId: r.clienteId,
+      clienteNome: r.cliente?.nome ?? null,
+      clienteOrigem: r.cliente?.origem ?? null,
+      casos: r.casos,
+    }),
+  )
+}
+
+/** Contratos de UM cliente (aba Contratos da ficha do cliente). */
+export async function getContratosPorCliente(clienteId: number): Promise<ContratoRow[]> {
+  const rows = await prisma.contrato.findMany({
+    where: { clienteId, excluidoEm: null },
+    select: {
+      id: true,
+      titulo: true,
+      dataFechamento: true,
+      clienteId: true,
+      cliente: { select: { nome: true, origem: true } },
+      casos: CONTRATO_CASOS_SELECT,
+    },
+    orderBy: { dataFechamento: "desc" },
+  })
+  return rows.map((r) =>
+    contratoToRow({
+      id: r.id,
+      titulo: r.titulo,
+      dataFechamento: r.dataFechamento,
+      clienteId: r.clienteId,
+      clienteNome: r.cliente?.nome ?? null,
+      clienteOrigem: r.cliente?.origem ?? null,
+      casos: r.casos,
+    }),
+  )
+}
+
+/** Contrato detail: casos vinculados (cada um com seus honorários + totais),
+ *  documentos vinculados, e o total geral. `id` é de CONTRATO (não de caso). */
+export async function getContratoDetail(id: number): Promise<ContratoDetail | null> {
+  const r = await prisma.contrato.findFirst({
+    where: { id, excluidoEm: null },
+    select: {
+      id: true,
+      titulo: true,
+      dataFechamento: true,
+      observacoes: true,
+      clienteId: true,
+      cliente: { select: { nome: true } },
+      casos: {
+        where: { excluidoEm: null },
+        select: {
+          id: true,
+          titulo: true,
+          tipo: true,
+          status: true,
+          area: true,
+          lancamentos: { where: FEE, select: FEE_SELECT },
+        },
+      },
+      documentos: {
+        select: { id: true, nome: true, formato: true, status: true },
+        orderBy: { createdAt: "desc" },
+      },
+    },
+  })
+  if (!r) return null
+
+  const casos = r.casos.map((k) => {
+    const { contratadoCents, recebidoCents } = aggFeeTotals(k.lancamentos)
+    return {
+      id: k.id,
+      titulo: k.titulo,
+      tipo: k.tipo,
+      status: k.status,
+      area: k.area,
+      valorContratadoCents: contratadoCents,
       recebidoCents,
-      honorariosCount: r.lancamentos.length,
-      // getContratos is caso-per-row (contrato = caso), so exactly one caso per row.
-      casosCount: 1,
-      unicoCasoId: r.id,
+      honorarios: k.lancamentos.map(feeRowToHonorario),
     }
   })
+
+  return {
+    id: r.id,
+    titulo: r.titulo,
+    cliente: r.cliente?.nome ?? null,
+    clienteId: r.clienteId,
+    dataFechamento: r.dataFechamento ? r.dataFechamento.toISOString() : null,
+    observacoes: r.observacoes,
+    valorContratadoCents: casos.reduce((a, k) => a + k.valorContratadoCents, 0),
+    recebidoCents: casos.reduce((a, k) => a + k.recebidoCents, 0),
+    casos,
+    documentos: r.documentos.map((d) => ({ id: d.id, nome: d.nome, formato: d.formato, status: d.status })),
+  }
 }
 
 // Entitlement-vs-cash settlement between the two sócios, net of sócio↔sócio

@@ -46,7 +46,7 @@ export async function getProximoPasso(limit = 8): Promise<ProximoPassoItem[]> {
       take: 20,
     }),
     prisma.caso.findMany({
-      where: { status: "Ativo", honorarios: { none: {} } },
+      where: { status: "Ativo", lancamentos: { none: { tipo: "entrada", subTipo: "honorario" } } },
       select: { id: true, titulo: true, clientePrincipal: { select: { nome: true } } },
       orderBy: { ultimaMovimentacao: "desc" },
       take: 20,

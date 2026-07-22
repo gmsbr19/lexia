@@ -21,7 +21,16 @@ function toDate(input: string | Date | null | undefined): Date | null {
   if (input instanceof Date) return input
   // date-only "YYYY-MM-DD" → local midday (avoids UTC off-by-one at day edges)
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(input)
-  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0)
+  if (m) {
+    const y = Number(m[1])
+    const mo = Number(m[2])
+    const day = Number(m[3])
+    const dt = new Date(y, mo - 1, day, 12, 0, 0)
+    // JS silently rolls invalid calendar dates over (e.g. 2026-02-30 → Mar 2) —
+    // reject rather than accept a date the caller never actually meant.
+    if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== day) return null
+    return dt
+  }
   const d = new Date(input)
   return Number.isNaN(d.getTime()) ? null : d
 }
@@ -32,133 +41,6 @@ function reqInt(v: unknown, name: string): number {
 function reqStr(v: unknown, name: string): string {
   if (typeof v !== "string" || !v.trim()) throw new UserError(`${name} obrigatório`)
   return v.trim()
-}
-
-// ── Honorário ────────────────────────────────────────────────────────────────
-export interface HonorarioPatch {
-  descricao?: string
-  valorCents?: number
-  dataVencimento?: string | null
-  tipo?: string | null
-  clienteId?: number | null
-  casoId?: number | null
-  contaId?: number | null
-}
-
-export async function updateHonorario(id: number, patch: HonorarioPatch) {
-  const data: Prisma.HonorarioUncheckedUpdateInput = {}
-  if (patch.descricao !== undefined) data.descricao = reqStr(patch.descricao, "descrição")
-  if (patch.valorCents !== undefined) data.valorCents = reqInt(patch.valorCents, "valorCents")
-  if (patch.dataVencimento !== undefined) data.dataVencimento = toDate(patch.dataVencimento)
-  if (patch.tipo !== undefined) data.tipo = patch.tipo
-  if (patch.clienteId !== undefined) data.clienteId = patch.clienteId
-  if (patch.casoId !== undefined) data.casoId = patch.casoId
-  if (patch.contaId !== undefined) data.contaId = patch.contaId
-  return prisma.honorario.update({ where: { id }, data })
-}
-
-/**
- * Mark a honorário as paid (status 'recebido') into a given account, on a given
- * date — and settle the cash ledger so the financeiro KPIs/Receita reflect it.
- * Reuses the linked Lancamento when present (no double-count); creates one only
- * when the honorário has no linked Entrada.
- */
-export async function pagarHonorario(id: number, opts: { contaId: number; dataPagamento?: string | null }) {
-  const contaId = reqInt(opts.contaId, "conta")
-  const pago = toDate(opts.dataPagamento) ?? new Date()
-  return prisma.$transaction(async (tx) => {
-    const hon = await tx.honorario.findUnique({ where: { id } })
-    if (!hon) throw new UserError("Honorário não encontrado")
-
-    let lancamentoId = hon.lancamentoId
-    if (lancamentoId) {
-      await tx.lancamento.update({
-        where: { id: lancamentoId },
-        data: { status: "feito", dataPagamento: pago, contaId },
-      })
-    } else {
-      const lanc = await tx.lancamento.create({
-        data: {
-          astreaId: `app-hon-${id}`,
-          tipo: "entrada",
-          status: "feito",
-          subTipo: "honorario",
-          descricao: hon.descricao,
-          valorCents: hon.valorCents,
-          valorOriginalCents: hon.valorCents,
-          dataLancamento: pago,
-          dataPagamento: pago,
-          isAnomalia: false,
-          geradoPorApp: true,
-          origem: "manual",
-          contaId,
-          clienteId: hon.clienteId,
-          casoId: hon.casoId,
-        },
-      })
-      lancamentoId = lanc.id
-    }
-    return tx.honorario.update({
-      where: { id },
-      data: { status: "recebido", dataPagamento: pago, contaId, lancamentoId },
-    })
-  })
-}
-
-/** Revert a paid honorário back to 'lancado'. Deletes the app-settled ledger
- *  row; merely re-opens an Astrea-imported one (keeps the link). */
-export async function desmarcarHonorario(id: number) {
-  return prisma.$transaction(async (tx) => {
-    const hon = await tx.honorario.findUnique({
-      where: { id },
-      include: { lancamento: true },
-    })
-    if (!hon) throw new UserError("Honorário não encontrado")
-    if (hon.lancamento) {
-      if (hon.lancamento.geradoPorApp) {
-        await tx.honorario.update({ where: { id }, data: { lancamentoId: null } })
-        await tx.lancamento.delete({ where: { id: hon.lancamento.id } })
-      } else {
-        await tx.lancamento.update({
-          where: { id: hon.lancamento.id },
-          data: { status: "aberto", dataPagamento: null },
-        })
-      }
-    }
-    return tx.honorario.update({
-      where: { id },
-      data: { status: "lancado", dataPagamento: null, contaId: null },
-    })
-  })
-}
-
-export interface HonorarioCreate {
-  descricao: string
-  valorCents: number
-  dataVencimento?: string | null
-  tipo?: string | null
-  clienteId?: number | null
-  casoId?: number | null
-}
-
-export async function createHonorario(input: HonorarioCreate) {
-  return prisma.honorario.create({
-    data: {
-      astreaId: `app-hon-new-${randomUUID()}`,
-      descricao: reqStr(input.descricao, "descrição"),
-      valorCents: reqInt(input.valorCents, "valorCents"),
-      valorLiquidoCents: input.valorCents,
-      dataVencimento: toDate(input.dataVencimento),
-      status: "lancado",
-      tipo: input.tipo ?? "avista",
-      clienteId: input.clienteId ?? null,
-      casoId: input.casoId ?? null,
-    },
-  })
-}
-
-export async function deleteHonorario(id: number) {
-  return prisma.honorario.delete({ where: { id } })
 }
 
 // ── Lançamentos (manual entradas / despesas) ─────────────────────────────────
@@ -674,6 +556,125 @@ export async function setCasoResponsaveis(casoId: number, responsaveis: CasoResp
   })
 }
 
+// ── Contrato (documento assinado; agrupa 1+ casos) ────────────────────────────
+export interface ContratoCreate {
+  clienteId?: number | null
+  titulo?: string | null
+  dataFechamento: string
+  observacoes?: string | null
+  /** Casos a vincular já na criação (move-os de qualquer contrato anterior). */
+  casoIds?: number[]
+}
+
+/** Throws when any of `casoIds` belongs (by clientePrincipalId) to a DIFFERENT
+ *  client than `clienteId` — a caso with no client set is always compatible.
+ *  Guards against silently rolling another client's caso (and its honorários)
+ *  into this contrato's totals. */
+async function assertCasosDoCliente(
+  tx: Prisma.TransactionClient,
+  casoIds: number[],
+  clienteId: number,
+): Promise<void> {
+  if (!casoIds.length) return
+  const casos = await tx.caso.findMany({
+    where: { id: { in: casoIds } },
+    select: { titulo: true, clientePrincipalId: true },
+  })
+  const divergente = casos.find((c) => c.clientePrincipalId != null && c.clientePrincipalId !== clienteId)
+  if (divergente) {
+    throw new UserError(`O caso "${divergente.titulo}" pertence a outro cliente — não pode ser vinculado a este contrato`)
+  }
+}
+
+export async function criarContrato(input: ContratoCreate) {
+  const dataFechamento = toDate(input.dataFechamento)
+  if (!dataFechamento) throw new UserError("Data de fechamento obrigatória")
+  const casoIds = (Array.isArray(input.casoIds) ? input.casoIds : []).filter(
+    (x): x is number => Number.isInteger(x),
+  )
+  return prisma.$transaction(async (tx) => {
+    if (casoIds.length && input.clienteId != null) {
+      await assertCasosDoCliente(tx, casoIds, input.clienteId)
+    }
+    const contrato = await tx.contrato.create({
+      data: {
+        clienteId: input.clienteId ?? null,
+        titulo: input.titulo?.trim() || null,
+        dataFechamento,
+        observacoes: input.observacoes?.trim() || null,
+      },
+    })
+    if (casoIds.length) {
+      await tx.caso.updateMany({
+        where: { id: { in: casoIds }, excluidoEm: null },
+        data: { contratoId: contrato.id },
+      })
+    }
+    return contrato
+  })
+}
+
+export interface ContratoPatch {
+  clienteId?: number | null
+  titulo?: string | null
+  dataFechamento?: string
+  observacoes?: string | null
+  /** Vincula estes casos ao contrato (move-os de qualquer contrato anterior). */
+  vincularCasoIds?: number[]
+  /** Desvincula estes casos do contrato (caso volta a ficar sem contrato). */
+  desvincularCasoIds?: number[]
+}
+
+export async function atualizarContrato(id: number, patch: ContratoPatch) {
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.contrato.findFirst({ where: { id, excluidoEm: null }, select: { id: true, clienteId: true } })
+    if (!existing) throw new UserError("Contrato não encontrado")
+
+    const vincular = (Array.isArray(patch.vincularCasoIds) ? patch.vincularCasoIds : []).filter(
+      (x): x is number => Number.isInteger(x),
+    )
+    const desvincular = (Array.isArray(patch.desvincularCasoIds) ? patch.desvincularCasoIds : []).filter(
+      (x): x is number => Number.isInteger(x),
+    )
+    const efetivoClienteId = patch.clienteId !== undefined ? patch.clienteId : existing.clienteId
+    if (vincular.length && efetivoClienteId != null) {
+      await assertCasosDoCliente(tx, vincular, efetivoClienteId)
+    }
+
+    const data: Prisma.ContratoUncheckedUpdateInput = {}
+    if (patch.clienteId !== undefined) data.clienteId = patch.clienteId
+    if (patch.titulo !== undefined) data.titulo = patch.titulo?.trim() || null
+    if (patch.dataFechamento !== undefined) {
+      const d = toDate(patch.dataFechamento)
+      if (!d) throw new UserError("Data de fechamento inválida")
+      data.dataFechamento = d
+    }
+    if (patch.observacoes !== undefined) data.observacoes = patch.observacoes?.trim() || null
+    if (Object.keys(data).length) await tx.contrato.update({ where: { id }, data })
+
+    if (vincular.length) {
+      await tx.caso.updateMany({ where: { id: { in: vincular }, excluidoEm: null }, data: { contratoId: id } })
+    }
+    if (desvincular.length) {
+      await tx.caso.updateMany({ where: { id: { in: desvincular }, contratoId: id }, data: { contratoId: null } })
+    }
+    return tx.contrato.findUniqueOrThrow({ where: { id } })
+  })
+}
+
+/** Soft-delete: desvincula (não exclui) os casos e documentos que apontavam
+ *  para este contrato — eles continuam vivos, só ficam "sem contrato". */
+export async function excluirContrato(id: number) {
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.contrato.findFirst({ where: { id, excluidoEm: null }, select: { id: true } })
+    if (!existing) throw new UserError("Contrato não encontrado")
+    await tx.caso.updateMany({ where: { contratoId: id }, data: { contratoId: null } })
+    await tx.documento.updateMany({ where: { contratoId: id }, data: { contratoId: null } })
+    await tx.contrato.update({ where: { id }, data: { excluidoEm: new Date() } })
+    return { id }
+  })
+}
+
 // ── LGPD: anonimização de cliente ─────────────────────────────────────────────
 /**
  * LGPD erasure request — anonymize IN PLACE (the ledger keeps its rows so
@@ -690,7 +691,7 @@ export async function anonimizarCliente(id: number) {
     if (!cliente) throw new UserError("Cliente não encontrado")
 
     const removidos = await tx.lead.deleteMany({
-      where: { clienteId: id, etapa: { not: "ganho" }, honorarioId: null, lancamentoId: null },
+      where: { clienteId: id, etapa: { not: "ganho" }, lancamentoId: null },
     })
     await tx.lead.updateMany({
       where: { clienteId: id },

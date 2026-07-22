@@ -15,21 +15,6 @@ export const honorarioCreateSchema = z.object({
   casoId: idOpt,
 })
 
-export const honorarioPatchSchema = z.object({
-  descricao: z.string().min(1).max(500).optional(),
-  valorCents: money.optional(),
-  dataVencimento: dateStr.nullish(),
-  tipo: z.string().max(40).nullish(),
-  clienteId: idOpt,
-  casoId: idOpt,
-  contaId: idOpt,
-})
-
-export const honorarioPagarSchema = z.object({
-  contaId: idReq,
-  dataPagamento: dateStr.nullish(),
-})
-
 /** The "Novo lançamento" modal shape (create + edit + série). */
 export const novoLancamentoSchema = z.object({
   dir: z.enum(["in", "out"]),
@@ -106,4 +91,22 @@ export const casoResponsaveisSchema = z.object({
     )
     .max(10)
     .default([]),
+})
+
+// ── Contrato ─────────────────────────────────────────────────────────────────
+export const contratoCreateSchema = z.object({
+  clienteId: idOpt,
+  titulo: z.string().max(200).nullish(),
+  dataFechamento: dateStr,
+  observacoes: z.string().max(2000).nullish(),
+  casoIds: z.array(idReq).max(100).optional(),
+})
+
+export const contratoPatchSchema = z.object({
+  clienteId: idOpt,
+  titulo: z.string().max(200).nullish(),
+  dataFechamento: dateStr.optional(),
+  observacoes: z.string().max(2000).nullish(),
+  vincularCasoIds: z.array(idReq).max(100).optional(),
+  desvincularCasoIds: z.array(idReq).max(100).optional(),
 })
