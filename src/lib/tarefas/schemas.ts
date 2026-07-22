@@ -27,7 +27,16 @@ export const tarefaCreateSchema = z.object({
   casoId: idOpt,
   clienteId: idOpt,
   projetoId: idOpt,
+  secaoId: idOpt,
   ordem: z.number().int().optional(),
 })
 
 export const tarefaPatchSchema = tarefaCreateSchema.partial()
+
+// Comentários da tarefa. `conteudo` pode conter tokens de menção inline
+// (@[<userId>] / @[todos]); o cap de 4000 espelha o de `notes`.
+export const comentarioCreateSchema = z.object({
+  conteudo: z.string().min(1).max(4000),
+})
+
+export const comentarioEditSchema = comentarioCreateSchema

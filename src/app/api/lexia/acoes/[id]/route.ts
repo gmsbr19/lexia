@@ -12,6 +12,7 @@ import { parseId, readJson, type RouteCtx } from "@/lib/finance/api"
 import { parseBody } from "@/lib/validation"
 import { acaoDecisaoSchema } from "@/lib/lexia/schemas"
 import { marcarCartao, marcarEscolha, persistAssistantMsg, ultimoModelo } from "@/lib/lexia/mutations"
+import { getLexiaPrefsRaw } from "@/lib/lexia/preferencias"
 import { mensagemErro } from "@/lib/lexia/agent/client"
 import { linkParaResultado, type ResultadoLink } from "@/lib/lexia/agent/links"
 import { carregarAcao, executarAcao, reservarAcao } from "@/lib/lexia/agent/pending"
@@ -121,10 +122,19 @@ export async function POST(req: Request, ctx: RouteCtx) {
 
       const teto = await aplicarTeto(decidirModelo("", await ultimoModelo(acao.conversaId)))
       const decision = teto.decision
+      // Restaura o modo/auto-mode das preferências salvas do usuário: sem isso a
+      // CONTINUAÇÃO do turno rodaria com autoMode indefinido (=false) e voltaria a
+      // pedir confirmação de CADA mutação seguinte — ex.: criar um projeto com
+      // várias seções/tarefas em modo automático (a 1ª confirmada, as demais devem
+      // seguir sem cartão). O toggle do composer sempre persiste em prefs, então
+      // prefs é a fonte fiel aqui (o body do resume só traz a decisão).
+      const prefs = await getLexiaPrefsRaw(sessionUser.email)
       const agentCtx: AgentCtx = {
         user: sessionUser,
         conversaId: acao.conversaId,
         signal: req.signal,
+        mode: prefs.agentMode ?? "agente",
+        autoMode: prefs.autoMode ?? false,
         processosHabilitado: processosHabilitado(await getModulosConfig()),
       }
       const result = await runAgentTurn(agentCtx, messages, decision, emit)

@@ -37,7 +37,16 @@ export interface TarefaCreate {
   casoId?: number | null
   clienteId?: number | null
   projetoId?: number | null
+  secaoId?: number | null
   ordem?: number
+}
+
+/** Devolve `secaoId` se a seção existe E pertence ao `projetoId`; senão null. */
+async function resolverSecao(secaoId: number | null, projetoId: number | null): Promise<number | null> {
+  if (secaoId == null) return null
+  if (projetoId == null) return null
+  const s = await prisma.projetoSecao.findFirst({ where: { id: secaoId, projetoId }, select: { id: true } })
+  return s ? secaoId : null
 }
 
 export async function createTarefa(input: TarefaCreate, actorEmail?: string | null) {
@@ -68,6 +77,7 @@ export async function createTarefa(input: TarefaCreate, actorEmail?: string | nu
       casoId,
       clienteId,
       projetoId: optId(input.projetoId),
+      secaoId: await resolverSecao(optId(input.secaoId), optId(input.projetoId)),
       concluidoEm: status === "done" ? new Date() : null,
       ordem: Number.isInteger(input.ordem) ? (input.ordem as number) : 0,
       origem: "manual",
@@ -85,6 +95,64 @@ export async function createTarefa(input: TarefaCreate, actorEmail?: string | nu
     })
   }
   return tarefa
+}
+
+/**
+ * Cria VÁRIAS tarefas de uma vez, numa única transação (createMany). Colapsa N
+ * chamadas criar_tarefa (N round-trips ao modelo, cada uma reenviando todo o
+ * histórico) numa só — o principal dreno de tokens na criação em massa.
+ *
+ * Convenção de bulk (igual ao instanciarTemplateProjeto): NÃO dispara a
+ * notificação de delegação por-tarefa — evita spamar um responsável com N avisos
+ * por uma única ação. A seção de cada tarefa é validada contra o projeto informado
+ * (pré-resolvida numa única consulta, sem 1 query por tarefa).
+ */
+export async function createTarefas(inputs: TarefaCreate[], actorEmail?: string | null) {
+  if (!inputs.length) return { criadas: 0 }
+  const criadoPorId = await userIdPorEmail(actorEmail)
+  const secaoIds = [...new Set(inputs.map((i) => optId(i.secaoId)).filter((n): n is number => n != null))]
+  const secoes = secaoIds.length
+    ? await prisma.projetoSecao.findMany({ where: { id: { in: secaoIds } }, select: { id: true, projetoId: true } })
+    : []
+  const secaoProjeto = new Map(secoes.map((s) => [s.id, s.projetoId]))
+  const data = inputs.map((input) => {
+    const status = input.status !== undefined ? validStatus(input.status) : input.done ? "done" : "todo"
+    const { casoId, clienteId } = resolveVinculo(input.casoId ?? null, input.clienteId ?? null)
+    const projetoId = optId(input.projetoId)
+    const secaoReq = optId(input.secaoId)
+    // Só mantém a seção quando ela pertence ao projeto informado (mesma regra do resolverSecao).
+    const secaoId = secaoReq != null && projetoId != null && secaoProjeto.get(secaoReq) === projetoId ? secaoReq : null
+    return {
+      astreaId: `app-tarefa-${randomUUID()}`,
+      titulo: reqStr(input.titulo, "título"),
+      status,
+      done: status === "done",
+      prio: clampPrio(input.prio ?? 4),
+      projeto: validProjeto(input.projeto),
+      data: toDate(input.data),
+      hora: optStr(input.hora),
+      prazo: toDate(input.prazo),
+      notes: optStr(input.notes),
+      reminder: optStr(input.reminder),
+      recur: optStr(input.recur),
+      ai: !!input.ai,
+      subtasks: serializeArr(input.subtasks),
+      dor: serializeArr(input.dor),
+      dod: serializeArr(input.dod),
+      responsavelId: optId(input.responsavelId),
+      criadoPorId,
+      casoId,
+      clienteId,
+      projetoId,
+      secaoId,
+      concluidoEm: status === "done" ? new Date() : null,
+      ordem: Number.isInteger(input.ordem) ? (input.ordem as number) : 0,
+      origem: "manual",
+      geradoPorApp: true,
+    }
+  })
+  const r = await prisma.tarefa.createMany({ data })
+  return { criadas: r.count }
 }
 
 export interface TarefaPatch {
@@ -107,14 +175,16 @@ export interface TarefaPatch {
   casoId?: number | null
   clienteId?: number | null
   projetoId?: number | null
+  secaoId?: number | null
   ordem?: number
 }
 
 export async function updateTarefa(id: number, patch: TarefaPatch, actorEmail?: string | null) {
-  // Estado anterior p/ detectar (re)atribuição e a transição para "concluída".
+  // Estado anterior p/ detectar (re)atribuição, a transição para "concluída" e o
+  // projeto atual (usado ao validar a seção).
   const antes = await prisma.tarefa.findUnique({
     where: { id },
-    select: { responsavelId: true, done: true },
+    select: { responsavelId: true, done: true, projetoId: true },
   })
   const data: Prisma.TarefaUncheckedUpdateInput = {}
 
@@ -142,6 +212,11 @@ export async function updateTarefa(id: number, patch: TarefaPatch, actorEmail?: 
   if (patch.dod !== undefined) data.dod = serializeArr(patch.dod)
   if (patch.responsavelId !== undefined) data.responsavelId = optId(patch.responsavelId)
   if (patch.projetoId !== undefined) data.projetoId = optId(patch.projetoId)
+  // Seção: trocar de projeto zera a seção (ela pertence ao projeto antigo). Ao
+  // definir a seção, valida que ela pertence ao projeto efetivo da tarefa.
+  const projetoEfetivo = patch.projetoId !== undefined ? optId(patch.projetoId) : antes?.projetoId ?? null
+  if (patch.secaoId !== undefined) data.secaoId = await resolverSecao(optId(patch.secaoId), projetoEfetivo)
+  else if (patch.projetoId !== undefined) data.secaoId = null
   if (patch.ordem !== undefined && Number.isInteger(patch.ordem)) data.ordem = patch.ordem
   // concluidoEm acompanha a transição de done (alimenta cycle time / taxa no prazo).
   if (data.done !== undefined) {

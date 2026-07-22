@@ -26,6 +26,7 @@ import { Icon } from "./tf-icons"
 import { useTarefasCtx } from "./TarefasContext"
 import { AssigneeAvatar, IaBadge, LinkChip, Menu, MenuItem, PrazoChip, TaskCheck } from "./tf-kit"
 import { InlineAdd } from "./t2-rows"
+import { Comentarios } from "./Comentarios"
 
 const subId = (): string =>
   typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `s${Math.random().toString(36).slice(2)}`
@@ -185,7 +186,7 @@ export function TaskDetailModal({
   onDelete: (id: number) => void
   onDuplicate: (task: TaskRow) => void
 }) {
-  const { socios, member, projetoById, projetos } = useTarefasCtx()
+  const { socios, member, projetoById, projetos, secoesDoProjeto } = useTarefasCtx()
   const [subInput, setSubInput] = useState("")
   const [showSubInput, setShowSubInput] = useState(false)
   const [gerando, setGerando] = useState<{ dor: boolean; dod: boolean }>({ dor: false, dod: false })
@@ -209,6 +210,8 @@ export function TaskDetailModal({
   }, [task.titulo, task.id])
 
   const p = projetoById(task.projetoId)
+  const secoes = secoesDoProjeto(task.projetoId)
+  const secaoAtual = secoes.find((s) => s.id === task.secaoId) ?? null
   const prio = PRIO[task.prio as TaskPrio] ?? PRIO[4]
   const st = statusMeta(task.status)
   const subs = task.subtasks ?? []
@@ -428,6 +431,8 @@ export function TaskDetailModal({
                 onRemove={(i) => editCrit("dod", (arr) => arr.filter((_, j) => j !== i))}
               />
             </div>
+
+            <Comentarios key={task.id} taskId={task.id} />
           </div>
 
           {/* right: properties */}
@@ -442,14 +447,34 @@ export function TaskDetailModal({
               }>
                 {(close) => (
                   <>
-                    <MenuItem dot="var(--text-subtle)" label="Entrada" active={task.projetoId == null} onClick={() => { patch({ projetoId: null }); close() }} />
+                    <MenuItem dot="var(--text-subtle)" label="Entrada" active={task.projetoId == null} onClick={() => { patch({ projetoId: null, secaoId: null }); close() }} />
                     {projetos.filter((pr) => pr.status !== "arquivado").map((pr) => (
-                      <MenuItem key={pr.id} dot={pr.cor || "var(--text-muted)"} label={pr.nome} active={task.projetoId === pr.id} onClick={() => { patch({ projetoId: pr.id }); close() }} />
+                      <MenuItem key={pr.id} dot={pr.cor || "var(--text-muted)"} label={pr.nome} active={task.projetoId === pr.id} onClick={() => { patch({ projetoId: pr.id, secaoId: null }); close() }} />
                     ))}
                   </>
                 )}
               </Menu>
             </DetField>
+            {task.projetoId != null && secoes.length > 0 && (
+              <DetField label="Seção">
+                <Menu width={220} trigger={
+                  <DetPicker muted={secaoAtual == null}>
+                    <span style={{ width: 9, height: 9, borderRadius: "50%", background: secaoAtual?.cor || "var(--text-subtle)" }} />
+                    {secaoAtual?.nome ?? "Sem seção"}
+                    <Icon name="chevronDown" size={12} style={{ color: "var(--text-subtle)" }} />
+                  </DetPicker>
+                }>
+                  {(close) => (
+                    <>
+                      <MenuItem dot="var(--text-subtle)" label="Sem seção" active={task.secaoId == null} onClick={() => { patch({ secaoId: null }); close() }} />
+                      {secoes.map((s) => (
+                        <MenuItem key={s.id} dot={s.cor || "var(--text-muted)"} label={s.nome} active={task.secaoId === s.id} onClick={() => { patch({ secaoId: s.id }); close() }} />
+                      ))}
+                    </>
+                  )}
+                </Menu>
+              </DetField>
+            )}
             <DetField label="Status">
               <Menu width={180} trigger={
                 <DetPicker>

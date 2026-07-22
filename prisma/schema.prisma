@@ -37,6 +37,10 @@ model User {
   // memorias[]}, agentMode:'agente'|'pergunta'|'plano', webAccess, autoMode,
   // modelo:'auto'|'rapido'|'avancado' }. null = padrões. Ver src/lib/lexia/preferencias.ts.
   lexiaPrefs   String?
+  // Views salvas do DataGrid (Fase 2 do CRM Comercial), JSON keyed by gridId
+  // ("oportunidades"|"contatos"): { visibleColumns, filters, sort, groupBy }.
+  // null = sem view salva (grid usa os defaults). Ver src/lib/crm/view-prefs.ts.
+  crmViewPrefs String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   tarefas      Tarefa[] // tasks delegated to this user
@@ -47,6 +51,9 @@ model User {
   prazos       Prazo[]    @relation("PrazoResponsavel")
   convites     ConviteAcesso[] // one-time access links (set/reset the own password)
   projetos     Projeto[]  @relation("ProjetoResponsavel") // projects this user leads
+  comentarios  TarefaComentario[] // comentários que este usuário escreveu em tarefas
+  leadsResp    Lead[]     @relation("LeadResponsavelUser") // oportunidades das quais este usuário é dono
+  oportunidadeAtividades OportunidadeAtividade[] // atividades de oportunidade que este usuário registrou
 }
 
 // One-time access link issued when an admin creates a user (or resends the
@@ -317,6 +324,9 @@ model Lancamento {
   @@index([dataVencimento])
   @@index([dataPagamento])
   @@index([processoId])
+  @@index([campanhaId])
+  @@index([clienteId])
+  @@index([casoId])
 }
 
 // Operator-entered (NOT in the Astrea backup). Powers the DRE pró-labore
@@ -386,40 +396,88 @@ model Campanha {
   @@index([area])
 }
 
-// A sales lead, sourced from the Genions CRM via idempotent CSV import (upsert by
-// `genionsId`) or entered manually. Moves through the funnel via `etapa`; on win
-// it links to the Cliente / Caso / fee-Lançamento it converted into (`lancamento`
-// carries the contracted value used by ROAS / ticket médio).
+// A sales lead ("Oportunidade" in the domain/UI layer — the Prisma model name
+// stays `Lead` to avoid churn; see src/lib/comercial/contato.ts), sourced from
+// the Genions CRM via idempotent CSV import (upsert by `genionsId`) or entered
+// manually. Moves through the funnel via `etapa`; on win it links to the
+// Cliente / Caso / fee-Lançamento it converted into (`lancamento` carries the
+// contracted value used by ROAS / ticket médio). `clienteId` is nullable here
+// (SQLite-safe additive migration) but is ALWAYS resolved/created by the write
+// layer (createLead/import/converterLead) — see contato.ts `resolverOuCriarCliente`.
 model Lead {
-  id                 Int        @id @default(autoincrement())
-  genionsId          String?    @unique // idempotent import key from Genions
-  nome               String
-  email              String?
-  telefone           String?
-  origem             String     @default("outro") // 'google_ads' | 'meta_ads' | 'indicacao' | 'organico' | 'outro'
-  campanhaId         Int?
-  campanha           Campanha?  @relation(fields: [campanhaId], references: [id])
-  area               String? // chave de AreaDireito (ex.: 'trab', 'soc')
-  etapa              String     @default("novo") // 'novo' | 'contato' | 'qualificado' | 'proposta' | 'ganho' | 'perdido'
-  valorEstimadoCents Int?
-  dataEntrada        DateTime // when the lead arrived (drives period scoping)
-  dataConversao      DateTime? // set when etapa → 'ganho'
-  motivoPerda        String? // set when etapa → 'perdido'
-  clienteId          Int?
-  cliente            Cliente?   @relation(fields: [clienteId], references: [id])
-  casoId             Int?
-  caso               Caso?      @relation(fields: [casoId], references: [id])
-  lancamentoId       Int? // fee-lançamento que o lead virou ao ser ganho (valor contratado p/ ROAS)
-  lancamento         Lancamento? @relation("LeadLancamento", fields: [lancamentoId], references: [id])
-  observacoes        String?
-  createdAt          DateTime   @default(now())
-  updatedAt          DateTime   @updatedAt
+  id                   Int        @id @default(autoincrement())
+  genionsId            String?    @unique // idempotent import key from Genions
+  nome                 String
+  email                String?
+  telefone             String?
+  origem               String     @default("outro") // 'google_ads' | 'meta_ads' | 'indicacao' | 'organico' | 'outro'
+  campanhaId           Int?
+  campanha             Campanha?  @relation(fields: [campanhaId], references: [id])
+  area                 String? // chave de AreaDireito (ex.: 'trab', 'soc')
+  etapa                String     @default("novo") // etapa configurável (ver AppSetting "comercial.pipeline") + 'ganho' | 'perdido' (terminais fixos)
+  valorEstimadoCents   Int?
+  dataEntrada          DateTime // when the lead arrived (drives period scoping)
+  dataConversao        DateTime? // set when etapa → 'ganho'
+  motivoPerda          String? // free-text detail, set when etapa → 'perdido'
+  motivoPerdaCategoria String? // structured taxonomy key (ver AppSetting "comercial.motivosPerda")
+  clienteId            Int?
+  cliente              Cliente?   @relation(fields: [clienteId], references: [id])
+  casoId               Int?
+  caso                 Caso?      @relation(fields: [casoId], references: [id])
+  lancamentoId         Int? // fee-lançamento que o lead virou ao ser ganho (valor contratado p/ ROAS)
+  lancamento           Lancamento? @relation("LeadLancamento", fields: [lancamentoId], references: [id])
+  responsavelUserId    Int? // dono da oportunidade (mirrors Caso.responsavelUserId)
+  responsavelUser      User?      @relation("LeadResponsavelUser", fields: [responsavelUserId], references: [id])
+  proximaAcaoEm        DateTime? // follow-up: quando fazer a próxima ação
+  proximaAcaoNota      String?
+  temperatura          String? // 'quente' | 'morno' | 'frio'
+  observacoes          String?
+  // ── perfil (Fit score) — chaves de opção de AppSetting "comercial.scoring"; null = "indefinido"/0 pontos
+  potencialFinanceiro  String? // 'alto' | 'medio' | 'baixo' | 'indefinido'
+  urgenciaNivel        String? // 'alta' | 'media' | 'baixa'
+  poderDecisao         String? // 'decisor' | 'influenciador' | 'sem_poder'
+  jurisdicao           String? // 'local' | 'proxima' | 'fora'
+  viabilidade          String? // 'alta' | 'media' | 'baixa'
+  // ── checkpoints de follow-up
+  contratoEnviadoEm    DateTime? // checkbox "contrato enviado p/ assinatura" (null = não)
+  perdidoAutomatico    Boolean    @default(false) // perdido pelas regras automáticas (ver score.ts avaliarRegrasPerda)
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+  atividades           OportunidadeAtividade[]
+  tarefas              Tarefa[]
+  eventos              Evento[]
 
   @@index([etapa])
   @@index([origem])
   @@index([area])
   @@index([campanhaId])
   @@index([dataEntrada])
+  @@index([responsavelUserId])
+  @@index([proximaAcaoEm])
+}
+
+// Timeline de interações de uma oportunidade (ligação/e-mail/reunião/WhatsApp/
+// nota manual — o WhatsApp é click-to-chat via wa.me, sem API; este registro é
+// SEMPRE manual). Espelha `ClienteAnotacao`. `onDelete: Cascade` porque
+// `deleteLead` é hard-delete.
+model OportunidadeAtividade {
+  id        Int      @id @default(autoincrement())
+  leadId    Int
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tipo       String // 'ligacao' | 'email' | 'reuniao' | 'whatsapp' | 'nota' | 'outro'
+  titulo     String?
+  descricao  String?
+  resultado  String? // classificação do toque: 'sem_resposta' | 'fria' | 'positiva' (legado texto-livre = não classificado)
+  toqueNumero Int? // nº do toque na cadência de follow-up (1..N); null = registro avulso/nota
+  sinais     String   @default("[]") // JSON: string[] de chaves de sinal de engajamento (ver AppSetting "comercial.scoring")
+  ocorreuEm DateTime @default(now())
+  autorId   Int?
+  autor     User?    @relation(fields: [autorId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([leadId])
+  @@index([ocorreuEm])
 }
 
 // ── Tarefas (operator-entered task manager) ──────────────────────────────────
@@ -461,11 +519,16 @@ model Tarefa {
   processo      Processo? @relation(fields: [processoId], references: [id])
   clienteId     Int?
   cliente       Cliente?  @relation(fields: [clienteId], references: [id])
+  leadId        Int? // oportunidade vinculada (Comercial)
+  lead          Lead?     @relation(fields: [leadId], references: [id])
   projetoId     Int? // container de trabalho dinâmico (substitui a string `projeto`; backfill via seed)
   projetoRef    Projeto?  @relation(fields: [projetoId], references: [id])
+  secaoId       Int? // seção personalizada dentro do projeto (estilo Todoist); null = "Sem seção"
+  secao         ProjetoSecao? @relation(fields: [secaoId], references: [id], onDelete: SetNull)
   concluidoEm   DateTime? // setado na transição p/ done (alimenta cycle time / taxa no prazo do dashboard)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  comentarios   TarefaComentario[]
 
   @@index([status])
   @@index([responsavelId])
@@ -474,6 +537,8 @@ model Tarefa {
   @@index([data])
   @@index([processoId])
   @@index([projetoId])
+  @@index([secaoId])
+  @@index([leadId])
 }
 
 // ── Agenda (operator-entered office calendar; NOT in the Astrea backup) ──────
@@ -497,6 +562,8 @@ model Evento {
   caso          Caso?     @relation(fields: [casoId], references: [id])
   processoId    Int?
   processo      Processo? @relation(fields: [processoId], references: [id])
+  leadId        Int? // oportunidade vinculada (Comercial) — "reunião marcada?" do painel de follow-up
+  lead          Lead?     @relation(fields: [leadId], references: [id])
   origem        String    @default("manual")
   geradoPorApp  Boolean   @default(true)
   createdAt     DateTime  @default(now())
@@ -507,6 +574,7 @@ model Evento {
   @@index([casoId])
   @@index([responsavelId])
   @@index([processoId])
+  @@index([leadId])
 }
 
 // Generated-document metadata. The binary stays an ephemeral download; `payload`
@@ -965,6 +1033,26 @@ model Anotacao {
   @@index([processoId])
 }
 
+// Comentário numa Tarefa: thread cronológico com autor (User FK, p/ reusar o
+// AssigneeAvatar na UI), menções inline por token (`@[<userId>]` / `@[todos]`) no
+// `conteudo`, soft-delete e marcador "editado". Espelha Anotacao, mas o autor é FK
+// (não string). onDelete: Cascade é OBRIGATÓRIO — deleteTarefa faz hard-delete, logo
+// sem Cascade excluir uma tarefa com comentários quebraria por violação de FK.
+model TarefaComentario {
+  id         Int       @id @default(autoincrement())
+  tarefaId   Int
+  tarefa     Tarefa    @relation(fields: [tarefaId], references: [id], onDelete: Cascade)
+  autorId    Int
+  autor      User      @relation(fields: [autorId], references: [id])
+  conteudo   String
+  editadoEm  DateTime? // setado só em edição de conteúdo (≠ updatedAt, que muda no soft-delete)
+  excluidoEm DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([tarefaId])
+}
+
 // ── Captura CNJ (fontes públicas gratuitas: Comunica/DJEN + DataJud) ──────────
 // OAB do escritório a monitorar no Comunica/DJEN (intimações → Publicacao). Dado
 // operacional (editável na tela), não em env. `ativo=false` pausa a varredura.
@@ -1031,6 +1119,7 @@ model Projeto {
   ordem            Int       @default(0)
   excluidoEm       DateTime? // soft-delete marker
   tarefas          Tarefa[]
+  secoes           ProjetoSecao[]
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -1040,6 +1129,24 @@ model Projeto {
   @@index([casoId])
   @@index([clienteId])
   @@index([excluidoEm])
+}
+
+// Seção personalizada dentro de um projeto (estilo Todoist) — vira COLUNA do
+// quadro do projeto e cabeçalho agrupável na lista. As tarefas apontam para a
+// seção via `Tarefa.secaoId` (onDelete: SetNull → excluir a seção manda as
+// tarefas para "Sem seção", nunca as apaga). Cascade no delete físico do projeto.
+model ProjetoSecao {
+  id        Int      @id @default(autoincrement())
+  projetoId Int
+  projeto   Projeto  @relation(fields: [projetoId], references: [id], onDelete: Cascade)
+  nome      String
+  cor       String? // hex opcional (ponto no cabeçalho da coluna)
+  ordem     Int      @default(0)
+  tarefas   Tarefa[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projetoId])
 }
 
 // Modelo de projeto reutilizável (estilo Todoist) — o escritório instancia um
@@ -1057,11 +1164,29 @@ model ProjetoTemplate {
   ordem      Int       @default(0)
   excluidoEm DateTime? // soft-delete marker
   itens      ProjetoTemplateTarefa[]
+  secoes     ProjetoTemplateSecao[]
   projetos   Projeto[]
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
   @@index([ativo])
+}
+
+// Seção-modelo de um template. Ao instanciar, cada uma vira uma ProjetoSecao
+// real; os itens do template referenciam a seção pelo ÍNDICE `ordem`
+// (ProjetoTemplateTarefa.secaoOrdem) — evita malabarismo de FK id no replace-all
+// do editor. Cascade no delete do template.
+model ProjetoTemplateSecao {
+  id         Int      @id @default(autoincrement())
+  templateId Int
+  template   ProjetoTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  nome       String
+  cor        String?
+  ordem      Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([templateId])
 }
 
 // Um item de template = uma tarefa-modelo. `offsetDias` é o nº de DIAS ÚTEIS de
@@ -1081,6 +1206,7 @@ model ProjetoTemplateTarefa {
   dor                    String   @default("[]") // JSON: string[]
   dod                    String   @default("[]") // JSON: string[]
   ordem                  Int      @default(0)
+  secaoOrdem             Int? // índice `ordem` da ProjetoTemplateSecao a que pertence (null = sem seção)
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 

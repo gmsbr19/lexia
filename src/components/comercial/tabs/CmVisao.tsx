@@ -5,12 +5,15 @@ import { useMemo } from "react"
 import { Icon } from "../cm-icons"
 import { CmCardTitle, CmEmpty, CmFrame, CmKpi, CmNum, CmTh } from "../cm-kit"
 import {
+  cmAtividadeReport,
   cmCampaignStats,
   cmChannels,
   cmCompact,
   cmDeltaPct,
+  cmForecast,
   cmInt,
   cmKpis,
+  cmOwnerStats,
   cmPct,
   cmRoas,
   cmShiftRef,
@@ -24,6 +27,7 @@ import {
 } from "../cm-meta"
 import type { CmDataset } from "@/lib/comercial/types"
 import { resolveAreaLabel, useAreasStore } from "@/lib/areas/store"
+import { usePipelineStore } from "@/lib/comercial/pipeline/store"
 
 function TrendChart({ data }: { data: TrendBucket[] }) {
   const W = 720, H = 210, padL = 10, padR = 10, padT = 16, padB = 30
@@ -125,6 +129,7 @@ function TopCampanhas({ stats, onView }: { stats: CampaignStat[]; onView: () => 
 
 export function CmVisao({ dataset, ref0, period, scope, onNew, onLead, onGoCampanhas }: { dataset: CmDataset; ref0: CmRef; period: Periodo; scope: CmScope; onNew: () => void; onLead: () => void; onGoCampanhas: () => void }) {
   const storedAreas = useAreasStore((s) => s.areas)
+  const pipelineStages = usePipelineStore((s) => s.stages)
   const k = useMemo(() => cmKpis(dataset.leads, dataset.gastos, ref0, period), [dataset, ref0, period])
   const prev = useMemo(() => cmKpis(dataset.leads, dataset.gastos, cmShiftRef(ref0, period, -1), period), [dataset, ref0, period])
   const trend = useMemo(() => cmTrend(dataset.leads, ref0, period), [dataset.leads, ref0, period])
@@ -139,6 +144,11 @@ export function CmVisao({ dataset, ref0, period, scope, onNew, onLead, onGoCampa
     }
     return [...map.entries()].map(([area, d]) => ({ area, ...d })).sort((a, b) => b.leads - a.leads)
   }, [stats])
+  const owners = useMemo(() => cmOwnerStats(dataset, ref0, period), [dataset, ref0, period])
+  // Forecast is a snapshot of the CURRENT open pipeline — independent of the
+  // period filter (probabilidades vêm da config do pipeline).
+  const forecast = useMemo(() => cmForecast(dataset.leads, pipelineStages), [dataset.leads, pipelineStages])
+  const atividades = useMemo(() => cmAtividadeReport(dataset, ref0, period), [dataset, ref0, period])
 
   const noLeads = k.leads === 0
   const noSpend = k.investimento === 0
@@ -233,6 +243,82 @@ export function CmVisao({ dataset, ref0, period, scope, onNew, onLead, onGoCampa
                     })}
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {owners.length > 0 && (
+              <div className="card" style={{ padding: "18px 22px", marginTop: 20 }}>
+                <CmCardTitle title="Por responsável" sub="Desempenho das oportunidades por dono no período" />
+                <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 12 }}>
+                  <thead><tr><CmTh>Responsável</CmTh><CmTh align="right">Leads</CmTh><CmTh align="right">Abertos</CmTh><CmTh align="right">Conv.</CmTh><CmTh align="right">Taxa</CmTh><CmTh align="right">Valor</CmTh><CmTh align="right">Ticket</CmTh></tr></thead>
+                  <tbody>
+                    {owners.map((o) => (
+                      <tr key={o.userId ?? "sem"} style={{ borderTop: "1px solid var(--border)" }}>
+                        <td style={{ padding: "10px 14px" }}><span style={{ fontSize: 13, fontWeight: 500, color: o.userId == null ? "var(--text-subtle)" : "var(--text)" }}>{o.nome}</span></td>
+                        <td style={{ padding: "10px 14px", textAlign: "right" }}><CmNum size={12}>{cmInt(o.leads)}</CmNum></td>
+                        <td style={{ padding: "10px 14px", textAlign: "right" }}><CmNum size={12} color="var(--text-muted)">{cmInt(o.abertos)}</CmNum></td>
+                        <td style={{ padding: "10px 14px", textAlign: "right" }}><CmNum size={12}>{cmInt(o.conversoes)}</CmNum></td>
+                        <td style={{ padding: "10px 14px", textAlign: "right" }}><CmNum size={12} color="var(--text-muted)">{cmPct(o.taxaConversaoPct, 0)}</CmNum></td>
+                        <td style={{ padding: "10px 14px", textAlign: "right" }}><CmNum size={12} color="var(--cm-pos,#2E9E5B)">{o.valorContratadoCents ? cmCompact(o.valorContratadoCents) : "—"}</CmNum></td>
+                        <td style={{ padding: "10px 14px", textAlign: "right" }}><CmNum size={12}>{o.ticketMedioCents ? cmCompact(o.ticketMedioCents) : "—"}</CmNum></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {forecast.etapas.length > 0 && (
+              <div className="card" style={{ padding: "18px 22px", marginTop: 20 }}>
+                <CmCardTitle title="Forecast do funil" sub={`Funil aberto atual · ${cmInt(forecast.totalLeads)} oportunidades · previsão ponderada ${cmCompact(forecast.totalPonderadoCents)} de ${cmCompact(forecast.totalBrutoCents)} estimados`} />
+                <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 12 }}>
+                  <thead><tr><CmTh>Etapa</CmTh><CmTh align="right">Abertos</CmTh><CmTh align="right">Prob.</CmTh><CmTh align="right">Valor estimado</CmTh><CmTh align="right">Ponderado</CmTh></tr></thead>
+                  <tbody>
+                    {forecast.etapas.map((e) => (
+                      <tr key={e.key} style={{ borderTop: "1px solid var(--border)" }}>
+                        <td style={{ padding: "10px 14px" }}><span style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{e.nome}</span></td>
+                        <td style={{ padding: "10px 14px", textAlign: "right" }}><CmNum size={12}>{cmInt(e.leads)}</CmNum></td>
+                        <td style={{ padding: "10px 14px", textAlign: "right" }}><CmNum size={12} color="var(--text-muted)">{cmPct(e.probabilidadePct, 0)}</CmNum></td>
+                        <td style={{ padding: "10px 14px", textAlign: "right" }}><CmNum size={12} color="var(--text-muted)">{cmCompact(e.valorBrutoCents)}</CmNum></td>
+                        <td style={{ padding: "10px 14px", textAlign: "right" }}><CmNum size={12} color="var(--accent)">{cmCompact(e.valorPonderadoCents)}</CmNum></td>
+                      </tr>
+                    ))}
+                    <tr style={{ borderTop: "2px solid var(--border)" }}>
+                      <td style={{ padding: "10px 14px", fontSize: 12, fontWeight: 500, color: "var(--text-muted)" }}>Total</td>
+                      <td style={{ padding: "10px 14px", textAlign: "right" }}><CmNum size={12} weight={500}>{cmInt(forecast.totalLeads)}</CmNum></td>
+                      <td />
+                      <td style={{ padding: "10px 14px", textAlign: "right" }}><CmNum size={12} weight={500}>{cmCompact(forecast.totalBrutoCents)}</CmNum></td>
+                      <td style={{ padding: "10px 14px", textAlign: "right" }}><CmNum size={13} weight={500} color="var(--accent)">{cmCompact(forecast.totalPonderadoCents)}</CmNum></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {atividades.total > 0 && (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginTop: 20, alignItems: "start" }}>
+                <div className="card" style={{ padding: "18px 22px" }}>
+                  <CmCardTitle title="Atividades por tipo" sub={`${cmInt(atividades.total)} registradas no período`} />
+                  <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 8 }}>
+                    {atividades.porTipo.map((t) => (
+                      <div key={t.tipo} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 4px", borderTop: "1px solid var(--border)" }}>
+                        <span style={{ fontSize: 13, color: "var(--text)" }}>{t.label}</span>
+                        <CmNum size={13} weight={500}>{cmInt(t.count)}</CmNum>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="card" style={{ padding: "18px 22px" }}>
+                  <CmCardTitle title="Atividades por responsável" sub="Quem registrou no período" />
+                  <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 8 }}>
+                    {atividades.porDono.map((d) => (
+                      <div key={d.userId ?? "sem"} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 4px", borderTop: "1px solid var(--border)" }}>
+                        <span style={{ fontSize: 13, color: d.userId == null ? "var(--text-subtle)" : "var(--text)" }}>{d.nome}</span>
+                        <CmNum size={13} weight={500}>{cmInt(d.count)}</CmNum>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
           </>

@@ -195,3 +195,65 @@
   50% { opacity: 1; }
 }
 .cm-scope .pulse { animation: cm-pulse 2s ease-in-out infinite; }
+
+/* ── Comercial v2 (handoff "LexIA - Comercial v2") ─────────────────────────── */
+.cm-scope .btn-danger { background: transparent; color: var(--crit); border-color: var(--crit-soft); }
+.cm-scope .btn-danger:hover { background: var(--crit-soft); }
+
+.cm-scope .cx-row:hover { background: var(--surface-hover) !important; }
+.cm-scope .cx-follow-card { transition: border-color .14s, box-shadow .14s; }
+.cm-scope .cx-follow-card:hover { box-shadow: var(--shadow-sm); }
+.cm-scope .cx-linkname:hover { color: var(--accent-strong) !important; text-decoration: underline; text-underline-offset: 2px; }
+.cm-scope .cx-kcard { transition: border-color .12s, box-shadow .12s, background .12s; }
+.cm-scope .cx-kcard:hover { border-color: var(--border-strong); box-shadow: var(--shadow-md); background: var(--bg-elevated); }
+.cm-scope .cx-hist-item:hover { background: var(--bg-soft); }
+
+.cm-scope .cx-menu-item {
+  display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+  padding: 8px 10px; border: none; background: transparent; border-radius: 7px;
+  font-size: 12.5px; font-weight: 500; color: var(--text); cursor: pointer; font-family: var(--font-sans);
+}
+.cm-scope .cx-menu-item:hover { background: var(--surface-hover); }
+.cm-scope .cx-menu-row:hover { background: var(--surface-hover); }
+.cm-scope .cx-stagebtn:hover { filter: brightness(0.97); }
+.cm-scope .cx-copybtn:hover { background: var(--bg-sunken); color: var(--text-muted) !important; }
+
+.cm-scope select.input option { background: var(--surface); color: var(--text); }
+.cm-scope select.input:disabled { opacity: 0.55; cursor: not-allowed; }
+
+@keyframes cx-pop { from { transform: translateY(8px) scale(0.99); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
+.cm-scope .cx-pop { animation: cx-pop 0.18s cubic-bezier(0.22, 1, 0.36, 1); }
+
+@keyframes cx-skeleton { 0% { opacity: 0.55; } 50% { opacity: 1; } 100% { opacity: 0.55; } }
+.cm-scope .skeleton { background: var(--bg-sunken); border-radius: 6px; animation: cx-skeleton 1.4s ease-in-out infinite; }
+
+/* ── v2 scrollbars — finos e minimalistas. O trilho é sempre transparente; o
+   polegar VERTICAL só aparece no hover do contêiner rolável (o HORIZONTAL fica
+   sempre visível, senão a navegação lateral de tabelas/kanban some). WebKit
+   apenas — não setar scrollbar-width/color aqui: no Chrome ≥121 as props
+   padrão DESLIGAM os pseudo-elementos ::-webkit-scrollbar. Firefox recebe o
+   fallback fino sempre-visível no bloco @supports abaixo. ─────────────────── */
+.cm-scope ::-webkit-scrollbar { width: 6px; height: 8px; }
+.cm-scope ::-webkit-scrollbar-track { background: transparent; }
+.cm-scope ::-webkit-scrollbar-corner { background: transparent; }
+.cm-scope ::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 999px;
+  border: none;
+  min-height: 40px;
+}
+.cm-scope ::-webkit-scrollbar-thumb:horizontal { background: var(--border-strong); }
+.cm-scope *:hover::-webkit-scrollbar-thumb:vertical { background: var(--border-strong); }
+.cm-scope ::-webkit-scrollbar-thumb:vertical:hover { background: var(--text-subtle); }
+@supports (-moz-appearance: none) {
+  .cm-scope * { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+}
+
+/* ── v2 table checkboxes — invisíveis até o hover da linha/cabeçalho, ou
+   enquanto HOUVER seleção ativa (classe .on aplicada pela tabela) ─────────── */
+.cm-scope .cx-check { opacity: 0; transition: opacity .12s; display: inline-flex; }
+.cm-scope .cx-row:hover .cx-check,
+.cm-scope thead th:hover .cx-check,
+.cm-scope .cx-check.on,
+.cm-scope .cx-check:focus-within { opacity: 1; }
+.cm-scope .cx-checkbox:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }

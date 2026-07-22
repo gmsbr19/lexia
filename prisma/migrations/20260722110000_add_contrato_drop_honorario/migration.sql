@@ -117,18 +117,31 @@ CREATE TABLE "new_Lead" (
     "dataEntrada" DATETIME NOT NULL,
     "dataConversao" DATETIME,
     "motivoPerda" TEXT,
+    "motivoPerdaCategoria" TEXT,
     "clienteId" INTEGER,
     "casoId" INTEGER,
     "lancamentoId" INTEGER,
+    "responsavelUserId" INTEGER,
+    "proximaAcaoEm" DATETIME,
+    "proximaAcaoNota" TEXT,
+    "temperatura" TEXT,
     "observacoes" TEXT,
+    "potencialFinanceiro" TEXT,
+    "urgenciaNivel" TEXT,
+    "poderDecisao" TEXT,
+    "jurisdicao" TEXT,
+    "viabilidade" TEXT,
+    "contratoEnviadoEm" DATETIME,
+    "perdidoAutomatico" BOOLEAN NOT NULL DEFAULT false,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
     CONSTRAINT "Lead_campanhaId_fkey" FOREIGN KEY ("campanhaId") REFERENCES "Campanha" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT "Lead_clienteId_fkey" FOREIGN KEY ("clienteId") REFERENCES "Cliente" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT "Lead_casoId_fkey" FOREIGN KEY ("casoId") REFERENCES "Caso" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
-    CONSTRAINT "Lead_lancamentoId_fkey" FOREIGN KEY ("lancamentoId") REFERENCES "Lancamento" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+    CONSTRAINT "Lead_lancamentoId_fkey" FOREIGN KEY ("lancamentoId") REFERENCES "Lancamento" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT "Lead_responsavelUserId_fkey" FOREIGN KEY ("responsavelUserId") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
-INSERT INTO "new_Lead" ("area", "campanhaId", "casoId", "clienteId", "createdAt", "dataConversao", "dataEntrada", "email", "etapa", "genionsId", "id", "lancamentoId", "motivoPerda", "nome", "observacoes", "origem", "telefone", "updatedAt", "valorEstimadoCents") SELECT "area", "campanhaId", "casoId", "clienteId", "createdAt", "dataConversao", "dataEntrada", "email", "etapa", "genionsId", "id", "lancamentoId", "motivoPerda", "nome", "observacoes", "origem", "telefone", "updatedAt", "valorEstimadoCents" FROM "Lead";
+INSERT INTO "new_Lead" ("area", "campanhaId", "casoId", "clienteId", "contratoEnviadoEm", "createdAt", "dataConversao", "dataEntrada", "email", "etapa", "genionsId", "id", "jurisdicao", "lancamentoId", "motivoPerda", "motivoPerdaCategoria", "nome", "observacoes", "origem", "perdidoAutomatico", "poderDecisao", "potencialFinanceiro", "proximaAcaoEm", "proximaAcaoNota", "responsavelUserId", "telefone", "temperatura", "updatedAt", "urgenciaNivel", "valorEstimadoCents", "viabilidade") SELECT "area", "campanhaId", "casoId", "clienteId", "contratoEnviadoEm", "createdAt", "dataConversao", "dataEntrada", "email", "etapa", "genionsId", "id", "jurisdicao", "lancamentoId", "motivoPerda", "motivoPerdaCategoria", "nome", "observacoes", "origem", "perdidoAutomatico", "poderDecisao", "potencialFinanceiro", "proximaAcaoEm", "proximaAcaoNota", "responsavelUserId", "telefone", "temperatura", "updatedAt", "urgenciaNivel", "valorEstimadoCents", "viabilidade" FROM "Lead";
 DROP TABLE "Lead";
 ALTER TABLE "new_Lead" RENAME TO "Lead";
 CREATE UNIQUE INDEX "Lead_genionsId_key" ON "Lead"("genionsId");
@@ -137,6 +150,8 @@ CREATE INDEX "Lead_origem_idx" ON "Lead"("origem");
 CREATE INDEX "Lead_area_idx" ON "Lead"("area");
 CREATE INDEX "Lead_campanhaId_idx" ON "Lead"("campanhaId");
 CREATE INDEX "Lead_dataEntrada_idx" ON "Lead"("dataEntrada");
+CREATE INDEX "Lead_responsavelUserId_idx" ON "Lead"("responsavelUserId");
+CREATE INDEX "Lead_proximaAcaoEm_idx" ON "Lead"("proximaAcaoEm");
 PRAGMA foreign_keys=ON;
 PRAGMA defer_foreign_keys=OFF;
 

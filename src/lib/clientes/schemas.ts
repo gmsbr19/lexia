@@ -30,6 +30,15 @@ export const mesclarClientesSchema = z.object({
   duplicadoId: z.number().int().positive(),
 })
 
+/** Bulk edit — Fase 2 do CRM Comercial. Só tipo/classificacao/origem (ver
+ *  bulkUpdateClientes para o porquê). */
+export const clientesLoteSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1).max(500),
+  tipo: z.string().max(10).optional(),
+  classificacao: z.string().max(20).optional(),
+  origem: z.string().max(20).nullish(),
+})
+
 // ── Cobrança & anotações ──────────────────────────────────────────────────────
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "data deve ser YYYY-MM-DD")
 

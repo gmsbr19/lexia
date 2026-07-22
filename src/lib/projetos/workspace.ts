@@ -8,11 +8,12 @@ import { userIdPorEmail } from "@/lib/notificacoes/recipients"
 import { getTarefasDataset } from "@/lib/tarefas/queries"
 import type { IdNome, TaskRow, TeamMember } from "@/lib/tarefas/types"
 import { getProjetosDataset } from "./queries"
-import type { ProjetoView } from "./types"
+import type { ProjetoView, SecaoView } from "./types"
 
 export interface WorkspaceData {
   tarefas: TaskRow[]
   projetos: ProjetoView[]
+  secoes: SecaoView[]
   socios: TeamMember[]
   casos: IdNome[]
   clientes: IdNome[]
@@ -21,5 +22,5 @@ export interface WorkspaceData {
 
 export async function getWorkspaceData(sessionEmail?: string | null): Promise<WorkspaceData> {
   const [t, p, meId] = await Promise.all([getTarefasDataset(), getProjetosDataset(), userIdPorEmail(sessionEmail)])
-  return { tarefas: t.tarefas, projetos: p.projetos, socios: t.socios, casos: t.casos, clientes: t.clientes, meId }
+  return { tarefas: t.tarefas, projetos: p.projetos, secoes: p.secoes, socios: t.socios, casos: t.casos, clientes: t.clientes, meId }
 }

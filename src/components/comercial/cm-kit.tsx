@@ -147,15 +147,15 @@ export function CmSegmented({ options, value, onChange, size = "md" }: { options
 export interface CmTabDef { id: string; label: string; icon: CmIconName; badge?: number | null }
 export function CmTabs({ tabs, active, onChange }: { tabs: CmTabDef[]; active: string; onChange: (id: string) => void }) {
   return (
-    <div style={{ display: "flex", alignItems: "stretch", gap: 0, padding: "0 40px", borderBottom: "1px solid var(--border)", background: "var(--bg)", minHeight: 44, flexShrink: 0, overflowX: "auto" }}>
+    <div style={{ display: "flex", alignItems: "stretch", gap: 0, padding: "0 32px", borderBottom: "1px solid var(--border)", background: "var(--bg)", minHeight: 46, flexShrink: 0, overflowX: "auto" }}>
       {tabs.map((t) => {
         const on = active === t.id
         return (
-          <div key={t.id} onClick={() => onChange(t.id)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 16px", cursor: "pointer", whiteSpace: "nowrap", fontSize: 14, fontWeight: 500, color: on ? "var(--text)" : "var(--text-muted)", letterSpacing: "-0.01em", borderBottom: on ? "2px solid var(--accent)" : "2px solid transparent", marginBottom: -1 }}>
+          <div key={t.id} onClick={() => onChange(t.id)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 15px", cursor: "pointer", whiteSpace: "nowrap", fontSize: 14, fontWeight: on ? 600 : 500, color: on ? "var(--text)" : "var(--text-muted)", letterSpacing: "-0.01em", borderBottom: on ? "2px solid var(--accent)" : "2px solid transparent", marginBottom: -1 }}>
             <Icon name={t.icon} size={15} strokeWidth={on ? 2 : 1.75} />
             {t.label}
             {t.badge != null && t.badge > 0 && (
-              <span style={{ fontSize: 11, fontWeight: 500, background: on ? "var(--accent-soft)" : "var(--bg-sunken)", color: on ? "var(--accent)" : "var(--text-subtle)", padding: "1px 6px", borderRadius: 999, fontFeatureSettings: '"tnum"' }}>{t.badge}</span>
+              <span style={{ fontSize: 11, fontWeight: 600, background: on ? "var(--accent-soft)" : "var(--bg-sunken)", color: on ? "var(--accent)" : "var(--text-subtle)", padding: "1px 7px", borderRadius: 999, fontFeatureSettings: '"tnum"' }}>{t.badge}</span>
             )}
           </div>
         )

@@ -2,7 +2,8 @@
 
 // Tarefas — shared UI primitives (ported from the design's tasks-kit.jsx).
 // Reads real sócios / projects from TarefasContext.
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react"
+import { createPortal } from "react-dom"
 import { PRIO, VINCULO_ICON, type SubItem, type TaskPrio, type VinculoRef } from "@/lib/tarefas/types"
 import { Icon, type TfIconName } from "./tf-icons"
 import { useTarefasCtx } from "./TarefasContext"
@@ -257,40 +258,73 @@ export function Menu({
   placement?: "down" | "up"
 }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  // Panel is portaled to <body> with fixed positioning computed from the
+  // trigger's rect — a plain position:absolute panel gets silently clipped
+  // whenever the trigger sits inside an `overflow:auto`/`hidden` ancestor
+  // (e.g. a scrollable table card), which hid row-action dropdowns near the
+  // bottom of a scrolled table.
+  const reposition = () => {
+    const r = wrapRef.current?.getBoundingClientRect()
+    if (!r) return
+    const top = placement === "up" ? r.top - 6 : r.bottom + 6
+    const left = align === "right" ? r.right - width : r.left
+    setPos({ top, left })
+  }
+  useLayoutEffect(() => {
+    if (!open) return
+    reposition()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
   useEffect(() => {
     if (!open) return
+    const onScrollOrResize = () => reposition()
+    window.addEventListener("scroll", onScrollOrResize, true)
+    window.addEventListener("resize", onScrollOrResize)
     const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      if (wrapRef.current?.contains(e.target as Node)) return
+      if (panelRef.current?.contains(e.target as Node)) return
+      setOpen(false)
     }
     document.addEventListener("mousedown", h)
-    return () => document.removeEventListener("mousedown", h)
+    return () => {
+      window.removeEventListener("scroll", onScrollOrResize, true)
+      window.removeEventListener("resize", onScrollOrResize)
+      document.removeEventListener("mousedown", h)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
   const close = () => setOpen(false)
   return (
-    // When open, the wrapper becomes a high stacking context so the dropdown
-    // always paints above neighbouring form rows / pickers (e.g. Projeto above
-    // Responsável in the task modal) instead of being partially occluded.
-    <div ref={ref} style={{ position: "relative", display: "inline-flex", zIndex: open ? 60 : undefined }}>
+    <div ref={wrapRef} style={{ position: "relative", display: "inline-flex" }}>
       <div onClick={() => setOpen((o) => !o)}>{trigger}</div>
-      {open && (
+      {open && pos && typeof document !== "undefined" && createPortal(
         <div
+          ref={panelRef}
           className={lexGlassStrong}
           style={{
-            position: "absolute",
-            ...(placement === "up" ? { bottom: "calc(100% + 6px)" } : { top: "calc(100% + 6px)" }),
-            ...(align === "right" ? { right: 0 } : { left: 0 }),
-            zIndex: 50,
+            position: "fixed",
+            top: placement === "up" ? undefined : pos.top,
+            bottom: placement === "up" ? window.innerHeight - pos.top : undefined,
+            left: pos.left,
+            zIndex: 1000,
             width,
             borderRadius: 10,
             padding: 6,
+            // Panels can be mounted inside right-aligned table cells — never
+            // inherit that alignment into the menu items.
+            textAlign: "left",
             maxHeight: 320,
             overflowY: "auto",
             ...glassElevation("0 12px 28px rgba(2,13,37,0.16)"),
           }}
         >
           {typeof children === "function" ? children(close) : children}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )

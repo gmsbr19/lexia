@@ -1,8 +1,11 @@
+import type Anthropic from "@anthropic-ai/sdk"
 import { describe, expect, it } from "vitest"
+import { compactarHistorico } from "@/lib/lexia/agent/cache"
 import { decidirModelo } from "@/lib/lexia/agent/router"
 import { perguntarSchema } from "@/lib/lexia/agent/tools/perguntar"
 import { validarRota } from "@/lib/lexia/agent/tools/navegacao"
 import { TOOLS, TOOLS_BY_NAME, toApiTools } from "@/lib/lexia/agent/registry"
+import { deveAutoExecutar } from "@/lib/lexia/agent/auto"
 import { acaoDecisaoSchema } from "@/lib/lexia/schemas"
 import { encodeSse } from "@/lib/lexia/agent/sse"
 import { addDiasISO } from "@/lib/lexia/agent/datas"
@@ -200,6 +203,21 @@ describe("registry — deterministic, valid tool schemas", () => {
     expect(nomes("admin").has("excluir_honorario")).toBe(false)
   })
 
+  it("expõe as tools comerciais da Fase 4 (análise readonly + mutações confirmação-gated, sem role gate)", () => {
+    const MUT = ["criar_campanha", "registrar_gasto", "converter_lead", "registrar_atividade", "definir_follow_up"]
+    for (const n of MUT) expect(TOOLS_BY_NAME.get(n)?.kind, n).toBe("mutation")
+    expect(TOOLS_BY_NAME.get("analise_comercial")?.kind).toBe("readonly")
+    // toda mutação nova sabe montar um resumo de confirmação
+    for (const n of MUT) expect(typeof TOOLS_BY_NAME.get(n)?.resumo, n).toBe("function")
+    // comercial não tem role gate — a Equipe (staff) enxerga as tools (igual às de leads)
+    const staff = new Set(toApiTools("staff").map((t) => t.name))
+    for (const n of [...MUT, "analise_comercial"]) expect(staff.has(n), n).toBe(true)
+    // no modo 'pergunta' as mutações somem, a análise (readonly) sobrevive
+    const pergunta = new Set(toApiTools("admin", "pergunta").map((t) => t.name))
+    for (const n of MUT) expect(pergunta.has(n), n).toBe(false)
+    expect(pergunta.has("analise_comercial")).toBe(true)
+  })
+
   it("modo 'pergunta' (somente leitura) remove TODAS as ferramentas de mutação", () => {
     const all = toApiTools("admin")
     const pergunta = toApiTools("admin", "pergunta")
@@ -240,14 +258,131 @@ describe("registry — deterministic, valid tool schemas", () => {
       expect(nomes(role).has("listar_projetos"), role).toBe(true)
       expect(nomes(role).has("listar_templates_projeto"), role).toBe(true)
     }
-    // criar/instanciar projeto: só sócio/advogado (+ admin implícito)
-    const ESCRITA = ["criar_projeto", "instanciar_template_projeto"]
+    // criar/editar/excluir projeto + CRUD de seção + instanciar: só sócio/advogado (+ admin implícito)
+    const ESCRITA = [
+      "criar_projeto",
+      "criar_estrutura_projetos",
+      "editar_projeto",
+      "excluir_projeto",
+      "criar_secao",
+      "criar_secoes_lote",
+      "editar_secao",
+      "excluir_secao",
+      "reordenar_secoes",
+      "instanciar_template_projeto",
+    ]
     for (const n of ESCRITA) {
       expect(nomes("estagiario").has(n)).toBe(false)
       expect(nomes("staff").has(n)).toBe(false)
       expect(nomes("financeiro").has(n)).toBe(false)
       for (const role of ["advogado", "socio", "admin"]) expect(nomes(role).has(n), `${role}:${n}`).toBe(true)
     }
+  })
+
+  it("as tools de LOTE existem, são mutações e criar_tarefas_lote fica aberta a toda a equipe", () => {
+    expect(TOOLS_BY_NAME.get("criar_tarefas_lote")?.kind).toBe("mutation")
+    expect(TOOLS_BY_NAME.get("criar_secoes_lote")?.kind).toBe("mutation")
+    // criar_tarefas_lote não tem gate de papel (igual a criar_tarefa) → todos veem
+    for (const role of ["estagiario", "staff", "advogado", "socio", "admin"]) {
+      expect(new Set(toApiTools(role).map((t) => t.name)).has("criar_tarefas_lote"), role).toBe(true)
+    }
+  })
+})
+
+describe("deveAutoExecutar — política do modo automático (sem confirmar cada criação)", () => {
+  it("auto ligado + modo agente: TODA criação/edição executa sem confirmação (várias por vez)", () => {
+    for (const n of ["criar_projeto", "criar_estrutura_projetos", "criar_secao", "criar_secoes_lote", "criar_tarefa", "criar_tarefas_lote", "editar_projeto", "reordenar_secoes", "instanciar_template_projeto"]) {
+      expect(deveAutoExecutar(true, "agente", n), n).toBe(true)
+    }
+  })
+
+  it("auto DESLIGADO: sempre pede confirmação", () => {
+    expect(deveAutoExecutar(false, "agente", "criar_secao")).toBe(false)
+    expect(deveAutoExecutar(undefined, "agente", "criar_tarefa")).toBe(false)
+  })
+
+  it("modo plano: confirma mesmo com auto ligado (prometeu aprovação)", () => {
+    expect(deveAutoExecutar(true, "plano", "criar_projeto")).toBe(false)
+  })
+
+  it("ações destrutivas (excluir/anonimizar) confirmam mesmo com auto ligado", () => {
+    expect(deveAutoExecutar(true, "agente", "excluir_projeto")).toBe(false)
+    expect(deveAutoExecutar(true, "agente", "excluir_secao")).toBe(false)
+    expect(deveAutoExecutar(true, "agente", "anonimizar_cliente")).toBe(false)
+  })
+})
+
+describe("compactarHistorico — poda de dumps de leitura antigos (economia de tokens)", () => {
+  const big = "x".repeat(500)
+  const assistant = (name: string, id: string): Anthropic.MessageParam => ({
+    role: "assistant",
+    content: [{ type: "tool_use", id, name, input: {} }],
+  })
+  const result = (id: string, content: string, isError = false): Anthropic.MessageParam => ({
+    role: "user",
+    content: [{ type: "tool_result", tool_use_id: id, content, ...(isError ? { is_error: true } : {}) }],
+  })
+  const contentById = (msgs: Anthropic.MessageParam[], id: string): string | undefined => {
+    for (const m of msgs) {
+      if (!Array.isArray(m.content)) continue
+      for (const b of m.content) {
+        const blk = b as { type: string; tool_use_id?: string; content?: string }
+        if (blk.type === "tool_result" && blk.tool_use_id === id) return blk.content
+      }
+    }
+    return undefined
+  }
+  // Pares (assistant tool_use / user tool_result). Os 3 primeiros ficam ANTIGOS
+  // (fora da janela RECENTES=6); os 4 últimos pares são recentes.
+  const build = (): Anthropic.MessageParam[] => {
+    const msgs: Anthropic.MessageParam[] = [
+      assistant("listar_projetos", "a"),
+      result("a", big), // leitura antiga → compacta
+      assistant("detalhe_projeto", "b"),
+      result("b", big), // leitura antiga → compacta
+      assistant("criar_tarefa", "c"),
+      result("c", `{"id":42}`), // mutação → preserva (o modelo precisa do id)
+    ]
+    for (let i = 0; i < 4; i++) {
+      msgs.push(assistant("listar_tarefas", `r${i}`))
+      msgs.push(result(`r${i}`, big))
+    }
+    return msgs
+  }
+
+  it("substitui resultados de leitura ANTIGOS por placeholder, preservando mutações e resultados recentes", () => {
+    const out = compactarHistorico(build())
+    expect(contentById(out, "a")).toContain("omitido")
+    expect(contentById(out, "b")).toContain("omitido")
+    expect(contentById(out, "c")).toBe(`{"id":42}`) // mutação intacta
+    expect(contentById(out, "r3")).toBe(big) // leitura recente intacta
+  })
+
+  it("não muta o array original (o snapshot de pending fica fiel)", () => {
+    const msgs = build()
+    compactarHistorico(msgs)
+    expect(contentById(msgs, "a")).toBe(big)
+  })
+
+  it("preserva resultados curtos e erros mesmo antigos", () => {
+    const msgs: Anthropic.MessageParam[] = [
+      assistant("listar_projetos", "curto"),
+      result("curto", "vazio"), // < COMPACT_MIN → intacto
+      assistant("listar_tarefas", "err"),
+      result("err", big, true), // is_error → intacto
+    ]
+    for (let i = 0; i < 5; i++) {
+      msgs.push(assistant("listar_tarefas", `z${i}`))
+      msgs.push(result(`z${i}`, big))
+    }
+    const out = compactarHistorico(msgs)
+    expect(contentById(out, "curto")).toBe("vazio")
+    expect(contentById(out, "err")).toBe(big)
+  })
+
+  it("arrays curtos (≤ janela recente) passam sem alteração", () => {
+    const msgs = [assistant("listar_projetos", "a"), result("a", big)]
+    expect(compactarHistorico(msgs)).toBe(msgs)
   })
 })
 

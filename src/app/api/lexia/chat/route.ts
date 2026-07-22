@@ -130,7 +130,7 @@ export async function POST(req: Request) {
       const texto = `${contextoLinha(sessionUser, body.pagina, { ...prefs, agentMode }, processosOk)}${contextoDoc}${mencoesLinha(body.contexto?.entidades)}${modificadorLinha(body.modificador)}\n\n${instrucao}`
       const messages: Anthropic.MessageParam[] = [
         ...prior,
-        { role: "user", content: construirConteudo(texto, body.anexos) },
+        { role: "user", content: await construirConteudo(texto, body.anexos) },
       ]
       const teto = await aplicarTeto(decidirModelo(mensagemRaw, lastModel, { temAnexos, forcarOpus: body.opus, modelo }))
       const decision = teto.decision

@@ -43,3 +43,61 @@ export function comCacheBreakpoints(messages: Anthropic.MessageParam[]): Anthrop
   if (out.length >= 4) marcar(out.length - 4)
   return out
 }
+
+// ── Compactação de resultados de leitura ────────────────────────────────────────
+// Nº de mensagens RECENTES preservadas verbatim (o modelo ainda pode estar
+// raciocinando sobre dados frescos). ~3 round-trips de tool (assistant+user por vez).
+const RECENTES = 6
+const COMPACT_MIN = 200 // não vale a pena compactar resultados curtos
+const PLACEHOLDER = "[resultado de consulta anterior omitido para economizar contexto — reconsulte se realmente precisar]"
+
+/** Resultados destas ferramentas só valem no momento em que são buscados: são
+ *  DUMPS de estado (listagens/detalhes) que, uma vez usados, só inflam o contexto
+ *  ao serem reenviados a cada iteração/turno. Mutações (criar_/editar_/…) devolvem
+ *  ids pequenos e ÚTEIS (o modelo precisa deles) — nunca são compactadas. */
+function ehLeituraCompactavel(name: string | undefined): boolean {
+  if (!name) return false
+  return name.startsWith("listar_") || name.startsWith("detalhe_") || name === "buscar"
+}
+
+/**
+ * Substitui o conteúdo de tool_results de LEITURA antigos por um placeholder curto,
+ * preservando a estrutura (mesmo tool_use_id) exigida pela API. É a maior alavanca
+ * de economia em tarefas de CRUD em massa: o modelo re-lista/re-detalha o estado a
+ * cada passo, e esses JSONs pesados eram reenviados em TODA iteração e dentro dos
+ * snapshots de retomada. As últimas RECENTES mensagens ficam intactas; erros e
+ * resultados de mutação também. Puro — não muta o array recebido.
+ */
+export function compactarHistorico(messages: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
+  if (messages.length <= RECENTES) return messages
+  // tool_use_id → nome da ferramenta (dos turnos do assistente).
+  const nomePorId = new Map<string, string>()
+  for (const m of messages) {
+    if (m.role !== "assistant" || !Array.isArray(m.content)) continue
+    for (const b of m.content) {
+      if ((b as { type: string }).type === "tool_use") {
+        const tu = b as Anthropic.ToolUseBlock
+        nomePorId.set(tu.id, tu.name)
+      }
+    }
+  }
+  const limite = messages.length - RECENTES
+  let mudou = false
+  const out = messages.map((m, idx) => {
+    if (idx >= limite || !Array.isArray(m.content)) return m
+    let localMudou = false
+    const content = m.content.map((b) => {
+      const blk = b as { type: string }
+      if (blk.type !== "tool_result") return b
+      const tr = b as Anthropic.ToolResultBlockParam
+      if (tr.is_error || typeof tr.content !== "string" || tr.content.length < COMPACT_MIN) return b
+      if (!ehLeituraCompactavel(nomePorId.get(tr.tool_use_id))) return b
+      localMudou = true
+      return { ...tr, content: PLACEHOLDER }
+    })
+    if (!localMudou) return m
+    mudou = true
+    return { ...m, content }
+  })
+  return mudou ? out : messages
+}

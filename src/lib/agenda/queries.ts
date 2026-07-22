@@ -1,6 +1,7 @@
 // Agenda — read layer. SERVER ONLY. The calendar aggregates two item kinds:
 // Evento rows (audiência/prazo/reunião/outro) + Tarefa rows that carry `data`.
 import type { Prisma } from "@prisma/client"
+import { ehEtapaAberta } from "@/lib/comercial/analytics"
 import { prisma } from "@/lib/db"
 import { getCasoOptions, getClienteOptions } from "@/lib/finance/queries"
 import { getUsuariosAtivos } from "@/lib/users/queries"
@@ -38,9 +39,11 @@ const EVENTO_SELECT = {
   responsavelId: true,
   clienteId: true,
   casoId: true,
+  leadId: true,
   responsavel: { select: { nome: true } },
   cliente: { select: { nome: true } },
   caso: { select: { titulo: true } },
+  lead: { select: { nome: true } },
 } satisfies Prisma.EventoSelect
 
 type EventoRecord = Prisma.EventoGetPayload<{ select: typeof EVENTO_SELECT }>
@@ -62,6 +65,8 @@ function toEventoRow(r: EventoRecord): EventoRow {
     cliente: r.cliente?.nome ?? null,
     casoId: r.casoId,
     caso: r.caso?.titulo ?? null,
+    leadId: r.leadId,
+    lead: r.lead?.nome ?? null,
   }
 }
 
@@ -116,15 +121,17 @@ export async function listTarefasAgendadas(de?: string, ate?: string): Promise<A
 
 /** Single server fetch powering the Agenda page. */
 export async function getAgendaDataset(de?: string, ate?: string): Promise<AgendaDataset> {
-  const [eventos, tarefas, usuarios, clientes, casos] = await Promise.all([
+  const [eventos, tarefas, usuarios, clientes, casos, leadsAbertos] = await Promise.all([
     listEventos({ de, ate }),
     listTarefasAgendadas(de, ate),
     getUsuariosAtivos(),
     getClienteOptions(),
     getCasoOptions(),
+    prisma.lead.findMany({ select: { id: true, nome: true, etapa: true }, orderBy: { nome: "asc" } }),
   ])
   // The agenda "responsável" picker reuses the SocioConta shape, now fed by the
   // active registered users (ordem = list position).
   const socios = usuarios.map((u, i) => ({ id: u.id, nome: u.nome, ordem: i }))
-  return { eventos, tarefas, socios, clientes, casos }
+  const leads = leadsAbertos.filter((l) => ehEtapaAberta(l.etapa)).map((l) => ({ id: l.id, nome: l.nome }))
+  return { eventos, tarefas, socios, clientes, casos, leads }
 }

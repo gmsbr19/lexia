@@ -27,6 +27,7 @@ const task = (projetoId: number | null, over: Partial<TaskRow> = {}): TaskRow =>
   casoId: null,
   clienteId: null,
   projetoId,
+  secaoId: null,
   vinculo: null,
   ordem: 0,
   ...over,

@@ -16,9 +16,9 @@ export async function POST(req: Request, ctx: RouteCtx) {
     runMutation(
       () => {
         const pid = parseId(id)
-        const { etapa, motivo } = parseBody(leadEtapaSchema, body)
+        const { etapa, motivo, motivoCategoria } = parseBody(leadEtapaSchema, body)
         return etapa === "perdido"
-          ? marcarPerdido(pid, motivo ?? null)
+          ? marcarPerdido(pid, motivo ?? null, motivoCategoria ?? null)
           : moverEtapa(pid, etapa, actor)
       },
       { action: "lead.moverEtapa", entity: "Lead", entityId: id, payload: body },

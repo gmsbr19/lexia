@@ -4,6 +4,28 @@
 // period switching is instant; mutations persist via the REST API + refresh.
 import { cmRedactLeads } from "@/lib/comercial/lgpd"
 import {
+  desempenhoPorDono,
+  forecastPonderado,
+  relatorioAtividades,
+  type DonoDesempenho,
+  type Forecast,
+  type RelatorioAtividades,
+  type StageProb,
+} from "@/lib/comercial/analytics"
+import {
+  contarToques,
+  engajamentoScore,
+  ESTADO_META,
+  estadoLead,
+  fitScore,
+  prioridadeLead,
+  proximoToque,
+  urgenciaTemporal,
+  type Estado,
+  type ProximoToque,
+} from "@/lib/comercial/score"
+import type { FollowupConfig, ScoringConfig } from "@/lib/settings"
+import {
   CAMPANHA_STATUS_LABEL,
   ETAPA_LABEL,
   ORIGEM_LABEL,
@@ -18,6 +40,9 @@ import {
   type Periodo,
   type Plataforma,
 } from "@/lib/comercial/types"
+
+export { ESTADO_META }
+export type { Estado }
 
 export type { Periodo }
 export { ETAPA_LABEL, ORIGEM_LABEL, PLATAFORMA_LABEL, CAMPANHA_STATUS_LABEL }
@@ -328,6 +353,116 @@ export function cmFunnel(leads: CmDatasetLead[], ref: CmRef, period: Periodo): F
     motivos,
     total: L.length,
   }
+}
+
+// ── análise (Fase 4): desempenho por dono · forecast ponderado · atividades ───
+export type { DonoDesempenho, Forecast, RelatorioAtividades, StageProb }
+
+/** Per-owner performance for the period (entry cohort). Contracted value uses
+ *  the dataset's already-deduped per-caso revenue (valorContratadoCents). */
+export function cmOwnerStats(dataset: Pick<CmDataset, "leads" | "usuarios">, ref: CmRef, period: Periodo): DonoDesempenho[] {
+  const sc = cmScope(ref, period)
+  const nome = new Map(dataset.usuarios.map((u) => [u.id, u.nome]))
+  return desempenhoPorDono(
+    dataset.leads
+      .filter((l) => sc.test(l.dataEntrada))
+      .map((l) => ({ responsavelUserId: l.responsavelUserId, etapa: l.etapa, valorContratadoCents: l.etapa === "ganho" ? l.valorContratadoCents : null })),
+    (id) => nome.get(id) ?? `usuário #${id}`,
+  )
+}
+
+/** Weighted forecast of the CURRENT open pipeline (não escopado por período —
+ *  todo lead aberto conta). Probabilidades vêm da config do pipeline. */
+export function cmForecast(leads: CmDatasetLead[], stages: StageProb[]): Forecast {
+  return forecastPonderado(leads.map((l) => ({ etapa: l.etapa, valorEstimadoCents: l.valorEstimadoCents })), stages)
+}
+
+/** Activity report for the period (por tipo e por responsável), scoped by the
+ *  activity date. Metadata only — sem PII. */
+export function cmAtividadeReport(dataset: Pick<CmDataset, "atividades" | "usuarios">, ref: CmRef, period: Periodo): RelatorioAtividades {
+  const sc = cmScope(ref, period)
+  const nome = new Map(dataset.usuarios.map((u) => [u.id, u.nome]))
+  return relatorioAtividades(
+    dataset.atividades.filter((a) => sc.test(a.ocorreuEm)).map((a) => ({ tipo: a.tipo, autorId: a.autorId })),
+    (id) => nome.get(id) ?? `usuário #${id}`,
+  )
+}
+
+// ── score de leads + follow-up (Fase 5): Fit/Engajamento derivados, estado
+// A-D, prioridade e sugestão de próximo toque, por lead ───────────────────
+export interface CmLeadScore {
+  fit: number
+  eng: number
+  estado: Estado
+  prioridade: number
+  toquesFeitos: number
+  ultimoContatoISO: string | null
+  proximoToque: ProximoToque | null
+  reuniaoMarcada: boolean
+}
+
+/** Deriva Fit/Engajamento/Estado/Prioridade/próximo toque para CADA lead do
+ *  dataset, a partir da timeline de atividades + reuniões vinculadas da
+ *  agenda. Zero round-trip extra: tudo já vem no CmDataset. */
+export function cmLeadScores(
+  dataset: Pick<CmDataset, "leads" | "atividades" | "eventos">,
+  scoringCfg: ScoringConfig,
+  followupCfg: FollowupConfig,
+  hojeISO: string,
+): Map<number, CmLeadScore> {
+  const atividadesPorLead = new Map<number, CmDataset["atividades"]>()
+  for (const a of dataset.atividades) {
+    const arr = atividadesPorLead.get(a.leadId) ?? []
+    arr.push(a)
+    atividadesPorLead.set(a.leadId, arr)
+  }
+  const reuniaoPorLead = new Set<number>()
+  const agora = new Date(hojeISO).getTime()
+  for (const e of dataset.eventos) {
+    if (e.status === "confirmado" && new Date(e.dataInicio).getTime() >= agora) reuniaoPorLead.add(e.leadId)
+  }
+
+  const result = new Map<number, CmLeadScore>()
+  for (const l of dataset.leads) {
+    const atividades = atividadesPorLead.get(l.id) ?? []
+    const fit = fitScore(
+      {
+        area: l.area,
+        origem: l.origem,
+        potencialFinanceiro: l.potencialFinanceiro,
+        urgenciaNivel: l.urgenciaNivel,
+        poderDecisao: l.poderDecisao,
+        jurisdicao: l.jurisdicao,
+        viabilidade: l.viabilidade,
+      },
+      scoringCfg,
+    )
+    const eng = engajamentoScore(
+      atividades.map((a) => ({ sinais: a.sinais, resultado: a.resultado, ocorreuEm: a.ocorreuEm ?? "" })),
+      scoringCfg,
+    )
+    const estado = estadoLead(fit, eng, scoringCfg.limiares)
+    const urg = urgenciaTemporal(l.proximaAcaoEm, hojeISO, followupCfg.urgenciaHorizonteDias)
+    const prioridade = prioridadeLead(fit, eng, urg, followupCfg.prioridade)
+    const toquesFeitos = contarToques(atividades.map((a) => ({ toqueNumero: a.toqueNumero })))
+    const ultimoContatoISO =
+      atividades
+        .filter((a) => a.tipo !== "nota" && a.ocorreuEm)
+        .map((a) => a.ocorreuEm as string)
+        .sort()
+        .at(-1) ?? null
+    result.set(l.id, {
+      fit,
+      eng,
+      estado,
+      prioridade,
+      toquesFeitos,
+      ultimoContatoISO,
+      proximoToque: proximoToque(followupCfg.cadencia, toquesFeitos, l.dataEntrada ?? hojeISO, hojeISO),
+      reuniaoMarcada: reuniaoPorLead.has(l.id),
+    })
+  }
+  return result
 }
 
 // ── export (CSV / JSON / AI prompt) ──────────────────────────────────────────

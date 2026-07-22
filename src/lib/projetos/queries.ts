@@ -21,6 +21,7 @@ import type {
   ProjetoStatus,
   ProjetosDataset,
   ProjetoView,
+  SecaoView,
   TemplateBase,
   TemplateView,
 } from "./types"
@@ -114,11 +115,17 @@ function toProjetoView(p: ProjetoRow, byId: Map<number, TeamMember>, hoje: strin
 /** Dataset for the Projetos workspace (rail + canvas pickers). */
 export async function getProjetosDataset(): Promise<ProjetosDataset> {
   const hoje = hojeISO()
-  const [projetos, usuarios, casos, clientes] = await Promise.all([
+  const [projetos, secoes, usuarios, casos, clientes] = await Promise.all([
     prisma.projeto.findMany({
       where: { excluidoEm: null },
       orderBy: [{ ordem: "asc" }, { createdAt: "asc" }],
       select: projetoSelect,
+    }),
+    // Todas as seções dos projetos vivos (chapado; o cliente filtra por projetoId).
+    prisma.projetoSecao.findMany({
+      where: { projeto: { excluidoEm: null } },
+      orderBy: [{ projetoId: "asc" }, { ordem: "asc" }],
+      select: { id: true, projetoId: true, nome: true, cor: true, ordem: true },
     }),
     getUsuariosAtivos(),
     getCasoOptions(),
@@ -128,6 +135,7 @@ export async function getProjetosDataset(): Promise<ProjetosDataset> {
   const byId = new Map(socios.map((m) => [m.id, m]))
   return {
     projetos: (projetos as unknown as ProjetoRow[]).map((p) => toProjetoView(p, byId, hoje)),
+    secoes: secoes as SecaoView[],
     socios,
     casos,
     clientes,
@@ -178,7 +186,12 @@ export async function getTemplates(): Promise<TemplateView[]> {
           dor: true,
           dod: true,
           ordem: true,
+          secaoOrdem: true,
         },
+      },
+      secoes: {
+        orderBy: { ordem: "asc" },
+        select: { nome: true, cor: true, ordem: true },
       },
     },
   })
@@ -202,7 +215,9 @@ export async function getTemplates(): Promise<TemplateView[]> {
       dor: parseJsonStrArr(it.dor),
       dod: parseJsonStrArr(it.dod),
       ordem: it.ordem,
+      secaoOrdem: it.secaoOrdem,
     })),
+    secoes: t.secoes.map((s) => ({ nome: s.nome, cor: s.cor, ordem: s.ordem })),
   }))
 }
 

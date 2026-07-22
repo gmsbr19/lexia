@@ -96,6 +96,7 @@ interface EvtForm {
   descricao: string
   clienteId: number | null
   casoId: number | null
+  leadId: number | null
   status: "confirmado" | "cancelado"
 }
 
@@ -115,6 +116,7 @@ function evtToForm(e: EventoRow): EvtForm {
     descricao: e.descricao || "",
     clienteId: e.clienteId,
     casoId: e.casoId,
+    leadId: e.leadId,
     status: e.status,
   }
 }
@@ -161,6 +163,7 @@ function CrmEventoModal({
   form,
   dataset,
   socios,
+  leads,
   onClose,
   onSave,
   onDelete,
@@ -168,6 +171,7 @@ function CrmEventoModal({
   form: EvtForm
   dataset: CrmDataset
   socios: SocioConta[]
+  leads: { id: number; nome: string }[]
   onClose: () => void
   onSave: (f: EvtForm) => void | Promise<void>
   onDelete?: () => void | Promise<void>
@@ -178,6 +182,7 @@ function CrmEventoModal({
   const clienteOpts = [{ value: "", label: "—" }, ...dataset.clienteOptions.map((c) => ({ value: String(c.id), label: c.nome }))]
   const casoOpts = [{ value: "", label: "—" }, ...dataset.casoOptions.map((k) => ({ value: String(k.id), label: k.nome }))]
   const respOpts = [{ value: "", label: "—" }, ...socios.map((s) => ({ value: String(s.id), label: s.nome }))]
+  const leadOpts = [{ value: "", label: "—" }, ...leads.map((l) => ({ value: String(l.id), label: l.nome }))]
 
   return (
     <FxModal
@@ -265,6 +270,14 @@ function CrmEventoModal({
           </div>
         </div>
         <div>
+          <FxLabel>Oportunidade (opcional)</FxLabel>
+          <FxSelect
+            options={leadOpts}
+            value={f.leadId != null ? String(f.leadId) : ""}
+            onChange={(e) => set("leadId", e.target.value ? Number(e.target.value) : null)}
+          />
+        </div>
+        <div>
           <FxLabel>Observações (opcional)</FxLabel>
           <FxTextarea value={f.descricao} onChange={(e) => set("descricao", e.target.value)} rows={2} placeholder="Notas internas sobre o compromisso" />
         </div>
@@ -304,6 +317,7 @@ export function CrmAgendaPage({ dataset, role: _role, nav }: Props) {
     socios: [],
     clientes: dataset.clienteOptions,
     casos: dataset.casoOptions,
+    leads: [],
   })
 
   // Window to fetch: pad the visible range so adjacent month/week edges are covered.
@@ -403,6 +417,7 @@ export function CrmAgendaPage({ dataset, role: _role, nav }: Props) {
       descricao: "",
       clienteId: null,
       casoId: null,
+      leadId: null,
       status: "confirmado",
     })
 
@@ -419,6 +434,7 @@ export function CrmAgendaPage({ dataset, role: _role, nav }: Props) {
     responsavelId: f.responsavelId,
     clienteId: f.clienteId,
     casoId: f.casoId,
+    leadId: f.leadId,
   })
 
   const saveEvt = async (f: EvtForm) => {
@@ -854,6 +870,7 @@ export function CrmAgendaPage({ dataset, role: _role, nav }: Props) {
           form={modal}
           dataset={dataset}
           socios={data.socios}
+          leads={data.leads}
           onClose={() => setModal(null)}
           onSave={saveEvt}
           onDelete={modal.id != null ? () => removeEvt(modal.id as number) : undefined}

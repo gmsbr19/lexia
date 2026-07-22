@@ -2,8 +2,11 @@
 // Contrato: NUNCA lançam para o chamador (uma falha de notificação jamais quebra
 // a mutation). Cada função tem try/catch total — chame-as com `void`, sem await.
 // Resolução de destinatários reusa recipients.ts; a escrita/emoção via service.ts.
+import { prisma } from "@/lib/db"
 import { log } from "@/lib/log"
 import { avisarGestoresConclusao, getNotificacoesConfig } from "@/lib/settings"
+import { destinatariosComentario, parseMencoes } from "@/lib/tarefas/comentario-core"
+import { comentarioEmailHtml, msgComentarioTarefa } from "./comentario-msg"
 import { getPrefs, querConclusoesEquipe } from "./preferencias"
 import { emailDoUsuario, gestorEmails, nomePorEmail } from "./recipients"
 import { type CriarNotificacaoInput, criarNotificacao } from "./service"
@@ -106,6 +109,72 @@ export async function notificarTarefaConcluida(p: {
   }
 }
 
+// ── Comentários de tarefa ─────────────────────────────────────────────────────
+/**
+ * Novo comentário numa tarefa → avisa os ENVOLVIDOS (responsável + criador + quem
+ * já comentou) e os MENCIONADOS (@fulano / @todos). Nunca o autor; participante
+ * que também foi mencionado recebe uma vez só (dedup por Set no builder puro). O
+ * e-mail leva o corpo real do comentário (via o mesmo caminho de e-mail do
+ * criarNotificacao, sem envio duplo); o in-app leva a linha "Fulano comentou/
+ * mencionou você em …".
+ */
+export async function notificarComentarioTarefa(p: {
+  tarefaId: number
+  titulo: string
+  conteudo: string
+  autorId: number
+  responsavelId: number | null
+  criadoPorId: number | null
+  actorEmail?: string | null
+}): Promise<void> {
+  try {
+    const anteriores = await prisma.tarefaComentario.findMany({
+      where: { tarefaId: p.tarefaId, excluidoEm: null },
+      select: { autorId: true },
+      distinct: ["autorId"],
+    })
+    const { ids: mencaoIds, todos } = parseMencoes(p.conteudo)
+    const recipientIds = destinatariosComentario({
+      responsavelId: p.responsavelId,
+      criadoPorId: p.criadoPorId,
+      comentaristasAnteriores: anteriores.map((a) => a.autorId),
+      mencaoIds,
+      mencionouTodos: todos,
+      autorId: p.autorId,
+    })
+    if (recipientIds.length === 0) return
+
+    const atorNome = await nomePorEmail(p.actorEmail)
+    // Mapa id→nome dos mencionados p/ resolver os tokens no corpo do e-mail.
+    const mencionados =
+      mencaoIds.length > 0
+        ? await prisma.user.findMany({ where: { id: { in: mencaoIds } }, select: { id: true, nome: true } })
+        : []
+    const nomeMap = new Map(mencionados.map((u) => [u.id, u.nome]))
+    const emailCorpoHtml = comentarioEmailHtml(p.conteudo, (id) => nomeMap.get(id) ?? null)
+
+    const mencaoSet = new Set(mencaoIds)
+    for (const id of recipientIds) {
+      const to = await emailDoUsuario(id)
+      if (!to || (p.actorEmail && to === p.actorEmail)) continue // belt-and-suspenders
+      await entregar({
+        userEmail: to,
+        tipo: "tarefa",
+        modulo: "tarefas",
+        refTipo: "tarefa",
+        refId: p.tarefaId,
+        link: `/tarefas?tarefa=${p.tarefaId}`,
+        mensagem: msgComentarioTarefa({ atorNome, titulo: p.titulo, mencionado: mencaoSet.has(id) }),
+        actorEmail: p.actorEmail ?? null,
+        emailCorpoHtml,
+        emailCtaLabel: "Abrir tarefa",
+      })
+    }
+  } catch (e) {
+    log.error({ err: e instanceof Error ? e.message : String(e) }, "notificarComentarioTarefa falhou")
+  }
+}
+
 // ── Agenda ───────────────────────────────────────────────────────────────────
 export async function notificarEventoAtribuido(p: {
   eventoId: number
@@ -199,6 +268,34 @@ export async function notificarPrazoCumprido(p: {
 }
 
 // ── Comercial ────────────────────────────────────────────────────────────────
+/** Nova oportunidade atribuída (ou reatribuída) a um dono — dispara ao criar/
+ *  editar um Lead com responsavelUserId novo. Não avisa auto-atribuição. */
+export async function notificarOportunidadeAtribuida(p: {
+  leadId: number
+  nome: string
+  responsavelUserId: number
+  actorEmail?: string | null
+}): Promise<void> {
+  try {
+    const to = await emailDoUsuario(p.responsavelUserId)
+    if (!to || (p.actorEmail && to === p.actorEmail)) return // não notifica auto-atribuição
+    const atorNome = await nomePorEmail(p.actorEmail)
+    await entregar({
+      userEmail: to,
+      tipo: "lead",
+      modulo: "comercial",
+      refTipo: "lead",
+      refId: p.leadId,
+      mensagem: atorNome
+        ? `${atorNome} atribuiu a oportunidade "${p.nome}" para você`
+        : `Oportunidade atribuída para você: ${p.nome}`,
+      actorEmail: p.actorEmail ?? null,
+    })
+  } catch (e) {
+    log.error({ err: e instanceof Error ? e.message : String(e) }, "notificarOportunidadeAtribuida falhou")
+  }
+}
+
 export async function notificarLeadConvertido(p: {
   leadId: number
   nome: string
@@ -218,6 +315,40 @@ export async function notificarLeadConvertido(p: {
     }))
   } catch (e) {
     log.error({ err: e instanceof Error ? e.message : String(e) }, "notificarLeadConvertido falhou")
+  }
+}
+
+/** Lead marcado como perdido AUTOMATICAMENTE pelas regras de follow-up (3
+ *  toques "sem resposta" consecutivos / 5 "frias" acumuladas — ver
+ *  src/lib/comercial/score.ts avaliarRegrasPerda). Avisa o responsável (que
+ *  pode não ser sócio/admin) + os gestores, dedup por e-mail. Ação de sistema
+ *  (sem ator humano) — ninguém é pulado. */
+export async function notificarLeadPerdido(p: {
+  leadId: number
+  nome: string
+  motivo: string | null
+  responsavelUserId: number | null
+}): Promise<void> {
+  try {
+    const destinos = new Set<string>()
+    const respEmail = await emailDoUsuario(p.responsavelUserId)
+    if (respEmail) destinos.add(respEmail)
+    for (const g of await gestorEmails()) destinos.add(g)
+    const mensagem = p.motivo ? `Lead perdido automaticamente: ${p.nome} (${p.motivo})` : `Lead perdido automaticamente: ${p.nome}`
+    for (const to of destinos) {
+      await entregar({
+        userEmail: to,
+        tipo: "lead",
+        modulo: "comercial",
+        refTipo: "lead",
+        refId: p.leadId,
+        mensagem,
+        prioridade: "normal",
+        actorEmail: null,
+      })
+    }
+  } catch (e) {
+    log.error({ err: e instanceof Error ? e.message : String(e) }, "notificarLeadPerdido falhou")
   }
 }
 

@@ -38,6 +38,15 @@ export async function userIdPorEmail(email: string | null | undefined): Promise<
   return u?.id ?? null
 }
 
+/** Usuário (id + papel) por e-mail — p/ o check de papel na exclusão de comentário. */
+export async function usuarioPorEmail(
+  email: string | null | undefined,
+): Promise<{ id: number; role: string } | null> {
+  if (!email) return null
+  const u = await prisma.user.findUnique({ where: { email }, select: { id: true, role: true } })
+  return u ?? null
+}
+
 /** Nome de um usuário por e-mail (p/ nomear o ator na mensagem), ou null. */
 export async function nomePorEmail(email: string | null | undefined): Promise<string | null> {
   if (!email) return null

@@ -211,6 +211,7 @@ export interface ClienteRow {
   cidade: string | null
   uf: string | null
   numCasos: number
+  origem: string | null
 }
 
 export interface HonorarioRow {

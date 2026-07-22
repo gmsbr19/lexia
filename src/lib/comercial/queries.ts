@@ -5,14 +5,16 @@
 // modules reconcile. SERVER ONLY (imports prisma) — never import from a
 // "use client" module.
 import { Prisma } from "@prisma/client"
+import { parseSinais } from "@/lib/comercial/score"
 import { prisma } from "@/lib/db"
 import { normalizar } from "@/lib/text"
+import { getPipelineConfig } from "@/lib/settings"
+import { getUsuariosAtivos } from "@/lib/users/queries"
 import { valorContratadoPorLead, somaValorContratado } from "./valor"
+import { desempenhoPorDono, forecastPonderado, relatorioAtividades, type DonoDesempenho, type Forecast, type RelatorioAtividades } from "./analytics"
 import { currentMes, periodRange, periodScope, shiftPeriod } from "@/lib/finance/periodo"
-import { getCasoOptions, getClienteOptions, getContasOptions } from "@/lib/finance/queries"
+import { getContasOptions } from "@/lib/finance/queries"
 import {
-  ETAPA_LABEL,
-  FUNIL_ETAPAS,
   MARKETING_CATEGORIA_ASTREA_ID,
   ORIGEM_LABEL,
   PLATAFORMA_LABEL,
@@ -20,7 +22,9 @@ import {
   type CampanhaRow,
   type CampanhaStatus,
   type CmDataset,
+  type CmDatasetAtividade,
   type CmDatasetCampaign,
+  type CmDatasetEvento,
   type CmDatasetGasto,
   type CmDatasetLead,
   type ComercialKpis,
@@ -43,7 +47,6 @@ const monthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).pad
 function inWindow(d: Date | null | undefined, start: Date, end: Date): boolean {
   return d != null && d >= start && d < end
 }
-const FUNIL_RANK: Record<string, number> = { novo: 0, contato: 1, qualificado: 2, proposta: 3, ganho: 4 }
 
 function plataformaToOrigem(p: string | null | undefined): LeadOrigem {
   return p === "google_ads" ? "google_ads" : p === "meta_ads" ? "meta_ads" : "outro"
@@ -177,30 +180,50 @@ export async function getComercialKpis(mes?: string, periodo: Periodo = "mes"): 
 }
 
 // ── funil (cohort of leads that ENTERED in the period) ───────────────────────
+// Open stages come from the configurable pipeline (AppSetting "comercial.pipeline",
+// admin/sócio-editable) in their configured order; 'ganho' is always the final
+// stage (a fixed terminal — see settings.ts RESERVED_ETAPAS). 'perdido' is
+// excluded from the funnel bars (handled separately as loss), same as before.
 export async function getFunil(mes?: string, periodo: Periodo = "mes"): Promise<FunilEtapa[]> {
   const { start, end } = periodRange(mes ?? currentMes(), periodo)
-  const leads = await prisma.lead.findMany({
-    where: { dataEntrada: { gte: start, lt: end } },
-    select: { etapa: true, valorEstimadoCents: true, lancamento: { select: { valorCents: true } } },
-  })
+  const [leads, pipeline] = await Promise.all([
+    prisma.lead.findMany({
+      where: { dataEntrada: { gte: start, lt: end } },
+      select: { etapa: true, valorEstimadoCents: true, lancamento: { select: { valorCents: true } } },
+    }),
+    getPipelineConfig(),
+  ])
+  const etapas: { key: LeadEtapa; label: string }[] = [
+    ...pipeline.stages.map((s) => ({ key: s.key, label: s.nome })),
+    { key: "ganho", label: "Ganho" },
+  ]
+  const rank = new Map(etapas.map((e, i) => [e.key, i]))
+  // A lead's etapa can be a key an admin later REMOVED from the pipeline (the
+  // settings UI explicitly promises existing oportunidades "keep the key,
+  // don't disappear" — see CrmSettings PipelineSection.removeStage). Treat an
+  // unrecognized key as "reached every open stage" (closer to truth than 0 —
+  // it was genuinely progressing, we just lost the exact bucket), but never as
+  // far as 'ganho' (we know for a fact it isn't literally that key).
+  const unknownRank = Math.max(0, etapas.length - 2)
   const top = leads.length
   // reached[i]: leads that got at least to funnel stage i. Everyone "entered"
   // (i=0, incl. perdidos); for later stages, count non-lost leads ranked ≥ i.
-  const counts = FUNIL_ETAPAS.map((etapa, i) => {
+  const counts = etapas.map((e, i) => {
     const reached = leads.filter((l) => {
       if (i === 0) return true
       if (l.etapa === "perdido") return false
-      return (FUNIL_RANK[l.etapa] ?? 0) >= i
+      return (rank.has(l.etapa) ? rank.get(l.etapa)! : unknownRank) >= i
     })
     return {
-      etapa,
+      etapa: e.key,
+      label: e.label,
       count: reached.length,
       valorCents: reached.reduce((a, l) => a + wonValue(l), 0),
     }
   })
   return counts.map((c, i): FunilEtapa => ({
     etapa: c.etapa,
-    label: ETAPA_LABEL[c.etapa],
+    label: c.label,
     count: c.count,
     valorCents: c.valorCents,
     pctDoTopo: top > 0 ? (c.count / top) * 100 : 0,
@@ -348,10 +371,16 @@ export async function getLeads(mes?: string, periodo: Periodo = "mes", filters: 
       dataEntrada: true,
       dataConversao: true,
       motivoPerda: true,
+      motivoPerdaCategoria: true,
       clienteId: true,
       casoId: true,
+      responsavelUserId: true,
+      proximaAcaoEm: true,
+      proximaAcaoNota: true,
+      temperatura: true,
       campanha: { select: { nome: true } },
       cliente: { select: { nome: true } },
+      responsavelUser: { select: { nome: true } },
       lancamento: { select: { valorCents: true } },
     },
   })
@@ -370,9 +399,15 @@ export async function getLeads(mes?: string, periodo: Periodo = "mes", filters: 
     dataEntrada: iso(r.dataEntrada),
     dataConversao: iso(r.dataConversao),
     motivoPerda: r.motivoPerda,
+    motivoPerdaCategoria: r.motivoPerdaCategoria,
     clienteId: r.clienteId,
     cliente: r.cliente?.nome ?? null,
     casoId: r.casoId,
+    responsavelUserId: r.responsavelUserId,
+    responsavel: r.responsavelUser?.nome ?? null,
+    proximaAcaoEm: iso(r.proximaAcaoEm),
+    proximaAcaoNota: r.proximaAcaoNota,
+    temperatura: r.temperatura,
   }))
 
   const q = filters.q?.trim().toLowerCase()
@@ -441,16 +476,107 @@ export async function getExportBundle(mes?: string, periodo: Periodo = "mes"): P
 // REST routes then router.refresh() re-runs this.
 const isoDate = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : null)
 
+// ── Análise (Fase 4): desempenho por dono · forecast ponderado · atividades ────
+
+/** Per-owner performance for the period (entry cohort): leads, open, won,
+ *  conversion rate, contracted value and average ticket. Contracted value uses
+ *  the same per-caso deduped real revenue as the rest of the module. */
+export async function getDesempenhoDonos(mes?: string, periodo: Periodo = "mes"): Promise<DonoDesempenho[]> {
+  const { start, end } = periodRange(mes ?? currentMes(), periodo)
+  const [leads, usuarios] = await Promise.all([
+    prisma.lead.findMany({
+      where: { dataEntrada: { gte: start, lt: end } },
+      select: {
+        id: true,
+        responsavelUserId: true,
+        etapa: true,
+        casoId: true,
+        dataConversao: true,
+        valorEstimadoCents: true,
+        caso: { select: casoRevenueInclude },
+        lancamento: { select: { valorCents: true } },
+      },
+    }),
+    getUsuariosAtivos(),
+  ])
+  const valorMap = valorContratadoPorLead(
+    leads
+      .filter((l) => l.etapa === "ganho")
+      .map((l) => ({
+        id: l.id,
+        casoId: l.casoId,
+        conv: l.dataConversao?.getTime() ?? 0,
+        honorarioCents: l.lancamento?.valorCents ?? 0,
+        casoRevenueCents: casoRevenueCents(l.caso),
+        estimadoCents: l.valorEstimadoCents ?? 0,
+      })),
+  )
+  const nomeMap = new Map(usuarios.map((u) => [u.id, u.nome]))
+  return desempenhoPorDono(
+    leads.map((l) => ({
+      responsavelUserId: l.responsavelUserId,
+      etapa: l.etapa,
+      valorContratadoCents: l.etapa === "ganho" ? valorMap.get(l.id) ?? 0 : null,
+    })),
+    (id) => nomeMap.get(id) ?? `usuário #${id}`,
+  )
+}
+
+/** Weighted pipeline forecast: expected value of the OPEN pipeline (valor
+ *  estimado × probabilidade da etapa). Snapshot of the current open funnel — not
+ *  period-scoped (ganho/perdido são liquidados e ficam de fora). */
+export async function getForecast(): Promise<Forecast> {
+  const [leads, cfg] = await Promise.all([
+    prisma.lead.findMany({
+      where: { etapa: { notIn: ["ganho", "perdido"] } },
+      select: { etapa: true, valorEstimadoCents: true },
+    }),
+    getPipelineConfig(),
+  ])
+  return forecastPonderado(
+    leads.map((l) => ({ etapa: l.etapa, valorEstimadoCents: l.valorEstimadoCents ?? 0 })),
+    cfg.stages,
+  )
+}
+
+/** Activity report for the period: counts by type and by author. Metadata only
+ *  (tipo/autorId) — descrição/título are PII and never read here. */
+export async function getRelatorioAtividades(mes?: string, periodo: Periodo = "mes"): Promise<RelatorioAtividades> {
+  const { start, end } = periodRange(mes ?? currentMes(), periodo)
+  const [atividades, usuarios] = await Promise.all([
+    prisma.oportunidadeAtividade.findMany({ where: { ocorreuEm: { gte: start, lt: end } }, select: { tipo: true, autorId: true } }),
+    getUsuariosAtivos(),
+  ])
+  const nomeMap = new Map(usuarios.map((u) => [u.id, u.nome]))
+  return relatorioAtividades(
+    atividades.map((a) => ({ tipo: a.tipo, autorId: a.autorId })),
+    (id) => nomeMap.get(id) ?? `usuário #${id}`,
+  )
+}
+
 export async function getComercialDataset(): Promise<CmDataset> {
   const marketingIds = await marketingCategoriaIds()
   const spendOr: Prisma.LancamentoWhereInput[] = [{ campanhaId: { not: null } }]
   if (marketingIds.length) spendOr.push({ categoriaId: { in: marketingIds } })
 
-  const [campanhas, leads, gastos, contas, clientes, casos] = await Promise.all([
+  // Activity horizon: full history for leads still OPEN (accurate scores);
+  // capped to the last 24 months for leads that closed further back than
+  // that (the Visão report only covers 24 months anyway) — bounds the
+  // query's growth as OportunidadeAtividade accumulates years of history,
+  // instead of scanning every row unconditionally.
+  const atividadeCutoff = new Date()
+  atividadeCutoff.setMonth(atividadeCutoff.getMonth() - 24)
+
+  const t0 = process.env.NODE_ENV !== "production" ? performance.now() : 0
+  const [campanhas, leads, ganhos, gastos, contas, usuarios, atividades, eventos] = await Promise.all([
     prisma.campanha.findMany({
       orderBy: [{ ativo: "desc" }, { nome: "asc" }],
       select: { id: true, plataforma: true, nome: true, objetivo: true, status: true, dataInicio: true, dataFim: true, externalId: true, area: true },
     }),
+    // No caso.honorarios/lancamentos join here — that revenue join only ever
+    // feeds valorContratadoPorLead, which only consumes WON leads (~5 of 420
+    // in a real office); split into the dedicated `ganhos` query below so the
+    // other ~98% of leads skip the heavy nested select entirely.
     prisma.lead.findMany({
       orderBy: { dataEntrada: "desc" },
       select: {
@@ -464,11 +590,34 @@ export async function getComercialDataset(): Promise<CmDataset> {
         dataEntrada: true,
         dataConversao: true,
         motivoPerda: true,
+        motivoPerdaCategoria: true,
         area: true,
         casoId: true,
+        clienteId: true,
+        responsavelUserId: true,
+        proximaAcaoEm: true,
+        proximaAcaoNota: true,
+        temperatura: true,
+        potencialFinanceiro: true,
+        urgenciaNivel: true,
+        poderDecisao: true,
+        jurisdicao: true,
+        viabilidade: true,
+        contratoEnviadoEm: true,
+        perdidoAutomatico: true,
         cliente: { select: { nome: true } },
-        caso: { select: { titulo: true, ...casoRevenueInclude } },
+        caso: { select: { titulo: true } },
+      },
+    }),
+    prisma.lead.findMany({
+      where: { etapa: "ganho" },
+      select: {
+        id: true,
+        casoId: true,
+        dataConversao: true,
+        valorEstimadoCents: true,
         lancamento: { select: { valorCents: true } },
+        caso: { select: casoRevenueInclude },
       },
     }),
     prisma.lancamento.findMany({
@@ -477,21 +626,41 @@ export async function getComercialDataset(): Promise<CmDataset> {
       select: { id: true, campanhaId: true, valorCents: true, dataLancamento: true, dataVencimento: true, descricao: true, conta: { select: { nome: true } } },
     }),
     getContasOptions(),
-    getClienteOptions(),
-    getCasoOptions(),
+    getUsuariosAtivos(),
+    // Metadata only (tipo/resultado/sinais/toqueNumero/autorId/ocorreuEm) —
+    // descrição/título são PII e ficam no detalhe da oportunidade; aqui
+    // alimentam o relatório de atividades E o score de engajamento/follow-up.
+    prisma.oportunidadeAtividade.findMany({
+      where: {
+        OR: [
+          { lead: { etapa: { notIn: ["ganho", "perdido"] } } },
+          { ocorreuEm: { gte: atividadeCutoff } },
+        ],
+      },
+      orderBy: { ocorreuEm: "desc" },
+      select: { leadId: true, tipo: true, resultado: true, sinais: true, toqueNumero: true, autorId: true, ocorreuEm: true },
+    }),
+    // Reuniões da agenda vinculadas a uma oportunidade — checkpoint "reunião
+    // marcada?" do painel de follow-up (sem título/local, não é PII).
+    prisma.evento.findMany({
+      where: { leadId: { not: null }, tipo: "reuniao" },
+      select: { id: true, leadId: true, dataInicio: true, status: true },
+    }),
   ])
 
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`[comercial] getComercialDataset: ${(performance.now() - t0).toFixed(0)}ms · ${leads.length} leads · ${atividades.length} atividades`)
+  }
+
   const valorLeadMap = valorContratadoPorLead(
-    leads
-      .filter((l) => l.etapa === "ganho")
-      .map((l) => ({
-        id: l.id,
-        casoId: l.casoId,
-        conv: l.dataConversao?.getTime() ?? 0,
-        honorarioCents: l.lancamento?.valorCents ?? 0,
-        casoRevenueCents: casoRevenueCents(l.caso),
-        estimadoCents: l.valorEstimadoCents ?? 0,
-      })),
+    ganhos.map((l) => ({
+      id: l.id,
+      casoId: l.casoId,
+      conv: l.dataConversao?.getTime() ?? 0,
+      honorarioCents: l.lancamento?.valorCents ?? 0,
+      casoRevenueCents: casoRevenueCents(l.caso),
+      estimadoCents: l.valorEstimadoCents ?? 0,
+    })),
   )
 
   return {
@@ -521,9 +690,22 @@ export async function getComercialDataset(): Promise<CmDataset> {
       dataEntrada: isoDate(l.dataEntrada),
       dataConv: isoDate(l.dataConversao),
       cliente: l.cliente?.nome ?? null,
+      clienteId: l.clienteId,
       caso: l.caso?.titulo ?? null,
       motivoPerda: l.motivoPerda,
+      motivoPerdaCategoria: l.motivoPerdaCategoria,
       area: l.area,
+      responsavelUserId: l.responsavelUserId,
+      proximaAcaoEm: isoDate(l.proximaAcaoEm),
+      proximaAcaoNota: l.proximaAcaoNota,
+      temperatura: l.temperatura,
+      potencialFinanceiro: l.potencialFinanceiro,
+      urgenciaNivel: l.urgenciaNivel,
+      poderDecisao: l.poderDecisao,
+      jurisdicao: l.jurisdicao,
+      viabilidade: l.viabilidade,
+      contratoEnviadoEm: isoDate(l.contratoEnviadoEm),
+      perdidoAutomatico: l.perdidoAutomatico,
     })),
     gastos: gastos.map((g): CmDatasetGasto => ({
       id: g.id,
@@ -536,8 +718,19 @@ export async function getComercialDataset(): Promise<CmDataset> {
       descricao: g.descricao,
     })),
     contas: contas.map((c) => ({ id: c.id, nome: c.nome })),
-    clientes: clientes.map((c) => ({ id: c.id, nome: c.nome })),
-    casos: casos.map((c) => c.nome),
+    usuarios: usuarios.map((u) => ({ id: u.id, nome: u.nome })),
+    atividades: atividades.map((a): CmDatasetAtividade => ({
+      leadId: a.leadId,
+      tipo: a.tipo,
+      resultado: a.resultado,
+      sinais: parseSinais(a.sinais),
+      toqueNumero: a.toqueNumero,
+      autorId: a.autorId,
+      ocorreuEm: isoDate(a.ocorreuEm),
+    })),
+    eventos: eventos
+      .filter((e): e is typeof e & { leadId: number } => e.leadId != null)
+      .map((e): CmDatasetEvento => ({ id: e.id, leadId: e.leadId, dataInicio: e.dataInicio.toISOString(), status: e.status })),
   }
 }
 

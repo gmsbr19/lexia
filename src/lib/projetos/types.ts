@@ -74,9 +74,19 @@ export interface ProjetoDetail extends ProjetoView {
   tarefaIds: number[]
 }
 
+/** Seção personalizada de um projeto (coluna do quadro + grupo da lista). */
+export interface SecaoView {
+  id: number
+  projetoId: number
+  nome: string
+  cor: string | null
+  ordem: number
+}
+
 /** Dataset powering the Projetos workspace (rail + canvas). */
 export interface ProjetosDataset {
   projetos: ProjetoView[]
+  secoes: SecaoView[] // chapado (todas as seções de todos os projetos); filtra por projetoId no cliente
   socios: TeamMember[]
   casos: { id: number; nome: string }[]
   clientes: { id: number; nome: string }[]
@@ -94,6 +104,13 @@ export interface TemplateItemView {
   dor: string[]
   dod: string[]
   ordem: number
+  secaoOrdem: number | null // índice `ordem` da seção-modelo (null = sem seção)
+}
+/** Seção-modelo de um template (vira uma ProjetoSecao real na instanciação). */
+export interface TemplateSecaoView {
+  nome: string
+  cor: string | null
+  ordem: number
 }
 export interface TemplateView {
   id: number
@@ -105,6 +122,7 @@ export interface TemplateView {
   ativo: boolean
   usos: number // nº de projetos instanciados a partir deste template
   itens: TemplateItemView[]
+  secoes: TemplateSecaoView[]
 }
 
 // ── productivity dashboard (visão de equipe) ──

@@ -13,12 +13,16 @@ import type {
   ContratoDetail,
   DocumentoRow,
   EscritorioConfig,
+  FollowupConfig,
   HonorarioDetail,
   ImportacaoInfo,
   LexiaConversaDetail,
   LexiaConversaRow,
   ModulosConfig,
+  MotivosPerdaConfig,
   NotificacoesConfig,
+  PipelineConfig,
+  ScoringConfig,
   SearchResults,
   UserRow,
 } from "./crm-types"
@@ -114,6 +118,14 @@ export const getModulosConfig = () => get<ModulosConfig>(`/api/settings/modulos`
 export const putModulosConfig = (body: ModulosConfig) => mut(`/api/settings/modulos`, "PUT", body)
 export const getNotificacoesConfig = () => get<NotificacoesConfig>(`/api/settings/notificacoes`)
 export const putNotificacoesConfig = (body: NotificacoesConfig) => mut(`/api/settings/notificacoes`, "PUT", body)
+export const getPipelineConfig = () => get<PipelineConfig>(`/api/comercial/pipeline`)
+export const putPipelineConfig = (body: PipelineConfig) => mut(`/api/comercial/pipeline`, "PUT", body)
+export const getMotivosConfig = () => get<MotivosPerdaConfig>(`/api/comercial/motivos`)
+export const putMotivosConfig = (body: MotivosPerdaConfig) => mut(`/api/comercial/motivos`, "PUT", body)
+export const getScoringConfig = () => get<ScoringConfig>(`/api/comercial/scoring`)
+export const putScoringConfig = (body: ScoringConfig) => mut(`/api/comercial/scoring`, "PUT", body)
+export const getFollowupConfig = () => get<FollowupConfig>(`/api/comercial/followup`)
+export const putFollowupConfig = (body: FollowupConfig) => mut(`/api/comercial/followup`, "PUT", body)
 export const getImportacao = () => get<ImportacaoInfo>(`/api/settings/importacao`)
 export const getConsumo = (periodo: ConsumoPeriodo, force = false) =>
   get<ConsumoData>(`/api/consumo?periodo=${periodo}${force ? "&force=1" : ""}`)

@@ -18,7 +18,9 @@ export function initials(nome: string | null | undefined): string {
   return `${first}. ${last}.`
 }
 
-/** Server export bundle (API /api/comercial/export) with lead PII removed. */
+/** Server export bundle (API /api/comercial/export) with lead PII removed.
+ *  proximaAcaoNota is free text that can carry PII about the person (Fase 1
+ *  addition) — omitted from exports same as telefone/email. */
 export function redactBundle(bundle: ExportBundle): ExportBundle {
   return {
     ...bundle,
@@ -28,6 +30,7 @@ export function redactBundle(bundle: ExportBundle): ExportBundle {
       email: null,
       telefone: null,
       cliente: l.cliente ? initials(l.cliente) : l.cliente,
+      proximaAcaoNota: null,
     })),
   }
 }
@@ -39,5 +42,6 @@ export function cmRedactLeads(leads: CmDatasetLead[]): CmDatasetLead[] {
     nome: initials(l.nome),
     contato: null,
     cliente: l.cliente ? initials(l.cliente) : l.cliente,
+    proximaAcaoNota: null,
   }))
 }

@@ -14,9 +14,16 @@ export const MARKETING_CATEGORIA_ASTREA_ID = "app-cat-marketing"
 export type Plataforma = "google_ads" | "meta_ads" | "outro"
 export type CampanhaStatus = "ativa" | "pausada" | "encerrada"
 export type LeadOrigem = "google_ads" | "meta_ads" | "indicacao" | "organico" | "outro"
-export type LeadEtapa = "novo" | "contato" | "qualificado" | "proposta" | "ganho" | "perdido"
+// Open stages are configurable (AppSetting "comercial.pipeline", see
+// src/lib/settings.ts pipelineSchema) — a free-form key, not a fixed union.
+// "ganho"/"perdido" are the only two RESERVED terminal values (they carry
+// dataConversao/valorContratado/notification logic) and are always valid.
+export type LeadEtapa = string
 
-// Canonical funnel order (terminal "perdido" handled separately as lost).
+// Default/fallback pipeline (used when no AppSetting is stored yet, and as the
+// seed for the admin editor). The real, possibly-customized order lives in
+// AppSetting "comercial.pipeline" — read it via getPipelineConfig() server-side
+// or usePipelineStore() client-side instead of this constant when available.
 export const FUNIL_ETAPAS: LeadEtapa[] = ["novo", "contato", "qualificado", "proposta", "ganho"]
 export const LEAD_ETAPAS: LeadEtapa[] = [...FUNIL_ETAPAS, "perdido"]
 
@@ -130,9 +137,15 @@ export interface LeadRow {
   dataEntrada: string | null // ISO
   dataConversao: string | null // ISO
   motivoPerda: string | null
+  motivoPerdaCategoria: string | null
   clienteId: number | null
   cliente: string | null
   casoId: number | null
+  responsavelUserId: number | null
+  responsavel: string | null // nome do dono
+  proximaAcaoEm: string | null // ISO date
+  proximaAcaoNota: string | null
+  temperatura: string | null // 'quente' | 'morno' | 'frio'
 }
 
 export interface LeadFilters {
@@ -184,9 +197,24 @@ export interface CmDatasetLead {
   dataEntrada: string | null // ISO date
   dataConv: string | null // ISO date
   cliente: string | null
+  clienteId: number | null
   caso: string | null
   motivoPerda: string | null
+  motivoPerdaCategoria: string | null
   area: string | null
+  responsavelUserId: number | null
+  proximaAcaoEm: string | null // ISO date
+  proximaAcaoNota: string | null
+  temperatura: string | null // 'quente' | 'morno' | 'frio'
+  // ── perfil (Fit score) — chaves de AppSetting "comercial.scoring"
+  potencialFinanceiro: string | null
+  urgenciaNivel: string | null
+  poderDecisao: string | null
+  jurisdicao: string | null
+  viabilidade: string | null
+  // ── checkpoints de follow-up
+  contratoEnviadoEm: string | null // ISO date
+  perdidoAutomatico: boolean
 }
 export interface CmDatasetGasto {
   id: number
@@ -204,11 +232,37 @@ export interface CmClienteOption {
   id: number
   nome: string
 }
+export interface CmUsuarioOption {
+  id: number
+  nome: string
+}
+// Activity timeline metadata (Fase 4 · relatório de atividades; Fase 5 ·
+// score de engajamento/follow-up). Metadata only — título/descrição are PII
+// and live in the opportunity detail, never here; `resultado`/`sinais`/
+// `toqueNumero` são classificações/chaves (não PII).
+export interface CmDatasetAtividade {
+  leadId: number
+  tipo: string
+  resultado: string | null // 'sem_resposta' | 'fria' | 'positiva' | null (legado/não classificado)
+  sinais: string[]
+  toqueNumero: number | null
+  autorId: number | null
+  ocorreuEm: string | null // ISO date
+}
+// Reuniões da agenda vinculadas a uma oportunidade — só o necessário para o
+// checkpoint "reunião marcada?" do painel de follow-up (sem título/local).
+export interface CmDatasetEvento {
+  id: number
+  leadId: number
+  dataInicio: string // ISO datetime
+  status: string // 'confirmado' | 'cancelado'
+}
 export interface CmDataset {
   campaigns: CmDatasetCampaign[]
   leads: CmDatasetLead[]
   gastos: CmDatasetGasto[]
   contas: CmContaOption[]
-  clientes: CmClienteOption[]
-  casos: string[]
+  usuarios: CmUsuarioOption[]
+  atividades: CmDatasetAtividade[]
+  eventos: CmDatasetEvento[]
 }

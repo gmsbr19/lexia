@@ -3,6 +3,11 @@
 // GET handlers use `guardRequest()` as a one-liner. SERVER ONLY.
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
+import { ForbiddenError } from "@/lib/errors"
+
+// Re-exported so existing `@/lib/auth/session` importers keep working; the class
+// itself now lives in @/lib/errors (next-auth-free) — see the note there.
+export { ForbiddenError }
 
 // 'admin' is the implicit superuser (passes every role check). 'socio' and
 // 'financeiro' see all office data; 'advogado' is scoped to owned/assigned rows
@@ -14,9 +19,6 @@ export type SessionUser = { email: string; nome: string; role: string }
 
 /** Thrown when no valid session exists; `runMutation` maps it to a 401. */
 export class AuthError extends Error {}
-
-/** Thrown when the session lacks the required role; `runMutation` maps it to a 403. */
-export class ForbiddenError extends Error {}
 
 export const FORBIDDEN_MESSAGE = "Sem permissão para esta ação"
 
