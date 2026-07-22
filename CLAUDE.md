@@ -145,6 +145,741 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **Comercial v2 — redesign COMPLETO das abas Follow-up + Leads + Campanhas a partir do handoff do Claude
+  Design "LexIA - Comercial v2" (lexia2.zip → src/com2/cx-*.jsx, 11 arquivos) (this session, VERIFIED tsc 0,
+  633/633 testes, eslint sem achados novos — só o warning pré-existente `big` do cm-kit —, build de produção
+  limpo, servidor parado→buildado→religado, health 200; NO migration)** (memory `project_comercial_crm`).
+  Pedido: o usuário achou a tela de Follow-up (build da sessão anterior) "muitíssimo feia" → gerei um prompt
+  de inventário funcional p/ o Claude Design (sem orientação visual) cobrindo Follow-up+Leads+Campanhas → o
+  design voltou como "Comercial v2" e foi portado com fidelidade absoluta, preservando TODA a fiação real
+  (REST/optimistic/scores derivados do score.ts). **Arquivos novos:** [cx-kit.tsx](src/components/comercial/cx-kit.tsx)
+  (primitivos v2 tipados: CxModal centrado com ícone, CxMenu/MenuItem, CxSegmented, CxQualBadge — Estado A/B/C/D
+  → Quente/Morno/Frio/Desqualificado com ícones flame/sunrise/wifiOff/minusCircle —, CxMeter Fit dourado/Eng
+  azul, CxAvatar com cor determinística por id, CxPhone com copiar, CxStagePill via usePipelineStore,
+  CxPeriodBar com botão "Atual", CxRadioList, CxTh/CxNum/CxEmpty/CxField/CxInput/CxSelect/CxMoneyInput,
+  helpers cxRelDay/cxDaysTo/cxCopy, metas CX_CANAIS/CX_RESULTADOS/CX_ATIV_TIPOS/CX_TEMPERATURAS) e
+  [cx-leads-model.ts](src/components/comercial/cx-leads-model.ts) (núcleo PURO do grid v2: CX_COLS 16 colunas
+  c/ vis default, operadores por tipo, cxEvalRule/cxApplyRules E/OU, cxColValue — money em REAIS p/ filtro —,
+  cxEnumValues dinâmico, CSV ; da visão). **Reescritos:** [CmFollowUp.tsx](src/components/comercial/tabs/CmFollowUp.tsx)
+  (cards ricos rankeados #n + prioridade dourada, barra lateral 4px na cor da etapa — vermelha se vencido —,
+  chips Reunião marcada/Contrato enviado, medidores Fit/Eng, faixa "Próximo toque" com dia relativo + canais +
+  selo VENCIDO, **quick actions CONTEXTUAIS** — Compareceu/No-show só com reunião marcada; Respondeu proposta
+  só em etapa proposta/contrato enviado —, toggle de contrato, seção recolhível "Perdidos automaticamente",
+  filtros responsável+`Sem responsável`/qualificação/só-vencidos com contagem); [CmLeads.tsx](src/components/comercial/tabs/CmLeads.tsx)
+  (grid v2 SOB MEDIDA no lugar do DataGrid genérico: FilterBuilder popover multi-regra E/OU, Agrupar,
+  seletor de Colunas c/ fixas, seleção tri-state + CxBulkBar dourada — etapa/responsável/temperatura/área/
+  exportar —, sort por cabeçalho, grupos com contagem+soma estimada, skeleton 650ms, menu Importar com 2
+  fluxos descritos, **persistência da view em localStorage `lexia-cx-leadsview-v1`** como no design — o
+  useCrmSavedView/DataGrid saem desta tela; injectFilter vira ajuste-durante-render, sem efeito);
+  [CmKanban.tsx](src/components/comercial/CmKanban.tsx) (colunas sticky com pill colorida+contagem+soma,
+  cards com temp chip + qual badge + telefone copiável + campanha + avatar/valor, placeholders tracejados,
+  drop em Ganho/Perdido abre os fluxos); [CmModals.tsx](src/components/comercial/CmModals.tsx) (TODOS os
+  modais no CxModal v2: **CmLeadModal 720px** com abas "Dados & Perfil"/"Histórico · n" no editar, perfil de
+  qualificação em LINHAS de botões por critério (config real do scoring), preview de Fit no rodapé E na
+  seção, WhatsApp wa.me/55 quando ≥10 dígitos, aviso warn ao escolher etapa Ganho; **CxHistoryPanel** com
+  quick-add tipo+resultado+texto e timeline com badges toque/resultado/sinais + excluir; **CmToqueModal**
+  com canal em chips, nº sugerido, resultado OBRIGATÓRIO em 3 cartões com estado de erro, sinais em pílulas
+  da config, nota, box explicativo; Converter/Mesclar (busca+Trocar)/Perdido (CxRadioList crit)/Campanha
+  (cards de plataforma com check)/Gasto/Importar Genions/Importar Meta com tiles de resumo CxImportSummary);
+  [CmImportMap.tsx](src/components/comercial/CmImportMap.tsx) (grade de mapeamento 3 colunas Coluna/Exemplo/
+  Campo + validação "Mapeie a coluna do nome" no rodapé + tiles de resumo);
+  [CmCampanhas.tsx](src/components/comercial/tabs/CmCampanhas.tsx) (cabeçalho com h1+subtítulo com
+  investido/ROAS p/ verFin, CxPeriodBar DENTRO da tela, filtros segmented status/plataforma + área, tabela
+  com CxPlatformMark/CxStatusChip pulse, rodapé de totais agora também com ROI agregado, nota "valores
+  ocultos p/ seu perfil" quando !verFin); [ComercialApp.tsx](src/components/comercial/ComercialApp.tsx)
+  (ordem de abas do design: Visão·Funil·**Follow-up**·Leads·Campanhas·Exportar com badges vencidos/abertos
+  via cmLeadScores; CmPeriodBar só em Visão/Funil/Exportar; banner da aba Leads removido; quick actions
+  do follow-up com semântica do design — compareceu=positiva+sinal, noshow=sem_resposta+no_show,
+  proposta=positiva+respondeu_proposta; LastImport ganhou fonte+campanhas). [cm-icons.tsx](src/components/comercial/cm-icons.tsx)
+  +23 ícones lucide (calendarClock/fileCheck/thumbs/sunrise/wifiOff/kanban/sliders/layoutGrid/send/repeat/
+  building/eye/trash2/circleDot/link2/list/minus/minusCircle/flame/zap/scale/alertCircle/filter);
+  [cm-theme.css](src/components/comercial/cm-theme.css) ganhou o bloco v2 (.cx-row/.cx-follow-card/
+  .cx-linkname/.cx-kcard/.cx-hist-item/.cx-menu-item/.cx-stagebtn/.cx-copybtn/.cx-pop/.skeleton/.btn-danger);
+  CmTabs alinhado ao v2 (padding 32/altura 46/ativo 600). **Não tocados:** Visão geral/Funil/Exportar (v1),
+  DataGrid genérico (Contatos segue usando), rotas/schemas/score.ts (zero mudança de backend). **Achado a
+  registrar:** a view salva do grid de Leads saiu do server view-prefs (gridId "oportunidades" fica dormente)
+  → localStorage, fiel ao design. **User action:** só visual — `/comercial`: aba Follow-up (cards rankeados,
+  registrar toque, quick actions contextuais, perdidos automáticos), Leads (Tabela: filtros E/OU, agrupar,
+  colunas, lote, CSV; Quadro: arrastar; editor com Perfil+Histórico), Campanhas (período no cabeçalho,
+  totais com ROI). Credenciais dev do §4 seguem obsoletas — logar com o usuário real.
+  **Polish pós-visual (mesma sessão, VERIFIED tsc 0 + eslint limpo + build limpo + servidor religado):**
+  (1) **scrollbars v2** — bloco novo no [cm-theme.css](src/components/comercial/cm-theme.css) escopado ao
+  `.cm-scope`: 6px/8px, trilho transparente, polegar VERTICAL invisível até o hover do contêiner
+  (`*:hover::-webkit-scrollbar-thumb:vertical`), HORIZONTAL sempre visível (tabela/kanban precisam da pista);
+  **WebKit apenas — NUNCA setar `scrollbar-width`/`scrollbar-color` junto: no Chrome ≥121 as props padrão
+  DESLIGAM os pseudo-elementos `::-webkit-scrollbar`** (Firefox recebe fallback fino sempre-visível via
+  `@supports (-moz-appearance:none)`). (2) **glassmorphism padrão do app** nos popups v2: `CxModal` virou
+  `lexGlass` + `glassElevation("0 40px 100px …")` com overlay TRANSPARENTE (padrão do CrmModal/CmModal;
+  saiu o `--overlay`+blur próprio do protótipo) + `useModalGuard()`; dropdowns `CxMenu` viraram
+  `card lexGlassStrong` + `glassElevation("0 12px 28px …")` (padrão dos row-menus do app).
+  **(3) checkbox da tabela de Leads redesenhada** (mesma sessão): `CxCheckbox` ([cx-kit.tsx](src/components/comercial/cx-kit.tsx))
+  deixou de ser `<input>` nativo (`accentColor`) e virou `<button role="checkbox">` nos tokens do app — vazio/
+  transparente por padrão, preenchimento `var(--accent-strong)` + glifo `check`/traço (indeterminate) quando
+  marcada, anel `focus-visible` dourado; **some por padrão e só aparece no hover da linha/cabeçalho OU quando
+  qualquer seleção está ativa na tabela** — classe `.cx-check` nova em [cm-theme.css](src/components/comercial/cm-theme.css)
+  (`opacity:0` → 1 em `.cx-row:hover .cx-check`/`thead th:hover .cx-check`/`.cx-check.on`/`:focus-within`; o
+  `on` é setado pela própria linha/cabeçalho quando `selected || anySel`/`sel.size>0`). Sem mudança de dado —
+  só o control visual (checked/indeterminate/onChange idênticos ao antigo).
+  **(4) Performance: carga e render do módulo Comercial (Leads/Kanban/Follow-up) — plano de 2 fases aplicado
+  integralmente (mesma sessão, VERIFIED tsc 0, 633/633 testes, eslint sem achados novos, build de produção
+  limpo, NO migration).** Sintoma: abrir a aba Leads carregava TODOS os leads (420 no dev.db real) de uma vez
+  e renderizava todas as linhas sem cap, travando o clique. **Fase 1 — render (client, sem tocar servidor/API):**
+  removido o skeleton FALSO de 650ms (`setTimeout`) herdado do protótipo — os dados já estão em memória, pinta
+  instantâneo; busca da tabela de Leads em `useDeferredValue`; **render incremental** nas 3 superfícies — tabela
+  de Leads `PAGE=100` (modo agrupado gasta um **orçamento corrente** entre os grupos em ordem: cabeçalho de
+  grupo sempre mostra contagem/soma CHEIAS, linhas param quando o orçamento acaba; "Mostrar mais (N restantes)"
+  com N derivado de `rows.length − renderizadas`, nunca de `shown` isolado — evita off-by-one no agrupado),
+  Kanban `COL_CAP=30`/coluna (+ "Mostrar mais" por coluna, cabeçalho sempre com a contagem/soma cheia da
+  coluna), Follow-up `FOLLOW_CAP=30` (+ "Mostrar mais"); **invariantes de conjunto cheio preservados**:
+  `filtered`/`sorted` nunca são cortados — só o que é PINTADO tem cap; CSV exporta o conjunto filtrado inteiro;
+  select-all/lote continuam operando sobre TODAS as linhas filtradas (não só as renderizadas). **Memoização** —
+  `CxLeadRow`/`CxKanbanCard`/`CxFollowCard` viraram `React.memo`; callbacks estabilizados com `useCallback`
+  em cascata até [ComercialApp.tsx](src/components/comercial/ComercialApp.tsx) (`openLeadEdit`/`openConverter`/
+  `openPerdido`/`openMesclar`/`openToque`/`onQuick`/`onToggleContrato`/`onReabrir`, + `submitQuick`/
+  `submitContrato`/`submitReabrir`/`refresh` estabilizados — `refresh` depende só de `revalidate`, que é a
+  função module-level estável `revalidateShared` de [useComercialData.ts](src/lib/client/useComercialData.ts));
+  `useOptimisticRows`'s `getId` também virou estável (`getLeadId` com `useCallback([])`) para que `applyLocal`
+  (e por consequência `moveEtapa`/`reopen`) parem de mudar de referência a cada render; `CxKanbanCard` trocou
+  `usuarios.find(...)` por card por um `userMap: Map` construído 1× no `CmKanban`; `CxFollowCard` perdeu as
+  **2 assinaturas zustand POR CARD** (`usePipelineStore`/`useAreasStore`) — hoisted para 1 assinatura no
+  `CmFollowUp`, que resolve `stageColor`/`areaLabel` por linha e passa como string já pronta. **`cmLeadScores`
+  único** — antes computado 3× independentes (ComercialApp p/ badges, CmLeads, CmFollowUp, mesmas deps); agora
+  só o `ComercialApp` computa e passa `scores`+`hoje` como PROPS p/ `CmLeads`/`CmFollowUp` (que perderam suas
+  próprias `useScoringStore`/`cxToday()` locais). **Reset do cap sem `useEffect`** — o eslint `react-hooks/
+  set-state-in-effect` do repo rejeitou `useEffect(() => setShown(PAGE), [deps])`; resolvido com o mesmo padrão
+  já usado no `injectFilter`/`lastNonce` desta tela: comparação de um "último sinal" DURANTE o render (`if
+  (sig.some((v,i) => v !== lastSig[i])) { setLastSig(sig); setShown(PAGE) }`), sem efeito. **Fase 2 — payload
+  do servidor** ([queries.ts](src/lib/comercial/queries.ts) `getComercialDataset`): **(2.1) split da query de
+  leads** — a consulta principal (420 leads) perdeu o join pesado `caso.honorarios[]+lancamentos[]` e o
+  `honorario`; uma 2ª consulta nova busca SÓ `etapa:"ganho"` (~5 leads reais) com esse join, e `valorLeadMap`
+  passou a vir dela — os ~98% dos leads que nunca precisaram da receita do caso não pagam mais o custo do
+  join. **(2.2) `clientes`/`casos` saíram do `CmDataset`** — eram 668 clientes + 138 casos inteiros no payload
+  p/ alimentar só o picker do `CmMergeModal` (`dataset.casos` não tinha NENHUM consumidor — payload morto) e a
+  busca por nome ao mesclar lead↔cliente; `CmMergeModal` agora busca **lazy no mount** via
+  `GET /api/clientes?options=1` (branch novo na [rota existente](src/app/api/clientes/route.ts), devolve
+  `getClienteOptions()` — `{id,nome}[]`, não o `getClientes()` completo com cpfCnpj/_count) com estado de
+  carregando/erro+"Tentar novamente" (o retry fica no onClick, não no efeito — mesma razão do reset-sem-efeito
+  acima). `CmClienteOption` continua existindo em types.ts (só as 2 chaves do dataset saíram). **(2.3) horizonte
+  de 24 meses nas atividades** — `oportunidadeAtividade.findMany` não tinha `where` nenhum (crescimento sem
+  teto); agora traz histórico COMPLETO p/ leads ainda ABERTOS (scores exatos) + só os últimos 24 meses p/ leads
+  fechados há mais tempo (o relatório da Visão já só cobre 24 meses). **(2.4) instrumentação dev opcional** —
+  `performance.now()` em volta do `Promise.all`, `console.log` só fora de produção (contagem de leads/
+  atividades + duração). **Verificado: `npx tsc --noEmit` 0; `npm test` 633/633; eslint sem achados novos nos
+  8 arquivos tocados (incl. os 2 casos de `set-state-in-effect` corrigidos); `npm run build` limpo.** **Sem
+  migração — nenhuma mudança de schema, só shape de query/payload/render. User action:** só visual —
+  `/comercial` → aba Leads: abre instantâneo (sem flash de skeleton), digitar na busca não trava, tabela mostra
+  100 linhas + "Mostrar mais (N restantes)" (agrupar por Etapa/Responsável e conferir que os cabeçalhos mostram
+  a contagem CHEIA do grupo mesmo com linhas escondidas); checkbox das linhas só aparece no hover ou com alguma
+  linha já selecionada; Quadro (Kanban) com 30 cards/coluna + "Mostrar mais"; Follow-up com 30 cards +
+  "Mostrar mais"; menu "⋯" de um lead → "Mesclar com cliente" → modal mostra "Carregando clientes…" e então a
+  busca (não trava mais a tela ao abrir por causa de 668 clientes no payload inicial).
+- **Fix CRÍTICO: app inteiro quebrado ("Algo deu errado" em TODA página, incl. /login) + melhoria das telas
+  de erro (this session, VERIFIED tsc 0, 633/633 testes, eslint sem achados novos, build de produção limpo,
+  verificado no navegador real via `npm start`)** (memory `project_client_server_boundary`). Sintoma
+  reportado pelo usuário logo após a sessão anterior (Score de Leads/Follow-up): tela genérica "Algo deu
+  errado" em toda página, incl. `/login` (bare, sem auth). **Causa raiz:** `src/lib/comercial/scoring/store.ts`
+  ("use client", `useScoringStore`) importava `DEFAULT_SCORING_CONFIG`/`DEFAULT_FOLLOWUP_CONFIG` como **VALOR**
+  de `@/lib/settings` — um módulo SERVER ONLY que importa `@/lib/db` (Prisma) → `env.ts`. Isso arrastava
+  Prisma+validação de env para o bundle do NAVEGADOR (via `UnifiedShell.tsx`, renderizado em toda rota), onde
+  `DATABASE_URL`/`AUTH_SECRET` não existem → `env.ts` lança `"Variáveis de ambiente inválidas ou ausentes"` na
+  avaliação do módulo, no cliente, derrubando a página inteira (confirmado no console do navegador + por um
+  agente Explore independente, que pegou o mesmo diagnóstico). O precedente `usePipelineStore` evitava isso
+  de propósito (só `import type` de settings.ts, sem os DEFAULT_* como valor — fallback inicial `[]`). **Fix:**
+  `DEFAULT_SCORING_CONFIG`/`DEFAULT_FOLLOWUP_CONFIG` MOVIDOS para [score.ts](src/lib/comercial/score.ts) (núcleo
+  puro, zero prisma — já seguro pro cliente); `settings.ts` agora importa+reexporta essas 2 constantes de
+  score.ts (mantém `getScoringConfig`/`getFollowupConfig`/os chamadores de teste que importam de
+  "@/lib/settings" funcionando sem mudança); `scoring/store.ts` passou a importar os valores de
+  `@/lib/comercial/score` (client-safe) e só `import type` de settings.ts. **Regra geral daqui pra frente:**
+  NENHUM módulo alcançável por um componente "use client" pode importar um VALOR (não-tipo) de um arquivo
+  SERVER ONLY (que importe prisma/`@/lib/db`/env.ts) — só `import type`; constantes/defaults que um store
+  client precisa como fallback devem morar num núcleo puro (sem prisma), nunca em settings.ts/queries.ts/etc.
+  **Telas de erro melhoradas** (2º pedido do usuário — deixar o erro claro): [error.tsx](src/app/error.tsx)
+  e [global-error.tsx](src/app/global-error.tsx) ganharam um `<details>` "Detalhes técnicos" (mensagem +
+  digest + stack, monospace, scrollável) + botão "Copiar detalhes" (clipboard) — mantém o texto amigável
+  "Algo deu errado" para o usuário comum, mas quem precisa diagnosticar (admin/dev) não depende mais de achar
+  o terminal certo. Nota: Next.js já redige erros de Server Component em produção para mensagem genérica+digest
+  — isto não muda esse comportamento nem vaza mais do que o runtime já expõe ao cliente; só deixa de ESCONDER
+  o que já estava disponível (`error.message`/`error.stack` de erros client-side, como o que causou este bug,
+  já chegavam completos no boundary mas eram descartados). Corrigido de quebra um `<a href="/">`→`<Link>`
+  pré-existente no error.tsx (achado de lint ao tocar o arquivo). **Verificado:** reproduzido no navegador real
+  (login mostrava só "Algo deu errado"; console tinha o erro de env completo) → corrigido → rebuild → restart
+  → `/login` renderiza normal, console limpo. `npx tsc --noEmit` 0; `npm test` 633/633; eslint limpo;
+  `npm run build` compilou. **Sem migração. User action:** nenhuma — já verificado ponta-a-ponta nesta sessão
+  (servidor de produção reiniciado com o fix, respondendo normalmente). Se uma tela de erro aparecer de novo,
+  abrir "Detalhes técnicos" já mostra a causa sem precisar do terminal do servidor.
+- **Comercial → CRM maduro — Score de Leads configurável (Fit + Engajamento) + Painel de Follow-up (this
+  session, VERIFIED tsc 0, 663/663 testes — 30 novos —, eslint sem achados novos, build de produção limpo,
+  1 migração aditiva JÁ APLICADA + client gerado; servidor de produção parado→migrado→buildado nesta sessão)**
+  (memory to add: `project_comercial_score_followup`). Pedido do usuário: score de leads em 2 dimensões
+  independentes (Fit/Perfil 0-100 configurável define qualificação; Engajamento 0-100 acumulado por evento)
+  + painel de Follow-up inteligente (auto-ordenado por prioridade, cadência progressiva de toques sugerida,
+  checkpoints manuais + "reunião marcada" automático via Agenda, regras automáticas de Perdido). Planejado com
+  3 agentes Explore em paralelo (Agenda/leadId ausente, Lead+atividades+cron existente, padrões reusáveis:
+  DataGrid/AppSetting-config/store zustand/cron dedupeKey) + 1 agente Plan; usuário confirmou 4 decisões antes
+  de codar (aba própria "Follow-up" em vez de 3º modo na grade de Leads; toque registrado SEMPRE sobrescreve
+  `proximaAcaoEm`/`proximaAcaoNota`; resultado do toque OBRIGATÓRIO no modal dedicado — notas avulsas seguem
+  livres; colunas Fit/Eng/Estado também na grade de Leads). **Decisões de arquitetura:** scores são DERIVADOS
+  (nunca persistidos) por um núcleo puro novo [score.ts](src/lib/comercial/score.ts) (sem prisma/React — igual
+  ao padrão de `analytics.ts`) que recalcula a partir do perfil do lead + timeline de atividades a cada leitura,
+  então recalibrar a config repontua tudo retroativamente; "sinais" de engajamento são um mecanismo único
+  (JSON `sinais: string[]` na atividade + os 3 valores reservados `sem_resposta/fria/positiva` derivados do
+  `resultado` classificado do toque); a sugestão de cadência é gravada em `proximaAcaoEm`/`proximaAcaoNota` a
+  cada toque (o cron de follow-up já existente funciona sem mudança); 2 chaves de AppSetting separadas
+  (`comercial.scoring` e `comercial.followup`, espelhando o precedente pipeline/motivos — 2 Salvar
+  independentes); `Evento.leadId` FK aditiva (picker de oportunidade no modal da Agenda) — "reunião marcada?"
+  é derivado (evento confirmado tipo reunião com leadId, futuro), comparecimento é registrado do lado do LEAD
+  (atividade com sinal `compareceu_reuniao`/`no_show`), `Evento.status` intocado; auto-perdido roda SÍNCRONO
+  dentro de `criarAtividade` (imediato) + uma varredura catch-up idempotente no cron `gerarNotificacoes` (cobre
+  mudança de limiar na config), ambos delegando à mesma função `avaliarEAplicarPerdaAutomatica` (nova, em
+  [atividades.ts](src/lib/comercial/atividades.ts)) — chama `marcarPerdido(...,{automatico:true})` + grava uma
+  nota-sistema na timeline + dispara o trigger novo `notificarLeadPerdido` (perda automática nunca notificava
+  antes). **Modelo (migração `20260721195037_comercial_scoring_followup`, ADITIVA):** `Lead` += 5 campos de
+  perfil (`potencialFinanceiro/urgenciaNivel/poderDecisao/jurisdicao/viabilidade`, chaves configuráveis, null=0
+  pontos — não é "pior opção"), `contratoEnviadoEm`(checkbox timestamp), `perdidoAutomatico`(bool);
+  `OportunidadeAtividade` += `toqueNumero`(nº do toque na cadência), `sinais`(JSON string[]); `Evento` +=
+  `leadId`. **Config** ([settings.ts](src/lib/settings.ts)): `scoringSchema`/`DEFAULT_SCORING_CONFIG` (área
+  jurídica principal/secundária/fora + origem + os 5 critérios genéricos do pedido do usuário, cada um com
+  suas opções/pontos exatos da tabela do spec; sinais de engajamento incl. os 3 reservados; limiares
+  fitQualificado=60/engajamentoQuente=50) e `followupSchema`/`DEFAULT_FOLLOWUP_CONFIG` (cadência 7 toques
+  dias 0/1/3/6/10/15/21 com os canais do spec; pesos de prioridade 40/30/30 Fit/Eng/Urgência — `setFollowupConfig`
+  valida soma=100; horizonte de urgência temporal 7 dias; regras de perda 3 sem-resposta consecutivas / 5 frias
+  acumuladas); motivo `desinteresse` acrescentado a `DEFAULT_MOTIVOS_PERDA`. Rotas GET/PUT
+  `/api/comercial/{scoring,followup}` (`runMutation roles:["socio"]`, admin implicit-passes). **Núcleo puro**
+  [score.ts](src/lib/comercial/score.ts): `fitScore`/`engajamentoScore`(clamp 0-100 a cada evento, cronológico)/
+  `estadoLead`(matriz A/B/C/D)/`urgenciaTemporal`(rampa linear até vencido=100)/`prioridadeLead`(média
+  ponderada)/`proximoToque`(sugestão data+canal, adianta p/ hoje se no passado, null se cadência esgotada)/
+  `contarToques`(resiliente a lacunas)/`avaliarRegrasPerda`(streak de sem_resposta quebra com
+  positiva/fria; frias acumulam sempre; resultado texto-livre legado = não classificado)/`parseSinais`.
+  Testes novos [comercial-score.test.ts](tests/comercial-score.test.ts) (30 casos: fit por critério+null+clamp,
+  engajamento acumulado+clamp+legado, fronteiras da matriz, rampa/vencido da urgência, pesos, cadência
+  incl. esgotada, regras de perda incl. reset de streak e limiar exato). **Store** zustand
+  [scoring/store.ts](src/lib/comercial/scoring/store.ts) (`useScoringStore`, espelha `usePipelineStore`,
+  carregado 1× no `UnifiedShell`). **Dataset**: `CmDatasetLead` += os 5 campos de perfil +
+  `contratoEnviadoEm`/`perdidoAutomatico`; `CmDatasetAtividade` += `leadId`/`resultado`/`sinais`/`toqueNumero`
+  (chaves/enum — sem PII, postura LGPD mantida); novo `CmDatasetEvento`+`eventos` no `CmDataset` (reuniões
+  vinculadas, sem título/local). Wrapper cliente `cmLeadScores` em [cm-meta.ts](src/components/comercial/cm-meta.ts)
+  (agrupa atividades/eventos por lead, delega tudo ao score.ts — zero round-trip extra). **UI**: 3 colunas
+  novas (Fit/Eng/Estado, somente-leitura) na grade de Leads
+  ([CmLeads.tsx](src/components/comercial/tabs/CmLeads.tsx)); nova seção **"Score de leads"** em
+  [CrmSettings.tsx](src/components/crm/overlays/CrmSettings.tsx) (padrão `PipelineSection`: estado local +
+  botão Salvar explícito, 2 cards Fit/Follow-up, preview do Fit máximo, preview da soma de pesos); fieldset
+  **"Perfil (score)"** no `CmLeadModal` (preview do Fit ao vivo) + `CmAtividades` ganhou chips de
+  resultado/toque e um select de resultado opcional no quick-add
+  ([CmModals.tsx](src/components/comercial/CmModals.tsx)); nova aba **"Follow-up"** no `ComercialApp.tsx`
+  ([CmFollowUp.tsx](src/components/comercial/tabs/CmFollowUp.tsx), painel SOB MEDIDA — não o DataGrid genérico,
+  já que a ordenação automática por prioridade e as ações densas por linha são o produto: tabela ordenada por
+  prioridade desc, filtros responsável/estado/só-vencidos, checkpoints inline (Compareceu/No-show/Respondeu
+  proposta/Contrato enviado), faixa recolhível "Perdidos automáticos" com Reabrir) + `CmToqueModal` novo
+  (registra um toque: canal, toque nº, **resultado OBRIGATÓRIO**, sinais adicionais opcionais, nota livre).
+  Agenda: `CrmEventoModal` ganhou picker "Oportunidade (opcional)" (leads abertos). **Verificado nesta sessão:
+  `npx tsc --noEmit` 0 erros; `npm test` 663/663 (30 novos); `npx eslint` nos arquivos tocados sem achados
+  novos** (só os avisos pré-existentes documentados `_realRole`/`_dataset` em CrmSettings + os
+  set-state-in-effect/refs pré-existentes em UnifiedShell/CrmAgendaPage — confirmados como não relacionados);
+  **`npm run build` compilou com sucesso** (rotas novas `/api/comercial/{scoring,followup}` confirmadas na
+  tabela de rotas). Migração `20260721195037_comercial_scoring_followup` já aplicada + `prisma generate`
+  rodado nesta sessão (servidor de produção parado→migrado→buildado→religado com sucesso nesta sessão, com
+  autorização do usuário — houve uma interrupção transitória da ferramenta de shell no meio do caminho, sem
+  relação com o código; recuperou sozinha e `npm start` + health-check 200 fecharam o ciclo). **User action:**
+  conferir visualmente — `/comercial` → nova aba **Follow-up**
+  (tabela ordenada por prioridade; "Registrar toque" → escolher resultado obrigatório → conferir que a
+  Próxima ação do lead atualiza; registrar 3 toques "Sem resposta" seguidos no mesmo lead → vira Perdido
+  automaticamente, com nota na timeline + notificação ao responsável; "Reabrir" na faixa de perdidos
+  automáticos reverte); Configurações → **"Score de leads"** (edite pontos/limiares/cadência/pesos → salvar
+  → a aba Follow-up repontua na hora); no editor de um lead → fieldset "Perfil (score)" preenche e o Fit muda
+  ao vivo; grade de Leads mostra as colunas Fit/Eng/Estado; na Agenda, criar uma reunião vinculada a uma
+  oportunidade → o painel de Follow-up acende "Reunião marcada" sozinho.
+- **Comercial → CRM maduro — FASE 4: análise + tools da LexIA + config de probabilidade (this session, VERIFIED
+  tsc 0, 603/603 testes, eslint sem achados novos, NO migration)** (memory `project_comercial_crm`). Última fase
+  do plano. **(A) Camada de análise** — núcleo PURO novo [analytics.ts](src/lib/comercial/analytics.ts)
+  (sem prisma/React, centavos): `desempenhoPorDono(leads, nomePorId)` (agrega leads/abertos/conversões/valor
+  contratado/ticket/taxa por responsável, ordena por valor), `forecastPonderado(leadsAbertos, stages)` (valor
+  estimado × probabilidade da etapa; só leads ABERTOS; ganho/perdido liquidados ficam de fora; etapa removida do
+  config vira "Outras etapas" prob 0), `relatorioAtividades(atividades, nomePorId)` (conta por tipo — só os
+  presentes — e por autor desc; **só metadados tipo/autorId, zero PII**). É a fonte única consumida pelo SERVIDOR
+  e pelo CLIENTE. Server: `getDesempenhoDonos`/`getForecast`/`getRelatorioAtividades` em
+  [queries.ts](src/lib/comercial/queries.ts) (desempenho usa o mesmo `valorContratadoPorLead` deduped por caso do
+  resto do módulo; forecast é snapshot do funil aberto atual, NÃO escopado por período; atividades escopadas por
+  `ocorreuEm`). `getComercialDataset` ganhou `atividades: {tipo, autorId, ocorreuEm}[]` (metadados LGPD-safe —
+  descrição/título ficam no detalhe da oportunidade) + `CmDatasetAtividade`/`CmDataset.atividades` em
+  [types.ts](src/lib/comercial/types.ts). Cliente: `cmOwnerStats`/`cmForecast`/`cmAtividadeReport` em
+  [cm-meta.ts](src/components/comercial/cm-meta.ts) (thin wrappers sobre analytics.ts) renderizados na aba **Visão
+  geral** ([CmVisao.tsx](src/components/comercial/tabs/CmVisao.tsx): tabela "Por responsável", card "Forecast do
+  funil" com total ponderado, e 2 cards de atividades por tipo/responsável — espelham a tabela "Por área"
+  existente; instantâneo, sem novo fetch). **(B) Probabilidade por etapa** — `pipelineStageSchema` em
+  [settings.ts](src/lib/settings.ts) ganhou `probabilidade` (int 0–100, opcional/aditivo — **sem migração**, é
+  JSON em AppSetting) + defaults (novo 10/contato 25/qualificado 50/proposta 75); input `%` por etapa no editor
+  **Pipeline comercial** de [CrmSettings.tsx](src/components/crm/overlays/CrmSettings.tsx) (persistido pelo PUT já
+  validado por `pipelineSchema`); o `usePipelineStore` já carrega o campo (tipo vem de settings). **(C) Tools da
+  LexIA** ([tools/comercial.ts](src/lib/lexia/agent/tools/comercial.ts)) — 5 mutações confirmação-gated
+  (`resumo`+`montarConfirmacao` com nomes/datas/$ pt-BR): `criar_campanha` (createCampanha), `registrar_gasto`
+  (`gastoSchema.extend({campanhaId})` → registrarGasto → saída no Financeiro), `converter_lead`
+  (`converterLeadSchema.extend({id})` → marca ganho + honorário), `registrar_atividade`
+  (`atividadeCreateSchema.extend({leadId})` → criarAtividade), `definir_follow_up` (id+proximaAcaoEm+nota →
+  updateLead); + 1 tool de LEITURA `analise_comercial` (desempenho por dono + forecast + atividades, aceita mes/
+  periodo). **Sem role gate** (deliberado — igual a TODAS as tools/rotas de comercial, que são abertas; a rota de
+  gasto/converter/leads não tem `roles`). Prompt: bullet COMERCIAL/MARKETING novo em
+  [prompt.ts](src/lib/lexia/agent/prompt.ts) (CORE cacheado — invalida 1×). **Fix estrutural necessário:** importar
+  `criarAtividade` de [atividades.ts](src/lib/comercial/atividades.ts) puxava `@/lib/auth/session` (→ next-auth)
+  para o grafo do registry, quebrando a test-safety do [lexia-agent.test.ts](tests/lexia-agent.test.ts). Movido
+  `ForbiddenError` de `auth/session.ts` → [errors.ts](src/lib/errors.ts) (junto de `UserError`; re-exportado por
+  `session.ts` p/ compat — os outros importadores seguem intactos), atividades.ts agora importa de `@/lib/errors`
+  → registry volta a ser next-auth-free. **WhatsApp** segue click-to-chat (atividade `tipo:'whatsapp'` manual, sem
+  API). **Índices de Lancamento da Fase 1** (`campanhaId`/`clienteId`/`casoId`) exercitados por registrar_gasto
+  (escrita campanhaId) + getCampanhas/getComercialDataset (leitura campanhaId) — confirmado, sem trabalho novo.
+  Testes novos: [comercial-analytics.test.ts](tests/comercial-analytics.test.ts) (14: cores puros — agregação/
+  ordem/ticket, ponderação/exclusão de terminais/bucket "Outras", contagem por tipo/autor) + bloco em
+  lexia-agent.test.ts (tools Fase 4 presentes, kind mutation + resumo, sem role gate/staff enxerga, `analise_
+  comercial` sobrevive ao modo 'pergunta'). **Verificado: tsc 0; 603/603 testes; eslint sem achados novos** (só os
+  2 warnings pré-existentes `_realRole`/`_dataset` do CrmSettings). **Sem migração.** **User action (REQUIRED —
+  tool/prompt novos vivem em memória):** reiniciar o `next dev` → visual: `/comercial` → **Visão geral** mostra
+  "Por responsável", "Forecast do funil" e atividades; Configurações → **Pipeline comercial** → setar a % de cada
+  etapa → salvar → o forecast repondera; na **LexIA** (modo agente) pedir "crie uma campanha de Google Ads",
+  "registre R$ 500 de gasto na campanha X", "ganhamos o lead Y por R$ 5.000", "anote que liguei para o lead Z",
+  "me lembre de ligar para o lead W na sexta" → cada uma gera cartão de confirmação; "qual o forecast do funil?"/
+  "quem converteu mais este mês?"/"quantas ligações fizemos?" → responde via `analise_comercial`. **PLANO
+  COMPLETO — Fases 1-4 entregues.**
+- **Comercial → CRM maduro — FASE 3: Kanban arrastável + import CSV mapeado (this session, VERIFIED tsc 0,
+  595/595 testes, eslint sem achados novos, NO migration)** (memory `project_comercial_crm`). Duas entregas da
+  Fase 3 do plano (Kanban por etapa + import CSV com mapeamento de colunas); analytics/forecast e tools novas da
+  LexIA ficam para a Fase 4. **(A) Kanban** — novo [CmKanban.tsx](src/components/comercial/CmKanban.tsx): board
+  puro/stateless sobre `optimistic.rows`, colunas = etapas abertas do `usePipelineStore` (via as `stages` já
+  derivadas no `CmLeads`) **+ terminais fixos Ganho/Perdido**; drag nativo HTML5 (`dataTransfer "text/plain"`,
+  forkado do `SecoesBoard`/`QuadroView` — `dragId`/`over` state, `getData ?? dragId` fallback). Arrastar card p/
+  etapa aberta → `moveEtapa` (otimista `applyLocal` + `POST /leads/[id]/etapa`, mesmíssimo caminho do `StageMenu`
+  da grade); soltar em **Ganho** → abre `CmConverterModal`; em **Perdido** → `CmPerdidoModal` (coletam
+  valorContratado/motivo — nunca move direto). Card compacto: nome, telefone, campanha, dot de temperatura,
+  avatar do responsável (`CrmAvatar`), valor estimado (`formatBRL`); clique abre o modal de edição. Leads com
+  etapa fora das colunas (etapa removida do pipeline) somem do board mas seguem na grade. **Toggle Grade/Quadro**
+  no [CmLeads.tsx](src/components/comercial/tabs/CmLeads.tsx) (`view` state; `injectFilter` **força Grade** —
+  navegação cruzada "ver leads desta etapa" só faz sentido na grade filtrável); o toggle vive no `toolbarExtra`
+  na grade e numa barra própria no board. **(B) Import CSV mapeado** — o botão "Importar" virou **Menu** com
+  "Do Genions" (fluxo cru existente, intacto) e "Outro CSV (mapear colunas)". Núcleo PURO
+  [import/mapeado-core.ts](src/lib/comercial/import/mapeado-core.ts): `suggestMapping(headers)` (heurística
+  accent-insensitive, first-wins por campo), `parseOrigemMapeada`/`resolveEtapaMapeada`(terminais→exato→contains→
+  1ª etapa)/`parseTemperaturaMapeada`/`parseValorCents`(BR e intl)/`parseDataMapeada`(ISO+BR)/`rowToMappedLead`/
+  `invertMapping` — 10 campos-alvo (`MAP_FIELDS`, só `nome` obrigatório). Importer server
+  [import/leads-mapeado.ts](src/lib/comercial/import/leads-mapeado.ts) `importLeadsMapeadoFromText`: reusa
+  `resolverOuCriarCliente` (create-or-link Contato, agora passando **email**) + resolve campanha idêntico ao
+  Genions; idempotência por `genionsId` sintético namespace **`csv:<nome>:<telefone>:<dia>`** (nunca colide com
+  `genions-*`) → re-import do mesmo arquivo atualiza. Fluxo 2-passos server-parsed: `POST
+  /api/comercial/leads/import/preview` (text/csv → `{headers, sample, suggested, count}`, sem escrita) → UI de
+  mapeamento → `POST /api/comercial/leads/import/mapeado` (JSON `{csv, mapping}`, lê `getPipelineConfig().stages`
+  p/ resolver etapa, rate-limit 5/min + auditoria `comercial.leads.importar-mapeado`). Modal
+  [CmImportMap.tsx](src/components/comercial/CmImportMap.tsx) (3 telas: arquivo → mapear cada coluna via
+  `CmSelect` com exemplo da 1ª linha + aviso se `nome` não mapeado → summary; wired no `ComercialApp` como
+  variante `importarMapeado`). **NÃO** há parse de CSV no cliente (tudo server via `parseCsvText`); sem migração
+  (Lead já tem todas as colunas). Teste puro novo
+  [tests/comercial-import-mapeado.test.ts](tests/comercial-import-mapeado.test.ts) (14). **Verificado: tsc 0;
+  595/595 testes; eslint sem achados novos nos 8 arquivos tocados. Sem migração. User action:** só visual —
+  `/comercial` → Leads → toggle **Quadro**: arrastar um card entre etapas (persiste), soltar em Ganho/Perdido
+  abre o modal certo, clicar no card edita; **Grade** → menu **Importar** → "Outro CSV (mapear colunas)" → subir
+  uma planilha qualquer → conferir o mapeamento sugerido, ajustar, importar → leads entram no funil (Contatos
+  criados/ligados por telefone/email; re-importar o mesmo arquivo atualiza sem duplicar). **Escopo FORA da Fase 3
+  (Fase 4):** analytics (performance por dono, forecast ponderado por etapa), tools novas da LexIA
+  (`criar_campanha`/`registrar_gasto`/`converter_lead`/`registrar_atividade`/`definir_follow_up`).
+- **Comercial → CRM maduro — FASE 2: grid genérico estilo Notion (Oportunidades + Contatos)
+  (this session, VERIFIED tsc 0, 581/581 testes, eslint sem achados novos, build de produção limpo,
+  migração aditiva JÁ RODADA, servidor parado→migrado→rebuildado→religado com sucesso)** (memory
+  `project_comercial_crm`). Sequência do plano de Fase 2: 3 agentes Explore/Plan em paralelo (mapear
+  a lista de Contatos + escala de dados; extrair as APIs exatas de `Menu`/`MenuItem`
+  ([tf-kit.tsx](src/components/tarefas/tf-kit.tsx)), o padrão otimista `applyLocal`/`commit`/`liveEdit`
+  de [ProjetosWorkspace.tsx](src/components/projetos/ProjetosWorkspace.tsx), o `BulkBar` de
+  [pj-kit.tsx](src/components/projetos/pj-kit.tsx), e todo o table-shell de
+  [interativo.css.ts](src/components/financeiro/interativo/interativo.css.ts)) → 1 agente Plan
+  desenhando a arquitetura → plano escrito e aprovado. **Decisão de local:** componente novo,
+  module-neutro, em **`src/components/ui/datagrid/`** (não `comercial/grid/` — Contatos também
+  consome) + hook em `src/lib/client/useOptimisticRows.ts`; `datagrid.css.ts` é um **fork** deliberado
+  das peças neutras do `interativo.css.ts` (não reuso por referência — aquele arquivo tem exports
+  genuinamente financeiros interpolados + o grid precisa de uma variante nova, `th` com `sortable`).
+  **Contrato genérico** ([types.ts](src/components/ui/datagrid/types.ts)): `GridColumn<T>`
+  (key/label/type/accessor/render?/editable?/sortable?/filterable?/groupable?/options?) +
+  `DataGridProps<T>` — o grid é dono de sort/filtro/agrupamento/seleção/edição-em-popover; o chamador é
+  dono da rede (`onCellCommit`/`onBulkApply`/`onBulkDelete` nunca tocam `apiSend` diretamente dentro do
+  grid). **Filtro por coluna** ([filter-logic.ts](src/components/ui/datagrid/filter-logic.ts)
+  `evalFilters`, PURO): 1 combinador AND/OR no topo p/ N regras (sem grupos aninhados — cobre "E/OU" sem
+  editor de expressão booleana); operadores por tipo (`OPERATORS_BY_TYPE`); UI em
+  [FilterBuilder.tsx](src/components/ui/datagrid/FilterBuilder.tsx) reaproveitando `Menu`/`MenuItem` +
+  as classes `facet*`. **Ordenar** ([sort-logic.ts](src/components/ui/datagrid/sort-logic.ts)
+  `compareByColumn`/`sortRows`, PURO): 1 coluna por vez, nulls sempre por último, clicar alterna
+  asc/desc, trocar de coluna reseta p/ desc (mesma convenção do `Hd`/`toggleSort` já existente em
+  `CrmContratosPage.tsx` — única prior art de sort no app, generalizada aqui). **Agrupar**
+  ([group-logic.ts](src/components/ui/datagrid/group-logic.ts) `groupRows`, PURO): generaliza o shape
+  `Group[]`/`GroupHeader` de `ListaView` (tarefas); ordem **filtra→agrupa→ordena-dentro-do-grupo**;
+  segue a ordem de `column.options` quando existe (ex.: etapa segue a ordem configurada do pipeline);
+  grupo "Sem valor" sempre por último; grupos colapsados são estado efêmero (não entram na view salva).
+  **Edição inline** ([CellEditors.tsx](src/components/ui/datagrid/CellEditors.tsx)): texto/número/
+  money/data via troca por `<input>` (commit no blur/Enter, Escape cancela — sem debounce por tecla,
+  já que só comita no blur, então `commit` (imediato) basta, `liveEdit` do hook fica pronto p/ uso
+  futuro mas não é chamado hoje); select/user/relation via `OptionCellEditor` — a célula JÁ é o gatilho
+  do `Menu` (1 clique abre a lista, escolher comita na hora), sem um "modo de edição" intermediário.
+  **CSV** ([csv.ts](src/components/ui/datagrid/csv.ts) `rowsToCsv`/`downloadCsv`, PURO): exporta a
+  visão ATUAL (pós filtro/ordenação/agrupamento); generaliza `cmLeadsCSV`/`cmDownload`; **corrige um
+  bug de segurança real que o `cmLeadsCSV` atual tem** — o `esc()` de lá só dobra aspas, não neutraliza
+  `=`/`+`/`-`/`@` líder (injeção de fórmula no Excel/Sheets); `rowsToCsv` prefixa `'` nesses casos
+  (o `cmLeadsCSV`/`cmExportCSV` antigos da aba Exportar NÃO foram tocados — ficou registrado como
+  drive-by pendente). **`useOptimisticRows`**
+  ([useOptimisticRows.ts](src/lib/client/useOptimisticRows.ts)): extração genérica (parametrizada por
+  entidade) do padrão do ProjetosWorkspace — `applyLocal`/`commit`/`liveEdit`(debounce 600ms
+  compartilhado)/`flushPending`; **decisão nova**: edição de 1 célula segue só-toast em erro (como o
+  original — o erro fica visível na própria célula), mas **`bulkApply`/`bulkDelete` ganharam rollback**
+  (snapshot de `rows` antes do apply otimista, restaura no catch) — 30 linhas erradas silenciosamente é
+  um risco maior que 1 errada e visível. Erro cai no **toast global** `@/lib/client/toast` (já usado
+  pelo `apiSend` app-wide — achado durante a implementação, evita precisar de um `CrmToastHost`
+  Provider no Comercial). **BulkBar genérica**
+  ([BulkBar.tsx](src/components/ui/datagrid/BulkBar.tsx)): fork do `pj-kit.tsx` (não altera o de
+  Tarefas/Projetos, que já tem campos fixos), dirigida por `BulkFieldConfig[]` — cada grid declara os
+  próprios campos, nunca assume que um campo é seguro em lote (a fonte da verdade continua sendo o
+  allowlist server-side). **Views salvas:** migração aditiva `User.crmViewPrefs String?` (mesmo padrão
+  de `notifPrefs`/`lexiaPrefs`) + [view-prefs-core.ts](src/lib/crm/view-prefs-core.ts) (puro, JSON
+  keyed por `gridId`) + [view-prefs.ts](src/lib/crm/view-prefs.ts) (`getViewPrefs`/`setViewPrefs`,
+  substituição do objeto inteiro) + `GET/PATCH /api/crm/view-prefs` + hook client
+  [useCrmSavedView.ts](src/lib/client/useCrmSavedView.ts) (GET no mount + PATCH debounced 600ms no
+  change, guarda o objeto CHEIO num ref p/ editar a view de um grid nunca apagar a do outro). **Fix
+  achado na auto-revisão desta sessão (2, sem workflow multi-agente — ultracode estava desligado):** (1)
+  uma regra de filtro `in` recém-criada, sem opção escolhida, zerava a tabela inteira (`[].includes`
+  sempre falso) — corrigido p/ regra sem valor = não filtra nada, em vez de filtrar tudo; (2)
+  `injectFilter` (navegação cruzada de aba "ver leads desta etapa") disparava o `onChange` do grid e,
+  600ms depois, **sobrescrevia a view salva de verdade do usuário** com o filtro transitório de
+  navegação — corrigido: `onChange` vira no-op quando `injectFilter` está ativo. **1.1 Oportunidades**
+  ([CmLeads.tsx](src/components/comercial/tabs/CmLeads.tsx), reescrito): 14 colunas (nome/contato/
+  origem/campanha/etapa/área/responsável/temperatura/estimado/contratado/entrada/próxima ação/
+  conversão/cliente); etapa é coluna só-leitura (filtrável/agrupável, mas a edição continua no
+  `StageMenu` portado p/ `rowActions`, preservando o guard ganho/perdido); `onCellCommit` traduz
+  `contato`→`telefone` e `campanhaId`/`responsavelUserId` p/ número antes de mandar pro PATCH;
+  `ComercialApp.tsx` perdeu `moveStage`/`bulkMove`/`reopenLead` (agora internos ao grid via
+  `useOptimisticRows` + chamada direta a `/etapa`). **1.2 Contatos**
+  ([CrmClientesPage.tsx](src/components/crm/pages/CrmClientesPage.tsx), reescrito): `ClienteRow` ganhou
+  `origem` ([finance/types.ts](src/lib/finance/types.ts) + `getClientes()` em
+  [finance/queries.ts](src/lib/finance/queries.ts) — 1 campo, já editável via `updateCliente`, sem
+  tocar em emails/telefones/endereço, que ficam só no `ClienteDetail`); `ClienteRow` re-exportado por
+  [crm-types.ts](src/components/crm/crm-types.ts) (faltava). **Backend novo p/ Contatos** ([mutations.ts](src/lib/clientes/mutations.ts)
+  `bulkUpdateClientes`, [schemas.ts](src/lib/clientes/schemas.ts) `clientesLoteSchema`,
+  `PATCH /api/clientes/lote`): **deliberadamente só tipo/classificacao/origem** — sem nome/cpfCnpj/
+  endereço (sem caso de uso em lote) e **sem excluir** (Cliente não tem hard-delete nem no
+  single-record hoje; inventar bulk-delete seria uma capacidade nova e mais perigosa que qualquer coisa
+  que já existe). **Verificado: tsc 0; 581/581 testes** (novos: `datagrid-{filter,sort,group,csv}`,
+  `crm-view-prefs` — só lógica pura, sem teste de componente React/DB, mesmo padrão do repo); **eslint
+  sem achados novos** (só os 3 avisos pré-existentes já documentados: `cm-kit.tsx` `big`,
+  `CmCampanhas.tsx` `CmCardTitle`, `finance/queries.ts` `AcertoSocioLado`); `npm run build` limpo,
+  rotas novas confirmadas (`/api/clientes/lote`, `/api/crm/view-prefs`); servidor parado→migrado
+  (`crmViewPrefs`, aditiva)→rebuildado→religado. **Escopo deliberadamente FORA desta Fase** (Fase 3+,
+  já roteirizado no plano): Kanban arrastável sobre o pipeline configurável; import CSV com mapeamento
+  de colunas; analytics (performance por dono, forecast ponderado); tools novas da LexIA. **User
+  action:** já verificado ponta-a-ponta pelo agente — falta só a conferência VISUAL: `/comercial` → aba
+  Leads → clicar num cabeçalho pra ordenar; abrir "Filtros" → adicionar 2 regras (uma coluna
+  texto, uma seleção) → alternar E/OU; "Agrupar" por Etapa e por Responsável (colapsar/expandir);
+  clicar numa célula de texto/valor pra editar inline, clicar numa célula de seleção (Origem/
+  Responsável/Temperatura) → abre popover; selecionar 3 linhas → barra de lote flutuante (Etapa/
+  Responsável/Temperatura/Área) → some ao aplicar; "Exportar CSV" com um lead chamado `=1+1` → conferir
+  que abre sem virar fórmula; recarregar a página → a última visão (filtro/ordenação/agrupamento) volta
+  (view salva); em `/contatos` → mesmo grid, coluna Origem nova, barra de lote só com Tipo/
+  Classificação/Origem (sem excluir); "ver leads desta etapa" a partir da aba Funil → volta a "Leads"
+  já filtrado, e essa navegação NÃO deve sobrescrever a view salva de antes.
+- **Comercial → CRM maduro — FASE 1: modelo + integração com Contatos (this session, VERIFIED tsc 0,
+  553/553 testes, eslint sem achados novos, build de produção limpo, migração + backfill JÁ RODADOS
+  contra o `dev.db` real)** (memory to add: `project_comercial_crm`). Pedido: o usuário achou o módulo
+  Comercial "protótipo" e quer evoluí-lo para um CRM genuinamente maduro, com uma tabela de
+  oportunidades no estilo Notion (filtro/edição poderosos). Depois de 3 agentes Explore mapeando o
+  módulo + integrações + padrões de UI reaproveitáveis, e 1 agente Plan desenhando o refactor,
+  **decisões travadas com o usuário**: faseado (**modelo primeiro**, tabela Notion fica p/ Fase 2+);
+  **Contato + Oportunidade** — a pessoa é o Contato (`Cliente`), a venda é uma Oportunidade (`Lead`
+  reaproveitado, **sem** rename de model Prisma — só rótulo de domínio) referenciando um Contato, **1
+  contato → N oportunidades**; **etapas configuráveis** num funil único (`ganho`/`perdido` seguem
+  terminais fixos); lead ganha **dono/responsável, atividades+follow-up, tarefas vinculadas,
+  temperatura+motivo de perda estruturado**; **WhatsApp = click-to-chat** (link `wa.me`, sem API);
+  grid Notion **nas Oportunidades E nos Contatos** (Fase 2+), **sem** campos personalizados.
+  **1.1 Unificação Contato+Oportunidade:** `Lead.clienteId` segue anulável no schema mas **sempre
+  resolvido/criado pela camada de escrita** — novo [contato.ts](src/lib/comercial/contato.ts) PURO
+  (`acharClienteExistente` cpfCnpj→email→telefone, `planejarCriarCliente` classificacao='lead' +
+  `astreaId` sintético) + wrapper server `resolverOuCriarCliente` (dedup, nunca sobrescreve — reusa
+  `planejarBackfillCliente` de `merge.ts` p/ preencher lacunas), ligado em `createLead`/`converterLead`
+  (fallback ao `clienteId` já existente do lead)/[import/leads.ts](src/lib/comercial/import/leads.ts)
+  (Genions — só resolve quando o lead importado AINDA não tem `clienteId`, preservando um link já
+  feito por conversão). Campos de contato (`nome/email/telefone/origem`) **continuam denormalizados**
+  no Lead como cache de captação (evita reescrever ~28 leituras). **Backfill**
+  [scripts/backfill-oportunidade-contatos.ts](scripts/backfill-oportunidade-contatos.ts)
+  (`db:backfill:oportunidades`, idempotente, `--dry`) **RODADO**: 415 oportunidades órfãs → 19 ligadas
+  a Contato existente + 396 Contatos novos criados, 0 órfãs restantes. **1.2 Pipeline configurável:**
+  `comercial.pipeline`/`comercial.motivosPerda` em [settings.ts](src/lib/settings.ts) (AppSetting JSON
+  + Zod, padrão de `getNotificacoesConfig`; `ganho`/`perdido` são chaves reservadas, `setPipelineConfig`
+  rejeita reuso/duplicata); store zustand novo
+  [pipeline/store.ts](src/lib/comercial/pipeline/store.ts) (`usePipelineStore`, espelha `useAreasStore`,
+  carregado 1× no `UnifiedShell`) com `resolveEtapaLabel/Color`+`toStageOptions`; `getFunil`
+  ([queries.ts](src/lib/comercial/queries.ts)) deriva as etapas abertas do config em vez do
+  `FUNIL_ETAPAS` fixo; `LeadEtapa` alargou p/ `string` (era union fechada) — `asEtapa` (mutations.ts)
+  virou permissivo (só exige string não-vazia). UI: `StageMenu`/bulk-bar/filtro de etapa em
+  [CmLeads.tsx](src/components/comercial/tabs/CmLeads.tsx), o seletor de Etapa do
+  [CmLeadModal](src/components/comercial/CmModals.tsx) e o `CmPerdidoModal` (motivos) leem o store,
+  caindo pro `CM_STAGES`/`MOTIVOS` estáticos de `cm-meta.ts` como fallback — **decisão de escopo**: os
+  displays só-leitura (funil/campanhas/visão geral) continuam no `CM_STAGE_MAP` estático por ora (Fase
+  2/3). Painel novo **Configurações → Pipeline comercial** (admin/sócio) em
+  [CrmSettings.tsx](src/components/crm/overlays/CrmSettings.tsx): editor de etapas
+  (add/renomear/reordenar/cor/remover) + motivos de perda, salvamento explícito (botão "Salvar", não
+  otimista — evita PUT por tecla). **1.3 Colunas/models novos** (schema.prisma, migração ÚNICA
+  `20260721155601_comercial_crm_fase1`, aditiva): `Lead` += `responsavelUserId`(FK User,
+  `"LeadResponsavelUser"`)/`proximaAcaoEm`/`proximaAcaoNota`/`temperatura`/`motivoPerdaCategoria` +
+  índices; novo model **`OportunidadeAtividade`** (timeline manual — ligação/e-mail/reunião/
+  WhatsApp/nota, `onDelete:Cascade`, espelha `ClienteAnotacao`); `Tarefa.leadId` (FK, p/ ligar tarefas a
+  oportunidades); índices novos em `Lancamento` (`campanhaId`/`clienteId`/`casoId`, lacuna de perf
+  identificada na análise). SQLite reconstruiu as tabelas `Lead`/`Tarefa` (FK novas) — **dados 100%
+  preservados** (INSERT...SELECT, conferido no `migration.sql` gerado). **1.4 Atividades + follow-up +
+  notificações:** [atividades.ts](src/lib/comercial/atividades.ts) (CRUD, IDOR-escopado ao `leadId`,
+  autor-ou-gestor exclui — espelha `tarefas/comentarios.ts`) + rotas
+  `/api/comercial/leads/[id]/atividades[/[aid]]`; `notificarOportunidadeAtribuida` novo em
+  [triggers.ts](src/lib/notificacoes/triggers.ts) (dispara em `createLead`/`updateLead` quando o dono
+  muda p/ alguém novo); cron `gerarNotificacoes`
+  ([processos/notificacoes.ts](src/lib/processos/notificacoes.ts)) ganhou bloco de follow-up
+  vencido/do-dia (mesmo `upsert`+`dedupeKey` idempotente dos prazos). **1.5 Zod/rotas:** fix do bug
+  `area` ausente em `leadCreateSchema`/`campanhaCreateSchema` (o modal já coletava, a API descartava);
+  campos novos no schema; rota bulk **`PATCH /api/comercial/leads/lote`** (`bulkUpdateLeads`, espelha
+  `/api/tarefas/lote`) substitui o loop client-side de `onBulkMove`; rotas de config
+  `/api/comercial/{pipeline,motivos}` (GET aberto, PUT sócio+). **1.6 UI do lead:** `CmLeadModal` ganhou
+  Responsável/Temperatura/Próxima ação+nota/**botão WhatsApp** (`wa.me`, click-to-chat) + painel
+  **Atividades** (lista+quick-add) só no editar; `dataset.usuarios` novo (via `getUsuariosAtivos`).
+  **1.7 LGPD:** `proximaAcaoNota` (PII em texto livre) redigida em `redactBundle`/`cmRedactLeads`
+  ([lgpd.ts](src/lib/comercial/lgpd.ts)). **Método:** exploração com 3 Explore + 1 Plan em paralelo →
+  implementação direta → **1 workflow de revisão adversarial (4 dimensões × verify)** → **8 achados
+  confirmados (0 refutados) e TODOS corrigidos**: (1) dedup de telefone sem normalizar código-país/
+  8-vs-9-dígitos → duplicava Contato (fix: `chaveTelefone` em `contato.ts`, strip `55`+canonicaliza
+  celular legado); (2) corrida check-then-act em `resolverOuCriarCliente` sem lock (fix: mutex em
+  processo, app roda 1 processo Node só); (3+4, mesmo bug achado 2×) `bulkUpdateLeads` não notificava
+  troca de responsável (fix: notifica cada dono novo, comparando o responsável ANTES); (5) guard de
+  `bulkUpdateLeads` contra etapa='ganho'/'perdido' comparava o valor CRU enquanto `asEtapa()` aparava —
+  `" ganho"` (com espaço) burlava o guard e ainda gravava `"ganho"` sem `dataConversao`/notificação/
+  honorário (fix: guard compara o valor já aparado); (6) `motivoPerdaCategoria` não era limpo ao
+  reabrir um lead perdido (`bulkUpdateLeads` E `moverEtapa`) (fix: limpa nos dois); (7+8, mesmo bug
+  achado 2×) `getFunil` usava `Map.get(etapa) ?? 0` — uma etapa removida do pipeline pelo admin fazia o
+  lead subcontar silenciosamente em todas as barras do funil, mesmo a UI prometendo "mantém a chave"
+  (fix: chave desconhecida vira "alcançou todas as etapas abertas", nunca "ganho"). **Checado à mão no
+  dev.db real, pós-fix:** 0 Contatos duplicados por telefone entre os 396 criados pelo backfill (a
+  falha de normalização não chegou a duplicar ninguém nesta base). **Verificado: tsc 0; 553/553 testes
+  (novos: `comercial-contato` — dedup+`chaveTelefone`); eslint sem achados novos (confirmados via diff
+  linha-a-linha que os `set-state-in-effect`/refs de `CmLeads.tsx`/`UnifiedShell.tsx` são
+  PRÉ-EXISTENTES); `npm run build` limpo, servidor de produção parado→migrado→rebuildado→religado com
+  sucesso.** **Escopo deliberadamente FORA da Fase 1** (fica p/ Fase 2/3, já roteirizado): a tabela
+  Notion de verdade (ordenar por coluna, filtro por coluna E/OU, agrupar, edição inline otimista, views
+  salvas) tanto em Oportunidades quanto em Contatos; Kanban arrastável sobre o pipeline configurável;
+  import CSV com mapeamento de colunas; análises (performance por dono, forecast ponderado); tools
+  novas da LexIA (`criar_campanha`/`registrar_gasto`/`converter_lead`/`registrar_atividade`/
+  `definir_follow_up`). **User action:** já verificado ponta-a-ponta pelo agente (migração+backfill
+  rodados, build+restart do servidor feitos) — falta só a conferência VISUAL: `/comercial` → aba Leads
+  → editar um lead → ver campos Responsável/Temperatura/Próxima ação + botão WhatsApp (ícone verde ao
+  lado do telefone) + seção Atividades (registrar uma ligação/nota); Configurações → "Pipeline
+  comercial" (visível p/ sócio/admin) → renomear/reordenar uma etapa → conferir que a lista "Mover
+  para" e o filtro de Etapa na tabela de Leads refletem o nome novo; marcar um lead como perdido → ver
+  o motivo vir da lista configurável; abrir uma tarefa e conferir que dá pra vincular a uma oportunidade
+  (campo `leadId` novo, sem UI dedicada ainda — só backend). Fases 2+ (grid Notion completo, Kanban,
+  import mapeado, analytics, tools LexIA) ficam para quando o usuário quiser seguir.
+- **LexIA · OTIMIZAÇÃO DE TOKENS na CRUD em massa (this session, VERIFIED tsc 0, 540/540 testes, eslint limpo,
+  NO migration)** (memory `project_lexia_token_economia`, `project_lexia_agent`). O usuário relatou que a última
+  conversa "torrou tokens" numa criação em massa. **Diagnóstico direto no `prisma/dev.db`** (tabelas
+  `LexiaConversa`/`LexiaMensagem`, que guardam `inputTokens`/`outputTokens` por mensagem): a **conversa #66**
+  ("Crie esses projetos, tarefas e subtarefas") gastou **3.511.280 tokens de input** em 48 mensagens para criar
+  5 projetos + 17 seções + 50 tarefas (turnos únicos chegaram a **240k tokens**). **Causas-raiz:** (1)
+  **re-verificação compulsiva de estado** — a cada "Continue" o modelo rodava `listar_projetos`+`listar_tarefas`+
+  5×`detalhe_projeto` ("Vou verificar o estado atual antes de continuar" **9×**), e esses JSONs pesados se
+  acumulavam no array de mensagens e eram **reenviados a cada iteração** → O(n²); (2) **uma tool-call por item**
+  (72 round-trips de mutação, cada um reenviando todo o contexto); (3) cartão de confirmação por item + snapshots
+  de retomada reproduzindo tudo; (4) **`MAX_ITER=8`** baixo demais forçou "Continue" ping-pong (cada reinício
+  re-disparava a verificação). **4 alavancas (o usuário escolheu o núcleo 1+2+3+4):** **(1) Tools de LOTE** —
+  `criar_tarefas_lote` ([tools/tarefas.ts](src/lib/lexia/agent/tools/tarefas.ts), sem gate de papel como
+  criar_tarefa, cada tarefa no mesmo `tarefaChatSchema` obrigatório via helper `chatParaTarefa`) e
+  `criar_secoes_lote` ([tools/projetos.ts](src/lib/lexia/agent/tools/projetos.ts), `ROLES_PROJETO_ESCRITA`,
+  **devolve os ids** das seções criadas p/ a IA colocar tarefas sem re-detalhar); backend
+  `createTarefas` ([tarefas/mutations.ts](src/lib/tarefas/mutations.ts), createMany numa transação, seção
+  pré-resolvida numa consulta, **SEM notif por-tarefa** — convenção do instanciarTemplateProjeto) +
+  `createSecoes` ([projetos/mutations.ts](src/lib/projetos/mutations.ts)). Colapsa ~72 round-trips → ~5.
+  **(2) Compactação de contexto** — `compactarHistorico` puro em [cache.ts](src/lib/lexia/agent/cache.ts):
+  substitui o conteúdo de tool_results de LEITURA antigos (`listar_*`/`detalhe_*`/`buscar`) por um placeholder,
+  preservando estrutura (mesmo tool_use_id), as últimas 6 mensagens intactas, e mutações/erros/curtos intactos;
+  aplicado no ÚNICO ponto de envio `comCacheBreakpoints(compactarHistorico(messages))` em
+  [loop.ts](src/lib/lexia/agent/loop.ts) → vale p/ turno vivo E snapshot de retomada; não muta o array real (o
+  snapshot de pending fica fiel). **(3) Disciplina no prompt** ([prompt.ts](src/lib/lexia/agent/prompt.ts),
+  CORE cacheado — invalida o cache 1× só): novo bullet "CRIAÇÃO EM MASSA & EFICIÊNCIA" (use LOTE; CONFIE nos ids
+  retornados; NÃO re-liste/re-detalhe entre criações) + menção às lote tools em TAREFAS/PROJETOS; "UMA ação por
+  vez" virou "só UM cartão por vez, mas p/ muitos itens use LOTE". **(4) Orçamento de iteração dinâmico** —
+  `MAX_ITER_AUTO=20` em auto-mode (loop.ts), acaba com o ping-pong de "Continue". **Estimativa:** a mesma tarefa
+  cairia de ~3,5M para <100k tokens. **(1b, follow-up após o usuário apontar que a conv seguinte #67 ainda
+  torrou 149k tokens SEM criar nada — só re-verificando):** o gargalo RAIZ é o SHAPE agêntico — para criar uma
+  tarefa numa seção a IA precisa do id da seção, que precisa do id do projeto → o loop é forçado a fases com
+  ida-e-volta (cria projeto → lê id → cria seção → lê id → cria tarefa → re-verifica). Fix decisivo: nova tool
+  **`criar_estrutura_projetos`** ([tools/projetos.ts](src/lib/lexia/agent/tools/projetos.ts)) recebe a ÁRVORE
+  aninhada INTEIRA (projetos → seções → tarefas) numa ÚNICA chamada; backend `montarEstruturaProjetos`
+  ([projetos/mutations.ts](src/lib/projetos/mutations.ts)) cria tudo numa transação conectando os ids sozinho —
+  a IA emite UM JSON, zero descoberta de id, zero re-verificação. DoR/DoD OPCIONAIS aqui (bulk). Prompt agora
+  manda usar `criar_estrutura_projetos` SEMPRE p/ "projeto com seções e tarefas" (uma chamada; um projeto por
+  vez se forem muitas, p/ não estourar o max_tokens=8192 do turno). NOTA (limite intrínseco, não é bug): a IA
+  gera o conteúdo dos itens como OUTPUT — 123 tarefas com descrição/DoR/DoD são ~dezenas de milhares de tokens
+  de saída inevitáveis, e o teto de 8192 tokens/turno obriga alguns turnos; o desperdício que matamos era o
+  INPUT (re-envio de estado). **CRÍTICO:** as mudanças SÓ valem após **reiniciar o `next dev`** — a conv #67
+  rodou contra o código antigo em memória (não usou as lote tools, repetiu "vou verificar o estado atual").
+  Testes novos ([lexia-agent.test.ts](tests/lexia-agent.test.ts), +5):
+  gating das lote tools + `compactarHistorico` (compacta leitura antiga, preserva mutação/recente/erro/curto,
+  não muta o original). **Verificado: tsc 0; 540/540; eslint limpo. Sem migração. User action:** só visual —
+  ligar o modo automático (⚙ na barra) e pedir "crie o projeto X com as seções A/B/C e estas N tarefas…" → a IA
+  usa `criar_secoes_lote` e `criar_tarefas_lote` (poucas chamadas, sem re-verificar o estado a cada passo); em
+  modo manual, o LOTE gera UM cartão de confirmação para os N itens (antes era um por item). NOTA: as lote tools
+  não disparam notificação individual por tarefa (evita spam). Diagnóstico futuro: as colunas
+  `LexiaMensagem.inputTokens/outputTokens` no dev.db permitem inspecionar o custo por conversa via SQL.
+- **LexIA · fix: modo AUTOMÁTICO pedia confirmação de cada criação (projeto com várias tarefas/seções)
+  (this session, VERIFIED tsc 0, 535/535 testes, eslint limpo, NO migration)** (memory `project_lexia_agent`,
+  `project_lexia_bar`). Sintoma: mesmo com o modo automático ligado, criar um projeto com várias seções/tarefas
+  exigia confirmar CADA criação. **2 causas (achadas por 1 Explore agent + leitura do loop):** (1) **a rota de
+  RETOMADA** [/api/lexia/acoes/[id]](src/app/api/lexia/acoes/[id]/route.ts) remontava o `AgentCtx` **sem
+  `autoMode` nem `mode`** — então, assim que UM cartão era confirmado, a continuação do turno rodava com
+  `autoMode` indefinido (=false) e voltava a propor cartão para cada mutação seguinte (o body do resume só traz
+  `{decisao}`; UI→body→/chat→loop já threadava certo — a quebra era só no resume). **Fix:** o resume agora lê
+  `getLexiaPrefsRaw` e seta `mode: prefs.agentMode`, `autoMode: prefs.autoMode` (o toggle do composer SEMPRE
+  persiste em prefs, então prefs é a fonte fiel). (2) **o loop** ([loop.ts](src/lib/lexia/agent/loop.ts))
+  executava só **UMA** mutação por mensagem do assistente em auto-mode (guard `didAutoMutation`) — as demais da
+  mesma mensagem viravam erro "Proponha uma ação por vez", gastando iterações (MAX_ITER=8) e podendo travar um
+  projeto grande. **Fix:** removido o guard → todas as mutações NÃO-destrutivas da mesma mensagem executam em
+  sequência (o modelo emite as N criações em paralelo depois que o container existe; bucket de rate-limit
+  "write" é 60/min, folga de sobra). A exclusividade do cartão de confirmação (1 proposta por turno) e o
+  caminho destrutivo (excluir/anonimizar sempre confirmam) seguem intactos. **Refactor testável:** a política
+  pura virou [agent/auto.ts](src/lib/lexia/agent/auto.ts) `deveAutoExecutar(autoMode,mode,name)` +
+  `ehDestrutiva` (loop.ts importava next-auth → não dava p/ testar de lá); 4 casos novos em
+  [lexia-agent.test.ts](tests/lexia-agent.test.ts) (auto+agente executa tudo; auto off/plano/destrutiva
+  confirmam). **Verificado: tsc 0; 535/535; eslint limpo. Sem migração. User action:** visual — ligar o modo
+  automático (⚙ na barra) e pedir "crie um projeto X com as seções A/B/C e as tarefas 1..N" → cria tudo sem
+  cartão; confirmar 1 ação num fluxo e ver as seguintes seguirem sozinhas; em modo Plano ou numa exclusão,
+  ainda pede confirmação.
+- **LexIA · analisar/receber ARQUIVOS .xlsx (Excel) no chat (this session, VERIFIED tsc 0, 531/531 testes,
+  eslint limpo, NO migration; +dep `exceljs`)** (memory `project_lexia_bar`, `project_documents_module`).
+  Pedido: a LexIA passar a receber e analisar planilhas Excel no chat. A Anthropic NÃO lê `.xlsx` nativamente
+  (só imagem/PDF via visão) — então, **diferente do `.docx`** (que é interceptado e importado para o editor,
+  0 tokens), o `.xlsx` é **convertido em TEXTO (CSV por aba) no servidor e injetado como bloco de texto** para
+  o modelo ANALISAR no loop normal (somar valores, extrair dados, cruzar com clientes/casos etc.). **Decisão:**
+  reusar o caminho de texto (como o `.txt`), não importar para lugar nenhum. **Conversor** novo SERVER-ONLY
+  [xlsx.ts](src/lib/lexia/anexos/xlsx.ts) `xlsxParaTexto(buffer)` via **`exceljs`** (JS puro, sem binário nativo
+  → sem lock do Prisma no Windows): cada aba vira `### Planilha: <nome>` + linhas CSV (escapa aspas/vírgula/
+  quebra; normaliza fórmula→resultado, rich text, hyperlink, data→ISO); teto de 40k chars com aviso de
+  truncamento. **Escolha da lib:** `exceljs` em vez do SheetJS (`xlsx`) porque o pacote npm do SheetJS trava
+  em 0.18.5 com CVEs de parse; o único achado do `npm audit` p/ exceljs é um `uuid` transitivo usado só na
+  ESCRITA de planilha — **nós só lemos**, fora do code path. **Pipeline:** `MIME_XLSX`/`ehXlsx` +
+  `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` no allow-list `MIME_PERMITIDOS` (o
+  `anexoSchema` Zod deriva daí automaticamente) + `.xlsx` no `ACCEPT_ATTR` + mensagens de formato atualizadas
+  em [validacao.ts](src/lib/lexia/anexos/validacao.ts). O builder [agent/anexos.ts](src/lib/lexia/agent/anexos.ts)
+  virou **assíncrono** (`anexoParaBloco`/`construirConteudo` → `Promise`) e ganhou o ramo `ehXlsx` → converte
+  e devolve `{type:"text"}` (falha degrada com aviso, sem quebrar o turno); os 2 call-sites já eram async
+  ([chat/route.ts](src/app/api/lexia/chat/route.ts) `await construirConteudo`, [mutations.ts]
+  (src/lib/lexia/mutations.ts) `await anexoParaBloco` na re-hidratação do histórico — mesma conversão vale p/
+  turno vivo e histórico). Cliente [components/lexia/anexos.ts](src/components/lexia/anexos.ts): `EXT_MIME`
+  ganhou fallback docx/xlsx/txt + mensagem de erro corrigida. **Prompt** ([prompt.ts](src/lib/lexia/agent/prompt.ts))
+  bloco ANEXOS cita planilhas (.xlsx já em CSV). **Nada** em schema/migração (MIME no allow-list já basta;
+  `temAnexos` roteia p/ Sonnet, ótimo p/ análise). Testes ([lexia-anexos.test.ts](tests/lexia-anexos.test.ts),
+  +3): gera um `.xlsx` real com exceljs → `xlsxParaTexto` produz o CSV certo (aspas na célula com vírgula);
+  `anexoParaBloco(MIME_XLSX)` vira bloco de texto; `.xlsx` corrompido degrada com aviso (não lança); tudo
+  awaited. **Verificado: tsc 0; 531/531; eslint limpo. Sem migração.** **User action (REQUIRED — dep nova):**
+  **reiniciar o dev server** (`exceljs` novo no node_modules) → na LexIA, anexar um `.xlsx` pelo clipe e pedir
+  "analise esta planilha / some os honorários / quanto gastei com X" → a IA lê os dados e responde; anexar um
+  arquivo inválido renomeado p/ .xlsx → a IA avisa que não conseguiu ler.
+- **LexIA · CRUD completo de Projetos + gestão de SEÇÕES (this session, VERIFIED tsc 0, 528/528 testes, eslint
+  limpo, NO migration)** (memory `project_lexia_agent`, `project_projetos_module`). Pedido: verificar se a LexIA
+  tinha CRUD de projetos + organizar as seções deles; se não, implementar. **Diagnóstico:** a IA só tinha
+  `listar_/detalhe_/listar_templates_projeto` (readonly) + `criar_projeto`/`instanciar_template_projeto`
+  (mutation) — **faltavam editar/excluir projeto, TODA a CRUD de seção, e o `secaoId` nos tools de tarefa**. O
+  **backend já estava 100% pronto** ([projetos/mutations.ts](src/lib/projetos/mutations.ts) `updateProjeto`/
+  `deleteProjeto`(soft)/`createSecao`/`updateSecao`/`deleteSecao`/`reordenarSecoes`; [tarefas/mutations.ts]
+  (src/lib/tarefas/mutations.ts) `createTarefa`/`updateTarefa` já aceitam `secaoId` validado por `resolverSecao`)
+  — só a camada de ferramentas da IA precisava. **Decisões travadas:** todas as escritas novas gateadas a
+  sócio/advogado (`ROLES_PROJETO_ESCRITA`, igual ao atual); e sim, expor `secaoId` nos tools de tarefa. **Feito
+  em [tools/projetos.ts](src/lib/lexia/agent/tools/projetos.ts):** 6 tools novos — `editar_projeto` (card com
+  diff via `diffRow`; status arquivado/pausado/concluido), `excluir_projeto` (soft, reversível), `criar_secao`/
+  `editar_secao`/`excluir_secao`/`reordenar_secoes`; + `detalhe_projeto` enriquecido para retornar as `secoes`
+  (id/nome/cor/ordem) — a IA descobre os ids de seção aí. Deletes nomeados `excluir_*` → o guard `ehDestrutiva`
+  do loop força confirmação mesmo em auto-mode. **[tools/tarefas.ts](src/lib/lexia/agent/tools/tarefas.ts):**
+  `criar_tarefa` ganhou `secaoId`; `editar_tarefa` ganhou `projetoId`+`secaoId` (mover tarefa entre projetos/
+  seções; backend trata `projetoEfetivo`). **Prompt** ([prompt.ts](src/lib/lexia/agent/prompt.ts)) bloco
+  PROJETOS estendido. **Nada** em registry.ts (projetosTools já no spread), cards.ts (projeto não gera card),
+  schema/migração. Teste de gating estendido ([lexia-agent.test.ts](tests/lexia-agent.test.ts)) com os 6 novos
+  tools de escrita. **Verificado: tsc 0; 528/528; eslint limpo. Sem migração. User action:** só visual — na
+  LexIA como **sócio**: "renomeie/arquive o projeto X" (card com diff), "crie as seções Contratos/Andamento/
+  Concluído no projeto Z", "detalhe o projeto Z" (traz as seções com ids), "mova a tarefa W para a seção
+  Contratos", "exclua a seção Andamento" (as tarefas viram "sem seção", não somem). Como estagiário/staff a IA
+  recusa (as ferramentas nem aparecem para o papel).
+- **Tarefas · sistema de COMENTÁRIOS (menções @colega/@todos + notificação in-app/e-mail) (prev session,
+  VERIFIED tsc 0, 528/528 testes, eslint limpo nos arquivos autorais, migração `20260720144438` já APLICADA
+  nesta sessão)** (memories `project_tarefas_module`, `project_notifications`). Seção **Comentários** no fim da
+  coluna esquerda do [TaskDetailModal.tsx](src/components/tarefas/TaskDetailModal.tsx): qualquer usuário ativo
+  comenta; menção `@colega`/`@todos` com autocomplete; os ENVOLVIDOS (responsável + criador + quem já comentou)
+  + mencionados são avisados **no app e por e-mail com o corpo do comentário** — nunca o autor; participante que
+  também foi mencionado recebe 1× (dedup por Set). **Decisões travadas:** autor edita+exclui os próprios /
+  admin+sócio excluem qualquer; `@todos` = só os envolvidos (não o escritório inteiro); **SEM anexos no v1**
+  (fase 2, modelo pronto p/ um `ComentarioAnexo` depois). **Modelo** novo `TarefaComentario`
+  ([schema.prisma](prisma/schema.prisma), espelha `Anotacao`; autor = **FK `autorId`** p/ reusar `AssigneeAvatar`;
+  **`onDelete: Cascade` OBRIGATÓRIO** pois `deleteTarefa` é hard-delete; menções = tokens `@[id]`/`@[todos]`
+  inline no `conteudo`, sem cache; `editadoEm` distinto de `updatedAt`). **Núcleo PURO**
+  [comentario-core.ts](src/lib/tarefas/comentario-core.ts) (`parseMencoes`/`segmentosComentario`/
+  `serializeMencoes`/`destinatariosComentario`) + [comentario-msg.ts](src/lib/notificacoes/comentario-msg.ts)
+  (`msgComentarioTarefa`/`comentarioEmailHtml`, escapa HTML). **lib**
+  [comentarios.ts](src/lib/tarefas/comentarios.ts) (list/criar/editar/excluir; IDOR escopado ao `tarefaId`;
+  autor-only edita, autor|admin|sócio exclui — via novo `usuarioPorEmail` em
+  [recipients.ts](src/lib/notificacoes/recipients.ts)) + Zod em [schemas.ts](src/lib/tarefas/schemas.ts).
+  **Rotas** `/api/tarefas/[id]/comentarios` (GET/POST) + `[comentarioId]` (PATCH/DELETE) via `runMutation`; POST
+  em `withRequestOrigin` (URL absoluta do e-mail). **Notificação** trigger `notificarComentarioTarefa`
+  ([triggers.ts](src/lib/notificacoes/triggers.ts)); e-mail com corpo real pelo ÚNICO caminho existente (campos
+  OPCIONAIS `emailCorpoHtml`/`emailCtaLabel` em service/enviar/render — callers/tests antigos intactos, sem envio
+  duplo); **sem migração na `Notificacao`/prefs** (usa `modulo:"tarefas"`, herda os toggles existentes). **UI**
+  [Comentarios.tsx](src/components/tarefas/Comentarios.tsx) (thread + composer com popover de menção acessível por
+  teclado, filtra o `TeamMember[]` em memória — sem endpoint novo; updates otimistas; menções realçadas por nós
+  React — anti-XSS, sem `dangerouslySetInnerHTML`); ícones `messageSquare`/`atSign` em
+  [tf-icons.tsx](src/components/tarefas/tf-icons.tsx). **Comportamentos notáveis:** `@todos` hoje NÃO adiciona
+  destinatários (os envolvidos já são todos avisados — é ênfase no corpo, expansão pronta se a regra mudar);
+  menção só dispara quando **escolhida no autocomplete** (digitar "@x" solto não gera token). Testes puros novos:
+  [tarefas-comentario-core.test.ts](tests/tarefas-comentario-core.test.ts) +
+  [notificacoes-comentario-msg.test.ts](tests/notificacoes-comentario-msg.test.ts) (22). **Verificado: tsc 0;
+  528/528; eslint limpo; migração já aplicada + client gerado nesta sessão. User action:** só **visual** —
+  abrir uma tarefa (`/tarefas?tarefa=<id>`) → seção Comentários; comentar como A, `@mencionar` um colega →
+  o mencionado + envolvidos recebem toast/sino (e e-mail se Graph/SMTP configurado, com o corpo + "Abrir
+  tarefa"); o autor não recebe; editar o próprio (tag "editado"); excluir o próprio, e como admin/sócio excluir
+  o de outro; como usuário comum, o botão de excluir não aparece nos comentários alheios.
+- **Tarefas & Projetos · SEÇÕES personalizadas dentro de projetos (estilo Todoist) (this session, VERIFIED
+  tsc 0, 506/506 testes, arquivos autorais eslint limpos, 1 migração ÚNICA)** (memories `project_tarefas_module`,
+  `project_projetos_module`). Pedido: dentro de um projeto, criar **seções personalizadas** no lugar do kanban
+  por status fixo. Não existia conceito de seção/coluna por projeto — feature greenfield. **Decisões travadas
+  com o usuário:** (1) **seções viram as COLUNAS do quadro** do projeto (o status vira só o check de concluído);
+  (2) a **Lista** do projeto também agrupa por seção (cabeçalhos recolhíveis + adicionar tarefa por seção); (3)
+  **seções fazem parte dos templates** (instanciar cria as seções e distribui as tarefas). **Fora de escopo v1:**
+  reordenar tarefas manualmente DENTRO da seção (card segue ordenado por data), tools de seção na LexIA, bulk
+  "mover p/ seção". **Modelo (migração `20260721000000_projeto_secoes`, ADITIVA — 2 tabelas + 2 colunas
+  nullable):** `ProjetoSecao {projetoId(FK cascade), nome, cor?, ordem}`; `Tarefa.secaoId Int?`
+  (`onDelete: SetNull` → excluir a seção manda as tarefas p/ "Sem seção", nunca apaga); templates ganham
+  `ProjetoTemplateSecao` + `ProjetoTemplateTarefa.secaoOrdem Int?` (o item referencia a seção-modelo pelo
+  ÍNDICE `ordem`, evitando malabarismo de FK id no replace-all do editor). **Backend:** `SecaoView` +
+  `ProjetosDataset.secoes` (chapado, todas as seções dos projetos vivos) em [projetos/types.ts](src/lib/projetos/types.ts);
+  `TaskRow.secaoId` ([tarefas/types.ts](src/lib/tarefas/types.ts)); mutations `createSecao/updateSecao/deleteSecao/
+  reordenarSecoes` + `createTarefa/updateTarefa` aceitam `secaoId` (helper `resolverSecao` valida que a seção
+  pertence ao projeto da tarefa; trocar de projeto zera a seção) em [projetos/mutations.ts](src/lib/projetos/mutations.ts)/
+  [tarefas/mutations.ts](src/lib/tarefas/mutations.ts); template create/update replace-all das seções + `secaoOrdem`;
+  `instanciarTemplateProjeto` cria as `ProjetoSecao` reais e mapeia `secaoOrdem→secaoId` (padrão do `respMap`);
+  leituras `getProjetosDataset`/`getTarefasDataset`/`getTemplates` incluem seções; `workspace.ts` carrega `secoes`.
+  Rotas novas [POST /api/projetos/[id]/secoes](src/app/api/projetos/[id]/secoes/route.ts),
+  [PATCH|DELETE .../[secaoId]](src/app/api/projetos/[id]/secoes/[secaoId]/route.ts),
+  [PUT .../reordenar](src/app/api/projetos/[id]/secoes/reordenar/route.ts) (runMutation, roles `ROLES_PROJETO_ESCRITA`).
+  **Frontend:** `TarefasContext` ganhou `secoes` + `secoesDoProjeto(projetoId)`; novo componente
+  [SecoesBoard.tsx](src/components/projetos/SecoesBoard.tsx) (colunas = seções + "Sem seção" + "+ Adicionar seção";
+  arrastar card → `onAssign` grava `secaoId`; header renomeia inline/cor/excluir/mover ‹›; reusa o `KanbanCard`
+  exportado de views.tsx) — é NOVO (não o `QuadroView` compartilhado, que a aba cross-project "Todas" mantém por
+  status); `ListaView` ganhou `groupBy:"secao"` (recolhível + `InlineAdd` por seção; opção só aparece dentro do
+  projeto); `ProjectCanvas` troca o quadro por `SecoesBoard` e injeta a opção "Seção" no Agrupar;
+  `TaskDetailModal` ganhou seletor de Seção (quando a tarefa tem projeto+seções); `ProjetosWorkspace` guarda o
+  estado `secoes` + handlers otimistas (add/rename/recolor/delete espelhando o SetNull local/reorder/assign/
+  newTaskInSection); editor de template ([TemplatesTab.tsx](src/components/projetos/TemplatesTab.tsx)) ganhou
+  faixa de Seções (add/nome/cor/reordenar) + seletor de seção por item (ref estável `secaoKey`↔`secaoOrdem`).
+  Ícone `chevronUp` adicionado a [tf-icons.tsx](src/components/tarefas/tf-icons.tsx). Teste novo
+  [tests/projetos-secoes.test.ts](tests/projetos-secoes.test.ts) (8: propagação de `secaoOrdem` na instanciação +
+  parse dos schemas). **Verificado: tsc 0; 506/506 testes; arquivos autorais eslint limpos** (as achados
+  set-state-in-effect/`prev=due`/`setName` nos 3 grandes componentes são PRÉ-EXISTENTES; +1 instância do MESMO
+  padrão pré-existente: o seed `setSecoes(dataset.secoes)`, espelho fiel dos `setTasks`/`setProjetos` adjacentes,
+  necessário p/ re-hidratação). **NOTA Prisma (Windows):** rodei `prisma generate` p/ checar tsc — os TIPOS foram
+  regenerados mas o **engine DLL ficou travado** pelo `next dev` (EPERM), deixando o client meio-gerado. **User
+  action (OBRIGATÓRIO):** parar `next dev` → `npm run db:migrate` (aplica a migração) → `npm run db:generate`
+  (reconcilia o engine) → `npm run dev`. Visual em `/tarefas` → aba Projetos → um projeto: **Quadro** mostra "Sem
+  seção" + "+ Adicionar seção" (criar/arrastar entre seções/renomear/cor/reordenar/excluir → tarefas voltam p/
+  "Sem seção"); **Lista** → Agrupar por **Seção** (recolhível + adicionar por seção); abrir tarefa → seletor de
+  Seção; **Templates** (sócio) → editar → criar seções + atribuir itens → **Usar template** cria o projeto com as
+  seções e as tarefas distribuídas.
 - **Notificações · sócios avisados de toda tarefa concluída (this session, VERIFIED tsc 0, 483/483 testes,
   eslint sem achados novos, NO migration)** (memory `project_notifications`). Pedido do admin: os sócios
   precisam saber sempre que **alguém que não eles** conclui uma tarefa, **independente de quem criou**, no app
