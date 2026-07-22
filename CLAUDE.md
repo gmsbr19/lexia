@@ -145,6 +145,86 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **Cliente→Contrato→Caso restructure — entidade real `Contrato` (documento assinado) +
+  teardown final do `Honorario` (this session, VERIFIED tsc 0, 506/506 testes, eslint SEM
+  achados novos, migração `20260722095856_add_contrato_drop_honorario` APLICADA, backfill
+  rodado, build de produção OK, server subiu em `:3000`).** Pedido do usuário: contrato é,
+  literalmente, o documento assinado que define honorários+serviço — **1 contrato pode reunir
+  VÁRIOS casos** (ex.: condomínio com assessoria mensal + ação de obrigação de fazer) e **um
+  caso pode não ter contrato**. A aba Contratos (página `/contratos` e a aba do cliente)
+  mostrava cada HONORÁRIO lançado como se fosse um contrato — resquício direto da importação
+  Astrea (a lente comercial "contrato = caso" da sessão anterior) — **removido por completo**.
+  **Schema:** novo model `Contrato` (`clienteId?`, `titulo?`, `dataFechamento` obrigatório,
+  `observacoes?`, `excluidoEm`, relações `casos Caso[]` e `documentos Documento[]`); `Caso` +=
+  `contratoId Int?` (nullable — caso sem contrato); `Documento` += `contratoId Int?`; **model
+  `Honorario` DELETADO por completo** (+ todas as back-relations em Lancamento/Cliente/
+  Processo/Conta/Caso) e `Lead.honorarioId`/`honorario` removidos (a substituta `Lead.
+  lancamentoId` já existia da Fase 1). **Financeiro do contrato é SEMPRE derivado** (nunca
+  persistido): soma dos fee-lançamentos (`FEE`) de TODOS os casos vinculados — mapper puro
+  testado `contratoToRow` (novo, em [honorario-map.ts](src/lib/finance/honorario-map.ts)) +
+  agrupamento por mês `groupContratosByMonth` (novo [contrato-group.ts](src/lib/finance/contrato-group.ts)).
+  **Backend** [finance/queries.ts](src/lib/finance/queries.ts): `getContratos()` reescrito
+  (era 1-row-por-caso, agora `prisma.contrato.findMany`); novos `getContratoDetail(id)` (casos
+  + honorários por caso + documentos + totais) e `getContratosPorCliente(clienteId)` (aba do
+  cliente). [finance/mutations.ts](src/lib/finance/mutations.ts): `criarContrato`/
+  `atualizarContrato` (vincular/desvincular casos — vincular MOVE de qualquer contrato
+  anterior)/`excluirContrato` (soft-delete; desvincula casos+documentos, não apaga nada);
+  **`assertCasosDoCliente`** trava vincular um caso de OUTRO cliente ao contrato (achado da
+  revisão adversarial). Rotas novas `/api/contratos` (POST) e `/api/contratos/[id]` (GET/PATCH/
+  DELETE, roles socio/financeiro, DELETE só sócio). **UI**: `CrmContratoModal.tsx` REESCRITO —
+  agora é o contrato de verdade (header cliente, título/data/observações editáveis, KPIs
+  contratado/recebido/aberto, **casos vinculados** com picker "Vincular caso" que só lista
+  casos **sem contrato algum** — nunca rouba silenciosamente um caso de outro contrato — e
+  desvincular, honorários por caso abrindo um modal aninhado, documentos vinculados, excluir
+  com 2 cliques) + exporta `CrmNovoContratoModal`. O modal ANTIGO (detalhe de honorário/
+  fee-lançamento) foi **renomeado** para `CrmHonorarioModal.tsx` (prop `contratoId`→
+  `honorarioId`, comportamento intacto). `CrmContratosPage.tsx`: lista **agrupada por mês de
+  fechamento** (mais recente primeiro, helper puro testado), botão "Novo contrato"
+  (admin/sócio/financeiro), clique abre o contrato (não mais o caso). Aba "Contratos" do
+  cliente ([CrmClienteDetail.tsx](src/components/crm/pages/CrmClienteDetail.tsx) +
+  `getClienteDetail`): `detail.contratos: ContratoRow[]` substitui `detail.honorarios`.
+  **Teardown do `Honorario` em cascata** (grep final `prisma.honorario`/`honorarioId` = zero):
+  `processos/{queries,associacao,saude,mutations}.ts` e `casos/mutations.ts` repontados p/
+  fee-lançamentos (o grupo de saúde "Honorários sem processo" foi removido — sua fonte,
+  `Honorario.processoTitulo`, não existe mais); `finance/import/run.ts` (Honorários.csv agora
+  CARIMBA metadata no Lançamento já importado, nunca cria linha); `clientes/mutations.ts`
+  `mesclarClientes` repontado p/ `tx.contrato.updateMany`; **`comercial/queries.ts`** — bug
+  real encontrado e corrigido: `Lead.honorario` (dormente) ainda alimentava ROI/CAC/ROAS
+  reais — repontado p/ `Lead.lancamento` (a substituta da Fase 1) em 6 selects + 3 acessos;
+  `casoRevenueCents`/`casoRevenueInclude` simplificados (sem mais dedupe contra Honorario);
+  rotas dormentes `/api/financeiro/honorarios/[id]/{route,pagar,desmarcar,processo}`
+  deletadas (a base `POST /api/financeiro/honorarios` fica — usa `createHonorarioLancamento`,
+  nunca tocou Honorario); `scripts/backfill-honorarios-lancamentos.ts` deletado, novo
+  `scripts/backfill-contratos-fase2.ts` (`db:backfill:contratos`); `notificacoes/links.ts`
+  corrigido (link de notif de documento apontava `/contratos?contrato=<id-de-documento>` por
+  engano — agora `/documents/doc/<id>`); `search.ts` (seção "contratos" busca `getContratos()`
+  de verdade). **Método**: build direto + 1 workflow de revisão adversarial (4 dimensões,
+  verify por achado) → **4 achados confirmados corrigidos**: comentário desatualizado no
+  schema (Lead ainda citava Honorário); `criarContrato`/`atualizarContrato` sem checar se o
+  caso pertence ao mesmo cliente do contrato (guard `assertCasosDoCliente` adicionado);
+  `toDate()` aceitava datas de calendário inválidas tipo "2026-02-30" sem rejeitar (agora
+  valida ano/mês/dia batem após construir o Date); picker "Vincular caso" não excluía casos já
+  vinculados a OUTRO contrato (agora `CasoRow` ganhou `contratoId` e o picker só lista casos
+  livres). **Backfill rodado: 46 contratos criados** para 46 casos com honorário e sem
+  contrato (merge de contratos multi-caso, ex. o condomínio, é manual: abrir um dos contratos
+  → "Vincular caso" → escolher o outro caso do mesmo cliente). **Verificado nesta sessão**
+  (incomum: migração + build + server rodados PELO PRÓPRIO Claude, a pedido explícito do
+  usuário — não é o padrão usual de "usuário verifica visualmente"): `npx prisma migrate
+  deploy` aplicado (migração escrita via `prisma migrate diff` + pasta manual, pois `migrate
+  dev` recusou rodar não-interativo com o aviso de perda de dados da tabela Honorario/301
+  linhas — backup `prisma/dev.db.bak-<timestamp>` feito antes, por precaução); `npx tsc
+  --noEmit` 0 erros; `npm test` 506/506; `npx eslint` escopado aos arquivos tocados = 4
+  erros/5 avisos, TODOS confirmados pré-existentes (ex. o padrão `useEffect(()=>void load(),
+  [load])` já dispara o mesmo erro `react-hooks/set-state-in-effect` em `CrmCasoModal.tsx`
+  intocado — a régua de lint do repo inteiro está com ~5500 achados pré-existentes, nada
+  disso é novo); `npm run build` compilou limpo; `npm start` rodando em `http://localhost:3000`
+  (`/api/health` → `{"ok":true,"db":true}`). **User action:** visual em `/contratos` — lista
+  agrupada por mês, mais recente primeiro; abrir um contrato → casos + honorários + totais;
+  testar "Vincular caso" com o cliente do condomínio (juntar os 2 casos no mesmo contrato);
+  cliente → aba Contratos lista contratos reais; conferir Comercial (ROI/CAC/ROAS) não mudou
+  de comportamento visível (só trocou a fonte de dados de Lead.honorario→Lead.lancamento).
+  Servidor de produção já está no ar nesta sessão — pode parar com Ctrl+C e rodar `npm run
+  dev` se preferir modo desenvolvimento.
 - **Notificações · sócios avisados de toda tarefa concluída (this session, VERIFIED tsc 0, 483/483 testes,
   eslint sem achados novos, NO migration)** (memory `project_notifications`). Pedido do admin: os sócios
   precisam saber sempre que **alguém que não eles** conclui uma tarefa, **independente de quem criou**, no app
