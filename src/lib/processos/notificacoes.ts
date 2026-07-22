@@ -7,12 +7,13 @@
 // Every notification flows through the central service (src/lib/notificacoes/service),
 // which ALSO publishes to the in-process bus → SSE → live toast. So a deadline that
 // the cron surfaces pops in real time for any user with an open tab.
+import { avaliarEAplicarPerdaAutomatica } from "@/lib/comercial/atividades"
 import { prisma } from "@/lib/db"
 import { env } from "@/lib/env"
 import { criarNotificacao } from "@/lib/notificacoes/service"
 import { gestorEmails } from "@/lib/notificacoes/recipients"
 import type { Modulo, Prioridade } from "@/lib/notificacoes/types"
-import { getModulosConfig, processosHabilitado } from "@/lib/settings"
+import { getFollowupConfig, getModulosConfig, processosHabilitado } from "@/lib/settings"
 import { addDiasISO, hojeISO } from "./datas"
 
 function noon(isoDate: string): Date {
@@ -184,6 +185,55 @@ export async function gerarNotificacoes(opts?: { hoje?: string; antecedenciaDias
       modulo: "tarefas",
       prioridade,
     })
+  }
+
+  // ── Follow-up de oportunidades (Comercial), vencido ou dentro da janela ──
+  const followUps = await prisma.lead.findMany({
+    where: {
+      etapa: { notIn: ["ganho", "perdido"] },
+      proximaAcaoEm: { not: null, lte: noon(limite) },
+      responsavelUserId: { not: null },
+    },
+    select: { id: true, nome: true, proximaAcaoEm: true, responsavelUser: { select: { email: true } } },
+  })
+  for (const l of followUps) {
+    const email = l.responsavelUser?.email
+    if (!email || !l.proximaAcaoEm) continue
+    const acaoISO = iso(l.proximaAcaoEm)
+    const vencido = acaoISO < hoje
+    const prioridade: Prioridade = vencido ? "alta" : "normal"
+    await upsert(email, "lead-followup", "lead", l.id, acaoISO, `Follow-up "${l.nome}" — ${vencido ? "VENCIDO" : "hoje"}`, {
+      modulo: "comercial",
+      prioridade,
+    })
+  }
+
+  // ── Auto-perdido (Comercial): varredura catch-up ──────────────────────────
+  // O caminho principal roda síncrono em atividades.ts criarAtividade; este
+  // bloco só cobre mudança de limiar na config (recalibração retroativa) e
+  // qualquer falha pontual do caminho síncrono. Idempotente por construção: um
+  // lead marcado perdido sai do `etapa: {notIn}` no próximo run, nunca
+  // re-dispara notificação.
+  const leadsAbertos = await prisma.lead.findMany({
+    where: { etapa: { notIn: ["ganho", "perdido"] } },
+    select: { id: true, nome: true, responsavelUserId: true },
+  })
+  if (leadsAbertos.length) {
+    const followupCfg = await getFollowupConfig()
+    const atividadesTodas = await prisma.oportunidadeAtividade.findMany({
+      where: { leadId: { in: leadsAbertos.map((l) => l.id) } },
+      orderBy: { ocorreuEm: "asc" },
+      select: { leadId: true, resultado: true, ocorreuEm: true },
+    })
+    const porLead = new Map<number, { resultado: string | null; ocorreuEm: string }[]>()
+    for (const a of atividadesTodas) {
+      const arr = porLead.get(a.leadId) ?? []
+      arr.push({ resultado: a.resultado, ocorreuEm: a.ocorreuEm.toISOString() })
+      porLead.set(a.leadId, arr)
+    }
+    for (const l of leadsAbertos) {
+      await avaliarEAplicarPerdaAutomatica(l, porLead.get(l.id) ?? [], followupCfg.regrasPerda)
+    }
   }
 
   // ── Lembretes de tarefas (Tarefa.reminder) — disparados pela cadência do cron ──

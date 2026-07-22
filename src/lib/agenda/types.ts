@@ -24,6 +24,8 @@ export interface EventoRow {
   cliente: string | null
   casoId: number | null
   caso: string | null
+  leadId: number | null
+  lead: string | null
 }
 
 /** A Tarefa with a scheduled `data` — shown on the calendar as a secondary item. */
@@ -49,4 +51,5 @@ export interface AgendaDataset {
   socios: SocioConta[]
   clientes: IdNome[]
   casos: IdNome[]
+  leads: IdNome[] // oportunidades ABERTAS — picker "reunião marcada" do follow-up
 }

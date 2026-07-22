@@ -16,6 +16,7 @@ export const eventoCreateSchema = z.object({
   responsavelId: idOpt,
   clienteId: idOpt,
   casoId: idOpt,
+  leadId: idOpt,
 })
 
 export const eventoPatchSchema = eventoCreateSchema.partial()

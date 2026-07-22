@@ -55,6 +55,7 @@ export interface EventoCreate {
   responsavelId?: number | null
   clienteId?: number | null
   casoId?: number | null
+  leadId?: number | null
 }
 
 export async function createEvento(input: EventoCreate, actorEmail?: string | null) {
@@ -75,6 +76,7 @@ export async function createEvento(input: EventoCreate, actorEmail?: string | nu
       responsavelId: optId(input.responsavelId),
       clienteId: optId(input.clienteId),
       casoId: optId(input.casoId),
+      leadId: optId(input.leadId),
       origem: "manual",
       geradoPorApp: true,
     },
@@ -104,6 +106,7 @@ export async function updateEvento(id: number, patch: EventoPatch, actorEmail?: 
   if (patch.responsavelId !== undefined) data.responsavelId = optId(patch.responsavelId)
   if (patch.clienteId !== undefined) data.clienteId = optId(patch.clienteId)
   if (patch.casoId !== undefined) data.casoId = optId(patch.casoId)
+  if (patch.leadId !== undefined) data.leadId = optId(patch.leadId)
 
   // Datas: validate the resulting pair (patched value or current one).
   let inicio = existing.dataInicio

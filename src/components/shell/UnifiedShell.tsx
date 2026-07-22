@@ -33,6 +33,8 @@ import type { CrmDataset, CrmNav, CrmPage, Role } from "@/components/crm/crm-typ
 import { useTabs } from "./tabs-store"
 import { SIDEBAR, activeNavId, metaForPath } from "./unified-nav"
 import { useAreasStore } from "@/lib/areas/store"
+import { usePipelineStore } from "@/lib/comercial/pipeline/store"
+import { useScoringStore } from "@/lib/comercial/scoring/store"
 
 function emptyDataset(clientes: ClienteRow[], role: Role, userName: string, userEmail: string): CrmDataset {
   return { clientes, casos: [], contratos: [], socios: [], clienteOptions: [], casoOptions: [], contaOptions: [], role, userName, userEmail }
@@ -284,6 +286,12 @@ export function UnifiedShell({ children }: { children: ReactNode }) {
   const loadModulos = useModulosStore((s) => s.load)
   useEffect(() => { if (!isLogin) void loadModulos() }, [isLogin, loadModulos])
   const processosOk = processosHabilitado(modulos)
+
+  const loadPipeline = usePipelineStore((s) => s.load)
+  useEffect(() => { if (!isLogin) void loadPipeline() }, [isLogin, loadPipeline])
+
+  const loadScoring = useScoringStore((s) => s.load)
+  useEffect(() => { if (!isLogin) void loadScoring() }, [isLogin, loadScoring])
 
   // ⌘K toggles the Spotlight (the command palette)
   useEffect(() => {

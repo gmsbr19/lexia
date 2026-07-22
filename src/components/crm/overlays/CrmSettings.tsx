@@ -23,8 +23,16 @@ import {
   getImportacao,
   getModulosConfig,
   putModulosConfig,
+  getMotivosConfig,
+  putMotivosConfig,
   getNotificacoesConfig,
   putNotificacoesConfig,
+  getPipelineConfig,
+  putPipelineConfig,
+  getScoringConfig,
+  putScoringConfig,
+  getFollowupConfig,
+  putFollowupConfig,
   listUsers,
   listAreasComUso,
   createAreaAdmin,
@@ -38,15 +46,25 @@ import {
   putOrcamentoConsumo,
   type AuditRow,
 } from "../crm-api"
-import { useAreasStore } from "@/lib/areas/store"
+import { toAreaOptions, useAreasStore } from "@/lib/areas/store"
 import { useModulosStore } from "@/lib/modulos/store"
+import { usePipelineStore } from "@/lib/comercial/pipeline/store"
+import { useScoringStore } from "@/lib/comercial/scoring/store"
 import type {
+  CanalToque,
+  CriterioFit,
   CrmDataset,
   EscritorioConfig,
+  FollowupConfig,
   ImportacaoInfo,
   ModulosConfig,
+  MotivoPerda,
   NotificacoesConfig,
+  OpcaoScore,
+  PipelineStage,
   Role,
+  ScoringConfig,
+  ToqueCadencia,
   UserRow,
 } from "../crm-types"
 import type { ConsumoData, ConsumoInterno, ConsumoPeriodo } from "@/lib/consumo/types"
@@ -72,6 +90,8 @@ type SecId =
   | "notificacoes"
   | "usuarios"
   | "areas"
+  | "pipeline"
+  | "score"
   | "financeiro"
   | "consumo"
   | "escritorio"
@@ -86,6 +106,8 @@ const SECTIONS: { id: SecId; label: string; icon: CrmIconName; roles: Role[] }[]
   { id: "notificacoes", label: "Notificações", icon: "bell", roles: ["admin", "socio", "advogado", "estagiario", "financeiro", "staff"] },
   { id: "usuarios", label: "Usuários & permissões", icon: "users", roles: ["admin"] },
   { id: "areas", label: "Áreas do Direito", icon: "scale", roles: ["admin"] },
+  { id: "pipeline", label: "Pipeline comercial", icon: "funnel", roles: ["admin", "socio"] },
+  { id: "score", label: "Score de leads", icon: "target", roles: ["admin", "socio"] },
   { id: "financeiro", label: "Financeiro", icon: "wallet", roles: ["admin", "socio"] },
   { id: "consumo", label: "Consumo (IA)", icon: "zap", roles: ["admin", "socio"] },
   { id: "escritorio", label: "Escritório & documentos", icon: "building", roles: ["admin"] },
@@ -234,6 +256,8 @@ export function CrmSettings({
             {sec === "notificacoes" && <NotificacoesSection />}
             {sec === "usuarios" && <UsuariosSection />}
             {sec === "areas" && <AreasSection />}
+            {sec === "pipeline" && <PipelineSection />}
+            {sec === "score" && <ScoreSection />}
             {sec === "financeiro" && <FinanceiroSection />}
             {sec === "consumo" && <ConsumoSection />}
             {sec === "escritorio" && <EscritorioSection />}
@@ -1107,6 +1131,442 @@ export function CrmSettings({
             ))}
           </div>
         )}
+      </div>
+    )
+  }
+
+  // ─────────────────────────── Pipeline comercial (etapas + motivos de perda) ───────────────────────────
+  function PipelineSection() {
+    const [stages, setStages] = useState<PipelineStage[] | null>(null)
+    const [motivos, setMotivos] = useState<MotivoPerda[] | null>(null)
+    const [savingStages, setSavingStages] = useState(false)
+    const [savingMotivos, setSavingMotivos] = useState(false)
+    const reloadStore = usePipelineStore((s) => s.reload)
+
+    useEffect(() => {
+      let alive = true
+      getPipelineConfig()
+        .then((c) => { if (alive) setStages([...c.stages].sort((a, b) => a.ordem - b.ordem)) })
+        .catch(() => { if (alive) setStages([]) })
+      getMotivosConfig()
+        .then((c) => { if (alive) setMotivos(c.motivos) })
+        .catch(() => { if (alive) setMotivos([]) })
+      return () => { alive = false }
+    }, [])
+
+    const slugify = (nome: string, taken: Set<string>): string => {
+      const base = nome
+        .normalize("NFD").replace(/[̀-ͯ]/g, "")
+        .toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")
+      let key = base || `etapa_${Date.now()}`
+      if (key === "ganho" || key === "perdido") key = `${key}_2`
+      while (taken.has(key)) key = `${key}_2`
+      return key
+    }
+
+    const addStage = () => {
+      if (!stages) return
+      const nome = window.prompt("Nome da nova etapa")?.trim()
+      if (!nome) return
+      const key = slugify(nome, new Set(stages.map((s) => s.key)))
+      setStages([...stages, { key, nome, cor: "#7C8AA5", ordem: stages.length }])
+    }
+    const renameStage = (i: number, nome: string) => setStages((s) => s?.map((x, idx) => (idx === i ? { ...x, nome } : x)) ?? s)
+    const recolorStage = (i: number, cor: string) => setStages((s) => s?.map((x, idx) => (idx === i ? { ...x, cor } : x)) ?? s)
+    const reprobStage = (i: number, v: string) => {
+      const n = v === "" ? null : Math.max(0, Math.min(100, Math.round(Number(v) || 0)))
+      setStages((s) => s?.map((x, idx) => (idx === i ? { ...x, probabilidade: n } : x)) ?? s)
+    }
+    const moveStage = (i: number, dir: -1 | 1) => setStages((s) => {
+      if (!s) return s
+      const j = i + dir
+      if (j < 0 || j >= s.length) return s
+      const next = [...s]
+      ;[next[i], next[j]] = [next[j], next[i]]
+      return next.map((x, idx) => ({ ...x, ordem: idx }))
+    })
+    const removeStage = (i: number) => {
+      if (!stages) return
+      if (!window.confirm(`Remover a etapa "${stages[i].nome}"? Oportunidades que já estão nela mantêm a chave (não desaparecem), só some da lista de opções.`)) return
+      setStages(stages.filter((_, idx) => idx !== i).map((x, idx) => ({ ...x, ordem: idx })))
+    }
+    const saveStages = async () => {
+      if (!stages) return
+      setSavingStages(true)
+      try {
+        await putPipelineConfig({ stages: stages.map((s, idx) => ({ ...s, ordem: idx })) })
+        toast("Pipeline salvo")
+        void reloadStore()
+      } catch (e) {
+        toast(e instanceof Error ? e.message : "Erro", { tone: "neg", icon: "alertTriangle" })
+      } finally {
+        setSavingStages(false)
+      }
+    }
+
+    const addMotivo = () => {
+      if (!motivos) return
+      const nome = window.prompt("Nome do novo motivo")?.trim()
+      if (!nome) return
+      const key = slugify(nome, new Set(motivos.map((m) => m.key)))
+      setMotivos([...motivos, { key, nome }])
+    }
+    const renameMotivo = (i: number, nome: string) => setMotivos((m) => m?.map((x, idx) => (idx === i ? { ...x, nome } : x)) ?? m)
+    const removeMotivo = (i: number) => {
+      if (!motivos) return
+      setMotivos(motivos.filter((_, idx) => idx !== i))
+    }
+    const saveMotivos = async () => {
+      if (!motivos) return
+      setSavingMotivos(true)
+      try {
+        await putMotivosConfig({ motivos })
+        toast("Motivos de perda salvos")
+        void reloadStore()
+      } catch (e) {
+        toast(e instanceof Error ? e.message : "Erro", { tone: "neg", icon: "alertTriangle" })
+      } finally {
+        setSavingMotivos(false)
+      }
+    }
+
+    if (!stages || !motivos) return <div style={{ fontSize: 12, color: "var(--text-subtle)" }}>Carregando…</div>
+
+    return (
+      <div style={{ maxWidth: 600 }}>
+        <SectionTitle>Pipeline comercial</SectionTitle>
+        <SectionSub>Etapas abertas do funil de oportunidades — renomeie, reordene, adicione ou remova. A % é a probabilidade de fechamento da etapa (pondera o forecast do funil). “Ganho” e “Perdido” são fixas (carregam honorário/notificação).</SectionSub>
+        <div className="card" style={{ overflow: "hidden", marginBottom: 10 }}>
+          {stages.map((s, i) => (
+            <div key={s.key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", borderTop: i ? "1px solid var(--border)" : "none" }}>
+              <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(s.cor ?? "") ? (s.cor as string) : "#7C8AA5"} onChange={(e) => recolorStage(i, e.target.value)} style={{ width: 22, height: 22, padding: 0, border: "none", background: "none", cursor: "pointer", flexShrink: 0 }} />
+              <input className="input" value={s.nome} onChange={(e) => renameStage(i, e.target.value)} style={{ height: 30, fontSize: 13, flex: 1 }} />
+              <span style={{ fontSize: 11, color: "var(--text-subtle)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>{s.key}</span>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 3, flexShrink: 0 }} title="Probabilidade de fechamento (pondera o forecast)">
+                <input className="input" type="number" min={0} max={100} value={s.probabilidade ?? ""} onChange={(e) => reprobStage(i, e.target.value)} placeholder="0" style={{ height: 30, width: 52, fontSize: 12, textAlign: "right", padding: "0 6px" }} />
+                <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>%</span>
+              </div>
+              <button className="btn btn-ghost" onClick={() => moveStage(i, -1)} disabled={i === 0} style={{ height: 26, width: 26, padding: 0, flexShrink: 0 }}><Icon name="chevronUp" size={13} /></button>
+              <button className="btn btn-ghost" onClick={() => moveStage(i, 1)} disabled={i === stages.length - 1} style={{ height: 26, width: 26, padding: 0, flexShrink: 0 }}><Icon name="chevronDown" size={13} /></button>
+              <button className="btn btn-ghost" onClick={() => removeStage(i)} style={{ height: 26, width: 26, padding: 0, flexShrink: 0, color: "var(--crit)" }}><Icon name="x" size={13} /></button>
+            </div>
+          ))}
+          <div style={{ padding: "8px 14px", borderTop: stages.length ? "1px solid var(--border)" : "none" }}>
+            <button className="btn btn-ghost" onClick={addStage} style={{ height: 28, fontSize: 12 }}><Icon name="plus" size={13} />Nova etapa</button>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 16, fontSize: 11.5, color: "var(--text-subtle)", marginBottom: 16 }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#2E9E5B", display: "inline-block" }} />Ganho (fixa)</span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#C0492F", display: "inline-block" }} />Perdido (fixa)</span>
+        </div>
+        <button className="btn btn-primary" onClick={saveStages} disabled={savingStages} style={{ marginBottom: 28 }}>{savingStages ? "Salvando…" : "Salvar pipeline"}</button>
+
+        <SectionTitle>Motivos de perda</SectionTitle>
+        <SectionSub>Taxonomia estruturada mostrada ao marcar uma oportunidade como perdida.</SectionSub>
+        <div className="card" style={{ overflow: "hidden", marginBottom: 10 }}>
+          {motivos.map((m, i) => (
+            <div key={m.key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", borderTop: i ? "1px solid var(--border)" : "none" }}>
+              <input className="input" value={m.nome} onChange={(e) => renameMotivo(i, e.target.value)} style={{ height: 30, fontSize: 13, flex: 1 }} />
+              <button className="btn btn-ghost" onClick={() => removeMotivo(i)} style={{ height: 26, width: 26, padding: 0, flexShrink: 0, color: "var(--crit)" }}><Icon name="x" size={13} /></button>
+            </div>
+          ))}
+          <div style={{ padding: "8px 14px", borderTop: motivos.length ? "1px solid var(--border)" : "none" }}>
+            <button className="btn btn-ghost" onClick={addMotivo} style={{ height: 28, fontSize: 12 }}><Icon name="plus" size={13} />Novo motivo</button>
+          </div>
+        </div>
+        <button className="btn btn-primary" onClick={saveMotivos} disabled={savingMotivos}>{savingMotivos ? "Salvando…" : "Salvar motivos"}</button>
+      </div>
+    )
+  }
+
+  // ─────────────────────────── Score de leads (Fit/Engajamento + Follow-up) ───────────────────────────
+  const CANAL_TOQUE_LABEL: Record<CanalToque, string> = { ligacao: "Ligação", whatsapp: "WhatsApp", email: "E-mail", reuniao: "Reunião", outro: "Outro" }
+  const CANAIS_TOQUE_ALL: CanalToque[] = ["ligacao", "whatsapp", "email", "reuniao", "outro"]
+  const CRITERIO_KEY_LABEL: Record<string, string> = {
+    potencialFinanceiro: "Potencial financeiro",
+    urgenciaNivel: "Urgência / prazo legal",
+    poderDecisao: "Poder de decisão",
+    jurisdicao: "Jurisdição",
+    viabilidade: "Viabilidade do caso",
+  }
+  const SINAIS_RESERVADOS = new Set(["sem_resposta", "fria", "positiva"])
+
+  function slugifyKey(nome: string, taken: Set<string>): string {
+    const base = nome.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")
+    let key = base || `item_${Date.now()}`
+    while (taken.has(key)) key = `${key}_2`
+    return key
+  }
+
+  function OpcaoRow({ o, onLabel, onPontos, onRemove }: { o: OpcaoScore; onLabel: (v: string) => void; onPontos: (v: string) => void; onRemove?: () => void }) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 14px" }}>
+        <input className="input" value={o.label} onChange={(e) => onLabel(e.target.value)} style={{ height: 28, fontSize: 12.5, flex: 1 }} />
+        <span style={{ fontSize: 10.5, color: "var(--text-subtle)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>{o.key}</span>
+        <input className="input" type="number" value={o.pontos} onChange={(e) => onPontos(e.target.value)} style={{ height: 28, width: 60, fontSize: 12, textAlign: "right", flexShrink: 0 }} />
+        {onRemove ? (
+          <button className="btn btn-ghost" onClick={onRemove} style={{ height: 24, width: 24, padding: 0, flexShrink: 0, color: "var(--crit)" }}><Icon name="x" size={12} /></button>
+        ) : (
+          <span style={{ width: 24, flexShrink: 0 }} />
+        )}
+      </div>
+    )
+  }
+
+  function ScoreSection() {
+    const [scoring, setScoring] = useState<ScoringConfig | null>(null)
+    const [followup, setFollowup] = useState<FollowupConfig | null>(null)
+    const [savingScoring, setSavingScoring] = useState(false)
+    const [savingFollowup, setSavingFollowup] = useState(false)
+    const storedAreas = useAreasStore((s) => s.areas)
+    const areaOpts = useMemo(() => toAreaOptions(storedAreas), [storedAreas])
+    const reloadScoring = useScoringStore((s) => s.reload)
+
+    useEffect(() => {
+      let alive = true
+      getScoringConfig().then((c) => { if (alive) setScoring(c) }).catch(() => {})
+      getFollowupConfig().then((c) => { if (alive) setFollowup(c) }).catch(() => {})
+      return () => { alive = false }
+    }, [])
+
+    if (!scoring || !followup) return <div style={{ fontSize: 12, color: "var(--text-subtle)" }}>Carregando…</div>
+
+    const patchCriterio = (key: string, opcoes: OpcaoScore[]) =>
+      setScoring((s) => (s ? { ...s, criterios: s.criterios.map((c) => (c.key === key ? { ...c, opcoes } : c)) } : s))
+    const addOpcao = (crit: CriterioFit) => {
+      const nome = window.prompt(`Nova opção para "${crit.label}"`)?.trim()
+      if (!nome) return
+      const key = slugifyKey(nome, new Set(crit.opcoes.map((o) => o.key)))
+      patchCriterio(crit.key, [...crit.opcoes, { key, label: nome, pontos: 0 }])
+    }
+
+    const saveScoring = async () => {
+      if (!scoring) return
+      setSavingScoring(true)
+      try {
+        await putScoringConfig(scoring)
+        toast("Score de leads salvo")
+        void reloadScoring()
+      } catch (e) {
+        toast(e instanceof Error ? e.message : "Erro", { tone: "neg", icon: "alertTriangle" })
+      } finally {
+        setSavingScoring(false)
+      }
+    }
+
+    const fitMax =
+      scoring.areaJuridica.pontosPrincipal +
+      Math.max(0, ...scoring.origem.map((o) => o.pontos)) +
+      scoring.criterios.reduce((a, c) => a + Math.max(0, ...c.opcoes.map((o) => o.pontos)), 0)
+
+    const addCadenciaStep = () => {
+      if (!followup) return
+      setFollowup({ ...followup, cadencia: [...followup.cadencia, { dia: 0, canais: ["email"], objetivo: "" }] })
+    }
+    const patchCadenciaStep = (i: number, patch: Partial<ToqueCadencia>) =>
+      setFollowup((f) => (f ? { ...f, cadencia: f.cadencia.map((c, idx) => (idx === i ? { ...c, ...patch } : c)) } : f))
+    const toggleCanal = (i: number, canal: CanalToque) => {
+      if (!followup) return
+      const passo = followup.cadencia[i]
+      const canais = passo.canais.includes(canal) ? passo.canais.filter((c) => c !== canal) : [...passo.canais, canal]
+      if (canais.length === 0) return
+      patchCadenciaStep(i, { canais })
+    }
+    const moveCadenciaStep = (i: number, dir: -1 | 1) => setFollowup((f) => {
+      if (!f) return f
+      const j = i + dir
+      if (j < 0 || j >= f.cadencia.length) return f
+      const next = [...f.cadencia]
+      ;[next[i], next[j]] = [next[j], next[i]]
+      return { ...f, cadencia: next }
+    })
+    const removeCadenciaStep = (i: number) => setFollowup((f) => (f ? { ...f, cadencia: f.cadencia.filter((_, idx) => idx !== i) } : f))
+
+    const somaPesos = followup.prioridade.pesoFit + followup.prioridade.pesoEng + followup.prioridade.pesoUrg
+    const saveFollowup = async () => {
+      if (!followup) return
+      setSavingFollowup(true)
+      try {
+        await putFollowupConfig(followup)
+        toast("Follow-up salvo")
+        void reloadScoring()
+      } catch (e) {
+        toast(e instanceof Error ? e.message : "Erro", { tone: "neg", icon: "alertTriangle" })
+      } finally {
+        setSavingFollowup(false)
+      }
+    }
+
+    return (
+      <div style={{ maxWidth: 640 }}>
+        <SectionTitle>Score de leads — Fit (perfil)</SectionTitle>
+        <SectionSub>
+          Pontos somados a partir do perfil do lead — define se ele é qualificado (limiar abaixo). Máximo possível hoje: <strong style={{ color: fitMax === 100 ? "var(--fin-pos,#2E9E5B)" : "var(--accent)" }}>{fitMax}/100</strong>.
+        </SectionSub>
+
+        <div className="card" style={{ overflow: "hidden", marginBottom: 12, padding: "12px 14px" }}>
+          <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 8 }}>Área jurídica</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 10 }}>
+            <div>
+              <div style={{ fontSize: 11, color: "var(--text-subtle)", marginBottom: 4 }}>Áreas principais ({scoring.areaJuridica.pontosPrincipal} pts)</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {areaOpts.map((a) => {
+                  const on = scoring.areaJuridica.principais.includes(a.id)
+                  return (
+                    <button key={a.id} className={on ? "btn btn-primary" : "btn btn-ghost"} style={{ height: 24, fontSize: 11, padding: "0 8px" }}
+                      onClick={() => setScoring((s) => s && ({ ...s, areaJuridica: { ...s.areaJuridica, principais: on ? s.areaJuridica.principais.filter((k) => k !== a.id) : [...s.areaJuridica.principais, a.id], secundarias: s.areaJuridica.secundarias.filter((k) => k !== a.id) } }))}
+                    >{a.label}</button>
+                  )
+                })}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: "var(--text-subtle)", marginBottom: 4 }}>Áreas secundárias ({scoring.areaJuridica.pontosSecundaria} pts)</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {areaOpts.map((a) => {
+                  const on = scoring.areaJuridica.secundarias.includes(a.id)
+                  return (
+                    <button key={a.id} className={on ? "btn btn-primary" : "btn btn-ghost"} style={{ height: 24, fontSize: 11, padding: "0 8px" }}
+                      onClick={() => setScoring((s) => s && ({ ...s, areaJuridica: { ...s.areaJuridica, secundarias: on ? s.areaJuridica.secundarias.filter((k) => k !== a.id) : [...s.areaJuridica.secundarias, a.id], principais: s.areaJuridica.principais.filter((k) => k !== a.id) } }))}
+                    >{a.label}</button>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 14, fontSize: 11.5, color: "var(--text-subtle)" }}>
+            {(["pontosPrincipal", "pontosSecundaria", "pontosFora"] as const).map((k) => (
+              <label key={k} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                {k === "pontosPrincipal" ? "Principal" : k === "pontosSecundaria" ? "Secundária" : "Fora"}
+                <input className="input" type="number" value={scoring.areaJuridica[k]} onChange={(e) => setScoring((s) => s && ({ ...s, areaJuridica: { ...s.areaJuridica, [k]: Math.max(0, Number(e.target.value) || 0) } }))} style={{ height: 26, width: 52, fontSize: 12 }} />
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="card" style={{ overflow: "hidden", marginBottom: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 500, padding: "10px 14px 4px" }}>Origem do lead</div>
+          {scoring.origem.map((o, i) => (
+            <OpcaoRow key={o.key} o={o}
+              onLabel={(v) => setScoring((s) => s && ({ ...s, origem: s.origem.map((x, idx) => (idx === i ? { ...x, label: v } : x)) }))}
+              onPontos={(v) => setScoring((s) => s && ({ ...s, origem: s.origem.map((x, idx) => (idx === i ? { ...x, pontos: Number(v) || 0 } : x)) }))}
+            />
+          ))}
+        </div>
+
+        {scoring.criterios.map((crit) => (
+          <div key={crit.key} className="card" style={{ overflow: "hidden", marginBottom: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 500, padding: "10px 14px 4px" }}>{CRITERIO_KEY_LABEL[crit.key] ?? crit.label}</div>
+            {crit.opcoes.map((o, i) => (
+              <OpcaoRow key={o.key} o={o}
+                onLabel={(v) => patchCriterio(crit.key, crit.opcoes.map((x, idx) => (idx === i ? { ...x, label: v } : x)))}
+                onPontos={(v) => patchCriterio(crit.key, crit.opcoes.map((x, idx) => (idx === i ? { ...x, pontos: Number(v) || 0 } : x)))}
+                onRemove={crit.opcoes.length > 1 ? () => patchCriterio(crit.key, crit.opcoes.filter((_, idx) => idx !== i)) : undefined}
+              />
+            ))}
+            <div style={{ padding: "6px 14px", borderTop: "1px solid var(--border)" }}>
+              <button className="btn btn-ghost" onClick={() => addOpcao(crit)} style={{ height: 26, fontSize: 11.5 }}><Icon name="plus" size={12} />Nova opção</button>
+            </div>
+          </div>
+        ))}
+
+        <SectionTitle style={{ marginTop: 8 }}>Score de leads — Engajamento (sinais)</SectionTitle>
+        <SectionSub>Pontos acumulados a cada evento registrado na timeline do lead (clampado 0–100). Os 3 marcados “automático” vêm da classificação do toque, nunca marcados à mão.</SectionSub>
+        <div className="card" style={{ overflow: "hidden", marginBottom: 16 }}>
+          {scoring.sinais.map((o, i) => (
+            <div key={o.key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 14px", borderTop: i ? "1px solid var(--border)" : "none" }}>
+              <input className="input" value={o.label} onChange={(e) => setScoring((s) => s && ({ ...s, sinais: s.sinais.map((x, idx) => (idx === i ? { ...x, label: e.target.value } : x)) }))} style={{ height: 28, fontSize: 12.5, flex: 1 }} />
+              {SINAIS_RESERVADOS.has(o.key) && <CrmBadge tone="gold">automático</CrmBadge>}
+              <span style={{ fontSize: 10.5, color: "var(--text-subtle)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>{o.key}</span>
+              <input className="input" type="number" value={o.pontos} onChange={(e) => setScoring((s) => s && ({ ...s, sinais: s.sinais.map((x, idx) => (idx === i ? { ...x, pontos: Number(e.target.value) || 0 } : x)) }))} style={{ height: 28, width: 60, fontSize: 12, textAlign: "right", flexShrink: 0 }} />
+              {!SINAIS_RESERVADOS.has(o.key) ? (
+                <button className="btn btn-ghost" onClick={() => setScoring((s) => s && ({ ...s, sinais: s.sinais.filter((_, idx) => idx !== i) }))} style={{ height: 24, width: 24, padding: 0, flexShrink: 0, color: "var(--crit)" }}><Icon name="x" size={12} /></button>
+              ) : (
+                <span style={{ width: 24, flexShrink: 0 }} />
+              )}
+            </div>
+          ))}
+          <div style={{ padding: "6px 14px", borderTop: "1px solid var(--border)" }}>
+            <button
+              className="btn btn-ghost"
+              onClick={() => {
+                const nome = window.prompt("Novo sinal de engajamento")?.trim()
+                if (!nome) return
+                const key = slugifyKey(nome, new Set(scoring.sinais.map((s) => s.key)))
+                setScoring((s) => s && ({ ...s, sinais: [...s.sinais, { key, label: nome, pontos: 0 }] }))
+              }}
+              style={{ height: 26, fontSize: 11.5 }}
+            ><Icon name="plus" size={12} />Novo sinal</button>
+          </div>
+        </div>
+
+        <SectionTitle>Limiares de qualificação</SectionTitle>
+        <SectionSub>Fit ≥ limiar → lead qualificado. Engajamento ≥ limiar → lead “quente”. Juntos formam a matriz Quente/Morno/Frio/Desqualificado.</SectionSub>
+        <div style={{ display: "flex", gap: 20, marginBottom: 20 }}>
+          <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}>
+            Fit qualificado ≥
+            <input className="input" type="number" min={0} max={100} value={scoring.limiares.fitQualificado} onChange={(e) => setScoring((s) => s && ({ ...s, limiares: { ...s.limiares, fitQualificado: Math.max(0, Math.min(100, Number(e.target.value) || 0)) } }))} style={{ height: 30, width: 64, fontSize: 12.5 }} />
+          </label>
+          <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}>
+            Engajamento quente ≥
+            <input className="input" type="number" min={0} max={100} value={scoring.limiares.engajamentoQuente} onChange={(e) => setScoring((s) => s && ({ ...s, limiares: { ...s.limiares, engajamentoQuente: Math.max(0, Math.min(100, Number(e.target.value) || 0)) } }))} style={{ height: 30, width: 64, fontSize: 12.5 }} />
+          </label>
+        </div>
+        <button className="btn btn-primary" onClick={saveScoring} disabled={savingScoring} style={{ marginBottom: 32 }}>{savingScoring ? "Salvando…" : "Salvar score"}</button>
+
+        <SectionTitle>Follow-up — cadência progressiva</SectionTitle>
+        <SectionSub>Toques sugeridos automaticamente a partir da entrada do lead. Dia = quantos dias após a entrada (ou o toque anterior, ao registrar).</SectionSub>
+        <div className="card" style={{ overflow: "hidden", marginBottom: 12 }}>
+          {followup.cadencia.map((c, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", borderTop: i ? "1px solid var(--border)" : "none", flexWrap: "wrap" }}>
+              <span style={{ fontSize: 11, color: "var(--text-subtle)", width: 20, flexShrink: 0 }}>#{i + 1}</span>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5, flexShrink: 0 }}>
+                Dia
+                <input className="input" type="number" min={0} value={c.dia} onChange={(e) => patchCadenciaStep(i, { dia: Math.max(0, Number(e.target.value) || 0) })} style={{ height: 26, width: 48, fontSize: 12 }} />
+              </label>
+              <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                {CANAIS_TOQUE_ALL.map((canal) => (
+                  <button key={canal} className={c.canais.includes(canal) ? "btn btn-primary" : "btn btn-ghost"} style={{ height: 24, fontSize: 10.5, padding: "0 7px" }} onClick={() => toggleCanal(i, canal)}>{CANAL_TOQUE_LABEL[canal]}</button>
+                ))}
+              </div>
+              <input className="input" value={c.objetivo ?? ""} onChange={(e) => patchCadenciaStep(i, { objetivo: e.target.value })} placeholder="Objetivo do toque" style={{ height: 26, fontSize: 12, flex: 1, minWidth: 140 }} />
+              <button className="btn btn-ghost" onClick={() => moveCadenciaStep(i, -1)} disabled={i === 0} style={{ height: 24, width: 24, padding: 0, flexShrink: 0 }}><Icon name="chevronUp" size={12} /></button>
+              <button className="btn btn-ghost" onClick={() => moveCadenciaStep(i, 1)} disabled={i === followup.cadencia.length - 1} style={{ height: 24, width: 24, padding: 0, flexShrink: 0 }}><Icon name="chevronDown" size={12} /></button>
+              <button className="btn btn-ghost" onClick={() => removeCadenciaStep(i)} style={{ height: 24, width: 24, padding: 0, flexShrink: 0, color: "var(--crit)" }}><Icon name="x" size={12} /></button>
+            </div>
+          ))}
+          <div style={{ padding: "8px 14px", borderTop: followup.cadencia.length ? "1px solid var(--border)" : "none" }}>
+            <button className="btn btn-ghost" onClick={addCadenciaStep} style={{ height: 28, fontSize: 12 }}><Icon name="plus" size={13} />Novo toque</button>
+          </div>
+        </div>
+
+        <SectionTitle>Follow-up — prioridade e regras de perda</SectionTitle>
+        <SectionSub>
+          Prioridade = Fit×peso + Engajamento×peso + Urgência×peso (pesos devem somar 100 — soma atual: <strong style={{ color: somaPesos === 100 ? "var(--fin-pos,#2E9E5B)" : "var(--crit)" }}>{somaPesos}</strong>).
+        </SectionSub>
+        <div style={{ display: "flex", gap: 14, marginBottom: 14, flexWrap: "wrap" }}>
+          {(["pesoFit", "pesoEng", "pesoUrg"] as const).map((k) => (
+            <label key={k} style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}>
+              {k === "pesoFit" ? "Peso Fit" : k === "pesoEng" ? "Peso Engajamento" : "Peso Urgência"}
+              <input className="input" type="number" min={0} max={100} value={followup.prioridade[k]} onChange={(e) => setFollowup((f) => f && ({ ...f, prioridade: { ...f.prioridade, [k]: Math.max(0, Math.min(100, Number(e.target.value) || 0)) } }))} style={{ height: 28, width: 56, fontSize: 12 }} />
+            </label>
+          ))}
+          <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}>
+            Horizonte da urgência (dias)
+            <input className="input" type="number" min={1} max={30} value={followup.urgenciaHorizonteDias} onChange={(e) => setFollowup((f) => f && ({ ...f, urgenciaHorizonteDias: Math.max(1, Number(e.target.value) || 1) }))} style={{ height: 28, width: 56, fontSize: 12 }} />
+          </label>
+        </div>
+        <div style={{ display: "flex", gap: 14, marginBottom: 20, flexWrap: "wrap" }}>
+          <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}>
+            &quot;Sem resposta&quot; consecutivas → Perdido
+            <input className="input" type="number" min={1} value={followup.regrasPerda.semRespostaConsecutivas} onChange={(e) => setFollowup((f) => f && ({ ...f, regrasPerda: { ...f.regrasPerda, semRespostaConsecutivas: Math.max(1, Number(e.target.value) || 1) } }))} style={{ height: 28, width: 56, fontSize: 12 }} />
+          </label>
+          <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}>
+            &quot;Frias&quot; acumuladas → Perdido
+            <input className="input" type="number" min={1} value={followup.regrasPerda.friasAcumuladas} onChange={(e) => setFollowup((f) => f && ({ ...f, regrasPerda: { ...f.regrasPerda, friasAcumuladas: Math.max(1, Number(e.target.value) || 1) } }))} style={{ height: 28, width: 56, fontSize: 12 }} />
+          </label>
+        </div>
+        <button className="btn btn-primary" onClick={saveFollowup} disabled={savingFollowup || somaPesos !== 100}>{savingFollowup ? "Salvando…" : "Salvar follow-up"}</button>
       </div>
     )
   }
