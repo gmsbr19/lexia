@@ -7,7 +7,7 @@ describe("linkParaNotificacao", () => {
     expect(linkParaNotificacao("agenda", "evento", 3)).toBe("/agenda")
     expect(linkParaNotificacao("processos", "processo", 7)).toBe("/processos/7")
     expect(linkParaNotificacao("comercial", "lead", 4)).toBe("/comercial?tab=leads")
-    expect(linkParaNotificacao("documentos", "documento", 8)).toBe("/contratos?contrato=8")
+    expect(linkParaNotificacao("documentos", "documento", 8)).toBe("/documents/doc/8")
     expect(linkParaNotificacao("sistema", "captura", null)).toBe("/processos?view=captura")
   })
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { aggFeeTotals, lancamentoToHonorarioRow, type FeeLancamento } from "@/lib/finance/honorario-map"
+import { aggFeeTotals, contratoToRow, lancamentoToHonorarioRow, type ContratoInput, type FeeLancamento } from "@/lib/finance/honorario-map"
 
 // A honorário is a Lancamento entrada (subTipo='honorario'); these pure helpers
 // project the ledger onto the legacy HonorarioRow / contrato-totals view-models.
@@ -63,5 +63,87 @@ describe("aggFeeTotals (contrato = derived view over fee-lançamentos)", () => {
 
   it("empty → zeros", () => {
     expect(aggFeeTotals([])).toEqual({ contratadoCents: 0, recebidoCents: 0, count: 0 })
+  })
+})
+
+describe("contratoToRow", () => {
+  const caso = (over: Partial<ContratoInput["casos"][number]> = {}): ContratoInput["casos"][number] => ({
+    id: 10,
+    titulo: "Caso A",
+    tipo: "consultivo",
+    status: "Ativo",
+    area: "trab",
+    lancamentos: [{ valorCents: 100000, status: "feito" }],
+    leads: [],
+    ...over,
+  })
+  const contrato = (over: Partial<ContratoInput> = {}): ContratoInput => ({
+    id: 1,
+    titulo: null,
+    dataFechamento: new Date("2026-07-08T12:00:00.000Z"),
+    clienteId: 5,
+    clienteNome: "Cliente X",
+    clienteOrigem: null,
+    casos: [caso()],
+    ...over,
+  })
+
+  it("sums fee-lançamentos across ALL linked casos (not just one)", () => {
+    const r = contratoToRow(
+      contrato({
+        casos: [
+          caso({ id: 1, lancamentos: [{ valorCents: 100000, status: "feito" }] }),
+          caso({ id: 2, lancamentos: [{ valorCents: 50000, status: "aberto" }] }),
+        ],
+      }),
+    )
+    expect(r.valorContratadoCents).toBe(150000)
+    expect(r.recebidoCents).toBe(100000)
+    expect(r.honorariosCount).toBe(2)
+    expect(r.casosCount).toBe(2)
+    expect(r.unicoCasoId).toBeNull() // multi-caso → no single navigation target
+  })
+
+  it("titulo falls back: contrato.titulo → único caso.titulo → cliente.nome → '#id'", () => {
+    expect(contratoToRow(contrato({ titulo: "Contrato NCM" })).titulo).toBe("Contrato NCM")
+    expect(contratoToRow(contrato({ titulo: null, casos: [caso({ titulo: "Caso Único" })] })).titulo).toBe(
+      "Caso Único",
+    )
+    expect(
+      contratoToRow(contrato({ titulo: null, casos: [caso(), caso({ id: 2 })], clienteNome: "Cliente Y" })).titulo,
+    ).toBe("Cliente Y")
+    expect(contratoToRow(contrato({ titulo: null, casos: [], clienteNome: null, id: 9 })).titulo).toBe(
+      "Contrato #9",
+    )
+  })
+
+  it("origem: cliente.origem vence; senão o lead ganho mais recente entre os casos", () => {
+    expect(contratoToRow(contrato({ clienteOrigem: "indicacao" })).origem).toBe("indicacao")
+    const r = contratoToRow(
+      contrato({
+        clienteOrigem: null,
+        casos: [
+          caso({
+            leads: [
+              { origem: "google_ads", dataConversao: new Date("2026-01-01") },
+              { origem: "meta_ads", dataConversao: new Date("2026-06-01") },
+            ],
+          }),
+        ],
+      }),
+    )
+    expect(r.origem).toBe("meta_ads")
+  })
+
+  it("área/tipo/status só aparecem com exatamente 1 caso (ambíguo com vários)", () => {
+    const single = contratoToRow(contrato({ casos: [caso({ area: "trib", tipo: "litigio", status: "Ativo" })] }))
+    expect(single.area).toBe("trib")
+    expect(single.tipo).toBe("litigio")
+    expect(single.unicoCasoId).toBe(10)
+
+    const multi = contratoToRow(contrato({ casos: [caso(), caso({ id: 2 })] }))
+    expect(multi.area).toBeNull()
+    expect(multi.tipo).toBeNull()
+    expect(multi.statusCaso).toBeNull()
   })
 })
