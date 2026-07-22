@@ -34,6 +34,10 @@ export interface CriarNotificacaoInput {
   processoId?: number | null
   /** debug/simulador: força o e-mail mesmo sem opt-in nas preferências. */
   forcarEmail?: boolean
+  /** corpo HTML rico do e-mail (ex.: texto do comentário); ausente → e-mail fino padrão. */
+  emailCorpoHtml?: string | null
+  /** rótulo do CTA do e-mail (default "Abrir no LexIA"). */
+  emailCtaLabel?: string | null
 }
 
 // Janela de agrupamento: só agrega com uma linha não-lida criada nas últimas 6h.
@@ -171,7 +175,15 @@ export async function criarNotificacao(input: CriarNotificacaoInput): Promise<No
 
   // E-mail best-effort, fora do caminho crítico, só na 1ª ocorrência de um grupo.
   if (wantEmail && primeiraDoGrupo) {
-    void enviarEmailNotificacao({ to: input.userEmail, mensagem: input.mensagem, modulo, prioridade, link })
+    void enviarEmailNotificacao({
+      to: input.userEmail,
+      mensagem: input.mensagem,
+      modulo,
+      prioridade,
+      link,
+      corpoHtml: input.emailCorpoHtml ?? null,
+      ctaLabel: input.emailCtaLabel ?? null,
+    })
   }
 
   return row
