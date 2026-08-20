@@ -203,6 +203,35 @@ describe("registry — deterministic, valid tool schemas", () => {
     expect(nomes("admin").has("excluir_honorario")).toBe(false)
   })
 
+  it("expõe as tools de Contrato (CRUD + relação), gateadas como o Financeiro", () => {
+    const READ = ["listar_contratos", "detalhe_contrato", "listar_casos_do_cliente"]
+    const MUT = ["criar_contrato", "editar_contrato"]
+    const nomes = (role: string) => new Set(toApiTools(role).map((t) => t.name))
+
+    for (const n of READ) expect(TOOLS_BY_NAME.get(n)?.kind, n).toBe("readonly")
+    for (const n of MUT) {
+      expect(TOOLS_BY_NAME.get(n)?.kind, n).toBe("mutation")
+      expect(typeof TOOLS_BY_NAME.get(n)?.resumo, n).toBe("function")
+    }
+    expect(TOOLS_BY_NAME.get("excluir_contrato")?.kind).toBe("mutation")
+
+    // Equipe (staff) não enxerga — contrato expõe valores derivados do financeiro
+    const equipe = nomes("staff")
+    for (const n of [...READ, ...MUT, "excluir_contrato"]) expect(equipe.has(n), n).toBe(false)
+    // sócio/financeiro/admin veem leitura + criar/editar
+    for (const role of ["socio", "financeiro", "admin"]) {
+      const vis = nomes(role)
+      for (const n of [...READ, ...MUT]) expect(vis.has(n), `${role}:${n}`).toBe(true)
+    }
+    // excluir_contrato é só para sócio (não financeiro)
+    expect(nomes("financeiro").has("excluir_contrato")).toBe(false)
+    expect(nomes("socio").has("excluir_contrato")).toBe(true)
+    // no modo 'pergunta' as mutações somem; a leitura sobrevive
+    const pergunta = new Set(toApiTools("admin", "pergunta").map((t) => t.name))
+    for (const n of [...MUT, "excluir_contrato"]) expect(pergunta.has(n), n).toBe(false)
+    for (const n of READ) expect(pergunta.has(n), n).toBe(true)
+  })
+
   it("expõe as tools comerciais da Fase 4 (análise readonly + mutações confirmação-gated, sem role gate)", () => {
     const MUT = ["criar_campanha", "registrar_gasto", "converter_lead", "registrar_atividade", "definir_follow_up"]
     for (const n of MUT) expect(TOOLS_BY_NAME.get(n)?.kind, n).toBe("mutation")

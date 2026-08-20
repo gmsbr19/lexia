@@ -7,6 +7,8 @@
 // prototype, saves await the network and surface errors inline.
 import { useEffect, useMemo, useState } from "react"
 import { apiSend, newRequestId } from "@/lib/client/api"
+import { normalizar, contemNormalizado } from "@/lib/text"
+import { DateField } from "@/components/ui/DatePicker"
 import { Icon } from "./cm-icons"
 import {
   CX_ATIV_MAP,
@@ -205,8 +207,8 @@ export function CmCampanhaModal({ onClose, onSubmit, edit }: { onClose: () => vo
           </div>
         </CxField>
         <div style={half}>
-          <CxField label="Início"><CxInput type="date" value={inicio} onChange={(e) => setInicio(e.target.value)} /></CxField>
-          <CxField label="Término" hint="opcional"><CxInput type="date" value={fim} onChange={(e) => setFim(e.target.value)} /></CxField>
+          <CxField label="Início"><DateField value={inicio || null} onChange={(iso) => setInicio(iso ?? "")} /></CxField>
+          <CxField label="Término" hint="opcional"><DateField value={fim || null} onChange={(iso) => setFim(iso ?? "")} /></CxField>
         </div>
         <CxField label="ID externo / rastreamento" hint="opcional"><CxInput value={extId} onChange={(e) => setExtId(e.target.value)} placeholder="Ex.: gads-8841 / meta-2207" style={{ fontFamily: "var(--font-mono)" }} /></CxField>
       </div>
@@ -238,7 +240,7 @@ export function CmGastoModal({ onClose, onSubmit, campaigns, contas, campanha, d
         <CxField label="Campanha"><CxSelect value={campId} onChange={(e) => setCampId(e.target.value)} options={campaigns.map((c) => ({ value: String(c.id), label: `${c.plataforma === "google_ads" ? "Google" : "Meta"} · ${c.nome}` }))} /></CxField>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
           <CxField label="Valor"><CxMoneyInput value={valor} onChange={(e) => setValor(e.target.value)} /></CxField>
-          <CxField label="Data"><CxInput type="date" value={data} onChange={(e) => setData(e.target.value)} /></CxField>
+          <CxField label="Data"><DateField value={data || null} onChange={(iso) => setData(iso ?? "")} /></CxField>
         </div>
         <CxField label="Conta pagadora"><CxSelect value={contaId} onChange={(e) => setContaId(e.target.value)} options={[{ value: "", label: "— sem conta —" }, ...contas.map((c) => ({ value: String(c.id), label: c.nome }))]} /></CxField>
         <CxField label="Descrição" hint="opcional"><CxInput value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="Ex.: Investimento Meta Ads · julho" /></CxField>
@@ -364,6 +366,79 @@ function CxHistoryPanel({ leadId, onCount }: { leadId: number; onCount: (n: numb
           })}
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Origem & atribuição (captação — read-only, §5.4 do plano) ──────────────────
+interface CaptacaoLeadDetail {
+  temClique: boolean
+  identificador: "gclid" | "wbraid" | "gbraid" | null
+  utmCampaign: string | null
+  utmTerm: string | null
+  landingPageNome: string | null
+  consentimentoEm: string | null
+  consentimentoVersao: string | null
+  eventos: { tipo: string; status: string; ocorreuEm: string; temAjuste: boolean }[]
+}
+const CAPTACAO_EVENTO_LABEL: Record<string, string> = {
+  formulario_enviado: "Formulário",
+  lead_qualificado: "Qualificado",
+  reuniao_realizada: "Reunião",
+  contrato_assinado: "Contrato",
+}
+const CAPTACAO_STATUS_LABEL: Record<string, string> = {
+  pendente: "pendente",
+  descartado: "descartado",
+}
+
+function CxCaptacaoBlock({ leadId }: { leadId: number }) {
+  const [d, setD] = useState<CaptacaoLeadDetail | null | "none">(null)
+  useEffect(() => {
+    apiSend<CaptacaoLeadDetail>(`/api/comercial/leads/${leadId}/captacao`, "GET")
+      .then(setD)
+      .catch(() => setD("none"))
+  }, [leadId])
+
+  if (d === "none") return null
+  if (!d) return null
+  // nunca capturado por uma landing page (lead manual/Genions) — não mostra o bloco
+  if (!d.landingPageNome && !d.temClique && !d.utmCampaign) return null
+
+  const eventoStatus = new Map(d.eventos.map((e) => [e.tipo, e]))
+
+  return (
+    <div style={{ marginTop: 4 }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>Origem & atribuição</div>
+      <div className="card" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px", fontSize: 12.5, color: "var(--text-muted)" }}>
+          {d.landingPageNome && <span>LP: <strong style={{ color: "var(--text)" }}>{d.landingPageNome}</strong></span>}
+          {d.utmCampaign && <span>Campanha (utm): <strong style={{ color: "var(--text)" }}>{d.utmCampaign}</strong></span>}
+          {d.utmTerm && <span>Palavra-chave: <strong style={{ color: "var(--text)" }}>{d.utmTerm}</strong></span>}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {d.temClique ? (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 600, color: "var(--ok)", background: "var(--ok-soft)", padding: "2px 8px", borderRadius: 999 }}>
+              <Icon name="checkCircle" size={12} />{d.identificador}
+            </span>
+          ) : (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 600, color: "var(--warn)", background: "var(--warn-soft)", padding: "2px 8px", borderRadius: 999 }}>
+              <Icon name="alertTriangle" size={12} />sem identificador de clique
+            </span>
+          )}
+          {d.consentimentoEm && <span style={{ fontSize: 11.5, color: "var(--text-subtle)" }}>Consentimento: {cmDate(d.consentimentoEm)}{d.consentimentoVersao ? ` · ${d.consentimentoVersao}` : ""}</span>}
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {(["formulario_enviado", "lead_qualificado", "reuniao_realizada", "contrato_assinado"] as const).map((tipo) => {
+            const ev = eventoStatus.get(tipo)
+            return (
+              <span key={tipo} style={{ fontSize: 11, color: ev ? "var(--text)" : "var(--text-subtle)", background: "var(--bg-sunken)", padding: "3px 8px", borderRadius: 6 }}>
+                {CAPTACAO_EVENTO_LABEL[tipo]} {ev ? `· ${CAPTACAO_STATUS_LABEL[ev.status] ?? ev.status}${ev.temAjuste ? " · ajustado" : ""}` : "· —"}
+              </span>
+            )
+          })}
+        </div>
+      </div>
     </div>
   )
 }
@@ -505,11 +580,11 @@ export function CmLeadModal({ onClose, onSubmit, campaigns, usuarios, edit }: { 
           </div>
           <div style={half}>
             <CxField label="Etapa"><CxSelect value={etapa} onChange={(e) => setEtapa(e.target.value as LeadEtapa)} options={stageOpts} /></CxField>
-            <CxField label="Data de entrada"><CxInput type="date" value={dataEntrada} onChange={(e) => setDataEntrada(e.target.value)} /></CxField>
+            <CxField label="Data de entrada"><DateField value={dataEntrada || null} onChange={(iso) => setDataEntrada(iso ?? "")} /></CxField>
           </div>
           {etapa === "ganho" && <div style={{ display: "flex", alignItems: "flex-start", gap: 9, fontSize: 12, color: "var(--text-muted)", padding: "10px 13px", background: "var(--warn-soft)", border: "1px solid rgba(224,178,87,0.3)", borderRadius: "var(--r-sm)" }}><Icon name="alertTriangle" size={15} style={{ color: "var(--warn)", flexShrink: 0, marginTop: 1 }} />Para marcar como <strong style={{ color: "var(--text)" }}>Ganho</strong> com cliente, caso e honorário, use o fluxo <strong style={{ color: "var(--text)" }}>Converter</strong> — ele cria o lançamento financeiro.</div>}
           <div style={half}>
-            <CxField label="Próxima ação" hint="follow-up"><CxInput type="date" value={proximaAcao} onChange={(e) => setProximaAcao(e.target.value)} /></CxField>
+            <CxField label="Próxima ação" hint="follow-up"><DateField value={proximaAcao || null} onChange={(iso) => setProximaAcao(iso ?? "")} /></CxField>
             <CxField label="Nota da próxima ação" hint="opcional"><CxInput value={notaProx} onChange={(e) => setNotaProx(e.target.value)} placeholder="Ex.: retomar após feriado" /></CxField>
           </div>
 
@@ -523,6 +598,8 @@ export function CmLeadModal({ onClose, onSubmit, campaigns, usuarios, edit }: { 
               <CxPerfilRow key={crit.key} label={crit.label} opcoes={crit.opcoes} value={perfilValues[crit.key] ?? ""} onChange={(v) => perfilSetters[crit.key]?.(v)} />
             ))}
           </div>
+
+          {isEdit && edit && <CxCaptacaoBlock leadId={edit.id} />}
         </div>
       )}
 
@@ -565,7 +642,7 @@ export function CmConverterModal({ lead, onClose, onSubmit }: { lead: CmDatasetL
           <CxField label="Honorário contratado"><CxMoneyInput value={valor} onChange={(e) => setValor(e.target.value)} /></CxField>
           <CxField label="Tipo de honorário"><CxSelect options={TIPOS_HONORARIO} value={tipoHon} onChange={(e) => setTipoHon(e.target.value)} /></CxField>
         </div>
-        <CxField label="Data da conversão"><CxInput type="date" value={data} onChange={(e) => setData(e.target.value)} /></CxField>
+        <CxField label="Data da conversão"><DateField value={data || null} onChange={(iso) => setData(iso ?? "")} /></CxField>
       </div>
     </CxModal>
   )
@@ -597,8 +674,8 @@ export function CmMergeModal({ lead, onClose, onSubmit }: { lead: CmDatasetLead;
 
   const results = useMemo(() => {
     if (!clientes) return []
-    const nq = q.trim().toLowerCase()
-    const list = nq ? clientes.filter((c) => c.nome.toLowerCase().includes(nq)) : clientes
+    const nq = normalizar(q)
+    const list = nq ? clientes.filter((c) => contemNormalizado(nq, c.nome)) : clientes
     return list.slice(0, 30)
   }, [clientes, q])
 

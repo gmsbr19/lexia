@@ -831,6 +831,7 @@ export async function getCasos(): Promise<CasoRow[]> {
       ultimaMovimentacao: true,
       dataCriacao: true,
       contratoId: true,
+      clientePrincipalId: true,
       clientePrincipal: { select: { nome: true } },
       responsaveis: {
         select: { contaId: true, percentual: true, conta: { select: { nome: true, titular: true, ordem: true } } },
@@ -844,6 +845,7 @@ export async function getCasos(): Promise<CasoRow[]> {
       id: r.id,
       titulo: r.titulo,
       cliente: r.clientePrincipal?.nome ?? null,
+      clienteId: r.clientePrincipalId,
       tipo: r.tipo as CasoRow["tipo"],
       status: r.status,
       area: r.area,
@@ -861,6 +863,20 @@ export async function getCasos(): Promise<CasoRow[]> {
     }))
     // Most recently moved cases first; nulls sink to the bottom.
     .sort((a, b) => (b.ultimaMovimentacao ?? "").localeCompare(a.ultimaMovimentacao ?? ""))
+}
+
+/** Casos de UM cliente com o status de vínculo a contrato — alimenta o fluxo de
+ *  vincular/desvincular casos a um contrato na LexIA. `livre` = sem contrato algum
+ *  (é seguro vincular; um caso já ligado a outro contrato seria movido). */
+export async function getCasosDoCliente(
+  clienteId: number,
+): Promise<{ id: number; titulo: string; contratoId: number | null; livre: boolean }[]> {
+  const rows = await prisma.caso.findMany({
+    where: { clientePrincipalId: clienteId, excluidoEm: null },
+    select: { id: true, titulo: true, contratoId: true },
+    orderBy: { titulo: "asc" },
+  })
+  return rows.map((r) => ({ id: r.id, titulo: r.titulo, contratoId: r.contratoId, livre: r.contratoId == null }))
 }
 
 // ── contratos (o documento assinado; pode reunir vários casos) ───────────────
@@ -888,6 +904,8 @@ export async function getContratos(): Promise<ContratoRow[]> {
       id: true,
       titulo: true,
       dataFechamento: true,
+      valorTotalCents: true,
+      area: true,
       clienteId: true,
       cliente: { select: { nome: true, origem: true } },
       casos: CONTRATO_CASOS_SELECT,
@@ -899,6 +917,8 @@ export async function getContratos(): Promise<ContratoRow[]> {
       id: r.id,
       titulo: r.titulo,
       dataFechamento: r.dataFechamento,
+      valorTotalCents: r.valorTotalCents,
+      area: r.area,
       clienteId: r.clienteId,
       clienteNome: r.cliente?.nome ?? null,
       clienteOrigem: r.cliente?.origem ?? null,
@@ -915,6 +935,8 @@ export async function getContratosPorCliente(clienteId: number): Promise<Contrat
       id: true,
       titulo: true,
       dataFechamento: true,
+      valorTotalCents: true,
+      area: true,
       clienteId: true,
       cliente: { select: { nome: true, origem: true } },
       casos: CONTRATO_CASOS_SELECT,
@@ -926,6 +948,8 @@ export async function getContratosPorCliente(clienteId: number): Promise<Contrat
       id: r.id,
       titulo: r.titulo,
       dataFechamento: r.dataFechamento,
+      valorTotalCents: r.valorTotalCents,
+      area: r.area,
       clienteId: r.clienteId,
       clienteNome: r.cliente?.nome ?? null,
       clienteOrigem: r.cliente?.origem ?? null,
@@ -943,6 +967,8 @@ export async function getContratoDetail(id: number): Promise<ContratoDetail | nu
       id: true,
       titulo: true,
       dataFechamento: true,
+      valorTotalCents: true,
+      area: true,
       observacoes: true,
       clienteId: true,
       cliente: { select: { nome: true } },
@@ -985,6 +1011,8 @@ export async function getContratoDetail(id: number): Promise<ContratoDetail | nu
     cliente: r.cliente?.nome ?? null,
     clienteId: r.clienteId,
     dataFechamento: r.dataFechamento ? r.dataFechamento.toISOString() : null,
+    valorTotalCents: r.valorTotalCents,
+    area: r.area,
     observacoes: r.observacoes,
     valorContratadoCents: casos.reduce((a, k) => a + k.valorContratadoCents, 0),
     recebidoCents: casos.reduce((a, k) => a + k.recebidoCents, 0),

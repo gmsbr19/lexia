@@ -9,6 +9,7 @@ import { buscaTools } from "./tools/busca"
 import { casosTools } from "./tools/casos"
 import { clientesTools } from "./tools/clientes"
 import { comercialTools } from "./tools/comercial"
+import { contratoTools } from "./tools/contratos"
 import { documentosTools } from "./tools/documentos"
 import { financeiroTools } from "./tools/financeiro"
 import { navegacaoTools } from "./tools/navegacao"
@@ -20,6 +21,7 @@ import { tarefasTools } from "./tools/tarefas"
 export const TOOLS: AgentTool[] = [
   ...buscaTools,
   ...financeiroTools,
+  ...contratoTools,
   ...clientesTools,
   ...casosTools,
   ...tarefasTools,

@@ -3,7 +3,7 @@
 // Everything money-related is integer centavos.
 
 export type ClienteTipo = "pf" | "pj"
-export type Classificacao = "cliente" | "lead"
+export type Classificacao = "cliente" | "lead" | "rede"
 export type CasoTipo = "consultivo" | "litigio"
 export type LancamentoTipo = "entrada" | "saida"
 export type LancamentoStatus = "feito" | "aberto"
@@ -246,6 +246,7 @@ export interface ContratoRow {
   tipo: string | null // 'consultivo' | 'litigio' do único caso (ambíguo com vários → null)
   statusCaso: string | null // status do único caso (ambíguo com vários → null)
   dataFechamento: string | null // ISO — Contrato.dataFechamento
+  valorTotalCents: number | null // Contrato.valorTotalCents (valor total digitado — métrica comercial); null se não informado
   valorContratadoCents: number // Σ honorários de TODOS os casos vinculados
   recebidoCents: number // Σ honorários com status 'recebido'
   honorariosCount: number
@@ -278,6 +279,8 @@ export interface ContratoDetail {
   cliente: string | null
   clienteId: number | null
   dataFechamento: string | null // ISO
+  valorTotalCents: number | null // Contrato.valorTotalCents (valor total digitado — métrica comercial)
+  area: string | null // Contrato.area (chave de AreaDireito, explícita)
   observacoes: string | null
   valorContratadoCents: number
   recebidoCents: number
@@ -414,6 +417,7 @@ export interface CasoRow {
   id: number
   titulo: string
   cliente: string | null
+  clienteId: number | null // Caso.clientePrincipalId — filtra casos por cliente (ex.: vincular ao contrato)
   tipo: CasoTipo
   status: string | null
   area: string | null // área do direito (cível, trabalhista, …)

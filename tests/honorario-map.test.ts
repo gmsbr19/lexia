@@ -81,6 +81,8 @@ describe("contratoToRow", () => {
     id: 1,
     titulo: null,
     dataFechamento: new Date("2026-07-08T12:00:00.000Z"),
+    valorTotalCents: null,
+    area: null,
     clienteId: 5,
     clienteNome: "Cliente X",
     clienteOrigem: null,
@@ -145,5 +147,16 @@ describe("contratoToRow", () => {
     expect(multi.area).toBeNull()
     expect(multi.tipo).toBeNull()
     expect(multi.statusCaso).toBeNull()
+  })
+
+  it("área explícita do contrato vence a área derivada do único caso; passa o valorTotalCents", () => {
+    // explicit contrato.area wins even over a single caso's área
+    const r = contratoToRow(contrato({ area: "civ", valorTotalCents: 500000, casos: [caso({ area: "trab" })] }))
+    expect(r.area).toBe("civ")
+    expect(r.valorTotalCents).toBe(500000)
+    // no explicit área → falls back to the single caso's área
+    expect(contratoToRow(contrato({ area: null, casos: [caso({ area: "trab" })] })).area).toBe("trab")
+    // ambiguous (multi-caso) with no explicit área → null
+    expect(contratoToRow(contrato({ area: null, casos: [caso(), caso({ id: 2 })] })).area).toBeNull()
   })
 })

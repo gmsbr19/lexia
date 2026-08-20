@@ -55,6 +55,7 @@
   --brand-gold: #C0A147;
   --brand-gold-soft: #D8BE7A;
   --brand-gold-deep: #9A7F2E;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
   --cm-pos: var(--fin-pos, #1F8A4C);
   --cm-neg: var(--fin-neg, #C0492F);
 }

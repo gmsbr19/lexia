@@ -53,6 +53,8 @@ export interface ContratoInput {
   id: number
   titulo: string | null
   dataFechamento: Date | null
+  valorTotalCents: number | null
+  area: string | null // Contrato.area explícita (tem precedência sobre a área do único caso)
   clienteId: number | null
   clienteNome: string | null
   clienteOrigem: string | null
@@ -76,11 +78,13 @@ export function contratoToRow(c: ContratoInput): ContratoRow {
     titulo: c.titulo ?? unicoCaso?.titulo ?? c.clienteNome ?? `Contrato #${c.id}`,
     cliente: c.clienteNome,
     clienteId: c.clienteId,
-    area: unicoCaso?.area ?? null,
+    // Área explícita do contrato tem precedência; cai para a área do único caso.
+    area: c.area ?? unicoCaso?.area ?? null,
     origem: c.clienteOrigem ?? origemLead,
     tipo: unicoCaso?.tipo ?? null,
     statusCaso: unicoCaso?.status ?? null,
     dataFechamento: c.dataFechamento ? c.dataFechamento.toISOString() : null,
+    valorTotalCents: c.valorTotalCents,
     valorContratadoCents,
     recebidoCents,
     honorariosCount: allFees.length,

@@ -12,6 +12,7 @@ const row = (over: Partial<ContratoRow> = {}): ContratoRow => ({
   tipo: null,
   statusCaso: null,
   dataFechamento: "2026-07-08T12:00:00.000Z",
+  valorTotalCents: null,
   valorContratadoCents: 0,
   recebidoCents: 0,
   honorariosCount: 0,

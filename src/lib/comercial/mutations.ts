@@ -7,6 +7,9 @@ import { randomUUID } from "node:crypto"
 import type { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/db"
 import { UserError } from "@/lib/errors"
+import { getFunilConfig } from "@/lib/captacao/config"
+import { eventoParaEtapa } from "@/lib/captacao/eventos-core"
+import { registrarEventoFunil, retratarPorMudancaDeEtapa } from "@/lib/captacao/eventos"
 import { createLancamento } from "@/lib/finance/mutations"
 import { notificarLeadConvertido, notificarOportunidadeAtribuida } from "@/lib/notificacoes/triggers"
 import { resolverOuCriarCliente } from "./contato"
@@ -59,6 +62,25 @@ function asOrigem(v: unknown): LeadOrigem {
 // the 2 reserved terminal keys from ever being reused as an open stage.
 function asEtapa(v: unknown): LeadEtapa {
   return typeof v === "string" && v.trim() ? v.trim() : "novo"
+}
+
+/** Emite (best-effort, nunca lança) o evento de conversão canônico — se
+ *  algum — de uma transição PARA `etapa`. Lê `captacao.funil` a cada chamada
+ *  (não cacheado) de propósito: uma mudança de mapeamento pelo admin vale na
+ *  hora, sem deploy (§3.3/§F3.3 do plano de captação). */
+async function emitirEventoDeEtapa(leadId: number, etapa: LeadEtapa, ocorreuEm: Date): Promise<void> {
+  const mapa = await getFunilConfig()
+  const evento = eventoParaEtapa(etapa, { ...mapa, etapasGanho: ["ganho"] })
+  if (evento) void registrarEventoFunil({ leadId, tipo: evento, ocorreuEm })
+}
+
+/** Retrata (RETRACT, best-effort) os eventos que uma REGRESSÃO de etapa
+ *  invalida — "voltar de estágio" é o único gatilho de retratação do módulo
+ *  de captação (§5 do briefing de conversões offline). Mesma disciplina de
+ *  ler `captacao.funil` a cada chamada. */
+async function retratarSeRegrediu(leadId: number, curEtapa: LeadEtapa, nextEtapa: LeadEtapa): Promise<void> {
+  const mapa = await getFunilConfig()
+  await retratarPorMudancaDeEtapa(leadId, curEtapa, nextEtapa, { ...mapa, etapasGanho: ["ganho"] })
 }
 
 /** Upsert the auto-managed "Marketing" expense categoria; returns its id. */
@@ -243,6 +265,7 @@ export async function createLead(input: LeadCreate, actorEmail?: string | null) 
   if (responsavelUserId) {
     void notificarOportunidadeAtribuida({ leadId: lead.id, nome: lead.nome, responsavelUserId, actorEmail })
   }
+  void emitirEventoDeEtapa(lead.id, etapa, lead.dataEntrada)
   return lead
 }
 
@@ -336,6 +359,15 @@ export async function moverEtapa(id: number, etapa: LeadEtapa, actorEmail?: stri
   if (next === "ganho" && cur.etapa !== "ganho") {
     void notificarLeadConvertido({ leadId: id, nome: lead.nome, actorEmail })
   }
+  // Captação: numa transição real, emite o evento canônico da etapa nova E
+  // retrata (RETRACT) o que a mudança invalidar — "voltar de estágio" é o
+  // gatilho da retratação (§5 do briefing de conversões offline). As duas
+  // chamadas nunca colidem: uma etapa nunca simultaneamente ganha e perde o
+  // mesmo evento canônico.
+  if (next !== cur.etapa) {
+    void emitirEventoDeEtapa(id, next, new Date())
+    void retratarSeRegrediu(id, cur.etapa, next)
+  }
   if (cur.etapa === "perdido" && next !== "perdido") {
     await prisma.oportunidadeAtividade.create({
       data: { leadId: id, tipo: "nota", descricao: "Lead reaberto — reversão da marcação de Perdido." },
@@ -350,7 +382,8 @@ export async function marcarPerdido(
   motivoCategoria?: string | null,
   opts?: { automatico?: boolean },
 ) {
-  return prisma.lead.update({
+  const cur = await prisma.lead.findUnique({ where: { id }, select: { etapa: true } })
+  const lead = await prisma.lead.update({
     where: { id },
     data: {
       etapa: "perdido",
@@ -360,6 +393,11 @@ export async function marcarPerdido(
       perdidoAutomatico: !!opts?.automatico,
     },
   })
+  // Captação: perder um lead que já estava qualificado/ganho também é uma
+  // regressão (raro — normalmente perdido vem de um estágio aberto — mas uma
+  // correção de dado depois de ganho/qualificado precisa retratar do mesmo jeito).
+  if (cur) void retratarSeRegrediu(id, cur.etapa, "perdido")
+  return lead
 }
 
 function mapTipoHonorario(v?: string | null): string {
@@ -431,9 +469,11 @@ export async function converterLead(id: number, input: ConverterLeadInput, actor
       },
     })
   })
-  // Conversão nova (não estava em 'ganho' antes) → avisa os gestores.
+  // Conversão nova (não estava em 'ganho' antes) → avisa os gestores + emite
+  // contrato_assinado (captação).
   if (antes && antes.etapa !== "ganho") {
     void notificarLeadConvertido({ leadId: id, nome: result.nome, actorEmail })
+    void emitirEventoDeEtapa(id, "ganho", dataConv)
   }
   return result
 }
@@ -472,9 +512,11 @@ export async function mesclarLeadComCliente(id: number, input: MesclarLeadInput,
     })
   })
   // Mesclagem nova (não estava em 'ganho' antes) → avisa os gestores, mesmo
-  // fluxo de notificação da conversão normal.
+  // fluxo de notificação da conversão normal, + emite contrato_assinado
+  // (captação) — mesmo sem honorário criado aqui, é uma conversão de verdade.
   if (antes.etapa !== "ganho") {
     void notificarLeadConvertido({ leadId: id, nome: result.nome, actorEmail })
+    void emitirEventoDeEtapa(id, "ganho", antes.dataConversao ?? new Date())
   }
   return result
 }
@@ -523,10 +565,15 @@ export async function bulkUpdateLeads(input: LeadsLote, actorEmail?: string | nu
   if (input.area !== undefined) data.area = input.area?.trim() || null
   if (Object.keys(data).length === 0) throw new UserError("Nenhuma alteração informada")
 
-  // Snapshot "antes" só quando o dono está mudando, para notificar só quem de
-  // fato ganhou um dono NOVO (espelha o guard de updateLead).
-  const antes = novoResp
-    ? await prisma.lead.findMany({ where: { id: { in: ids } }, select: { id: true, nome: true, responsavelUserId: true } })
+  // Snapshot "antes" quando o dono OU a etapa estão mudando — o dono, para
+  // notificar só quem de fato ganhou um dono NOVO (espelha o guard de
+  // updateLead); a etapa, para saber de onde cada lead veio e retratar
+  // (RETRACT) o que a mudança invalidar por lead (a regressão pode variar:
+  // um lead vindo de "proposta" retrata lead_qualificado, um vindo de
+  // "contato" não retrata nada).
+  const precisaAntes = novoResp || typeof data.etapa === "string"
+  const antes = precisaAntes
+    ? await prisma.lead.findMany({ where: { id: { in: ids } }, select: { id: true, nome: true, responsavelUserId: true, etapa: true } })
     : []
 
   const r = await prisma.lead.updateMany({ where: { id: { in: ids } }, data })
@@ -536,6 +583,17 @@ export async function bulkUpdateLeads(input: LeadsLote, actorEmail?: string | nu
       if (l.responsavelUserId !== novoResp) {
         void notificarOportunidadeAtribuida({ leadId: l.id, nome: l.nome, responsavelUserId: novoResp, actorEmail })
       }
+    }
+  }
+  // Captação: emite o evento canônico da etapa nova por lead + retrata o que
+  // cada regressão invalidar (ganho/perdido já são rejeitados acima; o
+  // índice único no banco no-opa sozinho p/ quem já tinha o evento).
+  if (typeof data.etapa === "string") {
+    const next = data.etapa
+    const agora = new Date()
+    for (const l of antes) {
+      void emitirEventoDeEtapa(l.id, next, agora)
+      if (l.etapa !== next) void retratarSeRegrediu(l.id, l.etapa, next)
     }
   }
   return { atualizadas: r.count }

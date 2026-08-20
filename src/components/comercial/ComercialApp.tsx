@@ -19,6 +19,7 @@ import { CmCampanhas } from "./tabs/CmCampanhas"
 import { CmLeads, type LastImport, type LeadInject } from "./tabs/CmLeads"
 import { CmFollowUp, type CxQuickKind } from "./tabs/CmFollowUp"
 import { CmExportar } from "./tabs/CmExportar"
+import { CmCaptacao } from "./tabs/CmCaptacao"
 import {
   CmCampanhaModal,
   CmConverterModal,
@@ -44,7 +45,7 @@ import type { CmDataset, CmDatasetCampaign, CmDatasetLead, LeadEtapa } from "@/l
 
 const send = (url: string, body: unknown, method = "POST") => apiSend(url, method, body)
 
-type Tab = "visao" | "funil" | "followup" | "leads" | "campanhas" | "exportar"
+type Tab = "visao" | "funil" | "followup" | "leads" | "campanhas" | "captacao" | "exportar"
 type Modal =
   | { type: "campanha"; edit: CmDatasetCampaign | null }
   | { type: "gasto"; campanha: CmDatasetCampaign | null }
@@ -184,6 +185,7 @@ export function ComercialApp({ dataset: serverDataset, verFin }: { dataset: CmDa
     { id: "followup", label: "Follow-up", icon: "target", badge: vencidos || null },
     { id: "leads", label: "Leads", icon: "users", badge: abertos || null },
     { id: "campanhas", label: "Campanhas", icon: "megaphone" },
+    ...(verFin ? [{ id: "captacao", label: "Captação", icon: "mousePointerClick" } as CmTabDef] : []),
     { id: "exportar", label: "Exportar", icon: "download" },
   ]
 
@@ -212,6 +214,7 @@ export function ComercialApp({ dataset: serverDataset, verFin }: { dataset: CmDa
           )}
           {tab === "leads" && <CmLeads dataset={dataset} scores={scores} hoje={hoje} injectFilter={leadInject} lastImport={lastImport} onNew={openLeadNew} onConvert={openConverter} onLose={openPerdido} onEdit={openLeadEdit} onImport={openImportar} onImportMap={openImportarMapeado} onMerge={openMesclar} />}
           {tab === "campanhas" && <CmCampanhas dataset={dataset} ref0={ref0} setRef={setRef} period={period} setPeriod={setPeriod} scope={scope} verFin={verFin} onNew={() => setModal({ type: "campanha", edit: null })} onGasto={(c) => setModal({ type: "gasto", campanha: c })} onEdit={(c) => setModal({ type: "campanha", edit: c })} onLeads={goLeadsCampaign} onImport={() => setModal({ type: "importarMeta" })} />}
+          {tab === "captacao" && verFin && <CmCaptacao />}
           {tab === "exportar" && <CmExportar dataset={dataset} ref0={ref0} period={period} scope={scope} />}
         </div>
 

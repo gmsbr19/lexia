@@ -215,6 +215,10 @@ export interface CmDatasetLead {
   // ── checkpoints de follow-up
   contratoEnviadoEm: string | null // ISO date
   perdidoAutomatico: boolean
+  // ── captação (só as 2 flags leves p/ colunas opcionais da grade — o
+  // restante da atribuição é lazy-loaded via GET /api/comercial/leads/[id]/captacao)
+  temClique: boolean
+  utmTerm: string | null
 }
 export interface CmDatasetGasto {
   id: number

@@ -98,6 +98,8 @@ export const contratoCreateSchema = z.object({
   clienteId: idOpt,
   titulo: z.string().max(200).nullish(),
   dataFechamento: dateStr,
+  valorTotalCents: money.nullish(),
+  area: z.string().max(120).nullish(),
   observacoes: z.string().max(2000).nullish(),
   casoIds: z.array(idReq).max(100).optional(),
 })
@@ -106,6 +108,8 @@ export const contratoPatchSchema = z.object({
   clienteId: idOpt,
   titulo: z.string().max(200).nullish(),
   dataFechamento: dateStr.optional(),
+  valorTotalCents: money.nullish(),
+  area: z.string().max(120).nullish(),
   observacoes: z.string().max(2000).nullish(),
   vincularCasoIds: z.array(idReq).max(100).optional(),
   desvincularCasoIds: z.array(idReq).max(100).optional(),

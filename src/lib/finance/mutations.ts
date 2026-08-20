@@ -10,6 +10,7 @@
 // SERVER ONLY (imports prisma).
 import { randomUUID } from "node:crypto"
 import { Prisma } from "@prisma/client"
+import { restabelecerValorContrato } from "@/lib/captacao/eventos"
 import { prisma } from "@/lib/db"
 import { UserError } from "@/lib/errors"
 import { getAcertoSocios } from "./queries"
@@ -154,14 +155,19 @@ export interface LancamentoPatch {
 }
 
 export async function updateLancamento(id: number, patch: LancamentoPatch) {
-  const existing = await prisma.lancamento.findUnique({ where: { id }, select: { tipo: true } })
+  const existing = await prisma.lancamento.findUnique({
+    where: { id },
+    select: { tipo: true, valorCents: true, leads: { select: { id: true } } },
+  })
   if (!existing) throw new UserError("Lançamento não encontrado")
   const data: Prisma.LancamentoUncheckedUpdateInput = {}
-  if (patch.descricao !== undefined) data.descricao = patch.descricao
+  let novoValorMag: number | null = null
   if (patch.valorCents !== undefined) {
     const mag = Math.abs(reqInt(patch.valorCents, "valorCents"))
+    novoValorMag = mag
     data.valorCents = existing.tipo === "saida" ? -mag : mag
   }
+  if (patch.descricao !== undefined) data.descricao = patch.descricao
   if (patch.status !== undefined) data.status = patch.status
   if (patch.dataVencimento !== undefined) data.dataVencimento = toDate(patch.dataVencimento)
   if (patch.dataPagamento !== undefined) data.dataPagamento = toDate(patch.dataPagamento)
@@ -169,7 +175,19 @@ export async function updateLancamento(id: number, patch: LancamentoPatch) {
   if (patch.categoriaId !== undefined) data.categoriaId = patch.categoriaId
   if (patch.clienteId !== undefined) data.clienteId = patch.clienteId
   if (patch.casoId !== undefined) data.casoId = patch.casoId
-  return prisma.lancamento.update({ where: { id }, data })
+  const result = await prisma.lancamento.update({ where: { id }, data })
+  // Captação: o valor de um contrato JÁ ENVIADO como contrato_assinado mudou
+  // → RESTATE (lê o novo valor direto daqui, nunca recalcula — mesma
+  // disciplina do RETRACT). Só dispara quando o valor de fato mudou E este
+  // lançamento é o fee-lançamento de algum lead (`Lead.lancamentoId`);
+  // `restabelecerValorContrato` já é um no-op se o lead não tiver
+  // contrato_assinado emitido ainda.
+  if (novoValorMag != null && novoValorMag !== Math.abs(existing.valorCents)) {
+    for (const l of existing.leads) {
+      void restabelecerValorContrato(l.id, novoValorMag, "Valor do contrato alterado")
+    }
+  }
+  return result
 }
 
 export async function deleteLancamento(id: number) {
@@ -561,6 +579,10 @@ export interface ContratoCreate {
   clienteId?: number | null
   titulo?: string | null
   dataFechamento: string
+  /** Valor total do contrato em centavos (métrica comercial; digitado). */
+  valorTotalCents?: number | null
+  /** Área do direito (chave de AreaDireito). */
+  area?: string | null
   observacoes?: string | null
   /** Casos a vincular já na criação (move-os de qualquer contrato anterior). */
   casoIds?: number[]
@@ -601,6 +623,8 @@ export async function criarContrato(input: ContratoCreate) {
         clienteId: input.clienteId ?? null,
         titulo: input.titulo?.trim() || null,
         dataFechamento,
+        valorTotalCents: input.valorTotalCents ?? null,
+        area: input.area?.trim() || null,
         observacoes: input.observacoes?.trim() || null,
       },
     })
@@ -618,6 +642,8 @@ export interface ContratoPatch {
   clienteId?: number | null
   titulo?: string | null
   dataFechamento?: string
+  valorTotalCents?: number | null
+  area?: string | null
   observacoes?: string | null
   /** Vincula estes casos ao contrato (move-os de qualquer contrato anterior). */
   vincularCasoIds?: number[]
@@ -649,6 +675,8 @@ export async function atualizarContrato(id: number, patch: ContratoPatch) {
       if (!d) throw new UserError("Data de fechamento inválida")
       data.dataFechamento = d
     }
+    if (patch.valorTotalCents !== undefined) data.valorTotalCents = patch.valorTotalCents
+    if (patch.area !== undefined) data.area = patch.area?.trim() || null
     if (patch.observacoes !== undefined) data.observacoes = patch.observacoes?.trim() || null
     if (Object.keys(data).length) await tx.contrato.update({ where: { id }, data })
 
@@ -702,6 +730,17 @@ export async function anonimizarCliente(id: number) {
         observacoes: null,
         motivoPerda: null,
         genionsId: null,
+        // Captação (§4 do plano de captação): limpa o que é PII/consentimento —
+        // triagem (respostas livres da LP), referrer e a URL exata visitada
+        // (pode conter query strings pessoais), consentimento. PRESERVA gclid/
+        // wbraid/gbraid/utm*/cliqueEm — evidência de clique/campanha, não dado
+        // pessoal, ainda necessária para medir performance de mídia mesmo com
+        // o lead anonimizado.
+        triagem: null,
+        referrer: null,
+        landingPageUrl: null,
+        consentimentoEm: null,
+        consentimentoVersao: null,
       },
     })
     await tx.cliente.update({

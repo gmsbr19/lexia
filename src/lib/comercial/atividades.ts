@@ -5,6 +5,9 @@
 // atividade de outra oportunidade não é atingível pela URL desta). Espelha
 // tarefas/comentarios.ts.
 import { avaliarRegrasPerda, contarToques, parseSinais, proximoToque } from "@/lib/comercial/score"
+import { getFunilConfig } from "@/lib/captacao/config"
+import { registrarEventoFunil } from "@/lib/captacao/eventos"
+import { ehReuniaoRealizada } from "@/lib/captacao/eventos-core"
 import { prisma } from "@/lib/db"
 import { ForbiddenError, UserError } from "@/lib/errors"
 import { log } from "@/lib/log"
@@ -149,6 +152,17 @@ export async function criarAtividade(
     },
     select: SELECT,
   })
+
+  // Captação: reunião realizada (tipo+resultado configuráveis) → evento
+  // canônico `reuniao_realizada`, com `ocorreuEm` = o timestamp do FATO (a
+  // própria atividade já carrega isso — pode ter sido registrada com atraso).
+  getFunilConfig()
+    .then((mapa) => {
+      if (ehReuniaoRealizada(criado.tipo, criado.resultado, mapa)) {
+        void registrarEventoFunil({ leadId, tipo: "reuniao_realizada", ocorreuEm: criado.ocorreuEm })
+      }
+    })
+    .catch((e) => log.error({ leadId, err: e instanceof Error ? e.message : String(e) }, "captacao: checagem de reunião falhou"))
 
   // Automação de follow-up: melhor-esforço — uma falha aqui nunca desfaz a
   // atividade já persistida (o usuário só perde o avanço automático da

@@ -29,6 +29,12 @@ export async function nomeUsuario(id?: number | null): Promise<string> {
   const u = await prisma.user.findUnique({ where: { id }, select: { nome: true } })
   return u?.nome ?? `usuário #${id}`
 }
+/** Nome legível de uma área do direito a partir da chave (ex.: 'trab' → 'Trabalhista'). */
+export async function nomeArea(chave?: string | null): Promise<string> {
+  if (!chave) return "—"
+  const a = await prisma.areaDireito.findUnique({ where: { chave }, select: { nome: true } })
+  return a?.nome ?? chave
+}
 /** Rótulo amigável de um processo: nº CNJ, senão o título do caso. */
 export async function rotuloProcesso(id?: number | null): Promise<string> {
   if (!id) return "—"
