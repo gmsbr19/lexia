@@ -3,7 +3,7 @@
 import { NextResponse } from "next/server"
 import { guardRequest, requireUser, sessionEmail } from "@/lib/auth/session"
 import { readJson, runMutation } from "@/lib/finance/api"
-import { getViewPrefs, setViewPrefs } from "@/lib/crm/view-prefs"
+import { getViewPrefs, setViewPrefs, type CrmViewPrefs } from "@/lib/crm/view-prefs"
 import { crmViewPrefsSchema } from "@/lib/crm/schemas"
 import { parseBody } from "@/lib/validation"
 
@@ -20,7 +20,7 @@ export async function GET() {
 export async function PATCH(req: Request) {
   const body = await readJson(req)
   const email = (await sessionEmail()) ?? ""
-  return runMutation(() => setViewPrefs(email, parseBody(crmViewPrefsSchema, body)), {
+  return runMutation(() => setViewPrefs(email, parseBody(crmViewPrefsSchema, body) as CrmViewPrefs), {
     action: "crm.view-prefs",
     payload: body,
   })

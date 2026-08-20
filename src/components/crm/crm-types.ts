@@ -30,6 +30,12 @@ export type {
   ToqueCadencia,
 } from "@/lib/settings"
 
+export type { AlertasConfig, FunilConfig, ValoresConfig } from "@/lib/captacao/config"
+export type { LandingPageRow, LandingPageInput } from "@/lib/captacao/landing-pages"
+export type { CampanhaOption } from "@/lib/comercial/types"
+export type { EventoRow as ConversaoEventoRow, CaptacaoKpis } from "@/lib/captacao/fila"
+export type { LinhaReconciliacao } from "@/lib/captacao/reconciliacao"
+
 export type Role = "admin" | "socio" | "advogado" | "estagiario" | "financeiro" | "staff"
 
 /** Lists fetched once on the server and handed to the client workspace. Detail

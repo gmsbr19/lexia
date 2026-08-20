@@ -8,16 +8,24 @@ import type { LexiaPrefs, LexiaPrefsResolved } from "@/lib/lexia/preferencias-co
 import type { ConsumoData, ConsumoInterno, ConsumoOrcamento, ConsumoPeriodo } from "@/lib/consumo/types"
 import type {
   AgendaDataset,
+  AlertasConfig,
+  CampanhaOption,
+  CaptacaoKpis,
   CasoDetail,
   ClienteDetail,
   ContratoDetail,
+  ConversaoEventoRow,
   DocumentoRow,
   EscritorioConfig,
   FollowupConfig,
+  FunilConfig,
   HonorarioDetail,
   ImportacaoInfo,
+  LandingPageInput,
+  LandingPageRow,
   LexiaConversaDetail,
   LexiaConversaRow,
+  LinhaReconciliacao,
   ModulosConfig,
   MotivosPerdaConfig,
   NotificacoesConfig,
@@ -25,6 +33,7 @@ import type {
   ScoringConfig,
   SearchResults,
   UserRow,
+  ValoresConfig,
 } from "./crm-types"
 
 const get = <T>(url: string) => apiSend<T>(url, "GET")
@@ -46,6 +55,11 @@ export const deleteContrato = (id: number) => mut(`/api/contratos/${id}`, "DELET
 export const fetchAgenda = (de: string, ate: string) => get<AgendaDataset>(`/api/agenda?de=${de}&ate=${ate}`)
 export const fetchDocumentos = (clienteId: number) => get<DocumentoRow[]>(`/api/documentos?clienteId=${clienteId}`)
 export const searchAll = (q: string) => get<SearchResults>(`/api/search?q=${encodeURIComponent(q)}`)
+
+// Quick-create a caso (título + optional client/área) — used by the contrato
+// modal's "criar caso" combobox option. Route gates on socio/advogado.
+export const createCaso = (body: { titulo: string; clientePrincipalId?: number; area?: string | null; tipo?: string }) =>
+  mut<{ id: number }>(`/api/casos`, "POST", body)
 
 // ── cliente mutations ──
 export const createCliente = (body: unknown) => mut(`/api/clientes`, "POST", body)
@@ -126,6 +140,38 @@ export const getScoringConfig = () => get<ScoringConfig>(`/api/comercial/scoring
 export const putScoringConfig = (body: ScoringConfig) => mut(`/api/comercial/scoring`, "PUT", body)
 export const getFollowupConfig = () => get<FollowupConfig>(`/api/comercial/followup`)
 export const putFollowupConfig = (body: FollowupConfig) => mut(`/api/comercial/followup`, "PUT", body)
+
+// ── captação (admin) ──
+// Não há mais config de conexão/OAuth/ações do Google (o casamento é por
+// nome fixo — ver src/lib/captacao/acoes.ts — e o Google Ads LÊ um feed CSV,
+// não recebe push): só o mapeamento do funil e as regras de valor continuam
+// configuráveis pela tela.
+export const getCaptacaoFunilConfig = () => get<FunilConfig>(`/api/captacao/config/funil`)
+export const putCaptacaoFunilConfig = (body: FunilConfig) => mut(`/api/captacao/config/funil`, "PUT", body)
+export const getCaptacaoValoresConfig = () => get<ValoresConfig>(`/api/captacao/config/valores`)
+export const putCaptacaoValoresConfig = (body: ValoresConfig) => mut(`/api/captacao/config/valores`, "PUT", body)
+export const getCaptacaoAlertasConfig = () => get<AlertasConfig>(`/api/captacao/config/alertas`)
+export const putCaptacaoAlertasConfig = (body: AlertasConfig) => mut(`/api/captacao/config/alertas`, "PUT", body)
+export const getValorPreview = (leadId: number, evento: string) =>
+  get<{ cents: number; motivo: string }>(`/api/captacao/valor-preview?leadId=${leadId}&evento=${encodeURIComponent(evento)}`)
+export const getFeedStatus = () => get<{ configurado: boolean }>(`/api/captacao/feed-status`)
+
+export const listLandingPages = () => get<LandingPageRow[]>(`/api/captacao/landing-pages`)
+export const createLandingPage = (body: LandingPageInput) =>
+  mut<{ row: LandingPageRow; chave: string }>(`/api/captacao/landing-pages`, "POST", body)
+export const updateLandingPage = (id: number, body: LandingPageInput & { ativo?: boolean }) =>
+  mut<LandingPageRow>(`/api/captacao/landing-pages/${id}`, "PATCH", body)
+export const revokeLandingPage = (id: number) => mut<{ id: number }>(`/api/captacao/landing-pages/${id}`, "DELETE")
+export const rotateLandingPageKey = (id: number) =>
+  mut<{ row: LandingPageRow; chave: string }>(`/api/captacao/landing-pages/${id}/rotacionar`, "POST")
+
+export const getCampanhaOptions = () => get<CampanhaOption[]>(`/api/comercial/campanhas-options`)
+export const listConversoesEventos = () => get<ConversaoEventoRow[]>(`/api/captacao/eventos`)
+export const getCaptacaoKpis = () => get<CaptacaoKpis>(`/api/captacao/kpis`)
+export const aplicarLoteConversoes = (ids: number[], acao: "descartar" | "reativar", motivo?: string) =>
+  mut<{ atualizados: number }>(`/api/captacao/eventos/lote`, "POST", { ids, acao, motivo })
+export const getReconciliacaoSemanal = () => get<LinhaReconciliacao[]>(`/api/captacao/reconciliacao`)
+
 export const getImportacao = () => get<ImportacaoInfo>(`/api/settings/importacao`)
 export const getConsumo = (periodo: ConsumoPeriodo, force = false) =>
   get<ConsumoData>(`/api/consumo?periodo=${periodo}${force ? "&force=1" : ""}`)
