@@ -3,6 +3,7 @@
 // (the prototype pinned it to a fixed date) and @/# tokens resolve against the
 // active users + the DYNAMIC projetos passed in.
 import type { TaskPrio, TeamMember } from "@/lib/tarefas/types"
+import { parseDataNatural } from "@/lib/datas/nl"
 
 export const WD = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"]
 export const WD_LONG = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"]
@@ -145,41 +146,15 @@ export function parseQuickAdd(
     }
     text = text.replace(asm[0], " ")
   }
-  // time  14h / 14:30 / 9h
-  const tm = text.match(/\b(\d{1,2})\s*[:h]\s*(\d{2})?\b/)
-  if (tm) {
-    const hh = String(Math.min(23, +tm[1])).padStart(2, "0")
-    const mm = (tm[2] || "00").padStart(2, "0")
-    res.hora = `${hh}:${mm}`
-    text = text.replace(tm[0], " ")
-  }
-  // date keywords — "depois de amanhã" ANTES de "amanhã" (senão o prefixo
-  // "depois de" sobraria no título); `(?![\wà-ú])` no lugar do `\b` final
-  // (ASCII-only) para o "ã" acentuado casar.
-  const dk: [RegExp, number][] = [
-    [/\bhoje\b/i, 0],
-    [/\bdepois de amanh[ãa](?![\wà-ú])/i, 2],
-    [/\bamanh[ãa](?![\wà-ú])/i, 1],
-  ]
-  for (const [re, n] of dk) {
-    if (re.test(text)) {
-      res.data = tRel(n)
-      text = text.replace(re, " ")
-      break
-    }
-  }
-  if (!res.data) {
-    const wdm = text.match(/\b(seg|ter|qua|qui|sex|s[áa]b|dom)\w*/i)
-    if (wdm) {
-      const key = wdm[1].toLowerCase().slice(0, 3).replace("sá", "sáb").slice(0, 3)
-      const idx = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"].indexOf(key)
-      if (idx >= 0) {
-        let n = (idx - todayNoon().getDay() + 7) % 7
-        if (n === 0) n = 7
-        res.data = tRel(n)
-        text = text.replace(wdm[0], " ")
-      }
-    }
+  // date/time — delegates to the shared natural-language engine
+  // (src/lib/datas/nl.ts), which also understands "próxima semana", "dia 15",
+  // absolute "DD/MM", etc. for free, with identical "amanhã"/weekday/time
+  // behavior to what this file used to inline.
+  const nl = parseDataNatural(text, TODAY())
+  if (nl) {
+    res.data = nl.iso
+    res.hora = nl.hora
+    text = text.replace(nl.matched, " ")
   }
   if (res.hora && !res.data) res.data = tRel(0)
 

@@ -1,8 +1,14 @@
 // Quick-add natural-language parser (Tarefas v2): #projeto resolves against the
 // DYNAMIC project list (accent-insensitive substring), @pessoa against the
 // active users, plus !prioridade, hora and date keywords.
+//
+// Date/time resolution is delegated to src/lib/datas/nl.ts (parseDataNatural);
+// its own vocabulary coverage is tested in tests/datas-nl.test.ts — the cases
+// below only prove the wiring (delegation) still yields the exact same
+// contract, plus that the newly-shared vocabulary now works inside quick-add
+// text for free.
 import { describe, expect, it } from "vitest"
-import { parseQuickAdd, tRel } from "@/components/tarefas/tf-meta"
+import { parseQuickAdd, tRel, TODAY, tParse } from "@/components/tarefas/tf-meta"
 import type { TeamMember } from "@/lib/tarefas/types"
 
 const socios: TeamMember[] = [
@@ -49,5 +55,28 @@ describe("parseQuickAdd — pessoas, prioridade, datas", () => {
   })
   it("parses the amanhã keyword", () => {
     expect(parseQuickAdd("Reunião amanhã", ctx).data).toBe(tRel(1))
+  })
+})
+
+describe("parseQuickAdd — vocabulary shared via src/lib/datas/nl.ts (delegation)", () => {
+  it("understands 'próxima semana' inside quick-add text", () => {
+    const r = parseQuickAdd("Reunião próxima semana", ctx)
+    expect(r.titulo).toBe("Reunião")
+    expect(r.data).not.toBeNull()
+    expect(r.data! > TODAY()).toBe(true)
+    expect(tParse(r.data!).getDay()).toBe(1) // segunda-feira
+  })
+  it("understands 'dia N' inside quick-add text", () => {
+    const r = parseQuickAdd("Pagar conta dia 15", ctx)
+    expect(r.titulo).toBe("Pagar conta")
+    expect(r.data).not.toBeNull()
+    expect(tParse(r.data!).getDate()).toBe(15)
+    expect(r.data! >= TODAY()).toBe(true)
+  })
+  it("still strips a bare time token and defaults the date to today (unchanged contract)", () => {
+    const r = parseQuickAdd("Ligar para o cliente 9h30", ctx)
+    expect(r.titulo).toBe("Ligar para o cliente")
+    expect(r.hora).toBe("09:30")
+    expect(r.data).toBe(tRel(0))
   })
 })

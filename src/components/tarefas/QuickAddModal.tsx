@@ -9,9 +9,11 @@ import { PRIO, REMINDER_OPTS, type TaskPrio } from "@/lib/tarefas/types"
 import { useModalGuard } from "@/lib/client/modal-guard"
 import { lexGlass } from "@/styles/glass.css"
 import { glassElevation } from "@/styles/glass"
+import { Popover } from "@/components/ui/Popover"
+import { DatePickerPanel } from "@/components/ui/DatePicker"
 import { Icon, type TfIconName } from "./tf-icons"
 import { useTarefasCtx } from "./TarefasContext"
-import { QUICKADD_TOKEN_RE, TODAY, dataLabel, isQuickAddToken, parseQuickAdd, tRel } from "./tf-meta"
+import { QUICKADD_TOKEN_RE, dataLabel, isQuickAddToken, parseQuickAdd } from "./tf-meta"
 import { AssigneeAvatar, Menu, MenuItem } from "./tf-kit"
 
 /** Payload de criação usado pelo quick-add, pelo Ramble e pelos inline-adds. */
@@ -166,6 +168,8 @@ export function QuickAddModal({
     projetoId: number | null
     reminder: string | null
   }>({ data: presetDate, prazo: null, assignee: meId, prio: null, projetoId: presetProject, reminder: null })
+  const [dataOpen, setDataOpen] = useState(false)
+  const [prazoOpen, setPrazoOpen] = useState(false)
 
   useModalGuard()
   useEffect(() => {
@@ -258,7 +262,7 @@ export function QuickAddModal({
 
         {/* chips */}
         <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", padding: "12px 18px 14px" }}>
-          <Menu width={200} trigger={
+          <Popover open={dataOpen} onOpenChange={setDataOpen} width={300} scrollable={false} trigger={
             <QChip
               icon="calendar"
               active={!!eff.data}
@@ -266,28 +270,13 @@ export function QuickAddModal({
               onClear={eff.data && !parsed?.data ? () => set("data", null) : null}
             />
           }>
-            {(close) => (
-              <>
-                <MenuItem icon="sun" label="Hoje" onClick={() => { set("data", TODAY()); close() }} />
-                <MenuItem icon="sunrise" label="Amanhã" onClick={() => { set("data", tRel(1)); close() }} />
-                <MenuItem icon="calendarRange" label="Próxima semana" onClick={() => { set("data", tRel(7)); close() }} />
-                <MenuItem icon="x" label="Sem data" onClick={() => { set("data", null); close() }} />
-              </>
-            )}
-          </Menu>
-          <Menu width={200} trigger={
+            <DatePickerPanel value={eff.data} onChange={(iso) => set("data", iso)} allowAdiar onRequestClose={() => setDataOpen(false)} />
+          </Popover>
+          <Popover open={prazoOpen} onOpenChange={setPrazoOpen} width={300} scrollable={false} trigger={
             <QChip icon="target" active={!!eff.prazo} label={eff.prazo ? `Prazo ${dataLabel(eff.prazo)}` : "Prazo"} onClear={eff.prazo ? () => set("prazo", null) : null} />
           }>
-            {(close) => (
-              <>
-                <MenuItem icon="sun" label="Hoje" onClick={() => { set("prazo", TODAY()); close() }} />
-                <MenuItem icon="sunrise" label="Amanhã" onClick={() => { set("prazo", tRel(1)); close() }} />
-                <MenuItem icon="calendarRange" label="Em 3 dias" onClick={() => { set("prazo", tRel(3)); close() }} />
-                <MenuItem icon="calendarRange" label="Em 1 semana" onClick={() => { set("prazo", tRel(7)); close() }} />
-                <MenuItem icon="x" label="Sem prazo" onClick={() => { set("prazo", null); close() }} />
-              </>
-            )}
-          </Menu>
+            <DatePickerPanel value={eff.prazo} onChange={(iso) => set("prazo", iso)} allowAdiar onRequestClose={() => setPrazoOpen(false)} />
+          </Popover>
           <Menu width={210} trigger={
             <QChip active={eff.responsavelId != null} onClear={eff.responsavelId != null && parsed?.responsavelId == null ? () => set("assignee", null) : null}>
               {eff.responsavelId != null ? (

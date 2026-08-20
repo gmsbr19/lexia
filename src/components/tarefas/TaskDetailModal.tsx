@@ -8,7 +8,6 @@
 import { useEffect, useRef, useState } from "react"
 import {
   PRIO,
-  RECUR_OPTS,
   REMINDER_OPTS,
   STATUS,
   statusMeta,
@@ -22,6 +21,7 @@ import { useModalGuard } from "@/lib/client/modal-guard"
 import { toast } from "@/lib/client/toast"
 import { lexGlass } from "@/styles/glass.css"
 import { glassElevation } from "@/styles/glass"
+import { DateField } from "@/components/ui/DatePicker"
 import { Icon } from "./tf-icons"
 import { useTarefasCtx } from "./TarefasContext"
 import { AssigneeAvatar, IaBadge, LinkChip, Menu, MenuItem, PrazoChip, TaskCheck } from "./tf-kit"
@@ -515,11 +515,20 @@ export function TaskDetailModal({
               </Menu>
             </DetField>
             <DetField label="Data · quando fazer">
-              <input type="date" className="dt-input" value={task.data ?? ""} onChange={(e) => patch({ data: e.target.value || null })} />
-              <input type="time" className="dt-input" value={task.hora ?? ""} onChange={(e) => patch({ hora: e.target.value || null })} style={{ width: 88 }} />
+              <DateField
+                value={task.data}
+                onChange={(iso) => patch({ data: iso })}
+                time={task.hora}
+                onTimeChange={(hora) => patch({ hora })}
+                withTime
+                recurEnabled
+                recur={task.recur}
+                onRecurChange={(recur) => patch({ recur })}
+                allowAdiar
+              />
             </DetField>
             <DetField label="Prazo · limite">
-              <input type="date" className="dt-input" value={task.prazo ?? ""} onChange={(e) => patch({ prazo: e.target.value || null })} />
+              <DateField value={task.prazo} onChange={(iso) => patch({ prazo: iso })} allowAdiar />
               <PrazoChip prazo={task.prazo} done={task.done} compact />
             </DetField>
             <DetField label="Prioridade">
@@ -555,21 +564,6 @@ export function TaskDetailModal({
                   {(close) => <VinculoMenuBody onPick={pickVinculo} close={close} />}
                 </Menu>
               )}
-            </DetField>
-            <DetField label="Recorrência">
-              <Menu width={180} trigger={
-                <DetPicker muted={!task.recur}>
-                  <Icon name="repeat" size={12} strokeWidth={1.9} />
-                  {task.recur || "Não repete"}
-                  <Icon name="chevronDown" size={12} style={{ color: "var(--text-subtle)" }} />
-                </DetPicker>
-              }>
-                {(close) =>
-                  RECUR_OPTS.map((r) => (
-                    <MenuItem key={r} label={r} active={(task.recur || "Não repete") === r} onClick={() => { patch({ recur: r === "Não repete" ? null : r }); close() }} />
-                  ))
-                }
-              </Menu>
             </DetField>
             <DetField label="Lembretes">
               <Menu width={180} trigger={

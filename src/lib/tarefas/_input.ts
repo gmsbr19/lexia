@@ -15,6 +15,14 @@ export function toDate(input: unknown): Date | null {
   return Number.isNaN(d.getTime()) ? null : d
 }
 
+/** Local-noon Date -> "YYYY-MM-DD" (mirror of toDate's convention: fields are
+ * read directly via getFullYear/getMonth/getDate, never UTC/toISOString, so
+ * the round-trip through toDate is timezone-safe). */
+export function fromDate(d: Date | null | undefined): string | null {
+  if (!d) return null
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+}
+
 export function reqStr(v: unknown, name: string): string {
   if (typeof v !== "string" || !v.trim()) throw new UserError(`${name} obrigatório`)
   return v.trim()

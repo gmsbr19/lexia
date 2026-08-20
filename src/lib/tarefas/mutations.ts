@@ -1,12 +1,14 @@
 // Tarefas — write layer. SERVER ONLY. App-created rows carry
 // astreaId "app-tarefa-<uuid>", origem "manual", geradoPorApp true.
 import { randomUUID } from "node:crypto"
-import { Prisma } from "@prisma/client"
+import { Prisma, type Tarefa } from "@prisma/client"
 import { prisma } from "@/lib/db"
 import { userIdPorEmail } from "@/lib/notificacoes/recipients"
 import { notificarTarefaAtribuida, notificarTarefaConcluida } from "@/lib/notificacoes/triggers"
+import { proximaOcorrencia } from "@/lib/datas/recorrencia"
 import {
   clampPrio,
+  fromDate,
   optId,
   optStr,
   reqStr,
@@ -155,6 +157,93 @@ export async function createTarefas(inputs: TarefaCreate[], actorEmail?: string 
   return { criadas: r.count }
 }
 
+/** Zera os checkboxes de um array JSON [{...,done}] (subtasks/dor/dod) for a
+ * freshly generated recurring instance — a new cycle starts unchecked. */
+function zerarChecklist(raw: string): string {
+  try {
+    const arr = JSON.parse(raw)
+    if (!Array.isArray(arr)) return raw
+    return JSON.stringify(arr.map((it) => ({ ...it, done: false })))
+  } catch {
+    return raw
+  }
+}
+
+/**
+ * Motor de recorrência: na transição todo→done, se `recur` é uma regra
+ * parseável e ainda não existe um clone ABERTO desta tarefa (guarda de
+ * idempotência via `recorrenteDeId` — concluir/reabrir/concluir de novo não
+ * duplica), cria a próxima instância. Âncora = data ?? prazo; se a âncora foi
+ * `data` e havia `prazo` também, o prazo é deslocado pelo mesmo delta. Sem
+ * notificação para a instância gerada (é do sistema — mesma convenção das
+ * tools de lote).
+ */
+async function gerarProximaRecorrencia(tarefa: Tarefa): Promise<void> {
+  if (!tarefa.recur) return
+  const jaAberta = await prisma.tarefa.findFirst({
+    where: { recorrenteDeId: tarefa.id, done: false },
+    select: { id: true },
+  })
+  if (jaAberta) return
+
+  const dataISO = fromDate(tarefa.data)
+  const prazoISO = fromDate(tarefa.prazo)
+  const anchorISO = dataISO ?? prazoISO
+  if (!anchorISO) return // sem data nem prazo — nada pra ancorar a recorrência
+
+  const hojeISO = fromDate(new Date())!
+  const proximaISO = proximaOcorrencia(tarefa.recur, anchorISO, hojeISO)
+  if (!proximaISO) return
+
+  let novaData: Date | null = null
+  let novoPrazo: Date | null = null
+  if (dataISO) {
+    novaData = toDate(proximaISO)
+    if (prazoISO) {
+      const deltaDias = Math.round((toDate(proximaISO)!.getTime() - toDate(dataISO)!.getTime()) / 86400000)
+      const d = toDate(prazoISO)!
+      d.setDate(d.getDate() + deltaDias)
+      novoPrazo = d
+    }
+  } else {
+    novoPrazo = toDate(proximaISO)
+  }
+
+  await prisma.tarefa.create({
+    data: {
+      astreaId: `app-tarefa-${randomUUID()}`,
+      titulo: tarefa.titulo,
+      status: "todo",
+      done: false,
+      prio: tarefa.prio,
+      projeto: tarefa.projeto,
+      data: novaData,
+      hora: tarefa.hora,
+      prazo: novoPrazo,
+      notes: tarefa.notes,
+      reminder: tarefa.reminder,
+      recur: tarefa.recur,
+      ai: false,
+      subtasks: zerarChecklist(tarefa.subtasks),
+      dor: zerarChecklist(tarefa.dor),
+      dod: zerarChecklist(tarefa.dod),
+      responsavelId: tarefa.responsavelId,
+      criadoPorId: tarefa.criadoPorId,
+      casoId: tarefa.casoId,
+      processoId: tarefa.processoId,
+      clienteId: tarefa.clienteId,
+      leadId: tarefa.leadId,
+      projetoId: tarefa.projetoId,
+      secaoId: tarefa.secaoId,
+      recorrenteDeId: tarefa.id,
+      concluidoEm: null,
+      ordem: tarefa.ordem,
+      origem: "recorrencia",
+      geradoPorApp: true,
+    },
+  })
+}
+
 export interface TarefaPatch {
   titulo?: string
   status?: string
@@ -246,7 +335,8 @@ export async function updateTarefa(id: number, patch: TarefaPatch, actorEmail?: 
       prazo: tarefa.prazo,
     })
   }
-  // Conclusão (transição para done) → o criador/delegante é notificado.
+  // Conclusão (transição para done) → o criador/delegante é notificado +
+  // motor de recorrência gera a próxima instância (sem notificação própria).
   if (tarefa.done && antes && !antes.done) {
     void notificarTarefaConcluida({
       tarefaId: tarefa.id,
@@ -255,6 +345,9 @@ export async function updateTarefa(id: number, patch: TarefaPatch, actorEmail?: 
       actorEmail,
       concluidoEm: tarefa.concluidoEm,
     })
+    void gerarProximaRecorrencia(tarefa).catch((e) =>
+      console.error("[tarefas] falha ao gerar próxima ocorrência recorrente", e),
+    )
   }
   return tarefa
 }
