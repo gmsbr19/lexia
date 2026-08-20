@@ -194,11 +194,29 @@ globalStyle("body *, body *::before, body *::after", {
     "background-color 160ms ease-out, color 160ms ease-out, border-color 160ms ease-out, box-shadow 160ms ease-out, fill 160ms ease-out, stroke 160ms ease-out, outline-color 160ms ease-out",
 });
 globalStyle("#__next, main", { height: "100%" });
-globalStyle("::-webkit-scrollbar", { width: "10px", height: "10px" });
+// Thin, minimalist scrollbars app-wide — transparent track, a rounded thumb
+// inset from the edges (2px transparent border + background-clip:padding-box
+// makes the visible thumb ~4px inside an 8px track), subtle by default and a
+// touch darker on hover. Module scopes (.cm-scope/.tf-scope) keep their own
+// even-more-refined overrides; this is the baseline every UNscoped surface
+// gets — notably the popovers/dropdowns portaled to <body> (DatePicker,
+// Combobox, Menu), which sit outside those scopes. WebKit pseudo-elements
+// ONLY: never set scrollbar-width/scrollbar-color here — on Chrome ≥121 the
+// standard props switch OFF the ::-webkit-scrollbar pseudo-elements entirely
+// (documented gotcha; see cm-theme.css). backgroundColor (longhand) is used,
+// not the `background` shorthand, so the :hover rule doesn't reset
+// background-clip and un-inset the thumb.
+globalStyle("::-webkit-scrollbar", { width: "8px", height: "8px" });
 globalStyle("::-webkit-scrollbar-track", { background: "transparent" });
+globalStyle("::-webkit-scrollbar-corner", { background: "transparent" });
 globalStyle("::-webkit-scrollbar-thumb", {
-  background: tokens.color.borderStrong,
+  backgroundColor: tokens.color.borderStrong,
   borderRadius: "999px",
+  border: "2px solid transparent",
+  backgroundClip: "padding-box",
+});
+globalStyle("::-webkit-scrollbar-thumb:hover", {
+  backgroundColor: tokens.color.textSubtle,
 });
 
 export const unselectable = style({

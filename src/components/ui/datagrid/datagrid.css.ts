@@ -154,8 +154,17 @@ export const tableCard = style({
   borderRadius: 14,
   boxShadow: tokens.color.shadowSm,
   padding: 0,
-  overflow: "auto",
+  // The rounded border lives on THIS non-scrolling box; the actual scrolling
+  // happens in `tableScrollInner` below. overflow:hidden here clips that inner
+  // scroller (and its scrollbars) to the rounded corners — with a single
+  // scroll+radius box, the scrollbars at the right/bottom edges square off 3
+  // of the 4 corners (only the scrollbar-free top-left stayed round).
+  overflow: "hidden",
+  display: "flex",
+  flexDirection: "column",
 })
+// Inner scroll surface — no radius/border of its own; the card above clips it.
+export const tableScrollInner = style({ flex: "1 1 auto", minHeight: 0, overflow: "auto" })
 // max-content: columns fit their content (cells never wrap) and the card
 // scrolls horizontally; minWidth keeps the table filling the card when short.
 export const table = style({ width: "max-content", minWidth: "100%", borderCollapse: "collapse" })

@@ -279,6 +279,7 @@ export function DataGrid<T>({
 
       <div className={c.tableScroll}>
         <div className={c.tableCard}>
+          <div className={c.tableScrollInner}>
           <table className={c.table}>
             <thead>
               <tr className={c.theadRow}>
@@ -347,6 +348,7 @@ export function DataGrid<T>({
               )}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
 
@@ -382,6 +384,7 @@ export function GridSkeleton({ rows = 8, cols = 7 }: { rows?: number; cols?: num
       </div>
       <div className={c.tableScroll}>
         <div className={c.tableCard}>
+          <div className={c.tableScrollInner}>
           <table className={c.table}>
             <tbody>
               {Array.from({ length: rows }).map((_, r) => (
@@ -395,6 +398,7 @@ export function GridSkeleton({ rows = 8, cols = 7 }: { rows?: number; cols?: num
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
     </div>

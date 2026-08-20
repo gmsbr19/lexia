@@ -57,6 +57,7 @@
   --brand-gold: #C0A147;
   --brand-gold-soft: #D8BE7A;
   --brand-gold-deep: #9A7F2E;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
   /* semantic finance + legacy crm accent (blue is retired: state codes via the
      four semantics; "blue" roles render neutral) */
   --fin-pos: var(--fin-pos, #1F8A4C);
@@ -217,6 +218,26 @@
   display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px;
   padding: 0 5px; border-radius: var(--r-xs); background: var(--bg-sunken); border: 1px solid var(--border);
   font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);
+}
+
+/* ── scrollbars — finos e minimalistas, idênticos ao módulo Comercial
+   (.cm-scope). Como .crm-scope é a raiz do shell, isto vale para TODO o app
+   (Contatos, modais, listas, conteúdo). Trilho transparente; o polegar
+   VERTICAL só aparece no hover do contêiner rolável (o HORIZONTAL fica sempre
+   visível, senão a rolagem lateral de tabelas some). WebKit apenas — NÃO setar
+   scrollbar-width/color aqui: no Chrome ≥121 as props padrão DESLIGAM os
+   pseudo-elementos ::-webkit-scrollbar; Firefox recebe o fallback fino no
+   @supports abaixo. As regras mais específicas (ex.: .crm-tabscroll, que
+   esconde a barra das abas) seguem ganhando. ────────────────────────────── */
+.crm-scope ::-webkit-scrollbar { width: 6px; height: 8px; }
+.crm-scope ::-webkit-scrollbar-track { background: transparent; }
+.crm-scope ::-webkit-scrollbar-corner { background: transparent; }
+.crm-scope ::-webkit-scrollbar-thumb { background: transparent; border-radius: 999px; border: none; min-height: 40px; }
+.crm-scope ::-webkit-scrollbar-thumb:horizontal { background: var(--border-strong); }
+.crm-scope *:hover::-webkit-scrollbar-thumb:vertical { background: var(--border-strong); }
+.crm-scope ::-webkit-scrollbar-thumb:vertical:hover { background: var(--text-subtle); }
+@supports (-moz-appearance: none) {
+  .crm-scope * { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
 }
 
 /* ── workspace tabs (Notion-style) ── */
