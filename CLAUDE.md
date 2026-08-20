@@ -145,6 +145,401 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **Captação de leads + conversões offline — feed CSV lido pelo Google Ads (PIVÔ na mesma sessão: a primeira
+  versão usava a Data Manager API — push, OAuth, worker de retry; o usuário trocou o mecanismo depois de eu
+  já ter entregado aquela versão — "as conversões offline não serão mais enviadas por upload manual nem pela
+  API do Google Ads. O Google Ads vai LER um feed CSV do nosso app, uma vez por dia" —, então a Fase 5 inteira
+  foi reescrita: nada do texto de sessões futuras deve se basear na descrição da API/worker antiga, só nesta)
+  (VERIFIED tsc 0 exceto os erros esperados de `LandingPage`/`ConversaoEvento`/`ConversaoAjuste`/campos novos
+  de `Lead` — bloqueados no `prisma generate`, confirmado achado-a-achado que TODO o resto do repo type-checa
+  limpo —, 801/802 testes — 84 no módulo de captação, a 1 falha é a mesma `notificacoes-links.test.ts`
+  PRÉ-EXISTENTE de sempre, sem relação —, eslint limpo em todos os arquivos novos/tocados, migração
+  `20260819120000_captacao_conversoes` REESCRITA À MÃO (a versão antiga, com o shape da API, nunca chegou a
+  ser aplicada — só substituída) e VERIFICADA rodando de ponta a ponta contra uma cópia real do `dev.db` — 447
+  leads preservados, 0 violações de FK — mas NÃO aplicada ainda, ver User action).**
+  **Arquitetura final: pull, não push.** `GET /feeds/google-ads/conversions.csv` e
+  `GET /feeds/google-ads/adjustments.csv` (fora de [src/proxy.ts](src/proxy.ts) — protegidos por **HTTP Basic
+  Auth** em variável de ambiente `GADS_FEED_USER`/`GADS_FEED_PASS`, guarda em
+  [captacao/feed-auth.ts](src/lib/captacao/feed-auth.ts), mesmo padrão 404-se-não-configurado de `guardJob`).
+  **Nenhuma credencial do Google entra no app** — o Google Ads é configurado (fora daqui, no próprio Google
+  Ads → Conversões → Uploads → "Feed HTTP") para LER os dois endereços uma vez por dia. Casamento **por nome
+  fixo** da ação — `src/lib/captacao/acoes.ts` `ACAO_NOME` (`NCM Formulario Enviado` / `NCM Lead Qualificado`
+  / `NCM Reuniao Realizada` / `NCM Contrato Assinado`, sem acento, **nunca renomear** — mudar o nome cria uma
+  ação nova no Google e perde o histórico de otimização). **Regenerado do zero a cada requisição**
+  ([captacao/feed.ts](src/lib/captacao/feed.ts) `gerarConversionsCsv`/`gerarAdjustmentsCsv`, puro — inclui
+  TODAS as linhas da janela de 90 dias, não só as novas; o Google deduplica por gclid+nome+horário, então
+  reenviar o que já foi importado não duplica nada, e é isso que faz o feed se AUTO-CORRIGIR se uma leitura
+  falhar um dia). Exclui: sem `gclid`, fora da janela de 90 dias (`JANELA_CONVERSOES_DIAS`, constante — é regra
+  do Google, não configurável), `status='descartado'`. 1ª linha `Parameters:TimeZone=America/Sao_Paulo`, 2ª
+  linha o cabeçalho — **atenção**: os cabeçalhos exatos (`Google Click ID,Conversion Name,Conversion
+  Time,Conversion Value,Conversion Currency` p/ conversions e +`Adjustment Type,Adjustment Time,New Conversion
+  Value,New Currency` p/ adjustments) são a MELHOR RECORDAÇÃO do modelo padrão do Google — o usuário disse "vou
+  colar abaixo" e não colou; **reconfirmar contra o template real do Google Ads antes de ligar pra valer**.
+  Horário `AAAA-MM-DD HH:MM:SS-03:00` — `formatarDataHoraFeed` converte UTC→São Paulo por aritmética fixa
+  (Brasil aboliu o horário de verão em 2019, UTC-3 é constante o ano todo — não precisa de lib de fuso).
+  **Regra inviolável**: `ConversaoEvento.ocorreuEm` (= conversion_date_time) é gravado uma vez na criação e
+  **nunca recalculado** — documentado em maiúsculas no schema.prisma, no código de emissão, e nos comentários
+  de cada call site; recalcular cria uma SEGUNDA conversão no Google (quebra o dedup por horário).
+  **Modelo reescrito** (`ConversaoEvento` perdeu identificador/transactionId/acaoConversao/enviadoEm/
+  requestId/tentativas/proximaTentativaEm/payloadSimulado — todo o aparato de retry de um worker de push que
+  não existe mais —, ganhou `motivoDescarte` + 2 colunas PARADAS `conversionActionId`/`orderId` — "{leadId}-
+  {tipo}" — graváveis mas não lidas pelo feed hoje, prontas p/ quando o projeto migrar pra API sem reprocessar
+  histórico; novo model **`ConversaoAjuste`** `{eventoId, tipo:'RETRACT'|'RESTATE', criadoEm, novoValorCents,
+  motivo}`). **RETRACT** — `avaliarRetratacaoPorEtapa(curEtapa,nextEtapa,mapa)` em
+  [eventos-core.ts](src/lib/captacao/eventos-core.ts) (puro): compara os dois LIMIARES que os eventos
+  representam (implica "ganho"? implica "qualificado", que inclui ganho?) entre a etapa antiga e a nova —
+  só retrata o que deixou de ser verdade (ganho→qualificado retrata só contrato_assinado, não lead_qualificado;
+  proposta→qualificado, ambas qualificadas, não retrata nada). Ligado em
+  [comercial/mutations.ts](src/lib/comercial/mutations.ts) `moverEtapa`/`marcarPerdido`/`bulkUpdateLeads` (via
+  novo helper `retratarSeRegrediu`, espelha `emitirEventoDeEtapa` — mesma disciplina de ler `captacao.funil` a
+  cada chamada). **Reverter estágio já era 100% possível no app antes desta sessão** (o `StageMenu`/editor já
+  deixa escolher qualquer etapa aberta livremente, e "Reabrir lead" já existia p/ sair de ganho/perdido) — o
+  pedido #5 do usuário ("implemente se ainda não existir") não precisou de UI nova, só a fiação do RETRACT
+  nos caminhos que já existiam (confirmado por inspeção antes de escrever qualquer coisa, evitando trabalho
+  duplicado). **RESTATE** — [finance/mutations.ts](src/lib/finance/mutations.ts) `updateLancamento` chama
+  `restabelecerValorContrato(leadId, novoValorCents, motivo)` quando o `valorCents` de um lançamento vinculado
+  a um lead (`Lancamento.leads`) muda de verdade; lê o valor novo DIRETO do patch, nunca recalcula. Ambos os
+  ajustes são no-op silencioso se o evento original não existe ou já está descartado. **`fila.ts` reescrito**
+  (status agora só `pendente`/`descartado`; `descartarEventos`/`reativarEventos` em
+  [eventos.ts](src/lib/captacao/eventos.ts) substituem os antigos `reenviar`/`ignorar` do worker que não
+  existe mais). **Painel de reconciliação** — pedido #7 do usuário: nova aba dentro de Captação (toggle
+  Fila/Reconciliação em [CmCaptacao.tsx](src/components/comercial/tabs/CmCaptacao.tsx)), agrupado por semana
+  (segunda-feira, `src/lib/captacao/reconciliacao-core.ts` `inicioDaSemana` puro) × os 4 estágios: leads
+  gravados, eventos disparados, linhas elegíveis pro feed AGORA (mesma função pura do feed, chamada de novo,
+  nunca reimplementada), descartados+motivo, e **POSTs que falharam** — interpretação assumida (o usuário não
+  detalhou): submits rejeitados no endpoint público (`captacao.lead.rejeitado` no `AuditLog`, sem PII, logado
+  em todo branch de rejeição de [captacao/lead/route.ts](src/app/api/captacao/lead/route.ts) — chave inválida/
+  origem/rate-limit/validação/erro interno; honeypot NÃO conta, é sucesso fingido de propósito). **Deletado**
+  (o pivô tornou obsoleto): `captacao/google/` (client/token/payload da Data Manager API), `captacao/hash.ts`
+  (SHA-256 — o usuário pediu explicitamente pra NÃO ter isso agora), `captacao/worker.ts` (push+retry — o
+  Google agora PUXA, não há o que retentar deste lado), `captacao/csv-google.ts` (o CSV de emergência virou O
+  PRÓPRIO mecanismo, não mais um fallback), rotas `api/jobs/conversoes`/`api/captacao/config/{google,worker}`/
+  `api/captacao/testar-conexao`. **Novo job leve** `POST /api/jobs/captacao-saude` substitui o antigo worker —
+  só recalcula o alarme de "% sem gclid" (`verificarAlertaCaptacao` em fila.ts) e notifica se cruzou o limiar;
+  nada mais sobrevive do conceito de worker. **Configurações → Captação**: removidos os blocos "Conexão com o
+  Google"/"Ações de conversão"/"mapeamento evento→ação" (não fazem mais sentido — sem OAuth, sem id
+  configurável); NOVO bloco "Feed para o Google Ads" mostra as 2 URLs + status configurado/não-configurado
+  (`GET /api/captacao/feed-status`, nunca expõe usuário/senha) + botão "Ver agora" por endpoint (rotas
+  session-autenticadas `api/captacao/feed-preview/{conversions,adjustments}.csv`, mesmo conteúdo do feed
+  público, só pra conferência do admin sem montar um curl com Basic Auth). Mapeamento do funil + Regras de
+  valor + Pré-visualização continuam intactos (ainda fazem sentido: o feed ainda precisa saber quais etapas
+  contam como qualificado/ganho, e qual valor mandar). **2 bugs reais pegos e corrigidos durante o próprio
+  pivô** (não pré-existentes — código desta mesma sessão, achados relendo antes de considerar pronto): (1)
+  `captacao/captar.ts` ainda escrevia num campo `transactionId` que eu tinha acabado de apagar do schema —
+  corrigido pra `orderId` (a coluna parada nova) antes de gerar qualquer erro de tipo real; (2) o botão
+  "Exportar CSV (Google Ads)" da UI antiga mandava `gclid:null` sempre (um placeholder esquecido) — corrigido
+  adicionando `gclid` ao `EventoRow` da fila (join até `Lead.gclid`) antes de sequer publicar a versão errada.
+  **Fora de escopo, por pedido explícito do usuário**: chamada à API do Google Ads, hash SHA-256 de telefone/
+  e-mail, enhanced conversions — ficam para uma migração futura (as 2 colunas paradas em `ConversaoEvento` são
+  exatamente pra isso). **User action (REQUIRED — lock do Prisma no Windows):** parar `next dev` → `npm run
+  db:migrate` (aplica `20260819120000_captacao_conversoes` — se a versão anterior desta sessão já tiver sido
+  aplicada, ignore; esta reescreve o mesmo arquivo, nunca foi aplicada de fato) → `npm run db:generate` →
+  `npx tsc --noEmit` (deve dar 0) → `npm test` (deve dar 802/802) → `npm run dev`. **Antes de ligar o feed de
+  verdade**: (1) reconfirmar os cabeçalhos exatos do CSV contra o template real do Google Ads (a única peça
+  desta entrega que ficou em "melhor recordação", não em documentação lida na hora); (2) criar as 4 ações de
+  conversão no Google Ads com os nomes EXATOS de `acoes.ts`; (3) configurar `GADS_FEED_USER`/`GADS_FEED_PASS`
+  no `.env`; (4) apontar o "Feed HTTP" do Google Ads pras 2 URLs (documentado em
+  `docs/captacao-landing-page.md` e `DEPLOY.md` §6c). Visual: Configurações → Captação & conversões (bloco
+  Feed com as 2 URLs + "Ver agora"); `/comercial` → aba Captação → toggle Fila/Reconciliação; mover um lead
+  de "Qualificado" pra "Contato" e conferir que a fila mostra "Ajuste: Sim" no evento `lead_qualificado`
+  (visível também no bloco "Origem & atribuição" da ficha do lead).
+- **Contratos — refinamentos de UX + valor total & área (this session, VERIFIED tsc 0, 716/717 testes — 1 falha
+  PRÉ-EXISTENTE sem relação `notificacoes-links` —, eslint só o `set-state-in-effect` PRÉ-EXISTENTE do
+  `useEffect(()=>void load(),[load])` do modal, migração `20260722140000_contrato_valor_area` ESCRITA — user
+  aplica).** 5 pedidos do usuário sobre o módulo Contratos. **(1) Valor total + área do direito no contrato:**
+  novas colunas `Contrato.valorTotalCents Int?` (valor total digitado — métrica comercial, distinto da Σ
+  honorários derivada) e `Contrato.area String?` (chave de AreaDireito, explícita). Migração aditiva (2 ADD
+  COLUMN nulláveis, sem rebuild). Propagado por [schemas.ts](src/lib/finance/schemas.ts) (contratoCreate/Patch +
+  `valorTotalCents: money.nullish()`, `area: z.string().max(120).nullish()`), [mutations.ts](src/lib/finance/mutations.ts)
+  (ContratoCreate/Patch + criar/atualizarContrato gravam), [types.ts](src/lib/finance/types.ts) (ContratoRow ganha
+  `valorTotalCents`; ContratoDetail ganha `valorTotalCents`+`area`), [honorario-map.ts](src/lib/finance/honorario-map.ts)
+  (`contratoToRow`: **área explícita do contrato tem precedência** sobre a área derivada do único caso;
+  passa valorTotalCents) e [queries.ts](src/lib/finance/queries.ts) (selects + retorno). UI: campos Valor total
+  (FxInput + `parseBRLToCents`) e Área do direito (FxSelect de `toAreaOptions(useAreasStore)`) no editar e no Novo
+  contrato ([CrmContratoModal.tsx](src/components/crm/pages/CrmContratoModal.tsx)); KPI "Valor total" + chip de área
+  no detalhe. **(2) Scroll feio + width das comboboxes:** os popovers da `Combobox` são portalados p/ `<body>`
+  (fora de `.crm-scope`) → caíam no scrollbar global 8px sempre-visível. Adicionado scrollbar refinado
+  (invisível-até-hover, 6px, WebKit-only — nunca `scrollbar-width/color` junto) às classes `list`
+  ([combobox.css.ts](src/components/ui/combobox.css.ts)) e `panel` ([popover.css.ts](src/components/ui/popover.css.ts))
+  via `globalStyle`. Width: nova prop `panelWidth?: "trigger"|"content"` na
+  [Combobox](src/components/ui/Combobox.tsx) — "content" passa `width={undefined}` ao Popover → o painel dimensiona
+  pelo conteúdo (nomes de caso longos não cortam); o vincular-caso usa "content". **(3) Vincular caso só do cliente
+  do contrato:** `CasoRow` ganhou `clienteId` (`getCasos` seleciona `clientePrincipalId`); o picker de vincular
+  filtra `contratoId==null && clienteId===contrato.clienteId` (contrato sem cliente → só casos sem cliente),
+  consistente com `assertCasosDoCliente`. **(4) Criar cliente/caso a partir do nome digitado (combobox):** nova
+  prop `onCreate?: (label)=>void` + `createLabel?` na Combobox — mostra uma linha "Criar '<texto>'" quando o texto
+  não casa opção existente (teclado + mouse). Novo contrato: cliente inexistente → cria via `createCliente({nome})`
+  e já seleciona; vincular caso → cria via `createCaso({titulo, clientePrincipalId, area})` (helper novo em
+  [crm-api.ts](src/components/crm/crm-api.ts)). Criar caso é gated a socio/advogado/admin (rota `/api/casos`); p/
+  financeiro a opção "criar caso" não aparece (mas pode vincular casos livres existentes). **(5) Vincular caso já
+  na criação:** o Novo contrato agora tem seção "Casos vinculados" (chips + combobox), só habilitada após escolher
+  o cliente; os casoIds vão no `createContrato`. **NOTA:** no Novo contrato, criar cliente/caso é EAGER (a entidade
+  é criada na hora, como já era o padrão de "criar cliente por padrão"); se cancelar o modal depois, o cliente/caso
+  criado permanece (entidade real, livre). **LexIA (consistência):** as tools `criar_contrato`/`editar_contrato`
+  já aceitam valorTotalCents/area (schema compartilhado) — cartões de confirmação atualizados (helper `nomeArea`
+  em [confirmar.ts](src/lib/lexia/agent/confirmar.ts)) + bullet CONTRATOS do [prompt.ts](src/lib/lexia/agent/prompt.ts).
+  Testes: `honorario-map` (precedência de área + valorTotal), fixtures de `contrato-group`/`honorario-map`
+  atualizadas. **User action (REQUIRED — lock do Prisma no Windows):** parar `next dev` → `npm run db:migrate`
+  (aplica `20260722140000_contrato_valor_area`) → `npm run db:generate` → `npm run dev`. Visual em `/contratos` →
+  Novo contrato: buscar cliente com scroll fino + "Criar cliente '<nome>'"; preencher Valor total + Área;
+  vincular casos (só do cliente escolhido) e "Criar caso '<nome>'"; abrir um contrato → KPI Valor total + chip de
+  área + editar; no vincular-caso o dropdown mostra os nomes por inteiro (fit content).
+- **LexIA — CRUD + relação de CONTRATOS (this session, VERIFIED tsc 0, 716/717 testes — 1 falha PRÉ-EXISTENTE
+  e sem relação: `notificacoes-links.test.ts` espera `/processos?view=captura`, arquivo não tocado —, NO
+  migration).** Pedido: a LexIA não tinha CRUD nem criação de relações no novo módulo de Contratos (entidade
+  real `Contrato` = documento assinado, 1 contrato → N casos). Ela só tinha as tools readonly de honorário/
+  financeiro. **Novo** [tools/contratos.ts](src/lib/lexia/agent/tools/contratos.ts) (`contratoTools`, registrado
+  em [registry.ts](src/lib/lexia/agent/registry.ts) após `financeiroTools`): 3 leituras + 3 mutações
+  confirmação-gated, reusando as mutations/queries/schemas de contrato já existentes (`criarContrato`/
+  `atualizarContrato`/`excluirContrato`, `getContratos`/`getContratosPorCliente`/`getContratoDetail`,
+  `contratoCreateSchema`/`contratoPatchSchema`) — ZERO backend novo exceto uma query
+  `getCasosDoCliente(clienteId)` em [finance/queries.ts](src/lib/finance/queries.ts) (casos do cliente + status
+  `livre` = sem contrato). Tools: `listar_contratos` (opcional clienteId), `detalhe_contrato`,
+  `listar_casos_do_cliente` (alimenta o fluxo de vincular — mostra quais casos estão livres), `criar_contrato`
+  (com `casoIds` opcionais), `editar_contrato` (título/data/observações/cliente + **vincularCasoIds/
+  desvincularCasoIds** = a RELAÇÃO; vincular MOVE de contrato anterior), `excluir_contrato` (soft; casos ficam
+  sem contrato). **Gating idêntico ao Financeiro** (contrato expõe valores derivados): leituras + criar/editar =
+  `ROLES_FINANCEIRO` (sócio/financeiro/admin, Equipe/staff NÃO enxerga), excluir = `["socio"]`; modo 'pergunta'
+  remove as mutações. Cartões de confirmação em pt-BR (nomeCliente/dataBr/diffRow, títulos dos casos). NÃO gated
+  por `processosHabilitado` (contrato é conceito financeiro/comercial, independe do toggle Casos & Processos).
+  Bullet **CONTRATOS** novo em [prompt.ts](src/lib/lexia/agent/prompt.ts) (CORE cacheado — invalida 1×). Sem
+  card de entidade dedicado (as mutações já geram cartão de confirmação; readonly volta JSON que o modelo
+  resume). Teste novo em [lexia-agent.test.ts](tests/lexia-agent.test.ts) (gating CRUD contrato, espelha o do
+  financeiro). **User action (REQUIRED — tool/prompt vivem em memória):** reiniciar o `next dev` → na LexIA
+  (sócio/financeiro): "quais contratos temos?"/"contratos do cliente X" (listar), "detalhe o contrato Y",
+  "quais casos do cliente Z estão sem contrato?", "crie um contrato para o cliente Z com os casos A e B", "no
+  contrato Y, vincule também o caso C" (junta casos multi-caso, ex. o condomínio), "renomeie/altere a data do
+  contrato Y", "exclua o contrato W" (só sócio) → cada mutação gera cartão de confirmação; como staff a LexIA
+  não enxerga nenhuma dessas tools.
+- **"Controles de Visão" — grid schema-driven (ViewGrid) aplicado a Contatos + Leads (this session,
+  VERIFIED tsc 0, eslint 0 achados nos arquivos tocados, 715/716 testes — 1 falha PRÉ-EXISTENTE e sem
+  relação: `notificacoes-links.test.ts` espera `/processos?view=captura` mas o `links.ts` já foi
+  alterado (captura removida) ANTES desta sessão, arquivo não tocado por mim —, SEM migração).**
+  Pedido: aplicar fielmente estilos+funcionalidades do handoff "LexIA · Controles de Visão"
+  (`~/Downloads/lexia-handoff.zip` → `src/vc/*.jsx` + `styles/vc.css`), incl. os ícones nas tabelas.
+  Usuário confirmou (2 perguntas): aplicar em **Contatos + Leads** (ambos os schemas do protótipo) e
+  **visões salvas no servidor por usuário**. **Novo módulo** `src/components/ui/viewgrid/` (13 arquivos,
+  port fiel — classes CSS `vc-*` preservadas verbatim): `viewgrid.css` (1:1 do vc.css, importado em
+  `app/layout.tsx`; 3 adaptações do pipeline: só `backdrop-filter` padrão — Lightning adiciona o webkit;
+  sem `scrollbar-width/color` junto do pseudo webkit; **`.vc-glass` usa o glassmorphism REAL do app —
+  `lexGlassStrong` de [glass.css.ts](src/styles/glass.css.ts): `--lex-acrylic-strong`/`--lex-blur`/
+  `--lex-acrylic-border`/`--lex-glass-shadow` + anel de brilho `::before` mascarado — não o vidro mais
+  simples do protótipo; os `--lex-*` vivem em `:root`/`.theme-dark` e cascateiam p/ `.crm-scope` E
+  `.cm-scope`; NUNCA aninhar backdrop-filter dentro (Chrome derruba o blur do pai)**),
+  `vg-icons.tsx` (Icon lucide com o set exato do protótipo, ~50 ícones),
+  `vg-types.ts`, `vg-engine.ts` (puro: filtro/sort/group/csv/data-natural/format, dirigido por SCHEMA —
+  `vgColorMix` estendido p/ hex+var, não só oklch), `vg-atoms.tsx` (VgPopover portal-para-`.vc-root`,
+  VgGlass, botões/seg/switch/check/searchrow, VgAvatar/VgContactMark PF·PJ/VgEnumChip/VgMeter +
+  `vgRenderCell`), `vg-editors.tsx` (VgSelectMenu/VgMultiSelect/VgDateEditor NL+calendário/VgValueEditor),
+  `vg-filters.tsx` (grupos E/OU aninhados), `vg-controls.tsx` (Ordenar/Agrupar/Colunas + drag-reorder),
+  `vg-views.tsx` (abas de visão salvas + chips de estado), `vg-table.tsx` (header sortável/resize, linhas,
+  grupos c/ soma, densidade, **seleção** gutter sticky + **rowActions** — AMBOS adições ao protótipo,
+  necessárias p/ preservar a funcionalidade do app), `vg-bulk.tsx` (barra de lote inline no estilo vc),
+  `ViewGrid.tsx` (orquestrador de UMA grade: CRUD de visões, pipeline, seleção, kanban via slot,
+  `inject` de filtro p/ navegação cruzada), `index.ts`. **Persistência server (SEM migração — repropósito
+  do `User.crmViewPrefs` que os 2 grids antigos usavam):** `view-prefs-core.ts` (novo shape multi-visão
+  `Partial<Record<gridId, {activeId, views[]}>>`, parser descarta blobs no formato antigo), `crm/schemas.ts`
+  (zod recursivo p/ a árvore de filtro), rota `/api/crm/view-prefs` inalterada, novo hook
+  `useViewGridStore` (GET no mount + PATCH debounced do objeto completo); `useCrmSavedView.ts` DELETADO
+  (só Contatos usava). **Adapters** (mesma assinatura de props — ComercialApp/CrmRoutes intactos):
+  [CmLeads.tsx](src/components/comercial/tabs/CmLeads.tsx) REESCRITO sobre ViewGrid (constrói schema de
+  leads a partir de dataset+pipeline+areas+scores, achata leads em linhas de visão — labels p/ enums,
+  reais p/ money, id p/ pessoa —, kanban vc-styled COM arraste→mover/converter/perder, menu ⋯ por linha
+  Editar/Converter/Mesclar/Perdido/Reabrir, bulk etapa/responsável/temperatura/área, import Genions/planilha,
+  gridId "oportunidades"); [CrmClientesPage.tsx](src/components/crm/pages/CrmClientesPage.tsx) REESCRITO
+  (schema de contatos, avatar PF-redondo/PJ-quadrado via `personType`, UF com enum dinâmico por cor, bulk
+  tipo/classificação/origem, clique→detalhe do cliente, gridId "contatos"; KPIs+head preservados,
+  full-bleed/full-height, gutter 24px alinhado ao grid). O DataGrid genérico (`src/components/ui/datagrid/`)
+  fica DORMENTE (nenhuma página o consome mais) — deixado no lugar, sem deletar. Teste `crm-view-prefs.test.ts`
+  reescrito p/ o novo shape (6 casos: store válido preservado, blob legado descartado). **Ganhos vs. os grids
+  antigos:** VÁRIAS visões salvas nomeadas (abas Notion, estrela=padrão, dirty/salvar/descartar/duplicar),
+  filtros E/OU ANINHADOS (antes 1 nível), ordenação MULTINÍVEL arrastável (antes 1 coluna), agrupamento 2
+  níveis com soma$ por grupo (antes 1), colunas reordenar/ocultar/**congelar**/**redimensionar** (novo),
+  filtro de data em linguagem natural pt-BR, densidade, estados loading/vazio. **User action:** só visual
+  (sem passo de DB) — `/contatos` e `/comercial`→aba Leads abrem o grid novo; testar: criar/renomear/salvar
+  uma visão (aba), abrir Filtros e aninhar um grupo E/OU, Ordenar por 2 colunas (arrastar p/ priorizar),
+  Agrupar por Etapa+Responsável, Colunas (arrastar/ocultar/congelar 1ª/redimensionar arrastando a borda do
+  cabeçalho), alternar densidade, em Leads o toggle Quadro (arrastar card entre etapas; soltar em Ganho/Perdido
+  abre o modal), selecionar linhas → barra de lote, ⋯ por linha, Exportar CSV, tema claro/escuro. Recarregar
+  a página → a última visão volta (salva no servidor). Se um grid aparecer vazio/sem estilo, é sinal de token
+  faltando no bridge (só `--ease` foi adicionado a `.crm-scope`/`.cm-scope` nesta sessão).
+- **DatePicker + Combobox — primitivos compartilhados de data/select-com-busca + engine de
+  recorrência REAL de Tarefa (this session, VERIFIED tsc 0 exceto os 2 erros esperados de
+  `recorrenteDeId` — bloqueados no `prisma generate`, 714/715 testes — 1 falha pré-existente sem
+  relação —, eslint SEM achados novos — confirmado achado-a-achado via `git diff` contra os
+  arquivos tocados —, migração `20260722130000_tarefa_recorrencia` ESCRITA À MÃO — não aplicada,
+  ver User action).** Pedido do usuário: um primitivo de calendário/seletor de data para TODOS os
+  campos de data do app (tokens + glassmorphism), com parsing de linguagem natural pt-BR em todo
+  lugar e recorrência real no módulo de Tarefas; e um primitivo de select-com-busca para picker de
+  entidades (cliente/caso/etc). Escopo confirmado com o usuário via 3 perguntas: **migração TOTAL**
+  (todos os ~30 inputs de data nativos do app), **engine de recorrência REAL** (concluir uma tarefa
+  recorrente gera a próxima instância sozinha — não só rótulo), **linguagem natural em todo o
+  picker** (não só Tarefas). **Método**: 2 workflows sequenciais (não solo — ultracode ligado) — (1)
+  núcleo puro + primitivos (4 agentes: lib/datas, Popover, Combobox, DatePicker, em paralelo onde
+  possível) verificado por mim (leitura do código real + tsc/test/eslint) antes de prosseguir; (2)
+  fan-out de 13 agentes, um por arquivo, migrando os campos. **Núcleo puro** novo `src/lib/datas/`
+  (zero React/Prisma, tudo `hojeISO` injetado — nunca lê o relógio ambiente, testável):
+  `util.ts` (addDays/addMonths com clamp de fim de mês/isValidISO/nextWeekday/etc.), `mes.ts`
+  (WD/MO/MONTHS_LONG + `buildMonthGrid` 42 células, mesma convenção do grid hand-rolled que já
+  existia em `tarefas/views.tsx` CalendarioView), `presets.ts` (Hoje/Amanhã/Este fim de
+  semana/Próxima semana/Sem vencimento), `nl.ts` (`parseDataNatural` — hoje/amanhã/depois de
+  amanhã/este fim de semana/próxima semana/dias da semana/"dia N"/"DD/MM(/AAAA)"/"DD de mês"/"em N
+  dias·semanas·meses"/"sem vencimento"/hora "14h"/"14:30", accent-insensitive via `semAcento`;
+  decisão: data de calendário inválida tipo "31/02" fica DELIBERADAMENTE sem match — não adivinha),
+  `recorrencia.ts` (`parseRecur`/`recorrenciaOptions`/`proximaOcorrencia` — a mesma engine alimenta
+  o picker E o motor de conclusão; SEMPRE avança pelo menos 1 ciclo, nunca retorna a própria data-
+  base; "mensal" ancora o clamp no dia-do-mês da base ORIGINAL, não do cursor, pra não perder 3
+  dias/mês numa sequência Jan31→Fev28→Mar31). `parseQuickAdd` (tf-meta.ts) passou a DELEGAR
+  data/hora pra `parseDataNatural` (mesmo vocabulário, agora também dentro do quick-add). **UI**
+  novo `src/components/ui/`: `Popover.tsx` (generaliza o `Menu` do tf-kit — portal+fixed+
+  reposiciona em scroll/resize — acrescentando API controlada open/onOpenChange, Escape+restore de
+  foco, flip pra cima quando falta espaço, ResizeObserver pra conteúdo dinâmico, zIndex 1400 —
+  acima dos modais 1200/1300, abaixo dos toasts 1500+); `Combobox.tsx` (busca accent-insensitive via
+  `normalizar`/`contemNormalizado` de `lib/text.ts` — não `.toLowerCase()` cru —, teclado ↑↓/Enter,
+  cap 50 itens renderizados, `loading`/`emptyLabel`, `role="combobox"`+`aria-controls` via
+  `useId()`); `DatePicker.tsx` (`DatePickerPanel` + `DateField` — NL no topo + presets com dica de
+  dia da semana + grade do mês + botão Hora opcional + seção de recorrência opcional só quando há
+  data escolhida, alimentada por `recorrenciaOptions` — "Toda sexta" se a data caiu numa sexta, não
+  fixo em "terça"). **Engine de recorrência**: `Tarefa.recorrenteDeId Int?` self-FK (schema.prisma;
+  migração `20260722130000_tarefa_recorrencia` escrita à mão no mesmo padrão de rebuild SQLite que o
+  Prisma já usou nas migrações anteriores do projeto — NÃO aplicada, ver User action) — guarda de
+  idempotência (não duplica em concluir/reabrir/concluir). `gerarProximaRecorrencia` nova em
+  [tarefas/mutations.ts](src/lib/tarefas/mutations.ts), acoplada à transição todo→done já existente
+  em `updateTarefa`: âncora = `data` (ou `prazo` se não houver `data`); se havia `prazo` também, ele
+  é deslocado pelo mesmo delta; copia responsável/projeto/seção/vínculos/prio/recur, zera
+  subtasks/dor/dod (`done:false` em cada item), `origem:"recorrencia"`, **sem notificação própria**
+  (mesma convenção das tools de lote — evita spam). **Migração completa das telas** (13 arquivos,
+  ~27 campos de data + 2 selects estritos de entidade): Tarefas (`TaskDetailModal` — data ganhou
+  `withTime`+`recurEnabled`, substituindo os antigos Menus de data/hora/recorrência por inteiro;
+  `QuickAddModal` — Popover+DatePickerPanel no lugar dos Menus de Data/Prazo, mesmo chip visual),
+  Agenda/CRM (`CrmAgendaPage` — "Oportunidade" virou Combobox; `CrmClienteModals`, `CrmQuickModals`,
+  `CrmCasoModal`, `CrmContratoModal` — "Vincular caso" e "Cliente" viraram Combobox,
+  `CrmHonorarioModal`), Financeiro (`NovoLancamentoModal`, `TransferenciasPanel` — só datas),
+  Comercial (`CmModals` — 5 campos de data + fix de acento no filtro do `CmMergeModal`), Processos
+  (`ProcModals` — 3 campos, preservando o acoplamento `baseMode`/`novoCaso`), Projetos
+  (`ProjectModal`, `TemplatesTab`). **Escopo deliberadamente MENOR que o texto do plano original em
+  alguns pontos** (revisado durante a implementação após um levantamento exato do código real):
+  **Financeiro/Comercial/Processos NÃO ganharam Combobox** — os pickers de Contato/Fornecedor lá são
+  capazes de texto-livre/criar-novo (datalist, ou par select+"novo caso" mutuamente exclusivo) e
+  virariam uma REGRESSÃO se forçados no Combobox estrito (só escolhe entidade existente); listas
+  pequenas de conta/categoria ficaram nativas (regra do próprio plano: "enum pequeno não compensa
+  converter"). **Datagrid (`CellEditors.tsx`/`FilterBuilder.tsx`) ficou de fora por decisão
+  própria**: a célula de data hoje é editada com 1 clique só (o input JÁ é o editor); trocar por um
+  DateField exigiria abrir um popover a mais, regredindo a densidade de edição de uma grade. Menus
+  ricos existentes (Responsável/Projeto com avatar+cor em Tarefas) foram deliberadamente MANTIDOS,
+  não convertidos — o Combobox genérico seria uma perda de UX ali. **2 achados reais corrigidos**
+  (código novo desta sessão, não pré-existentes — confirmado achado-a-achado): `Popover.tsx` tinha
+  `setState` síncrono dentro de `useLayoutEffect` pro reset de posição ao fechar — movido pro padrão
+  "comparar último sinal durante o render" já usado no resto do repo; `Combobox.tsx` tinha
+  `role="combobox"` sem `aria-controls` — corrigido com `useId()`. Os demais achados de eslint
+  encontrados nos arquivos tocados (o padrão `useEffect(()=>void load(),[load])` em 4 modais CRM; um
+  componente `G` criado durante o render em `ProcModals.tsx`; uma reatribuição de variável em
+  `TemplatesTab.tsx`; um `useMemo` não usado em `ProjectModal.tsx`) são **PRÉ-EXISTENTES**,
+  confirmados via `git diff` linha-a-linha (nenhum cai dentro do que esta sessão de fato mudou).
+  **User action (REQUIRED — lock do Prisma no Windows):** parar `next dev` → `npm run db:migrate`
+  (aplica `20260722130000_tarefa_recorrencia`, o ÚNICO passo que falta pro `recorrenteDeId` existir
+  no client gerado e os 2 erros de tsc restantes sumirem) → `npm run db:generate` → `npx tsc --noEmit`
+  (deve dar 0) → `npm run dev`. Visual: qualquer campo de data no app (Tarefas/Agenda/Financeiro/
+  Comercial/Processos/Projetos) abre o popover novo — testar digitar "sexta 14h"/"dia 15"/"próxima
+  semana" no campo de texto do topo; abrir uma tarefa → campo Data com botão Hora + seção Repetir
+  (só aparece com uma data escolhida) → marcar "Toda semana" → concluir a tarefa → conferir que uma
+  nova instância aparece com a próxima data; "Sem vencimento"/× limpa; Agenda → "Oportunidade" e
+  Contratos → "Vincular caso"/"Cliente" agora têm busca; tema claro/escuro.
+  **Polish pós-visual (mesma sessão, migração JÁ APLICADA pelo usuário — banco up-to-date, tsc 0,
+  714/715, eslint limpo):** 3 ajustes a partir do feedback visual. (1) **Largura do Combobox/DateField**
+  — o `wrap` do `Popover` era `display:inline-flex` (shrink-to-fit), então o trigger `width:100%`
+  encolhia ao conteúdo em vez de preencher a coluna do formulário. Nova prop `fill?: boolean` no Popover
+  ([popover.css.ts](src/components/ui/popover.css.ts) ganhou `wrapFill` = block+width:100%); Combobox e
+  DateField passam `fill` (QuickAdd NÃO passa — seu gatilho é um chip inline que deve encolher).
+  (2) **"Adiar 1 dia" restrito a Tarefas** — a linha aparecia em todo módulo sempre que havia data; nova
+  prop `allowAdiar?: boolean` (default false) no `DatePickerPanel`/`DateField`, gated; só TaskDetailModal
+  (2 DateFields) e QuickAddModal (2 DatePickerPanels) passam `allowAdiar` → some de CRM/Financeiro/
+  Comercial/Processos/Projetos. (3) **Scroll no popup do DatePicker** — o `panel` do Popover tinha
+  `maxHeight:360 + overflowY:auto`, e o calendário (~480px) estourava; nova prop `scrollable?: boolean`
+  (default true) — quando false, o inline `maxHeight:"none"` sobrepõe o cap e o popup mostra por inteiro
+  sem scroll (o cap de 360 segue valendo p/ Combobox/menus, que têm lista longa). DateField passa
+  `scrollable={false}` no seu Popover interno; os 2 Popovers do QuickAdd também. Verificado: tsc 0,
+  714/715, eslint sem achados nos arquivos tocados.
+  **2ª rodada de polish (mesma sessão, após o usuário reportar que a largura do Combobox ainda não
+  preenchia e o popup de data vazava pra fora da página; tsc 0, eslint limpo):** (1) **Largura do
+  Combobox** — o `fill` sozinho não bastava porque o próprio Combobox media a largura via
+  `ResizeObserver` e cravava o px inline no trigger (resquício de quando o wrap era inline-flex);
+  REMOVIDA toda a máquina de medição (`rootRef`/`measuredWidth`/`effectiveWidth`/o `useLayoutEffect` +
+  o wrapper `s.root`) — agora o trigger preenche por CSS puro `width:100%` (que resolve porque o `fill`
+  torna o wrap um bloco de largura total), igual ao `FxSelect` que substituiu; `triggerWidth` (largura
+  fixa opcional) segue funcionando. (2) **Popup vazando pra fora da página** — o `reposition` do
+  [Popover](src/components/ui/Popover.tsx) foi reescrito pra ser ciente da viewport: mede a altura
+  natural por `scrollHeight` (imune ao cap de maxHeight — sem oscilação com o ResizeObserver), escolhe
+  cima/baixo pelo lado que cabe, **prende `left` horizontalmente** dentro da viewport (margem 8px) e
+  calcula um `maxHeight` ciente do espaço disponível (guardado em `pos.maxHeight`, aplicado inline
+  sobrepondo o cap de 360 da classe): painel `scrollable` (listas/menus) segue capado em 360; painel
+  não-scrollable (DatePicker) mostra INTEIRO quando cabe e só cai pra scroll interno como último
+  recurso em viewport genuinamente curta — nunca mais passa da borda da janela.
+  **3ª rodada de polish — scrollbars globais finas (mesma sessão, após o usuário reportar "todos os
+  scrolls muito feios e chamativos"; tsc 0):** NÃO foi um primitivo alterado por engano (confirmado via
+  `git status` — nenhum CSS global foi tocado na migração). Causa real: o `::-webkit-scrollbar` GLOBAL
+  em [theme.css.ts](src/styles/theme.css.ts) sempre foi 10px/thumb sólido; os módulos comercial
+  (`.cm-scope`) e tarefas (`.tf-scope`) têm overrides finos escopados, MAS o `.crm-scope` (Contratos/
+  Clientes/Casos/Agenda — a maior parte do app) NÃO tem override próprio, então caía no global grosso,
+  e os popovers novos (DatePicker/Combobox/Menu) são portalados p/ `document.body` (fora de todo escopo)
+  → global grosso também. **Fix:** global reescrito p/ fino/minimalista — track transparente, thumb
+  arredondado (`border-radius:999px`) e **inset** (8px de track, `border:2px solid transparent` +
+  `background-clip:padding-box` → thumb visível de ~4px), `border-strong` sutil por padrão + `text-subtle`
+  no hover. WebKit-only (regra do gotcha: nunca setar `scrollbar-width`/`scrollbar-color` junto — Chrome
+  ≥121 desliga os pseudo `::-webkit-scrollbar`); `backgroundColor` longhand (não `background`) p/ o :hover
+  não resetar o `background-clip`. Os overrides escopados (comercial/tarefas, mais refinados com
+  invisível-até-hover) seguem ganhando por especificidade dentro dos seus escopos — o global só melhora
+  as áreas UNscoped (CRM inteiro + popovers). User action: só recarregar — todos os scrolls do app ficam
+  finos.
+- **Tabelas de Contatos & Leads (DataGrid) — 4 ajustes de UX (this session, VERIFIED tsc 0, 714/715
+  testes — 1 falha pré-existente sem relação —, eslint sem achados nos arquivos tocados, NO migration).**
+  Feedback do usuário sobre a página `/contatos` (`CrmClientesPage`, sobre o DataGrid genérico) e a
+  tabela de Leads (`CmLeads`, mesmo DataGrid). **(1) Bordas quadradas (exceto sup-esq) → todas
+  arredondadas:** o `tableCard` ([datagrid.css.ts](src/components/ui/datagrid/datagrid.css.ts)) tinha
+  `border+borderRadius:14+overflow:auto` na MESMA caixa — quando surgem scrollbars (direita/baixo) elas
+  quadram 3 dos 4 cantos (só o sup-esq, sem scrollbar, ficava redondo). Fix de 2 camadas: `tableCard`
+  virou `overflow:hidden` + `display:flex column` (mantém borda+raio, é a caixa que NÃO rola) e a
+  `<table>` foi embrulhada num `tableScrollInner` novo (`flex:1 minHeight:0 overflow:auto`) —
+  [DataGrid.tsx](src/components/ui/datagrid/DataGrid.tsx), tanto no render principal quanto no skeleton.
+  O card externo clipa o scroller interno (e suas scrollbars) aos cantos arredondados. Vale p/ AMBAS as
+  tabelas (mesmo componente). **(2) Contatos não ocupava 100% da largura + overflow p/ baixo:** a página
+  usava `FxFrame` (maxWidth:1240 + padding 40) com o grid num `height:560` FIXO — dobrando o padding do
+  próprio DataGrid (que já tem 40px) e sem preencher a viewport. Reescrita p/ full-bleed/full-height
+  espelhando o `.cm-root` do Comercial (`height:100%; minHeight:0; display:flex column`): head+KPIs num
+  bloco `flexShrink:0` com padding `24px 40px 4px`, e o grid num wrapper `flex:1 minHeight:0` — o grid
+  passa a preencher a tela e a DONA do scroll é a tabela (não a página). O shell já dá altura definida ao
+  conteúdo (`<main>` → content `flex:1 overflow:auto`), então `height:100%` resolve (mesmo caminho do
+  Comercial). **(3) Colunas desnecessárias → avatar:** removidas as colunas `tipo`/`cpfCnpj`/`cidade`/`uf`
+  da tabela; a coluna **Contato** agora renderiza (`GridColumn.render`) o `CrmAvatar` (que já faz
+  **redondo p/ PF, quadrado-arredondado p/ PJ**, com iniciais) + nome. cpfCnpj/cidade continuam
+  pesquisáveis (`searchAccessor`) e no detalhe do cliente; os KPIs PF/PJ seguem lendo `c.tipo` (ainda no
+  dado). Bulk tipo/classificação/origem mantidos (só na barra de seleção). **(4) Classificação lead/cliente
+  → +rede:** `Classificacao` ([finance/types.ts](src/lib/finance/types.ts)) virou
+  `"cliente"|"lead"|"rede"` (contato de rede = indicador/parceiro/colega, nem cliente nem lead);
+  `validClassificacao` ([clientes/mutations.ts](src/lib/clientes/mutations.ts)) aceita "rede";
+  `CLASSE_OPTS` (coluna + bulk) ganhou Rede (azul #3B7DD8); `CrmClasseBadge`
+  ([crm-kit.tsx](src/components/crm/crm-kit.tsx)) renderiza "Rede" (tone blue); o modal Novo contato
+  ([CrmQuickModals.tsx](src/components/crm/pages/CrmQuickModals.tsx)) ganhou o 3º segmento Rede. **String
+  livre — SEM migração.** User action: só recarregar — `/contatos` ocupa a tela toda, cantos arredondados,
+  avatar PF/PJ na 1ª coluna, filtro/bulk de Classificação com Rede; a tabela de Leads também com cantos
+  arredondados. Reclassificar um contato existente p/ Rede: selecionar a linha → barra de lote →
+  Classificação → Rede (ou criar já como Rede no modal).
+  **2ª rodada (mesma sessão, após o usuário reportar que Leads AINDA tinha cantos quadrados e o scroll
+  vertical do Contatos AINDA estava "feio"; tsc 0, eslint limpo):** duas causas que o 1º fix não pegou.
+  **(A) Leads NÃO usa o DataGrid genérico** — é um grid "cx" SOB MEDIDA ([CmLeads.tsx](src/components/comercial/tabs/CmLeads.tsx),
+  o `<div className="card">` da linha ~389), então o fix de 2 camadas no DataGrid não o alcançou. Mesmo
+  fix aplicado à mão nesse card: `overflow:hidden` + `display:flex column`, com a `<table>` + o rodapé
+  "Mostrar mais" embrulhados num scroller interno `flex:1 minHeight:0 overflow:auto` → o `.card` (raio
+  var(--r-lg)) clipa o scroller aos cantos arredondados. **(B) Scroll do Contatos "feio":** o `.cm-scope`
+  (Comercial) tinha scrollbar refinado (6px, invisível-até-hover no vertical), mas o `.crm-scope` (raiz do
+  shell — todo o resto do app, incl. Contatos) NÃO tinha, caindo no global 8px sempre-visível (que o
+  usuário achou feio comparado ao do Comercial). Adicionado o MESMO bloco de scrollbar do `.cm-scope` ao
+  `.crm-scope` ([crm-theme.css](src/components/crm/crm-theme.css), carregado em `app/layout.tsx`) — agora
+  TODO o app usa o scrollbar fino/invisível-até-hover do Comercial. WebKit-only (gotcha: nunca
+  `scrollbar-width`/`color` junto; Firefox no `@supports (-moz-appearance:none)`); regras mais específicas
+  (`.crm-tabscroll`) seguem ganhando. O global 8px de theme.css.ts segue só p/ os popovers portalados p/
+  `body` (DatePicker/Combobox/Menu, fora do `.crm-scope`). User action: recarregar — Leads com todos os
+  cantos arredondados; scroll de Contatos (e do app inteiro) fino e discreto como o do Comercial.
 - **Cliente→Contrato→Caso restructure — entidade real `Contrato` (documento assinado) +
   teardown final do `Honorario` (this session, VERIFIED tsc 0, 506/506 testes, eslint SEM
   achados novos, migração `20260722095856_add_contrato_drop_honorario` APLICADA, backfill

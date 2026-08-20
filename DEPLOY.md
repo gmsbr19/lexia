@@ -184,7 +184,15 @@ Defina `JOBS_TOKEN` no `.env` e adicione ao `crontab -e` (como `lexia`):
 # Relatório diário de tarefas por e-mail — DE HORA EM HORA (o endpoint só envia a
 # quem tem o opt-in ligado e cuja hora configurada casa; idempotente no dia).
 0 * * * *    curl -s -X POST -H "X-Job-Token: $JOBS_TOKEN" https://<dominio>/api/jobs/relatorio-diario
-# Captura CNJ — intimações (Comunica/DJEN) e andamentos (DataJud), dias úteis
+# Saúde da captação — recalcula o alarme de "% de leads sem gclid" e notifica
+# se cruzou o limiar. Não é um worker de envio: o Google Ads LÊ os feeds CSV
+# abaixo por conta própria (agendado NO PRÓPRIO Google Ads, fora deste cron).
+0 8 * * *    curl -s -X POST -H "X-Job-Token: $JOBS_TOKEN" https://<dominio>/api/jobs/captacao-saude
+# Captura CNJ — intimações (Comunica/DJEN) e andamentos (DataJud), dias úteis.
+# DESLIGADA no momento (CAPTURA_AUTOMATICA_HABILITADA=false em
+# src/lib/processos/cnj/config.ts — busca nos tribunais retornava resultados
+# incorretos); os jobs abaixo continuam seguros de rodar (viram no-op), mas
+# podem ser removidos do cron sem efeito nenhum enquanto a flag estiver off.
 0 7 * * 1-5  curl -s -X POST -H "X-Job-Token: $JOBS_TOKEN" https://<dominio>/api/jobs/captura-intimacoes
 30 7 * * 1-5 curl -s -X POST -H "X-Job-Token: $JOBS_TOKEN" https://<dominio>/api/jobs/captura-andamentos
 ```
@@ -208,6 +216,24 @@ A captura de andamentos requer `DATAJUD_API_KEY` (chave pública do CNJ); sem el
 o job vira no-op. A de intimações requer ao menos uma OAB cadastrada (Processos →
 Captura). Carga inicial/backfill manual: `npm run cnj:captura -- --desde=YYYY-MM-DD`.
 Ver `docs/processos-captura-cnj.md`.
+
+### Feeds CSV do Google Ads (agendamento fica NO Google Ads, não neste cron)
+
+Defina `GADS_FEED_USER`/`GADS_FEED_PASS` no `.env`, depois em **Google Ads →
+Ferramentas e configurações → Conversões → Uploads → novo upload → "Feed
+HTTP"** aponte para os 2 endpoints abaixo, com a mesma frequência (diária) e
+as mesmas credenciais de HTTP Basic Auth:
+
+```
+https://<dominio>/feeds/google-ads/conversions.csv
+https://<dominio>/feeds/google-ads/adjustments.csv
+```
+
+Sem `GADS_FEED_USER`/`GADS_FEED_PASS` configuradas, os dois endpoints
+respondem 404 (mesmo padrão de `JOBS_TOKEN` — nunca servem sem estar
+propositalmente configurados). Ver `docs/captacao-landing-page.md` para as 4
+ações de conversão que precisam existir no Google Ads ANTES (nomes exatos,
+importadas de cliques).
 
 ## 7. Monitoring
 
