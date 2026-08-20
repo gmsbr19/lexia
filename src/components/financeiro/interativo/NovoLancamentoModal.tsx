@@ -6,6 +6,7 @@ import { apiSend, newRequestId } from "@/lib/client/api"
 import { useModalGuard } from "@/lib/client/modal-guard"
 import { parseBRLToCents } from "@/lib/finance/money"
 import type { LancamentoRow, LancDir } from "@/lib/finance/types"
+import { DateField } from "@/components/ui/DatePicker"
 import { Icon } from "./kit"
 import { fmtMoney, todayISO } from "./fx"
 import * as c from "./interativo.css"
@@ -256,7 +257,7 @@ export function NovoLancamentoModal({
             </div>
             <div className={c.field}>
               <div className={c.fieldLabel}><span className={c.fieldLabelText}>Vencimento{!isEdit && modo !== "unica" ? " (1º)" : ""}</span></div>
-              <input className={c.input} type="date" value={venc} onChange={(e) => setVenc(e.target.value)} />
+              <DateField value={venc || null} onChange={(iso) => setVenc(iso ?? "")} />
             </div>
           </div>
 
@@ -297,7 +298,7 @@ export function NovoLancamentoModal({
             {pago && (
               <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 9 }}>
                 <span style={{ fontSize: 12, color: "var(--text-muted)" }}>em</span>
-                <input className={c.input} type="date" value={pagoData} onChange={(e) => setPagoData(e.target.value)} style={{ height: 32, width: 158 }} />
+                <DateField value={pagoData || null} onChange={(iso) => setPagoData(iso ?? "")} />
               </div>
             )}
           </div>

@@ -25,6 +25,8 @@ import {
 } from "../crm-kit"
 import { CRM_MON, CRM_MON_FULL } from "../crm-fmt"
 import { Icon } from "../crm-icons"
+import { DateField } from "@/components/ui/DatePicker"
+import { Combobox } from "@/components/ui/Combobox"
 import {
   createEvento,
   deleteEvento,
@@ -182,7 +184,6 @@ function CrmEventoModal({
   const clienteOpts = [{ value: "", label: "—" }, ...dataset.clienteOptions.map((c) => ({ value: String(c.id), label: c.nome }))]
   const casoOpts = [{ value: "", label: "—" }, ...dataset.casoOptions.map((k) => ({ value: String(k.id), label: k.nome }))]
   const respOpts = [{ value: "", label: "—" }, ...socios.map((s) => ({ value: String(s.id), label: s.nome }))]
-  const leadOpts = [{ value: "", label: "—" }, ...leads.map((l) => ({ value: String(l.id), label: l.nome }))]
 
   return (
     <FxModal
@@ -233,7 +234,7 @@ function CrmEventoModal({
         <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr", gap: 12 }}>
           <div>
             <FxLabel>Data</FxLabel>
-            <FxInput type="date" value={f.dia} onChange={(e) => set("dia", e.target.value)} />
+            <DateField value={f.dia} onChange={(iso) => set("dia", iso ?? "")} />
           </div>
           <div>
             <FxLabel>Início</FxLabel>
@@ -271,10 +272,11 @@ function CrmEventoModal({
         </div>
         <div>
           <FxLabel>Oportunidade (opcional)</FxLabel>
-          <FxSelect
-            options={leadOpts}
-            value={f.leadId != null ? String(f.leadId) : ""}
-            onChange={(e) => set("leadId", e.target.value ? Number(e.target.value) : null)}
+          <Combobox
+            options={leads.map((l) => ({ value: String(l.id), label: l.nome }))}
+            value={f.leadId != null ? String(f.leadId) : null}
+            onChange={(v) => set("leadId", v ? Number(v) : null)}
+            placeholder="—"
           />
         </div>
         <div>

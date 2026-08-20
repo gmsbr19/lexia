@@ -26,6 +26,7 @@ import { fetchCasoDetail, patchCaso, setResponsaveis } from "../crm-api"
 import { crmDate, crmMoney } from "../crm-fmt"
 import type { CasoDetail, CrmDataset, CrmNav, Role } from "../crm-types"
 import { resolveAreaLabel, toAreaOptions, useAreasStore } from "@/lib/areas/store"
+import { DateField } from "@/components/ui/DatePicker"
 
 interface Props {
   casoId: number
@@ -455,11 +456,11 @@ export function CrmCasoModal({ casoId, role, dataset, onClose, onRefresh, nav }:
                 </div>
                 <div>
                   <FxLabel>Distribuição</FxLabel>
-                  <FxInput type="date" value={form.dataDistribuicao} onChange={(e) => upd({ dataDistribuicao: e.target.value })} />
+                  <DateField value={form.dataDistribuicao || null} onChange={(iso) => upd({ dataDistribuicao: iso ?? "" })} />
                 </div>
                 <div>
                   <FxLabel>Última movimentação</FxLabel>
-                  <FxInput type="date" value={form.ultimaMovimentacao} onChange={(e) => upd({ ultimaMovimentacao: e.target.value })} />
+                  <DateField value={form.ultimaMovimentacao || null} onChange={(iso) => upd({ ultimaMovimentacao: iso ?? "" })} />
                 </div>
                 <div>
                   <FxLabel>Status</FxLabel>

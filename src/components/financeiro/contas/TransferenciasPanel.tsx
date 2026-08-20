@@ -18,6 +18,7 @@ import { MoneyValue } from "@/components/financeiro/shared/MoneyValue"
 import { parseBRLToCents } from "@/lib/finance/money"
 import { formatDateBR } from "@/lib/finance/format"
 import type { ContaOption, TransferenciaRow } from "@/lib/finance/types"
+import { DateField } from "@/components/ui/DatePicker"
 import * as c from "./contas.css"
 
 const send = apiSend
@@ -103,7 +104,7 @@ export function TransferenciasPanel({
         </div>
         <div className={c.field}>
           <label className={c.fieldLabel}>Data</label>
-          <input className={c.formInput} type="date" value={data} onChange={(e) => setData(e.target.value)} />
+          <DateField value={data || null} onChange={(iso) => setData(iso ?? "")} />
         </div>
         <button type="button" className={btn({ variant: "primary" })} style={{ height: 38 }} disabled={busy} onClick={submit}>
           {busy ? "…" : "Transferir"}

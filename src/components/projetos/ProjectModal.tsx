@@ -9,6 +9,7 @@ import type { IdNome, TeamMember } from "@/lib/tarefas/types"
 import { PROJETO_STATUS, type ProjetoStatus, type ProjetoView, statusProjetoMeta } from "@/lib/projetos/types"
 import { Icon } from "@/components/tarefas/tf-icons"
 import { AssigneeAvatar, Menu, MenuItem } from "@/components/tarefas/tf-kit"
+import { DateField } from "@/components/ui/DatePicker"
 import {
   COLOR_CHOICES,
   ICON_CHOICES,
@@ -185,7 +186,7 @@ export function ProjectModal({
           </label>
           <label style={{ ...fieldCol, flex: "1 1 150px" }}>
             <span style={fieldLbl}>Prazo-alvo</span>
-            <input type="date" value={form.prazo ?? ""} onChange={(e) => set({ prazo: e.target.value || null })} className="dt-input" style={{ height: 40, fontSize: 14 }} />
+            <DateField value={form.prazo} onChange={(iso) => set({ prazo: iso })} />
           </label>
         </div>
         <div style={{ display: "flex", gap: 28, flexWrap: "wrap" }}>

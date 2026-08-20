@@ -11,6 +11,7 @@ import type { TemplateBase, TemplateView } from "@/lib/projetos/types"
 import { Icon, type TfIconName } from "@/components/tarefas/tf-icons"
 import { AssigneeAvatar, Menu, MenuItem, PriorityFlag } from "@/components/tarefas/tf-kit"
 import { TODAY } from "@/components/tarefas/tf-meta"
+import { DateField } from "@/components/ui/DatePicker"
 import { addBizDaysClient, dateFull } from "./pj-meta"
 import {
   AreaTag,
@@ -579,7 +580,7 @@ export function InstantiateWizard({
         {step === 0 && (
           <div>
             <div style={fieldLbl}>Data de início do projeto</div>
-            <input type="date" value={start} onChange={(e) => setStart(e.target.value || TODAY())} className="dt-input" style={{ height: 40, fontSize: 14, marginTop: 8, width: 200 }} />
+            <DateField value={start} onChange={(iso) => setStart(iso ?? TODAY())} />
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 14, padding: "10px 12px", background: "var(--accent-soft)", borderRadius: 10, fontSize: 12.5, color: "var(--text-muted)" }}>
               <Icon name="calendar" size={15} strokeWidth={1.85} style={{ color: "var(--accent)", flexShrink: 0 }} />
               Os prazos são calculados em <strong style={{ fontWeight: 500, color: "var(--text)" }}>&nbsp;dias úteis&nbsp;</strong>, pulando fins de semana e feriados nacionais.

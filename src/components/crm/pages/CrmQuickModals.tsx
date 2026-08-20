@@ -7,6 +7,7 @@
 import { useMemo, useState } from "react"
 import { apiSend } from "@/lib/client/api"
 import { parseBRLToCents } from "@/lib/finance/money"
+import { DateField } from "@/components/ui/DatePicker"
 import {
   CRM_TODAY,
   FxInput,
@@ -38,7 +39,7 @@ interface QuickClienteProps {
 export function CrmQuickCliente({ onClose, onRefresh }: QuickClienteProps) {
   const { toast } = useCrmToast()
   const [tipo, setTipo] = useState<"pf" | "pj">("pf")
-  const [classe, setClasse] = useState<"cliente" | "lead">("cliente")
+  const [classe, setClasse] = useState<"cliente" | "lead" | "rede">("cliente")
   const [nome, setNome] = useState("")
   const [cpfCnpj, setCpfCnpj] = useState("")
   const [cidadeUf, setCidadeUf] = useState("")
@@ -108,9 +109,9 @@ export function CrmQuickCliente({ onClose, onRefresh }: QuickClienteProps) {
           <div>
             <FxLabel>Classificação</FxLabel>
             <FxSegmented
-              options={[{ value: "cliente", label: "Cliente" }, { value: "lead", label: "Lead" }]}
+              options={[{ value: "cliente", label: "Cliente" }, { value: "lead", label: "Lead" }, { value: "rede", label: "Rede" }]}
               value={classe}
-              onChange={(v) => setClasse(v as "cliente" | "lead")}
+              onChange={(v) => setClasse(v as "cliente" | "lead" | "rede")}
             />
           </div>
         </div>
@@ -227,7 +228,7 @@ export function CrmQuickTarefa({ dataset, clienteId, onClose, onRefresh }: Quick
           </div>
           <div>
             <FxLabel>Prazo</FxLabel>
-            <FxInput type="date" value={prazo} onChange={(e) => setPrazo(e.target.value)} />
+            <DateField value={prazo} onChange={(iso) => setPrazo(iso ?? CRM_TODAY)} />
           </div>
           <div>
             <FxLabel>Responsável</FxLabel>
@@ -321,7 +322,7 @@ export function CrmQuickLancamento({ dataset, onClose, onRefresh }: QuickLancame
           </div>
           <div>
             <FxLabel>Vencimento</FxLabel>
-            <FxInput type="date" value={vencimento} onChange={(e) => setVencimento(e.target.value)} />
+            <DateField value={vencimento} onChange={(iso) => setVencimento(iso ?? CRM_TODAY)} />
           </div>
         </div>
         <div>

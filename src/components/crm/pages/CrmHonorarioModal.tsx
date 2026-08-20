@@ -19,6 +19,7 @@ import { Icon } from "../crm-icons"
 import { crmDate, crmMoney, crmTodayISO } from "../crm-fmt"
 import { desmarcarHonorario, fetchHonorarioDetail, pagarHonorario } from "../crm-api"
 import type { CrmDataset, HonorarioDetail } from "../crm-types"
+import { DateField } from "@/components/ui/DatePicker"
 
 interface Props {
   honorarioId: number
@@ -233,13 +234,7 @@ export function CrmHonorarioModal({ honorarioId, dataset, onClose, onRefresh, na
                   <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500, marginBottom: 6 }}>
                     Data
                   </div>
-                  <input
-                    className="input"
-                    type="date"
-                    value={data}
-                    onChange={(e) => setData(e.target.value)}
-                    style={{ height: 38, fontSize: 14 }}
-                  />
+                  <DateField value={data} onChange={(iso) => setData(iso ?? crmTodayISO())} />
                 </div>
               </div>
             </div>

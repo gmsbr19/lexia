@@ -20,11 +20,25 @@ import {
 } from "../crm-kit"
 import { Icon } from "../crm-icons"
 import { crmDate, crmMoney, crmTodayISO } from "../crm-fmt"
-import { createContrato, deleteContrato, fetchContratoDetail, patchContrato } from "../crm-api"
+import { Combobox } from "@/components/ui/Combobox"
+import { DateField } from "@/components/ui/DatePicker"
+import { createCaso, createCliente, createContrato, deleteContrato, fetchContratoDetail, patchContrato } from "../crm-api"
+import { resolveAreaColor, resolveAreaLabel, toAreaOptions, useAreasStore } from "@/lib/areas/store"
+import { formatBRL, parseBRLToCents } from "@/lib/finance/money"
 import { CrmHonorarioModal } from "./CrmHonorarioModal"
 import type { ContratoDetail, CrmDataset } from "../crm-types"
 
 const errMsg = (err: unknown) => (err instanceof Error ? err.message : "Erro")
+// Caso creation is gated to socio/advogado (see /api/casos POST) — the quick
+// "criar caso" option only shows for roles that can actually create one.
+const CAN_CRIAR_CASO = ["admin", "socio", "advogado"]
+// Área picker options ([{value,label}]) from the app-configured areas, with a
+// leading "none" entry. `areas` comes from the shared store (loaded in the shell).
+function useAreaOptions() {
+  const areas = useAreasStore((s) => s.areas)
+  const opts = toAreaOptions(areas).map((a) => ({ value: a.id, label: a.label }))
+  return { areas, areaSelectOptions: [{ value: "", label: "— Nenhuma —" }, ...opts] }
+}
 
 interface Props {
   contratoId: number
@@ -44,12 +58,16 @@ export function CrmContratoModal({ contratoId, dataset, onClose, onRefresh, nav 
   const [editing, setEditing] = useState(false)
   const [titulo, setTitulo] = useState("")
   const [dataFechamento, setDataFechamento] = useState(crmTodayISO())
+  const [valorTotal, setValorTotal] = useState("")
+  const [area, setArea] = useState("")
   const [observacoes, setObservacoes] = useState("")
-  const [pickCaso, setPickCaso] = useState("")
   const [confirmDelete, setConfirmDelete] = useState(false)
+
+  const { areas, areaSelectOptions } = useAreaOptions()
 
   const canWrite = dataset.role === "admin" || dataset.role === "socio" || dataset.role === "financeiro"
   const canDelete = dataset.role === "admin" || dataset.role === "socio"
+  const canCriarCaso = CAN_CRIAR_CASO.includes(dataset.role)
 
   const load = useCallback(async () => {
     try {
@@ -57,6 +75,8 @@ export function CrmContratoModal({ contratoId, dataset, onClose, onRefresh, nav 
       setDetail(d)
       setTitulo(d.titulo ?? "")
       setDataFechamento(d.dataFechamento?.slice(0, 10) ?? crmTodayISO())
+      setValorTotal(d.valorTotalCents != null ? formatBRL(d.valorTotalCents) : "")
+      setArea(d.area ?? "")
       setObservacoes(d.observacoes ?? "")
     } catch (err) {
       toast(errMsg(err), { tone: "neg", icon: "alertTriangle" })
@@ -69,13 +89,16 @@ export function CrmContratoModal({ contratoId, dataset, onClose, onRefresh, nav 
     void load()
   }, [load])
 
-  // Only casos with NO contrato at all — a caso already tied to this contrato
-  // (or, importantly, to a DIFFERENT one) never shows up here, so picking an
-  // option can never silently steal a caso away from another contract.
-  const casoOpts = useMemo(
-    () => dataset.casos.filter((c) => c.contratoId == null).map((c) => ({ id: c.id, nome: c.titulo })),
-    [dataset.casos],
-  )
+  // Only free casos (no contrato at all — never one tied to another contract, so
+  // picking never steals a caso away) AND belonging to THIS contract's client
+  // (assertCasosDoCliente only allows same-client links). When the contrato has
+  // no client, only casos with no client are eligible.
+  const casoOpts = useMemo(() => {
+    const cid = detail?.clienteId ?? null
+    return dataset.casos
+      .filter((c) => c.contratoId == null && (cid == null ? c.clienteId == null : c.clienteId === cid))
+      .map((c) => ({ value: String(c.id), label: c.titulo }))
+  }, [dataset.casos, detail?.clienteId])
 
   const salvar = async () => {
     setBusy(true)
@@ -83,6 +106,8 @@ export function CrmContratoModal({ contratoId, dataset, onClose, onRefresh, nav 
       await patchContrato(contratoId, {
         titulo: titulo.trim() || null,
         dataFechamento,
+        valorTotalCents: valorTotal.trim() ? parseBRLToCents(valorTotal) : null,
+        area: area || null,
         observacoes: observacoes.trim() || null,
       })
       toast("Contrato salvo")
@@ -106,7 +131,23 @@ export function CrmContratoModal({ contratoId, dataset, onClose, onRefresh, nav 
     } catch (err) {
       toast(errMsg(err), { tone: "neg", icon: "alertTriangle" })
     } finally {
-      setPickCaso("")
+      setBusy(false)
+    }
+  }
+
+  // Quick-create a caso from the typed name, tied to this contract's client, then
+  // link it. Área defaults to the contract's área when set.
+  const criarEVincularCaso = async (nome: string) => {
+    setBusy(true)
+    try {
+      const r = await createCaso({ titulo: nome, clientePrincipalId: detail?.clienteId ?? undefined, area: detail?.area ?? null })
+      await patchContrato(contratoId, { vincularCasoIds: [r.id] })
+      onRefresh()
+      await load()
+      toast("Caso criado e vinculado")
+    } catch (err) {
+      toast(errMsg(err), { tone: "neg", icon: "alertTriangle" })
+    } finally {
       setBusy(false)
     }
   }
@@ -189,6 +230,12 @@ export function CrmContratoModal({ contratoId, dataset, onClose, onRefresh, nav 
                   {detail.cliente}
                 </CrmLink>
               )}
+              {detail.area && (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, color: "var(--text-muted)" }}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: resolveAreaColor(areas, detail.area) || "var(--text-subtle)" }} />
+                  {resolveAreaLabel(areas, detail.area)}
+                </span>
+              )}
               <span style={{ color: "var(--text-subtle)" }}>· fechado em {crmDate(detail.dataFechamento)}</span>
             </span>
           ) : undefined
@@ -212,7 +259,15 @@ export function CrmContratoModal({ contratoId, dataset, onClose, onRefresh, nav 
                 </div>
                 <div>
                   <FxLabel>Data de fechamento</FxLabel>
-                  <FxInput type="date" value={dataFechamento} onChange={(e) => setDataFechamento(e.target.value)} />
+                  <DateField value={dataFechamento} onChange={(iso) => setDataFechamento(iso ?? crmTodayISO())} />
+                </div>
+                <div>
+                  <FxLabel hint="valor total do contrato (métrica comercial)">Valor total</FxLabel>
+                  <FxInput value={valorTotal} onChange={(e) => setValorTotal(e.target.value)} placeholder="R$ 0,00" inputMode="decimal" />
+                </div>
+                <div>
+                  <FxLabel>Área do direito</FxLabel>
+                  <FxSelect value={area} onChange={(e) => setArea(e.target.value)} options={areaSelectOptions} />
                 </div>
                 <div style={{ gridColumn: "1 / -1" }}>
                   <FxLabel>Observações</FxLabel>
@@ -229,8 +284,11 @@ export function CrmContratoModal({ contratoId, dataset, onClose, onRefresh, nav 
               </div>
             )}
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-              <FxKpi label="Contratado" value={crmMoney(detail.valorContratadoCents)} icon="receipt" accent="gold" />
+            <div style={{ display: "grid", gridTemplateColumns: `repeat(${detail.valorTotalCents != null ? 4 : 3}, 1fr)`, gap: 12 }}>
+              {detail.valorTotalCents != null && (
+                <FxKpi label="Valor total" value={crmMoney(detail.valorTotalCents)} icon="receipt" accent="gold" />
+              )}
+              <FxKpi label="Honorários" value={crmMoney(detail.valorContratadoCents)} icon="receipt" />
               <FxKpi label="Recebido" value={crmMoney(detail.recebidoCents)} icon="checkCircle" tone="pos" />
               <FxKpi label="Em aberto" value={crmMoney(abertoCents)} icon="clock" />
             </div>
@@ -245,17 +303,19 @@ export function CrmContratoModal({ contratoId, dataset, onClose, onRefresh, nav 
                 <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>
                   Casos vinculados <span style={{ color: "var(--text-subtle)", fontWeight: 400 }}>({detail.casos.length})</span>
                 </div>
-                {canWrite && casoOpts.length > 0 && (
+                {canWrite && (casoOpts.length > 0 || canCriarCaso) && (
                   <div style={{ width: 230 }}>
-                    <FxSelect
-                      value={pickCaso}
-                      onChange={(e) => {
-                        const v = e.target.value
-                        setPickCaso(v)
+                    <Combobox
+                      options={casoOpts}
+                      value={null}
+                      onChange={(v) => {
                         if (v) void vincularCaso(Number(v))
                       }}
+                      panelWidth="content"
                       placeholder="+ Vincular caso…"
-                      options={casoOpts.map((c) => ({ value: String(c.id), label: c.nome }))}
+                      emptyLabel="Nenhum caso livre deste cliente"
+                      onCreate={canCriarCaso ? criarEVincularCaso : undefined}
+                      createLabel={(q) => `Criar caso "${q}"`}
                     />
                   </div>
                 )}
@@ -374,16 +434,72 @@ export function CrmNovoContratoModal({ dataset, onClose, onCreated }: NovoContra
   const [clienteId, setClienteId] = useState("")
   const [titulo, setTitulo] = useState("")
   const [dataFechamento, setDataFechamento] = useState(crmTodayISO())
+  const [valorTotal, setValorTotal] = useState("")
+  const [area, setArea] = useState("")
   const [saving, setSaving] = useState(false)
+  // Clients created inline (not yet in dataset.clienteOptions) so the combobox
+  // can render the freshly-picked one.
+  const [extraClientes, setExtraClientes] = useState<{ id: number; nome: string }[]>([])
+  // Casos to link on create (existing free casos and/or inline-created ones).
+  const [casos, setCasos] = useState<{ id: number; titulo: string }[]>([])
+
+  const { areaSelectOptions } = useAreaOptions()
+  const canCriarCaso = CAN_CRIAR_CASO.includes(dataset.role)
+  const clienteIdNum = clienteId ? Number(clienteId) : null
+
+  const clienteOptions = useMemo(() => {
+    const known = new Set(dataset.clienteOptions.map((c) => c.id))
+    const extra = extraClientes.filter((e) => !known.has(e.id)).map((e) => ({ value: String(e.id), label: e.nome }))
+    return [...extra, ...dataset.clienteOptions.map((c) => ({ value: String(c.id), label: c.nome }))]
+  }, [dataset.clienteOptions, extraClientes])
+
+  // Free casos of the selected client, minus the ones already chosen.
+  const casoOpts = useMemo(() => {
+    if (clienteIdNum == null) return []
+    const chosen = new Set(casos.map((c) => c.id))
+    return dataset.casos
+      .filter((c) => c.contratoId == null && c.clienteId === clienteIdNum && !chosen.has(c.id))
+      .map((c) => ({ value: String(c.id), label: c.titulo }))
+  }, [dataset.casos, clienteIdNum, casos])
+
+  const criarCliente = async (nome: string) => {
+    try {
+      const r = (await createCliente({ nome })) as { id: number; nome?: string }
+      setExtraClientes((prev) => [...prev, { id: r.id, nome: r.nome ?? nome }])
+      setClienteId(String(r.id))
+      setCasos([]) // client changed → reset the linked casos
+      toast("Cliente criado")
+    } catch (err) {
+      toast(errMsg(err), { tone: "neg", icon: "alertTriangle" })
+    }
+  }
+
+  const addCaso = (id: number) => {
+    const row = dataset.casos.find((c) => c.id === id)
+    setCasos((prev) => (prev.some((c) => c.id === id) ? prev : [...prev, { id, titulo: row?.titulo ?? `Caso #${id}` }]))
+  }
+  const criarCaso = async (nome: string) => {
+    if (clienteIdNum == null) return
+    try {
+      const r = await createCaso({ titulo: nome, clientePrincipalId: clienteIdNum, area: area || null })
+      setCasos((prev) => [...prev, { id: r.id, titulo: nome }])
+      toast("Caso criado")
+    } catch (err) {
+      toast(errMsg(err), { tone: "neg", icon: "alertTriangle" })
+    }
+  }
 
   const salvar = async () => {
     if (saving) return
     setSaving(true)
     try {
       const r = await createContrato({
-        clienteId: clienteId ? Number(clienteId) : null,
+        clienteId: clienteIdNum,
         titulo: titulo.trim() || null,
         dataFechamento,
+        valorTotalCents: valorTotal.trim() ? parseBRLToCents(valorTotal) : null,
+        area: area || null,
+        casoIds: casos.map((c) => c.id),
       })
       toast("Contrato criado")
       onCreated(r.id)
@@ -397,9 +513,9 @@ export function CrmNovoContratoModal({ dataset, onClose, onCreated }: NovoContra
   return (
     <FxModal
       title="Novo contrato"
-      sub="Depois de criado, vincule os casos deste contrato."
+      sub="O documento assinado; pode reunir vários casos do cliente."
       onClose={onClose}
-      width={480}
+      width={520}
       footer={
         <>
           <button className="btn btn-ghost" onClick={onClose}>
@@ -414,12 +530,28 @@ export function CrmNovoContratoModal({ dataset, onClose, onCreated }: NovoContra
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <div>
           <FxLabel>Cliente</FxLabel>
-          <FxSelect
-            value={clienteId}
-            onChange={(e) => setClienteId(e.target.value)}
-            placeholder="— Nenhum —"
-            options={dataset.clienteOptions.map((c) => ({ value: String(c.id), label: c.nome }))}
+          <Combobox
+            options={clienteOptions}
+            value={clienteId || null}
+            onChange={(v) => {
+              setClienteId(v ?? "")
+              setCasos([]) // client changed → reset linked casos
+            }}
+            placeholder="Buscar cliente…"
+            panelWidth="content"
+            onCreate={criarCliente}
+            createLabel={(q) => `Criar cliente "${q}"`}
           />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <div>
+            <FxLabel hint="valor total do contrato (métrica comercial)">Valor total</FxLabel>
+            <FxInput value={valorTotal} onChange={(e) => setValorTotal(e.target.value)} placeholder="R$ 0,00" inputMode="decimal" />
+          </div>
+          <div>
+            <FxLabel>Área do direito</FxLabel>
+            <FxSelect value={area} onChange={(e) => setArea(e.target.value)} options={areaSelectOptions} />
+          </div>
         </div>
         <div>
           <FxLabel>Título (opcional)</FxLabel>
@@ -427,7 +559,57 @@ export function CrmNovoContratoModal({ dataset, onClose, onCreated }: NovoContra
         </div>
         <div>
           <FxLabel>Data de fechamento</FxLabel>
-          <FxInput type="date" value={dataFechamento} onChange={(e) => setDataFechamento(e.target.value)} />
+          <DateField value={dataFechamento} onChange={(iso) => setDataFechamento(iso ?? crmTodayISO())} />
+        </div>
+
+        {/* Vincular casos — só após escolher o cliente (só se vinculam casos do mesmo cliente) */}
+        <div>
+          <FxLabel>Casos vinculados</FxLabel>
+          {clienteIdNum == null ? (
+            <div style={{ fontSize: 12.5, color: "var(--text-subtle)", padding: "4px 0" }}>
+              Escolha um cliente para vincular casos.
+            </div>
+          ) : (
+            <>
+              {casos.length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+                  {casos.map((c) => (
+                    <span
+                      key={c.id}
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--text)",
+                        background: "var(--bg-sunken)", border: "1px solid var(--border)", borderRadius: 8, padding: "5px 8px",
+                      }}
+                    >
+                      {c.titulo}
+                      <button
+                        className="btn btn-ghost"
+                        onClick={() => setCasos((prev) => prev.filter((x) => x.id !== c.id))}
+                        title="Remover"
+                        style={{ width: 20, height: 20, padding: 0 }}
+                      >
+                        <Icon name="x" size={12} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              {(casoOpts.length > 0 || canCriarCaso) && (
+                <Combobox
+                  options={casoOpts}
+                  value={null}
+                  onChange={(v) => {
+                    if (v) addCaso(Number(v))
+                  }}
+                  panelWidth="content"
+                  placeholder="+ Vincular caso…"
+                  emptyLabel="Nenhum caso livre deste cliente"
+                  onCreate={canCriarCaso ? criarCaso : undefined}
+                  createLabel={(q) => `Criar caso "${q}"`}
+                />
+              )}
+            </>
+          )}
         </div>
       </div>
     </FxModal>

@@ -6,6 +6,7 @@
 // the change). Tarefa supports create + edit + delete; the others are creates.
 import { useState } from "react"
 import { emptyDoc } from "@/lib/documents/model/types"
+import { DateField } from "@/components/ui/DatePicker"
 import { FxInput, FxLabel, FxModal, FxSelect, FxTextarea, useCrmToast } from "../crm-kit"
 import { Icon } from "../crm-icons"
 import {
@@ -141,7 +142,7 @@ export function CrmTarefaModal({
           <div><FxLabel>Prioridade</FxLabel><FxSelect options={PRIO_OPTS} value={prio} onChange={(e) => setPrio(e.target.value)} /></div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <div><FxLabel>Prazo</FxLabel><FxInput type="date" value={prazo} onChange={(e) => setPrazo(e.target.value)} /></div>
+          <div><FxLabel>Prazo</FxLabel><DateField value={prazo || null} onChange={(iso) => setPrazo(iso ?? "")} /></div>
           <div><FxLabel>Responsável</FxLabel><FxSelect options={socioOpts(socios)} value={resp} onChange={(e) => setResp(e.target.value)} placeholder="—" /></div>
         </div>
       </div>
@@ -250,7 +251,7 @@ export function CrmEventoModal({
         <div><FxLabel>Título</FxLabel><FxInput value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Audiência, reunião, prazo…" autoFocus /></div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <div><FxLabel>Tipo</FxLabel><FxSelect options={TIPO_OPTS} value={tipo} onChange={(e) => setTipo(e.target.value as EventoTipo)} /></div>
-          <div><FxLabel>Data</FxLabel><FxInput type="date" value={dia} onChange={(e) => setDia(e.target.value)} /></div>
+          <div><FxLabel>Data</FxLabel><DateField value={dia} onChange={(iso) => setDia(iso ?? "")} /></div>
         </div>
         <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-muted)", cursor: "pointer" }}>
           <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
