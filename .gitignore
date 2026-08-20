@@ -63,6 +63,11 @@ next-env.d.ts
 # local pre-migration/pre-reconcile db backups (never commit — contain dev.db copies)
 /prisma/backup-*/
 
+# one-off SQLite→Postgres migration tooling (Aug 2026 cutover) — local only
+/migrar.js
+/verificar.js
+/prisma/schema.sqlite.prisma
+
 # cnj api recon samples (contêm PII real de intimações — nunca commitar; os
 # *.sample.json sintéticos usados pelos testes seguem versionados)
 src/lib/processos/cnj/__fixtures__/*.latest.jsonprisma/dev.db*

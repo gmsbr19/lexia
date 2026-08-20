@@ -11,10 +11,11 @@ export const prisma =
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   })
 
-if (!globalForPrisma.prisma) {
+if (!globalForPrisma.prisma && (process.env.DATABASE_URL ?? "").startsWith("file:")) {
   // WAL + busy_timeout: concurrency-friendly journaling (and dev parity with
   // production, where Litestream flips WAL on anyway). Fire-and-forget — a
-  // failure here must not block boot.
+  // failure here must not block boot. SQLite-only pragmas — skipped entirely
+  // on Postgres, where they're invalid syntax.
   prisma.$queryRawUnsafe("PRAGMA journal_mode=WAL").catch(() => {})
   prisma.$queryRawUnsafe("PRAGMA busy_timeout=5000").catch(() => {})
 }

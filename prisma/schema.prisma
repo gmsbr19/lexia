@@ -11,7 +11,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -20,40 +20,41 @@ datasource db {
 // (bcrypt hash); accounts are created via `scripts/create-user.ts` — no public
 // signup. `role` gates admin-ish operations once staff accounts exist.
 model User {
-  id           Int      @id @default(autoincrement())
-  email        String   @unique
-  nome         String
+  id                      Int                     @id @default(autoincrement())
+  email                   String                  @unique
+  nome                    String
   // Nullable: a user created via the invite flow is born without a password
   // (passwordHash = null) and can't sign in until they set one through their
   // access link. The login `authorize` rejects null-hash accounts.
-  passwordHash String?
-  role         String   @default("socio") // 'admin' | 'socio' | 'advogado' | 'estagiario' | 'financeiro'
-  ativo        Boolean  @default(true)
+  passwordHash            String?
+  role                    String                  @default("socio") // 'admin' | 'socio' | 'advogado' | 'estagiario' | 'financeiro'
+  ativo                   Boolean                 @default(true)
   // Preferências de notificação (JSON): { app:{modulo:bool}, email:{modulo:bool},
   // navegador:bool, emailMinPrioridade?:'normal'|'alta'|'critica' }. null = app tudo
   // ligado, e-mail desligado (opt-in). Ver src/lib/notificacoes/preferencias.ts.
-  notifPrefs   String?
+  notifPrefs              String?
   // Preferências da LexIA (JSON): { persona, instrucoes:{identidade,interacao,
   // memorias[]}, agentMode:'agente'|'pergunta'|'plano', webAccess, autoMode,
   // modelo:'auto'|'rapido'|'avancado' }. null = padrões. Ver src/lib/lexia/preferencias.ts.
-  lexiaPrefs   String?
+  lexiaPrefs              String?
   // Views salvas do DataGrid (Fase 2 do CRM Comercial), JSON keyed by gridId
   // ("oportunidades"|"contatos"): { visibleColumns, filters, sort, groupBy }.
   // null = sem view salva (grid usa os defaults). Ver src/lib/crm/view-prefs.ts.
-  crmViewPrefs String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  tarefas      Tarefa[] // tasks delegated to this user
-  tarefasCriadas Tarefa[] @relation("TarefaCriadoPor") // tasks this user created/delegated
-  eventos      Evento[] // agenda events this user is responsible for
-  casosResp    Caso[]     @relation("CasoResponsavelUser") // casos where this user is the lead lawyer
-  processos    Processo[] @relation("ProcessoResponsavel")
-  prazos       Prazo[]    @relation("PrazoResponsavel")
-  convites     ConviteAcesso[] // one-time access links (set/reset the own password)
-  projetos     Projeto[]  @relation("ProjetoResponsavel") // projects this user leads
-  comentarios  TarefaComentario[] // comentários que este usuário escreveu em tarefas
-  leadsResp    Lead[]     @relation("LeadResponsavelUser") // oportunidades das quais este usuário é dono
-  oportunidadeAtividades OportunidadeAtividade[] // atividades de oportunidade que este usuário registrou
+  crmViewPrefs            String?
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime                @updatedAt
+  tarefas                 Tarefa[] // tasks delegated to this user
+  tarefasCriadas          Tarefa[]                @relation("TarefaCriadoPor") // tasks this user created/delegated
+  eventos                 Evento[] // agenda events this user is responsible for
+  casosResp               Caso[]                  @relation("CasoResponsavelUser") // casos where this user is the lead lawyer
+  processos               Processo[]              @relation("ProcessoResponsavel")
+  prazos                  Prazo[]                 @relation("PrazoResponsavel")
+  convites                ConviteAcesso[] // one-time access links (set/reset the own password)
+  projetos                Projeto[]               @relation("ProjetoResponsavel") // projects this user leads
+  comentarios             TarefaComentario[] // comentários que este usuário escreveu em tarefas
+  leadsResp               Lead[]                  @relation("LeadResponsavelUser") // oportunidades das quais este usuário é dono
+  oportunidadeAtividades  OportunidadeAtividade[] // atividades de oportunidade que este usuário registrou
+  landingPagesResponsavel LandingPage[]           @relation("LandingPageResponsavel") // landing pages onde este usuário é o responsável padrão
 }
 
 // One-time access link issued when an admin creates a user (or resends the
@@ -99,21 +100,21 @@ model Categoria {
 }
 
 model Conta {
-  id                    Int             @id @default(autoincrement())
-  astreaId              String?         @unique // null for operator-created accounts (Leandro/Leonardo)
+  id                    Int               @id @default(autoincrement())
+  astreaId              String?           @unique // null for operator-created accounts (Leandro/Leonardo)
   nome                  String
   tipo                  String?
-  origem                String          @default("astrea") // 'astrea' | 'manual'
-  kind                  String          @default("banco") // 'socio' | 'banco' | 'caixa'
+  origem                String            @default("astrea") // 'astrea' | 'manual'
+  kind                  String            @default("banco") // 'socio' | 'banco' | 'caixa'
   titular               String? // partner name for 'socio' accounts
-  ordem                 Int             @default(0) // display order
-  valorInicialCents     Int             @default(0)
+  ordem                 Int               @default(0) // display order
+  valorInicialCents     Int               @default(0)
   dataInicio            DateTime?
   agencia               String?
   numero                String?
-  ativo                 Boolean         @default(true)
-  createdAt             DateTime        @default(now())
-  updatedAt             DateTime        @default(now()) @updatedAt
+  ativo                 Boolean           @default(true)
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @default(now()) @updatedAt
   lancamentos           Lancamento[]
   custosFixos           CustoFixo[]
   transferenciasOrigem  Transferencia[]   @relation("TransfOrigem")
@@ -130,14 +131,14 @@ model CentroCusto {
 }
 
 model Cliente {
-  id              Int          @id @default(autoincrement())
-  astreaId        String       @unique
+  id              Int               @id @default(autoincrement())
+  astreaId        String            @unique
   nome            String
   apelido         String?
   tipo            String // 'pf' | 'pj'
   classificacao   String // 'cliente' | 'lead'
   cpfCnpj         String?
-  simplesNacional Boolean      @default(false)
+  simplesNacional Boolean           @default(false)
   logradouro      String?
   numero          String?
   complemento     String?
@@ -187,17 +188,17 @@ model ClienteAnotacao {
 }
 
 model Caso {
-  id                 Int          @id @default(autoincrement())
-  astreaId           String       @unique
+  id                 Int               @id @default(autoincrement())
+  astreaId           String            @unique
   titulo             String
   tipo               String // 'consultivo' | 'litigio'
   area               String? // área do direito (cível, trabalhista, tributário, …)
   status             String?
   responsavel        String? // free-text operational label (legacy; kept intact)
   responsavelUserId  Int? // structured lead lawyer (User) — drives 'advogado vê o seu'
-  responsavelUser    User?        @relation("CasoResponsavelUser", fields: [responsavelUserId], references: [id])
+  responsavelUser    User?             @relation("CasoResponsavelUser", fields: [responsavelUserId], references: [id])
   clientePrincipalId Int?
-  clientePrincipal   Cliente?     @relation(fields: [clientePrincipalId], references: [id])
+  clientePrincipal   Cliente?          @relation(fields: [clientePrincipalId], references: [id])
   valorCausaCents    Int?
   instancia          String?
   tipoAcao           String?
@@ -212,7 +213,7 @@ model Caso {
   // existir sem contrato vinculado. Um contrato pode reunir vários casos (ex.: um
   // condomínio com assessoria mensal + uma ação de obrigação de fazer).
   contratoId         Int?
-  contrato           Contrato?    @relation(fields: [contratoId], references: [id])
+  contrato           Contrato?         @relation(fields: [contratoId], references: [id])
   lancamentos        Lancamento[]
   responsaveis       CasoResponsavel[]
   leads              Lead[]
@@ -238,17 +239,19 @@ model Caso {
 // dos financeiros dos casos vinculados — nunca persistido, sempre derivado na
 // leitura (mesma regra de saúde/progresso de Projeto).
 model Contrato {
-  id             Int         @id @default(autoincrement())
-  clienteId      Int?
-  cliente        Cliente?    @relation(fields: [clienteId], references: [id])
-  titulo         String? // rótulo opcional; a UI cai para o nome do cliente/caso quando ausente
-  dataFechamento DateTime // quando o contrato foi assinado/fechado — agrupa a lista por mês
-  observacoes    String?
-  excluidoEm     DateTime? // soft-delete marker
-  casos          Caso[]
-  documentos     Documento[] // o(s) documento(s) assinado(s) vinculado(s) (opcional)
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @default(now()) @updatedAt
+  id              Int         @id @default(autoincrement())
+  clienteId       Int?
+  cliente         Cliente?    @relation(fields: [clienteId], references: [id])
+  titulo          String? // rótulo opcional; a UI cai para o nome do cliente/caso quando ausente
+  dataFechamento  DateTime // quando o contrato foi assinado/fechado — agrupa a lista por mês
+  valorTotalCents Int? // valor total do contrato (centavos) — métrica comercial, digitado; distinto da Σ honorários derivada
+  area            String? // área do direito (chave de AreaDireito); explícita, tem precedência sobre a área derivada do único caso
+  observacoes     String?
+  excluidoEm      DateTime? // soft-delete marker
+  casos           Caso[]
+  documentos      Documento[] // o(s) documento(s) assinado(s) vinculado(s) (opcional)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @default(now()) @updatedAt
 
   @@index([clienteId])
   @@index([dataFechamento])
@@ -259,9 +262,9 @@ model Contrato {
 // sócio Contas (Leandro/Leonardo). `percentual` is 0..100 and sums to 100 across
 // a caso's responsáveis. Drives the entitlement-vs-cash "acerto entre sócios".
 model CasoResponsavel {
-  id         Int   @id @default(autoincrement())
+  id         Int      @id @default(autoincrement())
   casoId     Int
-  caso       Caso  @relation(fields: [casoId], references: [id], onDelete: Cascade)
+  caso       Caso     @relation(fields: [casoId], references: [id], onDelete: Cascade)
   contaId    Int // a sócio Conta
   conta      Conta    @relation(fields: [contaId], references: [id])
   percentual Int      @default(50)
@@ -273,14 +276,14 @@ model CasoResponsavel {
 }
 
 model Lancamento {
-  id                      Int          @id @default(autoincrement())
-  astreaId                String       @unique
+  id                      Int            @id @default(autoincrement())
+  astreaId                String         @unique
   tipo                    String // 'entrada' | 'saida'
   status                  String // 'feito' | 'aberto'
   subTipo                 String? // 'honorario' | 'avulsa' | 'valor_inicial' | 'transferencia'
   descricao               String?
-  valorCents              Int          @default(0)
-  valorOriginalCents      Int          @default(0) // used for anomaly detection
+  valorCents              Int            @default(0)
+  valorOriginalCents      Int            @default(0) // used for anomaly detection
   pagoPara                String?
   responsavel             String?
   dataLancamento          DateTime?
@@ -289,30 +292,30 @@ model Lancamento {
   vencimentoFatura        DateTime?
   entradaOriginalAstreaId String? // Astrea self-ref for recurring entries
   recorrenteParentId      Int?
-  recorrenteParent        Lancamento?  @relation("Recorrencia", fields: [recorrenteParentId], references: [id])
-  recorrenteFilhos        Lancamento[] @relation("Recorrencia")
-  isAnomalia              Boolean      @default(false) // e.g. "Compensação Sistema" / balance artifacts
-  geradoPorApp            Boolean      @default(false) // app-generated parcela (not from Astrea)
-  origem                  String       @default("astrea") // 'astrea' | 'manual'
+  recorrenteParent        Lancamento?    @relation("Recorrencia", fields: [recorrenteParentId], references: [id])
+  recorrenteFilhos        Lancamento[]   @relation("Recorrencia")
+  isAnomalia              Boolean        @default(false) // e.g. "Compensação Sistema" / balance artifacts
+  geradoPorApp            Boolean        @default(false) // app-generated parcela (not from Astrea)
+  origem                  String         @default("astrea") // 'astrea' | 'manual'
   contaId                 Int?
-  conta                   Conta?       @relation(fields: [contaId], references: [id])
+  conta                   Conta?         @relation(fields: [contaId], references: [id])
   categoriaId             Int?
-  categoria               Categoria?   @relation(fields: [categoriaId], references: [id])
+  categoria               Categoria?     @relation(fields: [categoriaId], references: [id])
   centroCustoId           Int?
-  centroCusto             CentroCusto? @relation(fields: [centroCustoId], references: [id])
+  centroCusto             CentroCusto?   @relation(fields: [centroCustoId], references: [id])
   clienteId               Int?
-  cliente                 Cliente?     @relation(fields: [clienteId], references: [id])
+  cliente                 Cliente?       @relation(fields: [clienteId], references: [id])
   casoId                  Int?
-  caso                    Caso?        @relation(fields: [casoId], references: [id])
+  caso                    Caso?          @relation(fields: [casoId], references: [id])
   processoId              Int? // per-processo financials (Processos module)
-  processo                Processo?    @relation(fields: [processoId], references: [id])
+  processo                Processo?      @relation(fields: [processoId], references: [id])
   naturezaLegal           String? // 'honorario_contratual'|'honorario_exito'|'sucumbencia'|'custa'|'despesa_reembolsavel' (metadata; finance KPIs ignore it)
   // Honorário metadata (a fee-receivable is a Lancamento entrada with subTipo='honorario'):
   tipoHonorario           String? // 'recorrente'|'parcelado'|'exito'|'avista' (composição bucket)
   valorLiquidoCents       Int? // Astrea "Valor líquido" (null for non-fees)
   metodoPagamento         String? // Astrea "Pagamento" method
   campanhaId              Int? // ad-spend attribution (Comercial module)
-  campanha                Campanha?    @relation(fields: [campanhaId], references: [id])
+  campanha                Campanha?      @relation(fields: [campanhaId], references: [id])
   leads                   Lead[]         @relation("LeadLancamento")
   transferenciaSaida      Transferencia? @relation("TransfSaida")
   transferenciaEntrada    Transferencia? @relation("TransfEntrada")
@@ -332,9 +335,9 @@ model Lancamento {
 // Operator-entered (NOT in the Astrea backup). Powers the DRE pró-labore
 // separation and the break-even point.
 model CustoFixo {
-  id            Int     @id @default(autoincrement())
+  id            Int      @id @default(autoincrement())
   nome          String
-  valorCents    Int     @default(0)
+  valorCents    Int      @default(0)
   categoria     String // 'pro_labore' | 'operacional'
   diaVencimento Int?
   ativo         Boolean  @default(true)
@@ -377,20 +380,21 @@ model Transferencia {
 // `campanhaId`, so marketing cost flows into the Financeiro ledger with no
 // double-count. Leads attribute to a campaign for per-campaign ROAS/CPL/CAC.
 model Campanha {
-  id         Int          @id @default(autoincrement())
-  plataforma String // 'google_ads' | 'meta_ads' | 'outro'
-  nome       String
-  externalId String? // platform campaign id (optional)
-  objetivo   String?
-  status     String       @default("ativa") // 'ativa' | 'pausada' | 'encerrada'
-  area       String? // chave de AreaDireito (ex.: 'trab', 'soc')
-  dataInicio DateTime?
-  dataFim    DateTime?
-  ativo      Boolean      @default(true)
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
-  gastos     Lancamento[]
-  leads      Lead[]
+  id           Int           @id @default(autoincrement())
+  plataforma   String // 'google_ads' | 'meta_ads' | 'outro'
+  nome         String
+  externalId   String? // platform campaign id (optional)
+  objetivo     String?
+  status       String        @default("ativa") // 'ativa' | 'pausada' | 'encerrada'
+  area         String? // chave de AreaDireito (ex.: 'trab', 'soc')
+  dataInicio   DateTime?
+  dataFim      DateTime?
+  ativo        Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  gastos       Lancamento[]
+  leads        Lead[]
+  landingPages LandingPage[]
 
   @@unique([plataforma, nome]) // import idempotency
   @@index([area])
@@ -405,29 +409,29 @@ model Campanha {
 // (SQLite-safe additive migration) but is ALWAYS resolved/created by the write
 // layer (createLead/import/converterLead) — see contato.ts `resolverOuCriarCliente`.
 model Lead {
-  id                   Int        @id @default(autoincrement())
-  genionsId            String?    @unique // idempotent import key from Genions
+  id                   Int                     @id @default(autoincrement())
+  genionsId            String?                 @unique // idempotent import key from Genions
   nome                 String
   email                String?
   telefone             String?
-  origem               String     @default("outro") // 'google_ads' | 'meta_ads' | 'indicacao' | 'organico' | 'outro'
+  origem               String                  @default("outro") // 'google_ads' | 'meta_ads' | 'indicacao' | 'organico' | 'outro'
   campanhaId           Int?
-  campanha             Campanha?  @relation(fields: [campanhaId], references: [id])
+  campanha             Campanha?               @relation(fields: [campanhaId], references: [id])
   area                 String? // chave de AreaDireito (ex.: 'trab', 'soc')
-  etapa                String     @default("novo") // etapa configurável (ver AppSetting "comercial.pipeline") + 'ganho' | 'perdido' (terminais fixos)
+  etapa                String                  @default("novo") // etapa configurável (ver AppSetting "comercial.pipeline") + 'ganho' | 'perdido' (terminais fixos)
   valorEstimadoCents   Int?
   dataEntrada          DateTime // when the lead arrived (drives period scoping)
   dataConversao        DateTime? // set when etapa → 'ganho'
   motivoPerda          String? // free-text detail, set when etapa → 'perdido'
   motivoPerdaCategoria String? // structured taxonomy key (ver AppSetting "comercial.motivosPerda")
   clienteId            Int?
-  cliente              Cliente?   @relation(fields: [clienteId], references: [id])
+  cliente              Cliente?                @relation(fields: [clienteId], references: [id])
   casoId               Int?
-  caso                 Caso?      @relation(fields: [casoId], references: [id])
+  caso                 Caso?                   @relation(fields: [casoId], references: [id])
   lancamentoId         Int? // fee-lançamento que o lead virou ao ser ganho (valor contratado p/ ROAS)
-  lancamento           Lancamento? @relation("LeadLancamento", fields: [lancamentoId], references: [id])
+  lancamento           Lancamento?             @relation("LeadLancamento", fields: [lancamentoId], references: [id])
   responsavelUserId    Int? // dono da oportunidade (mirrors Caso.responsavelUserId)
-  responsavelUser      User?      @relation("LeadResponsavelUser", fields: [responsavelUserId], references: [id])
+  responsavelUser      User?                   @relation("LeadResponsavelUser", fields: [responsavelUserId], references: [id])
   proximaAcaoEm        DateTime? // follow-up: quando fazer a próxima ação
   proximaAcaoNota      String?
   temperatura          String? // 'quente' | 'morno' | 'frio'
@@ -440,9 +444,33 @@ model Lead {
   viabilidade          String? // 'alta' | 'media' | 'baixa'
   // ── checkpoints de follow-up
   contratoEnviadoEm    DateTime? // checkbox "contrato enviado p/ assinatura" (null = não)
-  perdidoAutomatico    Boolean    @default(false) // perdido pelas regras automáticas (ver score.ts avaliarRegrasPerda)
-  createdAt            DateTime   @default(now())
-  updatedAt            DateTime   @updatedAt
+  perdidoAutomatico    Boolean                 @default(false) // perdido pelas regras automáticas (ver score.ts avaliarRegrasPerda)
+  // ── atribuição de captação (Google Ads offline conversions) — EVIDÊNCIA, nunca
+  // editável pela UI do CRM; gravada só pelo endpoint público (ver captacao/captar.ts)
+  gclid                String? // identificador de clique do Google Ads (a maioria dos casos)
+  wbraid               String? // clique web em iOS quando o gclid não é disponibilizado
+  gbraid               String? // clique originado em app iOS
+  utmSource            String?
+  utmMedium            String?
+  utmCampaign          String?
+  utmTerm              String? // a "palavra-chave" do anúncio
+  utmContent           String?
+  matchtype            String?
+  device               String?
+  network              String?
+  landingPageUrl       String?
+  referrer             String?
+  cliqueEm             DateTime? // início das janelas de 90/63 dias do Google (ver captacao/core.ts)
+  protocolo            String?                 @unique // curto, devolvido à LP p/ a mensagem do WhatsApp
+  captacaoKey          String?                 @unique // idempotência do submit da LP (ver captacao/core.ts derivarCaptacaoKey)
+  landingPageId        Int?
+  landingPage          LandingPage?            @relation(fields: [landingPageId], references: [id])
+  triagem              String? // JSON TEXT: respostas chave/valor da LP (cada LP tem as suas)
+  consentimentoEm      DateTime?
+  consentimentoVersao  String?
+  conversoes           ConversaoEvento[]
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
   atividades           OportunidadeAtividade[]
   tarefas              Tarefa[]
   eventos              Evento[]
@@ -454,6 +482,95 @@ model Lead {
   @@index([dataEntrada])
   @@index([responsavelUserId])
   @@index([proximaAcaoEm])
+  @@index([gclid])
+  @@index([cliqueEm])
+  @@index([landingPageId])
+}
+
+// Uma landing page autorizada a submeter leads via POST /api/captacao/lead —
+// o endpoint público (fora de src/proxy.ts) usa `chaveHash` p/ autenticar e
+// `dominios` p/ validar o CORS. A CHAVE EM CLARO nunca é persistida (só o hash
+// SHA-256, comparado em tempo constante) — mesmo padrão de ConviteAcesso (ver
+// src/lib/users/convite.ts). "Revogar" = ativo=false; "rotacionar" = gera um
+// novo par chave/hash sem apagar a linha (histórico/auditoria intactos).
+model LandingPage {
+  id                      Int       @id @default(autoincrement())
+  nome                    String
+  dominios                String // domínios autorizados, ';'-joined (mesmo padrão de Cliente.emails)
+  chaveHash               String    @unique // sha256 da chave de API; a chave em claro nunca é persistida
+  chavePrefixo            String // ex. "lp_a1b2c3…" — só p/ identificar a linha na lista, nunca autentica sozinho
+  campanhaPadraoId        Int?
+  campanhaPadrao          Campanha? @relation(fields: [campanhaPadraoId], references: [id])
+  areaPadrao              String? // chave de AreaDireito
+  responsavelPadraoUserId Int?
+  responsavelPadrao       User?     @relation("LandingPageResponsavel", fields: [responsavelPadraoUserId], references: [id])
+  consentimentoVersao     String?
+  ativo                   Boolean   @default(true)
+  revogadaEm              DateTime?
+  leads                   Lead[]
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@index([ativo])
+}
+
+// Um evento de conversão derivado de uma transição de funil do Lead — NUNCA
+// criado por tela própria, sempre emitido a partir dos pontos de escrita que
+// já existem (moverEtapa/converterLead/criarAtividade — ver
+// captacao/eventos.ts). Append-only: uma regressão de etapa nunca APAGA nem
+// REEMITE este registro — em vez disso gera um ConversaoAjuste (RETRACT).
+// `@@unique([leadId, tipo])` garante no BANCO "um evento por (lead, tipo)".
+//
+// REGRA INVIOLÁVEL: `ocorreuEm` (= conversion_date_time no feed do Google) é
+// gravado UMA VEZ, na criação, e NUNCA recalculado depois — recalcular não
+// corrige um envio anterior, cria uma SEGUNDA conversão no Google (o feed
+// dedup a por gclid+nome da ação+horário; mudar o horário quebra o dedup).
+// Nenhum código deste projeto deve fazer UPDATE em `ocorreuEm`.
+//
+// O casamento com o Google Ads é POR NOME da ação (constantes fixas em
+// captacao/acoes.ts — NUNCA renomear), não por id — `conversionActionId` e
+// `orderId` abaixo são gravados mas NÃO lidos pelo feed hoje: colunas
+// PARADAS, prontas para quando o projeto migrar para a API do Google Ads
+// (evita reprocessar o histórico depois).
+model ConversaoEvento {
+  id                 Int               @id @default(autoincrement())
+  leadId             Int
+  lead               Lead              @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tipo               String // 'formulario_enviado' | 'lead_qualificado' | 'reuniao_realizada' | 'contrato_assinado'
+  ocorreuEm          DateTime // = conversion_date_time — REGRA INVIOLÁVEL, nunca recalculado (ver acima)
+  valorCents         Int               @default(0)
+  moeda              String            @default("BRL")
+  status             String            @default("pendente") // 'pendente' | 'descartado'
+  motivoDescarte     String? // por que foi descartado (painel de reconciliação) — null quando status='pendente'
+  conversionActionId String? // PARADO — não lido pelo feed hoje (o casamento é por nome); pronto p/ a migração à API
+  orderId            String? // PARADO — '{leadId}-{tipo}'; não lido pelo feed hoje
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  ajustes            ConversaoAjuste[]
+
+  @@unique([leadId, tipo])
+  @@index([status])
+  @@index([ocorreuEm])
+}
+
+// Um ajuste de conversão (RETRACT | RESTATE) — sempre referencia o evento
+// ORIGINAL; o feed de ajustes lê gclid/nome da ação/horário original a
+// partir dessa referência (join até Lead), NUNCA recalcula esses 3 valores
+// (§ do plano: "leia da fila, nunca recalcule" — é a trinca que o Google usa
+// para casar o ajuste com a conversão já importada). `criadoEm` é o
+// "Adjustment Time" do feed — mesma regra de imutabilidade de `ocorreuEm`
+// acima: gravado uma vez, nunca recalculado.
+model ConversaoAjuste {
+  id             Int             @id @default(autoincrement())
+  eventoId       Int
+  evento         ConversaoEvento @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  tipo           String // 'RETRACT' | 'RESTATE'
+  criadoEm       DateTime        @default(now()) // = Adjustment Time — imutável após criado
+  novoValorCents Int? // só p/ RESTATE — o novo Conversion Value
+  motivo         String? // ex. "Lead retrocedeu de etapa" / "Valor do contrato alterado"
+
+  @@index([eventoId])
+  @@index([tipo])
 }
 
 // Timeline de interações de uma oportunidade (ligação/e-mail/reunião/WhatsApp/
@@ -461,20 +578,20 @@ model Lead {
 // SEMPRE manual). Espelha `ClienteAnotacao`. `onDelete: Cascade` porque
 // `deleteLead` é hard-delete.
 model OportunidadeAtividade {
-  id        Int      @id @default(autoincrement())
-  leadId    Int
-  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  tipo       String // 'ligacao' | 'email' | 'reuniao' | 'whatsapp' | 'nota' | 'outro'
-  titulo     String?
-  descricao  String?
-  resultado  String? // classificação do toque: 'sem_resposta' | 'fria' | 'positiva' (legado texto-livre = não classificado)
+  id          Int      @id @default(autoincrement())
+  leadId      Int
+  lead        Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tipo        String // 'ligacao' | 'email' | 'reuniao' | 'whatsapp' | 'nota' | 'outro'
+  titulo      String?
+  descricao   String?
+  resultado   String? // classificação do toque: 'sem_resposta' | 'fria' | 'positiva' (legado texto-livre = não classificado)
   toqueNumero Int? // nº do toque na cadência de follow-up (1..N); null = registro avulso/nota
-  sinais     String   @default("[]") // JSON: string[] de chaves de sinal de engajamento (ver AppSetting "comercial.scoring")
-  ocorreuEm DateTime @default(now())
-  autorId   Int?
-  autor     User?    @relation(fields: [autorId], references: [id])
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  sinais      String   @default("[]") // JSON: string[] de chaves de sinal de engajamento (ver AppSetting "comercial.scoring")
+  ocorreuEm   DateTime @default(now())
+  autorId     Int?
+  autor       User?    @relation(fields: [autorId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@index([leadId])
   @@index([ocorreuEm])
@@ -489,46 +606,49 @@ model OportunidadeAtividade {
 // OR Cliente (mutually exclusive). subtasks / dor / dod are JSON arrays stored as
 // TEXT (parsed in the query layer) — no Json scalar, consistent with the schema.
 model Tarefa {
-  id            Int       @id @default(autoincrement())
-  astreaId      String?   @unique // "app-tarefa-<uuid>"; Tarefa is never imported from Astrea
-  titulo        String
-  status        String    @default("todo") // 'todo' | 'doing' | 'review' | 'done'
-  done          Boolean   @default(false) // synced mirror of status === 'done'
-  prio          Int       @default(4) // 1=Urgente .. 4=Normal
-  projeto       String    @default("inbox") // static PROJECTS key
-  data          DateTime? // scheduled day (date-only, stored at local noon)
-  hora          String? // "HH:MM" when a time was set on `data`
-  prazo         DateTime? // deadline (date-only, stored at local noon)
-  notes         String? // descrição (free text)
-  reminder      String? // label only (REMINDER_OPTS)
-  recur         String? // label only (RECUR_OPTS) — NOT an auto-generated series
-  ai            Boolean   @default(false) // suggested/generated by LexIA (Phase B)
-  subtasks      String    @default("[]") // JSON: [{ id, title, done }]
-  dor           String    @default("[]") // JSON: [{ text, done }]  Definition of Ready
-  dod           String    @default("[]") // JSON: [{ text, done }]  Definition of Done
-  origem        String    @default("manual")
-  geradoPorApp  Boolean   @default(true)
-  ordem         Int       @default(0)
-  responsavelId Int? // a registered User (active users are the delegation pool)
-  responsavel   User?     @relation(fields: [responsavelId], references: [id])
-  criadoPorId   Int? // quem criou/delegou a tarefa (notificado na conclusão); null em tarefas antigas
-  criadoPor     User?     @relation("TarefaCriadoPor", fields: [criadoPorId], references: [id])
-  casoId        Int?
-  caso          Caso?     @relation(fields: [casoId], references: [id])
-  processoId    Int?
-  processo      Processo? @relation(fields: [processoId], references: [id])
-  clienteId     Int?
-  cliente       Cliente?  @relation(fields: [clienteId], references: [id])
-  leadId        Int? // oportunidade vinculada (Comercial)
-  lead          Lead?     @relation(fields: [leadId], references: [id])
-  projetoId     Int? // container de trabalho dinâmico (substitui a string `projeto`; backfill via seed)
-  projetoRef    Projeto?  @relation(fields: [projetoId], references: [id])
-  secaoId       Int? // seção personalizada dentro do projeto (estilo Todoist); null = "Sem seção"
-  secao         ProjetoSecao? @relation(fields: [secaoId], references: [id], onDelete: SetNull)
-  concluidoEm   DateTime? // setado na transição p/ done (alimenta cycle time / taxa no prazo do dashboard)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  comentarios   TarefaComentario[]
+  id             Int                @id @default(autoincrement())
+  astreaId       String?            @unique // "app-tarefa-<uuid>"; Tarefa is never imported from Astrea
+  titulo         String
+  status         String             @default("todo") // 'todo' | 'doing' | 'review' | 'done'
+  done           Boolean            @default(false) // synced mirror of status === 'done'
+  prio           Int                @default(4) // 1=Urgente .. 4=Normal
+  projeto        String             @default("inbox") // static PROJECTS key
+  data           DateTime? // scheduled day (date-only, stored at local noon)
+  hora           String? // "HH:MM" when a time was set on `data`
+  prazo          DateTime? // deadline (date-only, stored at local noon)
+  notes          String? // descrição (free text)
+  reminder       String? // label only (REMINDER_OPTS)
+  recur          String? // label only (RECUR_OPTS) — NOT an auto-generated series
+  ai             Boolean            @default(false) // suggested/generated by LexIA (Phase B)
+  subtasks       String             @default("[]") // JSON: [{ id, title, done }]
+  dor            String             @default("[]") // JSON: [{ text, done }]  Definition of Ready
+  dod            String             @default("[]") // JSON: [{ text, done }]  Definition of Done
+  origem         String             @default("manual")
+  geradoPorApp   Boolean            @default(true)
+  ordem          Int                @default(0)
+  responsavelId  Int? // a registered User (active users are the delegation pool)
+  responsavel    User?              @relation(fields: [responsavelId], references: [id])
+  criadoPorId    Int? // quem criou/delegou a tarefa (notificado na conclusão); null em tarefas antigas
+  criadoPor      User?              @relation("TarefaCriadoPor", fields: [criadoPorId], references: [id])
+  casoId         Int?
+  caso           Caso?              @relation(fields: [casoId], references: [id])
+  processoId     Int?
+  processo       Processo?          @relation(fields: [processoId], references: [id])
+  clienteId      Int?
+  cliente        Cliente?           @relation(fields: [clienteId], references: [id])
+  leadId         Int? // oportunidade vinculada (Comercial)
+  lead           Lead?              @relation(fields: [leadId], references: [id])
+  projetoId      Int? // container de trabalho dinâmico (substitui a string `projeto`; backfill via seed)
+  projetoRef     Projeto?           @relation(fields: [projetoId], references: [id])
+  secaoId        Int? // seção personalizada dentro do projeto (estilo Todoist); null = "Sem seção"
+  secao          ProjetoSecao?      @relation(fields: [secaoId], references: [id], onDelete: SetNull)
+  recorrenteDeId Int? // engine de recorrência: liga a instância GERADA à tarefa que a originou (guarda de idempotência)
+  recorrenteDe   Tarefa?            @relation("TarefaRecorrencia", fields: [recorrenteDeId], references: [id], onDelete: SetNull)
+  recorrencias   Tarefa[]           @relation("TarefaRecorrencia")
+  concluidoEm    DateTime? // setado na transição p/ done (alimenta cycle time / taxa no prazo do dashboard)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  comentarios    TarefaComentario[]
 
   @@index([status])
   @@index([responsavelId])
@@ -539,6 +659,7 @@ model Tarefa {
   @@index([projetoId])
   @@index([secaoId])
   @@index([leadId])
+  @@index([recorrenteDeId])
 }
 
 // ── Agenda (operator-entered office calendar; NOT in the Astrea backup) ──────
@@ -581,31 +702,31 @@ model Evento {
 // keeps the editor form data so a documento can be re-opened / regenerated and
 // listed on the Cliente "Documentos" tab.
 model Documento {
-  id        Int      @id @default(autoincrement())
-  nome      String
-  template  String // generator key, e.g. 'contrato-honorarios' (or a DocumentoTemplate.chave / 'livre')
-  tipo      String? // 'peticao' | 'contrato' | 'procuracao' | 'prova' | 'outro'
-  formato   String? // 'docx' | 'pdf' — last generated format (null while rascunho)
-  status    String   @default("rascunho") // 'rascunho' | 'finalizado' | 'enviado' | 'fechado'
-  payload   String? // JSON form data of the legacy STRUCTURED contract (ContratoHonorariosData)
-  conteudo  String? // LexDoc (ProseMirror) JSON — rich-text body for flexible templates (null for legacy structured docs)
-  valores   String? // JSON: Record<string,string> — placeholder values
-  clienteId Int?
-  cliente   Cliente? @relation(fields: [clienteId], references: [id])
-  casoId    Int?
-  caso      Caso?    @relation(fields: [casoId], references: [id])
-  processoId Int?
-  processo  Processo? @relation(fields: [processoId], references: [id])
-  templateId Int?
+  id          Int                @id @default(autoincrement())
+  nome        String
+  template    String // generator key, e.g. 'contrato-honorarios' (or a DocumentoTemplate.chave / 'livre')
+  tipo        String? // 'peticao' | 'contrato' | 'procuracao' | 'prova' | 'outro'
+  formato     String? // 'docx' | 'pdf' — last generated format (null while rascunho)
+  status      String             @default("rascunho") // 'rascunho' | 'finalizado' | 'enviado' | 'fechado'
+  payload     String? // JSON form data of the legacy STRUCTURED contract (ContratoHonorariosData)
+  conteudo    String? // LexDoc (ProseMirror) JSON — rich-text body for flexible templates (null for legacy structured docs)
+  valores     String? // JSON: Record<string,string> — placeholder values
+  clienteId   Int?
+  cliente     Cliente?           @relation(fields: [clienteId], references: [id])
+  casoId      Int?
+  caso        Caso?              @relation(fields: [casoId], references: [id])
+  processoId  Int?
+  processo    Processo?          @relation(fields: [processoId], references: [id])
+  templateId  Int?
   templateRef DocumentoTemplate? @relation(fields: [templateId], references: [id])
-  timbradoId Int?
-  timbrado  Timbrado? @relation(fields: [timbradoId], references: [id])
-  contratoId Int? // o contrato (documento assinado) que este registro representa, quando aplicável
-  contrato  Contrato? @relation(fields: [contratoId], references: [id])
-  criadoPor String? // actor e-mail
-  versoes   DocumentoVersao[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  timbradoId  Int?
+  timbrado    Timbrado?          @relation(fields: [timbradoId], references: [id])
+  contratoId  Int? // o contrato (documento assinado) que este registro representa, quando aplicável
+  contrato    Contrato?          @relation(fields: [contratoId], references: [id])
+  criadoPor   String? // actor e-mail
+  versoes     DocumentoVersao[]
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
 
   @@index([clienteId])
   @@index([casoId])
@@ -621,26 +742,26 @@ model Documento {
 // "smart" template (e.g. the contrato de honorários) that still drives typed
 // fields + finance automation through its own structured path.
 model DocumentoTemplate {
-  id              Int       @id @default(autoincrement())
-  chave           String?   @unique // stable seed key, e.g. 'contrato-honorarios'
+  id              Int         @id @default(autoincrement())
+  chave           String?     @unique // stable seed key, e.g. 'contrato-honorarios'
   nome            String
-  categoria       String    @default("Outro") // Contrato | Procuração | Proposta | Parecer Jurídico | Outro
+  categoria       String      @default("Outro") // Contrato | Procuração | Proposta | Parecer Jurídico | Outro
   descricao       String?
   conteudo        String? // LexDoc JSON (null for the legacy structured contract)
-  placeholders    String    @default("[]") // JSON: PlaceholderDecl[]
+  placeholders    String      @default("[]") // JSON: PlaceholderDecl[]
   tipoEstruturado String? // e.g. 'contrato-honorarios' — typed fields + automations
   timbradoId      Int?
-  timbrado        Timbrado? @relation(fields: [timbradoId], references: [id])
+  timbrado        Timbrado?   @relation(fields: [timbradoId], references: [id])
   icone           String?
-  destaque        Boolean   @default(false)
-  ativo           Boolean   @default(true)
-  usoCount        Int       @default(0)
-  ordem           Int       @default(0)
+  destaque        Boolean     @default(false)
+  ativo           Boolean     @default(true)
+  usoCount        Int         @default(0)
+  ordem           Int         @default(0)
   criadoPor       String?
   excluidoEm      DateTime?
   documentos      Documento[]
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 
   @@index([categoria])
   @@index([ativo])
@@ -758,16 +879,16 @@ model LexiaAcaoPendente {
   conversaId   Int
   conversa     LexiaConversa @relation(fields: [conversaId], references: [id], onDelete: Cascade)
   userEmail    String
-  kind         String   @default("mutation") // "mutation" | "pergunta" — pergunta = perguntar_usuario pause (no payload execution)
+  kind         String        @default("mutation") // "mutation" | "pergunta" — pergunta = perguntar_usuario pause (no payload execution)
   toolName     String
   toolUseId    String // Anthropic tool_use block id
   payload      String // JSON tool input (re-validated against the tool schema on confirm)
   resumo       String // PT-BR one-line summary shown on the confirmation/choice card
-  status       String   @default("pendente") // pendente | confirmada | recusada | expirada
+  status       String        @default("pendente") // pendente | confirmada | recusada | expirada
   contexto     String // JSON snapshot of the API messages array at the pause point
   resultJson   String? // JSON result of the executed mutation
   respostaJson String? // JSON {selecionadas, outro?} — user's answer when kind="pergunta"
-  createdAt    DateTime  @default(now())
+  createdAt    DateTime      @default(now())
   resolvedAt   DateTime?
 
   @@index([conversaId, status])
@@ -780,25 +901,25 @@ model LexiaAcaoPendente {
 // processo data is never physically removed. Writes funnel through runMutation,
 // so AuditLog + createdAt/updatedAt are the audit trail.
 model Processo {
-  id                Int       @id @default(autoincrement())
+  id                Int             @id @default(autoincrement())
   casoId            Int
-  caso              Caso      @relation(fields: [casoId], references: [id], onDelete: Cascade)
-  numeroCnj         String?   @unique // validated CNJ (Res. 65/2008); unique → re-sync is an upsert
+  caso              Caso            @relation(fields: [casoId], references: [id], onDelete: Cascade)
+  numeroCnj         String?         @unique // validated CNJ (Res. 65/2008); unique → re-sync is an upsert
   classe            String?
   assunto           String?
-  valorCausaCents   Int       @default(0)
+  valorCausaCents   Int             @default(0)
   faseAtual         String? // 'conhecimento' | 'recursal' | 'execucao' | 'cumprimento' | …
   instancia         String? // '1' | '2' | 'STJ' | 'STF' | …
-  status            String    @default("ativo") // 'ativo' | 'suspenso' | 'arquivado' | 'baixado'
+  status            String          @default("ativo") // 'ativo' | 'suspenso' | 'arquivado' | 'baixado'
   vara              String?
   comarca           String?
   tribunal          String? // sigla, e.g. TJSP / TRF3 / TRT2
   uf                String?
   sistema           String? // 'pje' | 'esaj' | 'projudi' | 'eproc' | 'outro'
-  segredoJustica    Boolean   @default(false)
+  segredoJustica    Boolean         @default(false)
   dataDistribuicao  DateTime?
   responsavelUserId Int?
-  responsavelUser   User?     @relation("ProcessoResponsavel", fields: [responsavelUserId], references: [id])
+  responsavelUser   User?           @relation("ProcessoResponsavel", fields: [responsavelUserId], references: [id])
   excluidoEm        DateTime?
   partes            ParteProcesso[]
   andamentos        Andamento[]
@@ -809,8 +930,8 @@ model Processo {
   tarefas           Tarefa[]
   lancamentos       Lancamento[]
   anotacoes         Anotacao[]
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 
   @@index([casoId])
   @@index([status])
@@ -855,22 +976,22 @@ model ParteProcesso {
 // Movement/timeline entry on a processo. `relevante` marks an intimação that
 // generates a prazo; `externalId` makes court-feed ingestion idempotent.
 model Andamento {
-  id         Int       @id @default(autoincrement())
-  processoId Int
-  processo   Processo  @relation(fields: [processoId], references: [id], onDelete: Cascade)
-  data       DateTime
-  tipo       String?
-  descricao  String
-  fonte      String    @default("manual") // 'pje' | 'dje' | 'esaj' | 'projudi' | 'manual'
-  relevante  Boolean   @default(false) // intimação que gera prazo
-  statusRevisao String @default("novo") // 'novo' | 'revisado' — fila de triagem por processo (captura)
-  revisadoEm DateTime?
-  externalId String?   @unique // court-system id → ingest idempotency
-  prazoId    Int? // the prazo generated from this andamento (if any)
-  prazo      Prazo?    @relation("AndamentoGerouPrazo", fields: [prazoId], references: [id])
-  excluidoEm DateTime?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  id            Int       @id @default(autoincrement())
+  processoId    Int
+  processo      Processo  @relation(fields: [processoId], references: [id], onDelete: Cascade)
+  data          DateTime
+  tipo          String?
+  descricao     String
+  fonte         String    @default("manual") // 'pje' | 'dje' | 'esaj' | 'projudi' | 'manual'
+  relevante     Boolean   @default(false) // intimação que gera prazo
+  statusRevisao String    @default("novo") // 'novo' | 'revisado' — fila de triagem por processo (captura)
+  revisadoEm    DateTime?
+  externalId    String?   @unique // court-system id → ingest idempotency
+  prazoId       Int? // the prazo generated from this andamento (if any)
+  prazo         Prazo?    @relation("AndamentoGerouPrazo", fields: [prazoId], references: [id])
+  excluidoEm    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@index([processoId])
   @@index([data])
@@ -906,30 +1027,30 @@ model Publicacao {
 // The deadline. dataFatal / dataInterna are CALCULATED (src/lib/processos/prazo.ts)
 // and stored; the urgency "semáforo" is NEVER stored — derived on read.
 model Prazo {
-  id                Int       @id @default(autoincrement())
-  processoId        Int
-  processo          Processo  @relation(fields: [processoId], references: [id], onDelete: Cascade)
-  descricao         String // e.g. 'Contestação'
-  tipo              String?
-  origem            String    @default("manual") // 'intimacao' | 'andamento' | 'manual'
-  dataPublicacao    DateTime? // intimação/publicação date
-  dataInicio        DateTime // início da contagem
-  quantidadeDias    Int
-  tipoContagem      String    @default("uteis") // 'uteis' | 'corridos'
-  jurisdicao        String? // tribunal/UF key selecting the holiday set
-  dataFatal         DateTime // CALCULATED
-  diasMargem        Int       @default(0)
-  dataInterna       DateTime? // CALCULATED (margem de segurança)
-  status            String    @default("pendente") // 'pendente' | 'cumprido' | 'perdido' | 'cancelado'
-  responsavelUserId Int?
-  responsavelUser   User?     @relation("PrazoResponsavel", fields: [responsavelUserId], references: [id])
-  cumpridoEm        DateTime?
-  eventoId          Int? // optional mirror onto the agenda (Evento tipo='prazo')
-  excluidoEm        DateTime?
-  andamentosGerados Andamento[]  @relation("AndamentoGerouPrazo")
+  id                 Int          @id @default(autoincrement())
+  processoId         Int
+  processo           Processo     @relation(fields: [processoId], references: [id], onDelete: Cascade)
+  descricao          String // e.g. 'Contestação'
+  tipo               String?
+  origem             String       @default("manual") // 'intimacao' | 'andamento' | 'manual'
+  dataPublicacao     DateTime? // intimação/publicação date
+  dataInicio         DateTime // início da contagem
+  quantidadeDias     Int
+  tipoContagem       String       @default("uteis") // 'uteis' | 'corridos'
+  jurisdicao         String? // tribunal/UF key selecting the holiday set
+  dataFatal          DateTime // CALCULATED
+  diasMargem         Int          @default(0)
+  dataInterna        DateTime? // CALCULATED (margem de segurança)
+  status             String       @default("pendente") // 'pendente' | 'cumprido' | 'perdido' | 'cancelado'
+  responsavelUserId  Int?
+  responsavelUser    User?        @relation("PrazoResponsavel", fields: [responsavelUserId], references: [id])
+  cumpridoEm         DateTime?
+  eventoId           Int? // optional mirror onto the agenda (Evento tipo='prazo')
+  excluidoEm         DateTime?
+  andamentosGerados  Andamento[]  @relation("AndamentoGerouPrazo")
   publicacoesGeradas Publicacao[] @relation("PublicacaoGerouPrazo")
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
 
   @@index([processoId])
   @@index([status])
@@ -1099,29 +1220,29 @@ model ExecucaoCaptura {
 // leitura de tarefas trata um projeto excluído como "sem projeto" (a tarefa
 // nunca some). `chave` dá um slug estável p/ seed idempotente (áreas, holding).
 model Projeto {
-  id               Int       @id @default(autoincrement())
-  chave            String?   @unique // slug estável p/ seed (ex.: 'area-trab'); null em projetos do usuário
+  id               Int              @id @default(autoincrement())
+  chave            String?          @unique // slug estável p/ seed (ex.: 'area-trab'); null em projetos do usuário
   nome             String
   descricao        String?
-  status           String    @default("ativo") // 'ativo' | 'pausado' | 'concluido' | 'arquivado'
+  status           String           @default("ativo") // 'ativo' | 'pausado' | 'concluido' | 'arquivado'
   cor              String? // hex (ponto/cor no rail)
   icone            String?
   area             String? // tag de área de prática (inbox/trab/soc/trib/civ/int ou livre)
   prazo            DateTime? // data-alvo (local noon)
   responsavelId    Int?
-  responsavel      User?     @relation("ProjetoResponsavel", fields: [responsavelId], references: [id])
+  responsavel      User?            @relation("ProjetoResponsavel", fields: [responsavelId], references: [id])
   casoId           Int?
-  caso             Caso?     @relation(fields: [casoId], references: [id])
+  caso             Caso?            @relation(fields: [casoId], references: [id])
   clienteId        Int?
-  cliente          Cliente?  @relation(fields: [clienteId], references: [id])
+  cliente          Cliente?         @relation(fields: [clienteId], references: [id])
   templateOrigemId Int? // template a partir do qual foi instanciado (se houver)
   templateOrigem   ProjetoTemplate? @relation(fields: [templateOrigemId], references: [id])
-  ordem            Int       @default(0)
+  ordem            Int              @default(0)
   excluidoEm       DateTime? // soft-delete marker
   tarefas          Tarefa[]
   secoes           ProjetoSecao[]
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
   @@index([status])
   @@index([area])
@@ -1153,21 +1274,21 @@ model ProjetoSecao {
 // processo repetível (ex.: "Holding Patrimonial") gerando 1 Projeto + N Tarefas
 // com prazos relativos em DIAS ÚTEIS (calcularPrazo). Editável por admin/sócio.
 model ProjetoTemplate {
-  id         Int       @id @default(autoincrement())
-  chave      String?   @unique // slug p/ seed idempotente (ex.: 'holding-patrimonial')
+  id         Int                     @id @default(autoincrement())
+  chave      String?                 @unique // slug p/ seed idempotente (ex.: 'holding-patrimonial')
   nome       String
   descricao  String?
   area       String?
   cor        String?
   icone      String?
-  ativo      Boolean   @default(true)
-  ordem      Int       @default(0)
+  ativo      Boolean                 @default(true)
+  ordem      Int                     @default(0)
   excluidoEm DateTime? // soft-delete marker
   itens      ProjetoTemplateTarefa[]
   secoes     ProjetoTemplateSecao[]
   projetos   Projeto[]
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  createdAt  DateTime                @default(now())
+  updatedAt  DateTime                @updatedAt
 
   @@index([ativo])
 }
@@ -1177,14 +1298,14 @@ model ProjetoTemplate {
 // (ProjetoTemplateTarefa.secaoOrdem) — evita malabarismo de FK id no replace-all
 // do editor. Cascade no delete do template.
 model ProjetoTemplateSecao {
-  id         Int      @id @default(autoincrement())
+  id         Int             @id @default(autoincrement())
   templateId Int
   template   ProjetoTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
   nome       String
   cor        String?
-  ordem      Int      @default(0)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  ordem      Int             @default(0)
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
 
   @@index([templateId])
 }
@@ -1194,21 +1315,21 @@ model ProjetoTemplateSecao {
 // (prazo do item anterior, encadeado). `responsavelPlaceholder` é um rótulo de
 // papel mapeado a um User real no momento da instanciação.
 model ProjetoTemplateTarefa {
-  id                     Int      @id @default(autoincrement())
+  id                     Int             @id @default(autoincrement())
   templateId             Int
   template               ProjetoTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
   titulo                 String
   descricao              String?
-  prio                   Int      @default(3) // 1=Urgente .. 4=Normal
+  prio                   Int             @default(3) // 1=Urgente .. 4=Normal
   responsavelPlaceholder String? // rótulo de papel (ex.: "Advogado responsável")
-  offsetDias             Int      @default(0) // dias úteis de folga
-  base                   String   @default("inicio") // 'inicio' | 'anterior'
-  dor                    String   @default("[]") // JSON: string[]
-  dod                    String   @default("[]") // JSON: string[]
-  ordem                  Int      @default(0)
+  offsetDias             Int             @default(0) // dias úteis de folga
+  base                   String          @default("inicio") // 'inicio' | 'anterior'
+  dor                    String          @default("[]") // JSON: string[]
+  dod                    String          @default("[]") // JSON: string[]
+  ordem                  Int             @default(0)
   secaoOrdem             Int? // índice `ordem` da ProjetoTemplateSecao a que pertence (null = sem seção)
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
 
   @@index([templateId])
 }
