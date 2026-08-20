@@ -16,7 +16,7 @@ import { proporPrazosDeAndamentos } from "../triagem-ai"
 import type { PublicacaoExterna } from "../types"
 import { consultarPorOab } from "./comunica/client"
 import { comunicacaoParaPublicacao } from "./comunica/map"
-import { COMUNICA, DATAJUD, datajudApiKey } from "./config"
+import { CAPTURA_AUTOMATICA_HABILITADA, COMUNICA, DATAJUD, datajudApiKey } from "./config"
 import { consultarProcesso, DataJudIndisponivel } from "./datajud/client"
 import { movimentosParaAndamentos } from "./datajud/map"
 
@@ -104,6 +104,10 @@ export interface OpcoesIntimacoes {
 
 export async function capturarIntimacoes(opts: OpcoesIntimacoes = {}): Promise<ResumoCaptura> {
   const dryRun = !!opts.dryRun
+  if (!CAPTURA_AUTOMATICA_HABILITADA) {
+    log.info({ cnj: "captura-intimacoes" }, "captura automática desabilitada")
+    return novoResumo("comunica", dryRun)
+  }
   const ate = opts.ateISO ?? hojeISO()
   const janela = opts.janelaDias ?? env.CAPTURA_JANELA_DIAS
   const de = opts.desdeISO ?? addDiasISO(ate, -janela)
@@ -181,6 +185,10 @@ export interface OpcoesAndamentos {
 export async function capturarAndamentos(opts: OpcoesAndamentos = {}): Promise<ResumoCaptura> {
   const dryRun = !!opts.dryRun
   const resumo = novoResumo("datajud", dryRun)
+  if (!CAPTURA_AUTOMATICA_HABILITADA) {
+    log.info({ cnj: "captura-andamentos" }, "captura automática desabilitada")
+    return resumo
+  }
   if (!datajudApiKey()) {
     log.warn({ cnj: "captura-andamentos" }, "DATAJUD_API_KEY ausente — captura de andamentos desabilitada")
     return resumo

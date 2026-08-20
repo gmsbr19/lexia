@@ -1,20 +1,18 @@
 "use client"
 
-// Contencioso · caixa de entrada unificada. Dois segmentos:
-//  • Movimentos  — andamentos capturados (DataJud) agrupados POR PROCESSO, a revisar.
-//    Abrir um processo → revisar movimento a movimento (IA sugere relevância/prazo).
-//  • Intimações  — fila de triagem das publicações capturadas (DJe etc.).
-import { useCallback, useEffect, useMemo, useState } from "react"
+// Contencioso · triagem de publicações registradas manualmente (ver "Registrar
+// publicação"). A fila de "Movimentos" (andamentos capturados via DataJud) foi
+// removida junto com a busca automática de processos — ver src/lib/processos/cnj/config.ts.
+import { useMemo, useState } from "react"
 import { FxFrame, FxSegmented, CrmBadge, CrmEmpty, CrmLink, CrmPageHead, CrmSearch, useCrmToast } from "@/components/crm/crm-kit"
 import { crmDate } from "@/components/crm/crm-fmt"
 import { Icon } from "@/components/crm/crm-icons"
 import { limparTextoPublicacao } from "@/lib/processos/texto"
 import type { ProcessosDataset } from "@/lib/processos/dataset"
-import type { MovimentoInboxRow, PublicacaoRow } from "@/lib/processos/types"
+import type { PublicacaoRow } from "@/lib/processos/types"
 import type { ProcNav } from "../proc-types"
 import { ProcFonte, ProcMovIcon, ProcStat } from "../proc-kit"
-import { listMovimentosInbox, reabrirTriagem, triarPublicacao } from "../proc-api"
-import { ProcMovimentoReviewModal } from "../ProcModals"
+import { reabrirTriagem, triarPublicacao } from "../proc-api"
 
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
 const DIAS = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"]
@@ -30,98 +28,14 @@ export function ProcAndamentos({
   onNovaPublicacao: () => void
   onVincular: (pub: PublicacaoRow) => void
 }) {
-  const [seg, setSeg] = useState<"movimentos" | "intimacoes">("movimentos")
-  const [inbox, setInbox] = useState<MovimentoInboxRow[] | null>(null)
-  const [reviewing, setReviewing] = useState<MovimentoInboxRow | null>(null)
-
-  const loadInbox = useCallback(() => {
-    listMovimentosInbox()
-      .then(setInbox)
-      .catch(() => setInbox([]))
-  }, [])
-  useEffect(() => loadInbox(), [loadInbox])
-
-  const kInbox = inbox?.length ?? 0
-  const kPend = dataset.publicacoes.filter((a) => a.statusTriagem === "pendente").length
-
   return (
     <FxFrame>
       <CrmPageHead
         title="Andamentos & publicações"
-        sub="Tudo que a captura trouxe dos tribunais (DataJud) e diários (DJe) — revise e adicione um a um."
+        sub="Publicações registradas manualmente — revise e vincule ao processo."
       />
-
-      <div style={{ marginBottom: 18 }}>
-        <FxSegmented
-          options={[
-            { value: "movimentos", label: kInbox ? `Movimentos (${kInbox})` : "Movimentos" },
-            { value: "intimacoes", label: kPend ? `Intimações (${kPend})` : "Intimações" },
-          ]}
-          value={seg}
-          onChange={(v) => setSeg(v as "movimentos" | "intimacoes")}
-        />
-      </div>
-
-      {seg === "movimentos" ? (
-        <MovimentosQueue inbox={inbox} nav={nav} onReview={setReviewing} />
-      ) : (
-        <IntimacoesQueue dataset={dataset} nav={nav} onTriar={onTriar} onNovaPublicacao={onNovaPublicacao} onVincular={onVincular} />
-      )}
-
-      {reviewing && (
-        <ProcMovimentoReviewModal
-          processoId={reviewing.processoId}
-          titulo={reviewing.numeroCnj ?? reviewing.caso ?? `Processo #${reviewing.processoId}`}
-          responsaveis={dataset.responsaveis}
-          hoje={dataset.hoje}
-          onClose={() => setReviewing(null)}
-          onDone={() => {
-            loadInbox()
-            nav.refresh()
-          }}
-        />
-      )}
+      <IntimacoesQueue dataset={dataset} nav={nav} onTriar={onTriar} onNovaPublicacao={onNovaPublicacao} onVincular={onVincular} />
     </FxFrame>
-  )
-}
-
-// ── Movimentos a revisar (por processo) ──────────────────────────────────────────
-function MovimentosQueue({
-  inbox, nav, onReview,
-}: {
-  inbox: MovimentoInboxRow[] | null
-  nav: ProcNav
-  onReview: (row: MovimentoInboxRow) => void
-}) {
-  if (inbox == null) return <div style={{ fontSize: 13, color: "var(--text-subtle)", padding: 8 }}>Carregando movimentos…</div>
-  if (inbox.length === 0)
-    return (
-      <div className="card">
-        <CrmEmpty icon="checkCircle" title="Nenhum movimento a revisar" sub="Rode a captura (aba Captura) para trazer os andamentos dos tribunais." />
-      </div>
-    )
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {inbox.map((p) => (
-        <div key={p.processoId} className="card" style={{ display: "flex", gap: 13, padding: "14px 18px", alignItems: "flex-start" }}>
-          <ProcMovIcon tipo="andamento" active={p.temRelevante} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <CrmLink onClick={() => nav.openProcesso(p.processoId)} icon="scale">{p.numeroCnj ?? p.caso ?? `Processo #${p.processoId}`}</CrmLink>
-              <CrmBadge tone={p.temRelevante ? "gold" : "neutral"} dot>{p.totalNovos} novo{p.totalNovos === 1 ? "" : "s"}</CrmBadge>
-              {p.temRelevante && <span style={{ fontSize: 11.5, color: "var(--warn)", fontWeight: 500 }}>há movimento relevante</span>}
-            </div>
-            <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 4, lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-              {p.caso ? `${p.caso}${p.cliente ? ` · ${p.cliente}` : ""} — ` : ""}{p.exemplos.join(" · ")}
-            </div>
-            {p.ultimaData && <div style={{ fontSize: 12, color: "var(--text-subtle)", marginTop: 6 }}>último movimento: {crmDate(p.ultimaData)}</div>}
-          </div>
-          <button className="btn btn-primary btn-sm" onClick={() => onReview(p)} style={{ fontSize: 12, flexShrink: 0 }}>
-            <Icon name="inbox" size={13} />Revisar
-          </button>
-        </div>
-      ))}
-    </div>
   )
 }
 

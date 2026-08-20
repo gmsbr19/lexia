@@ -8,7 +8,7 @@ import type { ProcView } from "@/components/processos/proc-types"
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-const VIEWS: ProcView[] = ["painel", "processos", "prazos", "andamentos", "captura", "saude"]
+const VIEWS: ProcView[] = ["painel", "processos", "prazos", "andamentos", "saude"]
 
 const num = (v: string | string[] | undefined): number | undefined => {
   const n = Number(Array.isArray(v) ? v[0] : v)

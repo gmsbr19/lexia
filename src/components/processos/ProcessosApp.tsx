@@ -3,7 +3,7 @@
 // Contencioso · app das listas (Painel / Processos / Prazos / Andamentos) sob a
 // shell unificada. Sub-aba sincronizada com ?view= (router.replace, mesmo tab).
 // A ficha é a rota própria /processos/[id]. Mutações abrem modais → router.refresh.
-import { useCallback, useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { FxTabs, type FxTabDef } from "@/components/crm/crm-kit"
 import type { CrmDataset, CrmNav } from "@/components/crm/crm-types"
@@ -11,13 +11,12 @@ import { CrmCasoModal } from "@/components/crm/pages/CrmCasoModal"
 import type { ProcessosDataset } from "@/lib/processos/dataset"
 import type { PublicacaoRow } from "@/lib/processos/types"
 import type { AlertaProcesso } from "@/lib/processos/saude"
-import { capturaStatus, getAlertas, type CapturaStatusResponse } from "./proc-api"
+import { getAlertas } from "./proc-api"
 import type { ProcNav, ProcView } from "./proc-types"
 import { ProcPainel } from "./tabs/ProcPainel"
 import { ProcProcessos } from "./tabs/ProcProcessos"
 import { ProcPrazos } from "./tabs/ProcPrazos"
 import { ProcAndamentos } from "./tabs/ProcAndamentos"
-import { ProcCaptura } from "./tabs/ProcCaptura"
 import { ProcSaude } from "./tabs/ProcSaude"
 import { ProcNovoProcessoModal, ProcPrazoModal, ProcPublicacaoModal, ProcTriagemModal, ProcVincularModal } from "./ProcModals"
 
@@ -44,17 +43,7 @@ export function ProcessosApp({
   const [view, setView] = useState<ProcView>(initialView)
   const [modal, setModal] = useState<Modal>(null)
   const [casoModal, setCasoModal] = useState<number | null>(openCaso ?? null)
-  const [captura, setCaptura] = useState<CapturaStatusResponse | null>(null)
-  const [capturaLoading, setCapturaLoading] = useState(true)
   const [alertas, setAlertas] = useState<AlertaProcesso[]>([])
-
-  const reloadCaptura = useCallback(() => {
-    capturaStatus()
-      .then(setCaptura)
-      .catch(() => setCaptura(null))
-      .finally(() => setCapturaLoading(false))
-  }, [])
-  useEffect(() => reloadCaptura(), [reloadCaptura])
 
   useEffect(() => {
     getAlertas()
@@ -98,13 +87,11 @@ export function ProcessosApp({
   }
 
   const inbox = dataset.publicacoes.filter((p) => p.statusTriagem === "pendente").length
-  const capturaFalhou = !!captura && (captura.comunica.ultima?.status === "erro" || captura.datajud.ultima?.status === "erro" || captura.comunica.falhasRecentes.length > 0 || captura.datajud.falhasRecentes.length > 0)
   const tabs: FxTabDef[] = [
     { id: "painel", label: "Painel", icon: "layoutGrid" },
     { id: "processos", label: "Casos & processos", icon: "scale" },
     { id: "prazos", label: "Prazos", icon: "flag" },
     { id: "andamentos", label: "Andamentos", icon: "inbox", badge: inbox || null },
-    { id: "captura", label: "Captura", icon: "download", badge: capturaFalhou ? "!" : null },
     { id: "saude", label: "Consistência", icon: "checkCircle" },
   ]
 
@@ -114,7 +101,7 @@ export function ProcessosApp({
         <FxTabs tabs={tabs} active={view} onChange={(id) => nav.setView(id as ProcView)} />
       </div>
 
-      {view === "painel" && <ProcPainel dataset={dataset} nav={nav} alertas={alertas} onLancarPrazo={() => setModal({ kind: "prazo" })} onTriar={(pub) => setModal({ kind: "triagem", pub })} capturaFalhou={capturaFalhou} />}
+      {view === "painel" && <ProcPainel dataset={dataset} nav={nav} alertas={alertas} onLancarPrazo={() => setModal({ kind: "prazo" })} onTriar={(pub) => setModal({ kind: "triagem", pub })} />}
       {view === "processos" && (
         <ProcProcessos
           dataset={dataset}
@@ -127,7 +114,6 @@ export function ProcessosApp({
       )}
       {view === "prazos" && <ProcPrazos dataset={dataset} nav={nav} onLancarPrazo={() => setModal({ kind: "prazo" })} />}
       {view === "andamentos" && <ProcAndamentos dataset={dataset} nav={nav} onTriar={(pub) => setModal({ kind: "triagem", pub })} onNovaPublicacao={() => setModal({ kind: "novaPublicacao" })} onVincular={(pub) => setModal({ kind: "vincular", pub })} />}
-      {view === "captura" && <ProcCaptura status={captura} loading={capturaLoading} reload={reloadCaptura} />}
       {view === "saude" && <ProcSaude />}
 
       {modal?.kind === "prazo" && (

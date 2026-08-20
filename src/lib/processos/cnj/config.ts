@@ -44,3 +44,10 @@ export const DATAJUD = {
 export function datajudApiKey(): string | null {
   return env.DATAJUD_API_KEY ?? null
 }
+
+// Busca automática de processos nos tribunais (Comunica/DJEN + DataJud) — DESLIGADA
+// (a busca vinha retornando resultados incorretos). Casos & Processos segue ativo
+// só para inserção manual. Único ponto de controle: `capturarIntimacoes`/
+// `capturarAndamentos` (captura.ts) checam esta flag antes de chamar qualquer API
+// externa, cobrindo os 3 gatilhos (cron, rota manual, script CLI) de uma vez.
+export const CAPTURA_AUTOMATICA_HABILITADA = false

@@ -43,14 +43,13 @@ const ALERTA_UI: Record<AlertaProcesso["tipo"], { color: string; soft: string; i
 }
 
 export function ProcPainel({
-  dataset, nav, alertas = [], onLancarPrazo, onTriar, capturaFalhou = false,
+  dataset, nav, alertas = [], onLancarPrazo, onTriar,
 }: {
   dataset: ProcessosDataset
   nav: ProcNav
   alertas?: AlertaProcesso[]
   onLancarPrazo: () => void
   onTriar: (pub: PublicacaoRow) => void
-  capturaFalhou?: boolean
 }) {
   const { processos, prazos, audiencias, publicacoes, tarefas, responsaveis, userName, hoje } = dataset
   const router = useRouter()
@@ -110,18 +109,6 @@ export function ProcPainel({
             <strong>{propostos.length} prazo{propostos.length === 1 ? "" : "s"} proposto{propostos.length === 1 ? "" : "s"} pela IA</strong>{" "}
             <span style={{ color: "var(--text-muted)" }}>— revise e confirme na aba Prazos antes de virar definitivo.</span>
           </span>
-          <Icon name="arrowRight" size={14} style={{ color: "var(--text-subtle)" }} />
-        </button>
-      )}
-
-      {capturaFalhou && (
-        <button
-          onClick={() => nav.setView("captura")}
-          className="crm-row"
-          style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left", padding: "11px 16px", marginBottom: 18, borderRadius: 10, border: "1px solid var(--crit)", background: "var(--crit-soft)", color: "var(--text)", cursor: "pointer", fontSize: 13 }}
-        >
-          <Icon name="alertTriangle" size={16} style={{ color: "var(--crit)", flexShrink: 0 }} />
-          <span style={{ flex: 1 }}><strong>Falha na captura automática.</strong> <span style={{ color: "var(--text-muted)" }}>Uma varredura do CNJ falhou — abra a aba Captura para ver os detalhes.</span></span>
           <Icon name="arrowRight" size={14} style={{ color: "var(--text-subtle)" }} />
         </button>
       )}

@@ -6,8 +6,6 @@
 import { apiSend } from "@/lib/client/api"
 import type { AlertaProcesso, SaudeProcessos } from "@/lib/processos/saude"
 import type { ResumoProcesso } from "@/lib/processos/resumo-ai"
-import type { TriagemSugestao } from "@/lib/processos/triagem-ai"
-import type { AndamentoRow, MovimentoInboxRow } from "@/lib/processos/types"
 
 const mut = async <T = unknown>(url: string, method: string, body?: unknown): Promise<T> => {
   const r = await apiSend<{ ok: boolean; result: T }>(url, method, body)
@@ -28,14 +26,6 @@ export const getAlertas = () => apiSend<AlertaProcesso[]>(`/api/processos/alerta
 export const getSaude = () => apiSend<SaudeProcessos>(`/api/processos/saude`, "GET")
 export const dispensarSugestao = (chave: string, dias?: number | null) =>
   mut(`/api/sugestoes/dispensar`, "POST", { chave, dias })
-
-// ── movimentos capturados (andamentos) — fila de revisão POR PROCESSO ──
-export const listMovimentosInbox = () => apiSend<MovimentoInboxRow[]>(`/api/processos/movimentos`, "GET")
-export const getMovimentosNovos = (pid: number) => apiSend<AndamentoRow[]>(`/api/processos/${pid}/movimentos`, "GET")
-export const sugestaoTriagem = (id: number) => apiSend<TriagemSugestao>(`/api/andamentos/${id}/sugestao-triagem`, "GET")
-export const revisarAndamento = (id: number) => mut(`/api/andamentos/${id}/revisar`, "POST")
-export const revisarProcessoMovimentos = (pid: number) => mut(`/api/processos/${pid}/movimentos`, "POST")
-export const gerarPrazoAndamento = (id: number, body: unknown) => mut(`/api/andamentos/${id}/gerar-prazo`, "POST")
 
 // ── prazo preview (read-only compute; NOT a runMutation → bare JSON) ──
 export interface PrazoPreviewBody {
@@ -121,66 +111,3 @@ export const deletePrazo = (id: number) => mut(`/api/prazos/${id}`, "DELETE")
 export const updatePrazo = (id: number, body: unknown) => mut(`/api/prazos/${id}`, "PATCH", body)
 export const deletePublicacao = (id: number) => mut(`/api/publicacoes/${id}`, "DELETE")
 export const deleteAndamento = (id: number) => mut(`/api/andamentos/${id}`, "DELETE")
-
-// ── captura CNJ (OABs + status + rodada) ──
-export interface OabRowC {
-  id: number
-  numero: string
-  uf: string
-  advogadoNome: string | null
-  ativo: boolean
-  createdAt: string
-}
-export interface ExecucaoCapturaRowC {
-  id: number
-  fonte: string
-  escopo: string
-  status: string // 'ok' | 'erro' | 'dry-run'
-  iniciadoEm: string
-  finalizadoEm: string | null
-  janelaDe: string | null
-  janelaAte: string | null
-  encontrados: number
-  criados: number
-  ignorados: number
-  semVinculo: number
-  erro: string | null
-}
-export interface CapturaFonteStatusC {
-  ultima: ExecucaoCapturaRowC | null
-  falhasRecentes: ExecucaoCapturaRowC[]
-  total: number
-}
-export interface CapturaStatusResponse {
-  comunica: CapturaFonteStatusC
-  datajud: CapturaFonteStatusC
-  execucoes: ExecucaoCapturaRowC[]
-  oabs: OabRowC[]
-}
-export interface ResumoCapturaC {
-  fonte: string
-  dryRun: boolean
-  escopos: number
-  encontrados: number
-  criados: number
-  ignorados: number
-  semVinculo: number
-  falhas: number
-}
-export interface RunCapturaBody {
-  fonte?: "comunica" | "datajud" | "ambas"
-  dryRun?: boolean
-  desde?: string
-}
-
-// status/list routes return bare JSON (não passam por runMutation)
-export const capturaStatus = () => apiSend<CapturaStatusResponse>(`/api/processos/captura/status`, "GET")
-export const listOabs = () => apiSend<OabRowC[]>(`/api/processos/oabs`, "GET")
-
-export const createOab = (body: { numero: string; uf: string; advogadoNome?: string | null; ativo?: boolean }) =>
-  mut(`/api/processos/oabs`, "POST", body)
-export const updateOab = (id: number, body: { advogadoNome?: string | null; ativo?: boolean }) =>
-  mut(`/api/processos/oabs/${id}`, "PATCH", body)
-export const deleteOab = (id: number) => mut(`/api/processos/oabs/${id}`, "DELETE")
-export const runCaptura = (body: RunCapturaBody) =>
-  mut<{ intimacoes?: ResumoCapturaC; andamentos?: ResumoCapturaC }>(`/api/processos/captura/run`, "POST", body)

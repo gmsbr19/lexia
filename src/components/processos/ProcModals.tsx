@@ -3,29 +3,24 @@
 // Processos (Contencioso) — modals: lançar prazo (server-computed preview via the
 // real CPC engine), triagem de publicação (relevante→gera prazo / descartar), and
 // novo processo. Ported from proc-modals.jsx but wired to the live routes.
-import { useCallback, useEffect, useState, type ReactNode } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { ApiError } from "@/lib/client/api"
 import { FxInput, FxLabel, FxModal, FxSegmented, FxSelect, FxTextarea, CrmBadge, useCrmToast } from "@/components/crm/crm-kit"
 import { Icon } from "@/components/crm/crm-icons"
+import { DateField } from "@/components/ui/DatePicker"
 import { crmDate } from "@/components/crm/crm-fmt"
 import { limparTextoPublicacao } from "@/lib/processos/texto"
-import type { TriagemSugestao } from "@/lib/processos/triagem-ai"
 import type { IdNome } from "@/lib/finance/types"
-import type { AndamentoRow, PrazoRow, ProcessoRow, PublicacaoRow } from "@/lib/processos/types"
+import type { PrazoRow, ProcessoRow, PublicacaoRow } from "@/lib/processos/types"
 import type { UsuarioOption } from "@/lib/processos/dataset"
-import { ProcFonte, ProcMovIcon, ProcSemaforo, urgenciaCalc } from "./proc-kit"
+import { ProcFonte, ProcSemaforo, urgenciaCalc } from "./proc-kit"
 import {
   confirmarPrazo,
   createCaso,
   createPrazo,
   createProcesso,
   createPublicacao,
-  gerarPrazoAndamento,
-  getMovimentosNovos,
   previewPrazo,
-  revisarAndamento,
-  revisarProcessoMovimentos,
-  sugestaoTriagem,
   sugestaoVinculo,
   triarPublicacao,
   updateProcesso,
@@ -183,7 +178,7 @@ export function ProcPrazoModal({
           <div><FxLabel>Responsável</FxLabel><FxSelect options={userOptions(responsaveis)} value={respId} onChange={(e) => setRespId(e.target.value)} /></div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-          <div><FxLabel hint="data-base">Data</FxLabel><FxInput type="date" value={base} onChange={(e) => setBase(e.target.value)} /></div>
+          <div><FxLabel hint="data-base">Data</FxLabel><DateField value={base} onChange={(iso) => setBase(iso ?? hoje)} /></div>
           <div><FxLabel hint="dias úteis">Prazo legal</FxLabel><FxInput type="number" min={1} value={dias} onChange={(e) => setDias(e.target.value)} /></div>
           <div><FxLabel hint="du antes do fatal">Margem</FxLabel><FxInput type="number" min={0} value={margem} onChange={(e) => setMargem(e.target.value)} /></div>
         </div>
@@ -305,242 +300,6 @@ export function ProcTriagemModal({
           </>
         )}
         {error && <div style={{ fontSize: 12, color: "var(--crit)" }}>{error}</div>}
-      </div>
-    </FxModal>
-  )
-}
-
-// ── Revisão de movimentos (andamentos capturados) por processo ─────────────────
-// Sub-form inline para gerar um prazo a partir de um movimento (data-base = data do
-// movimento → +1 dia útil), pré-preenchido pela sugestão da IA.
-function MovPrazoForm({
-  processoId, andamento, sugestao, responsaveis, hoje, onCancel, onDone,
-}: {
-  processoId: number
-  andamento: AndamentoRow
-  sugestao: TriagemSugestao | null
-  responsaveis: UsuarioOption[]
-  hoje: string
-  onCancel: () => void
-  onDone: () => void
-}) {
-  const { toast } = useCrmToast()
-  const sug = sugestao?.prazoSugerido ?? null
-  const [descricao, setDescricao] = useState(sug?.descricao ?? "Manifestação")
-  const [dias, setDias] = useState(String(sug?.quantidadeDias ?? 15))
-  const [margem, setMargem] = useState("3")
-  const [respId, setRespId] = useState("")
-  const [preview, setPreview] = useState<PrazoPreviewResult | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState("")
-  const qd = Number(dias)
-  const pecasOptions = PROC_PECAS.includes(descricao) ? PROC_PECAS : [descricao, ...PROC_PECAS]
-
-  useEffect(() => {
-    if (!Number.isInteger(qd) || qd <= 0) { setPreview(null); return }
-    let cancelled = false
-    const t = setTimeout(async () => {
-      try {
-        const r = await previewPrazo(processoId, { quantidadeDias: qd, diasMargem: Number(margem) || 0, dataPublicacao: andamento.data })
-        if (!cancelled) setPreview(r)
-      } catch {
-        if (!cancelled) setPreview(null)
-      }
-    }, 280)
-    return () => { cancelled = true; clearTimeout(t) }
-  }, [qd, margem])
-
-  const gerar = async () => {
-    if (!descricao.trim() || qd <= 0) return
-    setBusy(true)
-    setError("")
-    try {
-      await gerarPrazoAndamento(andamento.id, {
-        descricao: descricao.trim(),
-        tipo: descricao.split(" ")[0],
-        quantidadeDias: qd,
-        diasMargem: Number(margem) || 0,
-        responsavelUserId: respId ? Number(respId) : undefined,
-        usarDataDoAndamento: true,
-        criarEvento: true,
-      })
-      onDone()
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Erro ao gerar o prazo")
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 10, paddingTop: 12, borderTop: "1px dashed var(--border)" }}>
-      <div style={{ fontSize: 11.5, color: "var(--text-subtle)" }}>
-        Data-base = data do movimento ({crmDate(andamento.data)}) → conta +1 dia útil (art. 224 CPC). Confira sempre.
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 12 }}>
-        <div><FxLabel>Peça / providência</FxLabel><FxSelect options={pecasOptions} value={descricao} onChange={(e) => setDescricao(e.target.value)} /></div>
-        <div><FxLabel>Responsável</FxLabel><FxSelect options={userOptions(responsaveis)} value={respId} onChange={(e) => setRespId(e.target.value)} /></div>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <div><FxLabel hint="dias úteis">Prazo legal</FxLabel><FxInput type="number" min={1} value={dias} onChange={(e) => setDias(e.target.value)} /></div>
-        <div><FxLabel hint="du antes do fatal">Margem interna</FxLabel><FxInput type="number" min={0} value={margem} onChange={(e) => setMargem(e.target.value)} /></div>
-      </div>
-      <PreviewCard result={preview} hoje={hoje} />
-      {error && <div style={{ fontSize: 12, color: "var(--crit)" }}>{error}</div>}
-      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-        <button className="btn btn-ghost btn-sm" onClick={onCancel} disabled={busy}>Cancelar</button>
-        <button className="btn btn-primary btn-sm" onClick={gerar} disabled={busy || !descricao.trim() || qd <= 0}>
-          <Icon name="flag" size={13} />{busy ? "Gerando…" : "Gerar prazo"}
-        </button>
-      </div>
-    </div>
-  )
-}
-
-export function ProcMovimentoReviewModal({
-  processoId, titulo, responsaveis, hoje, onClose, onDone,
-}: {
-  processoId: number
-  titulo: string
-  responsaveis: UsuarioOption[]
-  hoje: string
-  onClose: () => void
-  onDone: () => void
-}) {
-  const { toast } = useCrmToast()
-  const [movs, setMovs] = useState<AndamentoRow[] | null>(null)
-  const [expandido, setExpandido] = useState<number | null>(null)
-  const [sug, setSug] = useState<Record<number, TriagemSugestao | "loading">>({})
-  const [prazoFor, setPrazoFor] = useState<number | null>(null)
-  const [busy, setBusy] = useState(false)
-
-  const load = useCallback(() => {
-    getMovimentosNovos(processoId).then(setMovs).catch(() => setMovs([]))
-  }, [processoId])
-  useEffect(() => load(), [load])
-
-  const remover = (id: number) => setMovs((m) => (m ? m.filter((x) => x.id !== id) : m))
-
-  const expandir = async (a: AndamentoRow) => {
-    const next = expandido === a.id ? null : a.id
-    setExpandido(next)
-    setPrazoFor(null)
-    if (next != null && !sug[a.id]) {
-      setSug((s) => ({ ...s, [a.id]: "loading" }))
-      try {
-        const r = await sugestaoTriagem(a.id)
-        setSug((s) => ({ ...s, [a.id]: r }))
-      } catch {
-        setSug((s) => {
-          const c = { ...s }
-          delete c[a.id]
-          return c
-        })
-      }
-    }
-  }
-
-  const semPrazo = async (id: number) => {
-    try {
-      await revisarAndamento(id)
-      remover(id)
-      onDone()
-    } catch {
-      toast("Não foi possível marcar como revisado", { tone: "neg" })
-    }
-  }
-
-  const marcarTodos = async () => {
-    setBusy(true)
-    try {
-      await revisarProcessoMovimentos(processoId)
-      toast("Movimentos marcados como revisados", { icon: "checkCircle" })
-      onDone()
-      onClose()
-    } catch {
-      toast("Erro ao marcar os movimentos", { tone: "neg" })
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const prazoGerado = (id: number) => {
-    remover(id)
-    onDone()
-    toast("Movimento revisado — prazo na agenda", { icon: "flag" })
-  }
-
-  return (
-    <FxModal
-      title="Revisar movimentos"
-      sub={titulo}
-      onClose={onClose}
-      width={680}
-      footer={
-        <>
-          <button className="btn btn-ghost" onClick={onClose}>Fechar</button>
-          <button className="btn btn-secondary" onClick={marcarTodos} disabled={busy || !movs?.length}>
-            <Icon name="checkCircle" size={14} />Marcar todos revisados
-          </button>
-        </>
-      }
-    >
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--text-muted)", background: "var(--accent-soft)", borderRadius: 8, padding: "9px 12px" }}>
-          <Icon name="sparkles" size={15} style={{ color: "var(--accent)", flexShrink: 0 }} />
-          Abra um movimento para a LexIA classificar a relevância e sugerir o prazo. Apoio à decisão — o prazo exige conferência.
-        </div>
-        {movs == null ? (
-          <div style={{ fontSize: 13, color: "var(--text-subtle)", padding: 8 }}>Carregando movimentos…</div>
-        ) : movs.length === 0 ? (
-          <div style={{ fontSize: 13, color: "var(--text-subtle)", padding: 8 }}>Nenhum movimento a revisar neste processo.</div>
-        ) : (
-          movs.map((a) => {
-            const aberto = expandido === a.id
-            const s = sug[a.id]
-            return (
-              <div key={a.id} className="card" style={{ overflow: "hidden", borderColor: a.relevante ? "var(--border-gold)" : "var(--border)" }}>
-                <button onClick={() => expandir(a)} style={{ width: "100%", textAlign: "left", background: "transparent", border: "none", cursor: "pointer", padding: "12px 14px", display: "flex", gap: 11, alignItems: "flex-start" }}>
-                  <span style={{ flexShrink: 0, marginTop: 1 }}><ProcMovIcon tipo={a.tipo ?? "andamento"} active={a.relevante} /></span>
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                      <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{a.tipo ?? "Movimento"}</span>
-                      {a.relevante && <CrmBadge tone="gold" dot>relevante</CrmBadge>}
-                      {a.prazoId && <CrmBadge tone="pos" dot>com prazo</CrmBadge>}
-                      <span style={{ fontSize: 12, color: "var(--text-subtle)", fontVariantNumeric: "tabular-nums" }}>{crmDate(a.data)}</span>
-                    </span>
-                    <span style={{ display: "block", fontSize: 12.5, color: "var(--text-muted)", marginTop: 4, lineHeight: 1.5, ...(aberto ? {} : { WebkitLineClamp: 2, display: "-webkit-box", WebkitBoxOrient: "vertical", overflow: "hidden" }) }}>{limparTextoPublicacao(a.descricao)}</span>
-                  </span>
-                  <Icon name={aberto ? "chevronDown" : "chevronRight"} size={15} style={{ color: "var(--text-subtle)", flexShrink: 0 }} />
-                </button>
-                {aberto && (
-                  <div style={{ padding: "0 14px 14px 49px" }}>
-                    {s === "loading" ? (
-                      <div style={{ fontSize: 12, color: "var(--text-subtle)" }}>Analisando com a LexIA…</div>
-                    ) : s ? (
-                      <div style={{ fontSize: 12.5, color: "var(--text-muted)", display: "flex", gap: 7, alignItems: "flex-start" }}>
-                        <Icon name={s.relevante ? "alertTriangle" : "circleDot"} size={14} style={{ color: s.relevante ? "var(--warn)" : "var(--text-subtle)", marginTop: 1, flexShrink: 0 }} />
-                        <span>
-                          {s.motivo || (s.relevante ? "Parece exigir providência." : "Parece cartorário/rotina.")}
-                          {s.prazoSugerido ? ` Sugestão: ${s.prazoSugerido.descricao} (${s.prazoSugerido.quantidadeDias} dias).` : ""}
-                          <span style={{ color: "var(--text-subtle)" }}> · {s.fonte === "ia" ? "LexIA" : "heurística"}</span>
-                        </span>
-                      </div>
-                    ) : null}
-                    {prazoFor === a.id ? (
-                      <MovPrazoForm processoId={processoId} andamento={a} sugestao={s && s !== "loading" ? s : null} responsaveis={responsaveis} hoje={hoje} onCancel={() => setPrazoFor(null)} onDone={() => prazoGerado(a.id)} />
-                    ) : (
-                      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                        <button className="btn btn-primary btn-sm" onClick={() => setPrazoFor(a.id)} style={{ fontSize: 12 }}><Icon name="flag" size={13} />Gerar prazo</button>
-                        <button className="btn btn-ghost btn-sm" onClick={() => semPrazo(a.id)} style={{ fontSize: 12 }}><Icon name="checkCircle" size={13} />Sem prazo (revisado)</button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )
-          })
-        )}
       </div>
     </FxModal>
   )
@@ -699,7 +458,7 @@ export function ProcProcessoModal({
           <div><FxLabel>Responsável</FxLabel><FxSelect options={userOptions(responsaveis)} value={f.responsavelUserId} onChange={(e) => set("responsavelUserId", e.target.value)} /></div>
         </G>
         <G>
-          <div><FxLabel>Distribuição</FxLabel><FxInput type="date" value={f.distribuicao} onChange={(e) => set("distribuicao", e.target.value)} /></div>
+          <div><FxLabel>Distribuição</FxLabel><DateField value={f.distribuicao || null} onChange={(iso) => set("distribuicao", iso ?? "")} /></div>
           <div style={{ display: "flex", alignItems: "flex-end", paddingBottom: 8 }}>
             <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text-muted)", cursor: "pointer" }}>
               <input type="checkbox" checked={f.segredo} onChange={(e) => set("segredo", e.target.checked)} /> Segredo de justiça
@@ -775,7 +534,7 @@ export function ProcPublicacaoModal({
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <div><FxLabel hint="opcional">Processo</FxLabel><FxSelect options={[{ value: "", label: "A vincular" }, ...processos.map((p) => ({ value: String(p.id), label: `${p.numeroCnj ?? "sem número"} · ${p.caso ?? p.classe ?? ""}` }))]} value={processoId} onChange={(e) => setProcessoId(e.target.value)} /></div>
-          <div><FxLabel>Data de publicação</FxLabel><FxInput type="date" value={data} onChange={(e) => setData(e.target.value)} /></div>
+          <div><FxLabel>Data de publicação</FxLabel><DateField value={data || null} onChange={(iso) => setData(iso ?? "")} /></div>
         </div>
         <div><FxLabel>Diário / fonte</FxLabel><FxInput value={diario} onChange={(e) => setDiario(e.target.value)} placeholder="DJe TJSP · Caderno 3" /></div>
         <div><FxLabel>Conteúdo</FxLabel><FxTextarea value={conteudo} onChange={(e) => setConteudo(e.target.value)} placeholder="Texto da publicação / intimação…" style={{ minHeight: 120 }} /></div>
