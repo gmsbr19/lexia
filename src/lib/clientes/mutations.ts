@@ -26,8 +26,8 @@ function joinList(v: unknown): string | null {
 function validTipo(v: unknown): "pf" | "pj" {
   return v === "pj" ? "pj" : "pf"
 }
-function validClassificacao(v: unknown): "cliente" | "lead" {
-  return v === "lead" ? "lead" : "cliente"
+function validClassificacao(v: unknown): "cliente" | "lead" | "rede" {
+  return v === "lead" ? "lead" : v === "rede" ? "rede" : "cliente"
 }
 /** Coerce to a known origem key (same set as Lead) or null. Empty/unknown → null. */
 function validOrigem(v: unknown): string | null {

@@ -430,7 +430,7 @@ export async function notificarCapturaFalha(p: {
         modulo: "sistema",
         refTipo: "captura",
         refId: null,
-        link: "/processos?view=captura",
+        link: "/processos",
         mensagem: `Falha na captura ${p.fonte} (${p.escopo})${p.erro ? `: ${p.erro}` : ""}`,
         prioridade: "alta",
         grupoKey, // agrupa falhas repetidas da mesma fonte
@@ -438,5 +438,60 @@ export async function notificarCapturaFalha(p: {
     }
   } catch (e) {
     log.error({ err: e instanceof Error ? e.message : String(e) }, "notificarCapturaFalha falhou")
+  }
+}
+
+// ── Captação (landing pages + conversões offline) ──────────────────────────────
+/** Novo lead capturado por uma landing page — avisa o responsável padrão da LP
+ *  (fallback: gestores, se a LP não tem um configurado). Nunca lançada como
+ *  parte da transação de escrita do endpoint público — o lead já foi gravado
+ *  e o 201 já respondeu quando isto roda (best-effort). */
+export async function notificarLeadCaptado(p: {
+  leadId: number
+  nome: string
+  landingPageNome: string
+  responsavelUserId?: number | null
+}): Promise<void> {
+  try {
+    const destinos = p.responsavelUserId ? [await emailDoUsuario(p.responsavelUserId)].filter(Boolean) as string[] : []
+    const emails = destinos.length ? destinos : await gestorEmails()
+    for (const to of emails) {
+      await entregar({
+        userEmail: to,
+        tipo: "lead",
+        modulo: "comercial",
+        refTipo: "lead",
+        refId: p.leadId,
+        mensagem: `Novo lead pela landing page "${p.landingPageNome}": ${p.nome}`,
+      })
+    }
+  } catch (e) {
+    log.error({ err: e instanceof Error ? e.message : String(e) }, "notificarLeadCaptado falhou")
+  }
+}
+
+/** % de leads sem identificador de clique cruzou o limiar configurado — o
+ *  alarme de incêndio do módulo (o feed CSV exclui silenciosamente qualquer
+ *  linha sem gclid, então isto é o único sinal ativo de que o snippet da LP
+ *  parou de capturar). Disparado pelo job diário POST /api/jobs/captacao-
+ *  saude. Agrupada p/ não repetir a cada rodada. */
+export async function notificarCaptacaoSemClique(p: { percentual: number; limiar: number }): Promise<void> {
+  try {
+    const gestores = await gestorEmails()
+    for (const to of gestores) {
+      await entregar({
+        userEmail: to,
+        tipo: "captacao-alerta",
+        modulo: "sistema",
+        refTipo: null,
+        refId: null,
+        link: "/comercial?tab=captacao",
+        mensagem: `${p.percentual}% dos leads recentes chegaram sem identificador de clique (limite configurado: ${p.limiar}%) — verifique o snippet das landing pages`,
+        prioridade: "alta",
+        grupoKey: "captacao-sem-clique",
+      })
+    }
+  } catch (e) {
+    log.error({ err: e instanceof Error ? e.message : String(e) }, "notificarCaptacaoSemClique falhou")
   }
 }

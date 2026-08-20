@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/Toaster";
 import { UnifiedShell } from "@/components/shell/UnifiedShell";
 import "../styles/theme.css";
 import "@/components/crm/crm-theme.css";
+import "@/components/ui/viewgrid/viewgrid.css";
 import { unselectable } from "../styles/theme.css";
 
 const inter = Inter({

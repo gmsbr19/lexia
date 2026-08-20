@@ -5,7 +5,7 @@
 // (crm-settings.jsx), wired to the real backend: section data is fetched lazily
 // when a section opens. Money is centavos; dates are ISO strings.
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import { CrmAvatar, CrmBadge, FxInput, FxLabel, useCrmToast } from "../crm-kit"
+import { CrmAvatar, CrmBadge, CrmEmpty, FxInput, FxLabel, FxSegmented, FxSelect, useCrmToast } from "../crm-kit"
 import { useModalGuard } from "@/lib/client/modal-guard"
 import { Icon, type CrmIconName } from "../crm-icons"
 import { crmDate, crmMoney, crmTime } from "../crm-fmt"
@@ -33,6 +33,18 @@ import {
   putScoringConfig,
   getFollowupConfig,
   putFollowupConfig,
+  getCaptacaoFunilConfig,
+  putCaptacaoFunilConfig,
+  getCaptacaoValoresConfig,
+  putCaptacaoValoresConfig,
+  getValorPreview,
+  getFeedStatus,
+  listLandingPages,
+  createLandingPage,
+  updateLandingPage,
+  revokeLandingPage,
+  rotateLandingPageKey,
+  getCampanhaOptions,
   listUsers,
   listAreasComUso,
   createAreaAdmin,
@@ -46,17 +58,22 @@ import {
   putOrcamentoConsumo,
   type AuditRow,
 } from "../crm-api"
+import { Combobox } from "@/components/ui/Combobox"
 import { toAreaOptions, useAreasStore } from "@/lib/areas/store"
 import { useModulosStore } from "@/lib/modulos/store"
 import { usePipelineStore } from "@/lib/comercial/pipeline/store"
 import { useScoringStore } from "@/lib/comercial/scoring/store"
 import type {
+  CampanhaOption,
   CanalToque,
   CriterioFit,
   CrmDataset,
   EscritorioConfig,
   FollowupConfig,
+  FunilConfig,
   ImportacaoInfo,
+  LandingPageInput,
+  LandingPageRow,
   ModulosConfig,
   MotivoPerda,
   NotificacoesConfig,
@@ -66,6 +83,7 @@ import type {
   ScoringConfig,
   ToqueCadencia,
   UserRow,
+  ValoresConfig,
 } from "../crm-types"
 import type { ConsumoData, ConsumoInterno, ConsumoPeriodo } from "@/lib/consumo/types"
 import { apiSend } from "@/lib/client/api"
@@ -92,6 +110,8 @@ type SecId =
   | "areas"
   | "pipeline"
   | "score"
+  | "captacao"
+  | "landingpages"
   | "financeiro"
   | "consumo"
   | "escritorio"
@@ -108,6 +128,8 @@ const SECTIONS: { id: SecId; label: string; icon: CrmIconName; roles: Role[] }[]
   { id: "areas", label: "Áreas do Direito", icon: "scale", roles: ["admin"] },
   { id: "pipeline", label: "Pipeline comercial", icon: "funnel", roles: ["admin", "socio"] },
   { id: "score", label: "Score de leads", icon: "target", roles: ["admin", "socio"] },
+  { id: "captacao", label: "Captação & conversões", icon: "mousePointerClick", roles: ["admin"] },
+  { id: "landingpages", label: "Landing pages", icon: "globe", roles: ["admin"] },
   { id: "financeiro", label: "Financeiro", icon: "wallet", roles: ["admin", "socio"] },
   { id: "consumo", label: "Consumo (IA)", icon: "zap", roles: ["admin", "socio"] },
   { id: "escritorio", label: "Escritório & documentos", icon: "building", roles: ["admin"] },
@@ -258,6 +280,8 @@ export function CrmSettings({
             {sec === "areas" && <AreasSection />}
             {sec === "pipeline" && <PipelineSection />}
             {sec === "score" && <ScoreSection />}
+            {sec === "captacao" && <CaptacaoSection />}
+            {sec === "landingpages" && <LandingPagesSection />}
             {sec === "financeiro" && <FinanceiroSection />}
             {sec === "consumo" && <ConsumoSection />}
             {sec === "escritorio" && <EscritorioSection />}
@@ -1567,6 +1591,526 @@ export function CrmSettings({
           </label>
         </div>
         <button className="btn btn-primary" onClick={saveFollowup} disabled={savingFollowup || somaPesos !== 100}>{savingFollowup ? "Salvando…" : "Salvar follow-up"}</button>
+      </div>
+    )
+  }
+
+  // ─────────────────────────── Captação & conversões (Google Ads offline) ───────────────────────────
+  const EVENTOS_CANONICOS = [
+    { key: "formulario_enviado", label: "Formulário enviado" },
+    { key: "lead_qualificado", label: "Lead qualificado" },
+    { key: "reuniao_realizada", label: "Reunião realizada" },
+    { key: "contrato_assinado", label: "Contrato assinado" },
+  ] as const
+  const ATIVIDADE_TIPOS = ["ligacao", "email", "reuniao", "whatsapp", "nota", "outro"]
+  const ATIVIDADE_RESULTADOS = [
+    { key: "sem_resposta", label: "Sem resposta" },
+    { key: "fria", label: "Fria" },
+    { key: "positiva", label: "Positiva" },
+  ]
+
+  function CaptacaoSection() {
+    const [funil, setFunil] = useState<FunilConfig | null>(null)
+    const [valores, setValores] = useState<ValoresConfig | null>(null)
+    const [stages, setStages] = useState<PipelineStage[]>([])
+    const [feedConfigurado, setFeedConfigurado] = useState<boolean | null>(null)
+    const [savingFunil, setSavingFunil] = useState(false)
+    const [savingValores, setSavingValores] = useState(false)
+    const [previewLeadId, setPreviewLeadId] = useState("")
+    const [previewEvento, setPreviewEvento] = useState<(typeof EVENTOS_CANONICOS)[number]["key"]>("lead_qualificado")
+    const [previewResultado, setPreviewResultado] = useState<{ cents: number; motivo: string } | null>(null)
+    const [previewLoading, setPreviewLoading] = useState(false)
+    const [valorEvento, setValorEvento] = useState<(typeof EVENTOS_CANONICOS)[number]["key"]>("lead_qualificado")
+
+    useEffect(() => {
+      let alive = true
+      Promise.all([getCaptacaoFunilConfig(), getCaptacaoValoresConfig(), getPipelineConfig(), getFeedStatus()])
+        .then(([f, v, p, fs]) => { if (alive) { setFunil(f); setValores(v); setStages(p.stages); setFeedConfigurado(fs.configurado) } })
+        .catch((e) => { if (alive) toast(e instanceof Error ? e.message : "Erro", { tone: "neg", icon: "alertTriangle" }) })
+      return () => { alive = false }
+    }, [])
+
+    if (!funil || !valores) return <div style={{ fontSize: 12, color: "var(--text-subtle)" }}>Carregando…</div>
+
+    const feedBase = typeof window !== "undefined" ? window.location.origin : ""
+
+    const saveFunil = async () => {
+      setSavingFunil(true)
+      try {
+        await putCaptacaoFunilConfig(funil)
+        toast("Mapeamento do funil salvo")
+      } catch (e) {
+        toast(e instanceof Error ? e.message : "Erro", { tone: "neg", icon: "alertTriangle" })
+      } finally {
+        setSavingFunil(false)
+      }
+    }
+    const toggleEtapaQualificada = (key: string) =>
+      setFunil((f) => f && {
+        ...f,
+        etapasQualificado: f.etapasQualificado.includes(key)
+          ? f.etapasQualificado.filter((k) => k !== key)
+          : [...f.etapasQualificado, key],
+      })
+    const etapasValidas = new Set(stages.map((s) => s.key))
+    const orfas = funil.etapasQualificado.filter((e) => !etapasValidas.has(e))
+
+    const saveValores = async () => {
+      setSavingValores(true)
+      try {
+        await putCaptacaoValoresConfig(valores)
+        toast("Regras de valor salvas")
+      } catch (e) {
+        toast(e instanceof Error ? e.message : "Erro", { tone: "neg", icon: "alertTriangle" })
+      } finally {
+        setSavingValores(false)
+      }
+    }
+    const regraAtual = valores.porEvento[valorEvento] ?? { modo: "fixo" as const, fixoCents: 0, porArea: {}, fitFaixas: [] }
+    const patchRegra = (patch: Partial<typeof regraAtual>) =>
+      setValores((v) => v && { ...v, porEvento: { ...v.porEvento, [valorEvento]: { ...regraAtual, ...patch } } })
+
+    const doPreview = async () => {
+      const id = Number(previewLeadId)
+      if (!Number.isInteger(id) || id <= 0) return
+      setPreviewLoading(true)
+      setPreviewResultado(null)
+      try {
+        setPreviewResultado(await getValorPreview(id, previewEvento))
+      } catch (e) {
+        toast(e instanceof Error ? e.message : "Erro", { tone: "neg", icon: "alertTriangle" })
+      } finally {
+        setPreviewLoading(false)
+      }
+    }
+
+    return (
+      <div style={{ maxWidth: 640 }}>
+        <SectionTitle>Feed para o Google Ads</SectionTitle>
+        <SectionSub>O Google Ads LÊ estes 2 endereços por HTTPS, uma vez por dia (agendado no próprio Google Ads — nenhuma credencial do Google entra aqui). Protegidos por usuário/senha (HTTP Basic Auth) definidos em <code style={{ fontFamily: "var(--font-mono)" }}>GADS_FEED_USER</code>/<code style={{ fontFamily: "var(--font-mono)" }}>GADS_FEED_PASS</code> no .env do servidor.</SectionSub>
+        <div className="card" style={{ padding: "14px", marginBottom: 10, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
+            {feedConfigurado === null ? null : feedConfigurado ? (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--ok)" }}><Icon name="checkCircle" size={13} />Credenciais configuradas</span>
+            ) : (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--warn)" }}><Icon name="alertTriangle" size={13} />GADS_FEED_USER/GADS_FEED_PASS não configuradas — os feeds respondem 404</span>
+            )}
+          </div>
+          {(["conversions", "adjustments"] as const).map((nome) => (
+            <div key={nome} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input readOnly value={`${feedBase}/feeds/google-ads/${nome}.csv`} onFocus={(e) => e.currentTarget.select()} className="input" style={{ flex: 1, fontFamily: "var(--font-mono)", fontSize: 11.5, height: 32 }} />
+              <a className="btn btn-secondary" href={`/api/captacao/feed-preview/${nome}.csv`} target="_blank" rel="noreferrer" style={{ height: 32, fontSize: 12 }}>Ver agora</a>
+            </div>
+          ))}
+          <div style={{ fontSize: 11.5, color: "var(--text-subtle)" }}>“Ver agora” usa sua sessão (não a senha do feed) só para conferir o conteúdo — é exatamente o que o Google recebe.</div>
+        </div>
+
+        <SectionTitle>Mapeamento do funil</SectionTitle>
+        <SectionSub>Quais etapas do pipeline contam como qualificado — “Ganho” já é fixa (contrato assinado).</SectionSub>
+        <div className="card" style={{ padding: "10px 14px", marginBottom: 8, display: "flex", flexWrap: "wrap", gap: 10 }}>
+          {stages.map((s) => (
+            <label key={s.key} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--text)" }}>
+              <input type="checkbox" checked={funil.etapasQualificado.includes(s.key)} onChange={() => toggleEtapaQualificada(s.key)} />
+              {s.nome}
+            </label>
+          ))}
+        </div>
+        {orfas.length > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--warn)", padding: "8px 12px", background: "var(--warn-soft)", borderRadius: "var(--r-sm)", marginBottom: 10 }}>
+            <Icon name="alertTriangle" size={13} />
+            <span style={{ flex: 1 }}>{orfas.length === 1 ? "1 etapa mapeada não existe mais no pipeline" : `${orfas.length} etapas mapeadas não existem mais no pipeline`}: {orfas.join(", ")}</span>
+            <button className="btn btn-ghost" onClick={() => setFunil({ ...funil, etapasQualificado: funil.etapasQualificado.filter((e) => !orfas.includes(e)) })} style={{ height: 24, fontSize: 11 }}>Remover do mapeamento</button>
+          </div>
+        )}
+        <SectionSub>O que conta como “reunião realizada” (tipo de atividade + resultado registrado)</SectionSub>
+        <div className="card" style={{ padding: "10px 14px", marginBottom: 10, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 11.5, color: "var(--text-subtle)", marginBottom: 6 }}>Tipo de atividade</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+              {ATIVIDADE_TIPOS.map((t) => (
+                <label key={t} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5 }}>
+                  <input type="checkbox" checked={funil.reuniao.tipos.includes(t)} onChange={() => setFunil((f) => f && { ...f, reuniao: { ...f.reuniao, tipos: f.reuniao.tipos.includes(t) ? f.reuniao.tipos.filter((x) => x !== t) : [...f.reuniao.tipos, t] } })} />
+                  {t}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11.5, color: "var(--text-subtle)", marginBottom: 6 }}>Resultado</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+              {ATIVIDADE_RESULTADOS.map((r) => (
+                <label key={r.key} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5 }}>
+                  <input type="checkbox" checked={funil.reuniao.resultados.includes(r.key)} onChange={() => setFunil((f) => f && { ...f, reuniao: { ...f.reuniao, resultados: f.reuniao.resultados.includes(r.key) ? f.reuniao.resultados.filter((x) => x !== r.key) : [...f.reuniao.resultados, r.key] } })} />
+                  {r.label}
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+        <button className="btn btn-primary" onClick={saveFunil} disabled={savingFunil} style={{ marginBottom: 28 }}>{savingFunil ? "Salvando…" : "Salvar mapeamento"}</button>
+
+        <SectionTitle>Regras de valor</SectionTitle>
+        <SectionSub>Valor enviado ao Google para cada evento — fixo, por faixa de Fit score, ou o valor real do contrato (só faz sentido em “Contrato assinado”).</SectionSub>
+        <div style={{ marginBottom: 8 }}>
+          <FxSelect
+            value={valorEvento}
+            onChange={(e) => setValorEvento(e.target.value as (typeof EVENTOS_CANONICOS)[number]["key"])}
+            options={EVENTOS_CANONICOS.map((e) => ({ value: e.key, label: e.label }))}
+          />
+        </div>
+        <div className="card" style={{ padding: "12px 14px", marginBottom: 10, display: "flex", flexDirection: "column", gap: 12 }}>
+          <FxSegmented
+            value={regraAtual.modo}
+            onChange={(v) => patchRegra({ modo: v as "fixo" | "fit" | "real" })}
+            options={[{ value: "fixo", label: "Fixo" }, { value: "fit", label: "Fit score" }, { value: "real", label: "Valor real" }]}
+          />
+          {regraAtual.modo === "fixo" && (
+            <>
+              <CrmField label="Valor fixo padrão (R$)">
+                <FxInput type="number" min={0} step="0.01" value={((regraAtual.fixoCents ?? 0) / 100).toFixed(2)} onChange={(e) => patchRegra({ fixoCents: Math.round((Number(e.target.value) || 0) * 100) })} style={{ width: 140 }} />
+              </CrmField>
+              <div>
+                <div style={{ fontSize: 11.5, color: "var(--text-subtle)", marginBottom: 6 }}>Override por área (opcional — tem precedência sobre o fixo)</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {toAreaOptions(useAreasStore.getState().areas).map((a) => (
+                    <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 12.5, color: "var(--text)", width: 160 }}>{a.label}</span>
+                      <FxInput type="number" min={0} step="0.01" value={regraAtual.porArea?.[a.id] != null ? (regraAtual.porArea[a.id] / 100).toFixed(2) : ""} placeholder="—"
+                        onChange={(e) => {
+                          const v = e.target.value
+                          const porArea = { ...(regraAtual.porArea ?? {}) }
+                          if (!v) delete porArea[a.id]
+                          else porArea[a.id] = Math.round((Number(v) || 0) * 100)
+                          patchRegra({ porArea })
+                        }}
+                        style={{ width: 120, height: 28, fontSize: 12 }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+          {regraAtual.modo === "fit" && (
+            <div>
+              <div style={{ fontSize: 11.5, color: "var(--text-subtle)", marginBottom: 6 }}>Faixas de Fit score (a maior faixa que o lead atingir vence)</div>
+              {(regraAtual.fitFaixas ?? []).map((f, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>Fit ≥</span>
+                  <input className="input" type="number" min={0} max={100} value={f.min} onChange={(e) => patchRegra({ fitFaixas: (regraAtual.fitFaixas ?? []).map((x, idx) => (idx === i ? { ...x, min: Number(e.target.value) || 0 } : x)) })} style={{ width: 60, height: 28, fontSize: 12 }} />
+                  <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>→ R$</span>
+                  <input className="input" type="number" min={0} step="0.01" value={(f.cents / 100).toFixed(2)} onChange={(e) => patchRegra({ fitFaixas: (regraAtual.fitFaixas ?? []).map((x, idx) => (idx === i ? { ...x, cents: Math.round((Number(e.target.value) || 0) * 100) } : x)) })} style={{ width: 100, height: 28, fontSize: 12 }} />
+                  <button className="btn btn-ghost" onClick={() => patchRegra({ fitFaixas: (regraAtual.fitFaixas ?? []).filter((_, idx) => idx !== i) })} style={{ height: 24, width: 24, padding: 0, color: "var(--crit)" }}><Icon name="x" size={12} /></button>
+                </div>
+              ))}
+              <button className="btn btn-ghost" onClick={() => patchRegra({ fitFaixas: [...(regraAtual.fitFaixas ?? []), { min: 50, cents: 0 }] })} style={{ height: 26, fontSize: 12 }}><Icon name="plus" size={12} />Nova faixa</button>
+            </div>
+          )}
+          {regraAtual.modo === "real" && (
+            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Usa o valor do lançamento vinculado ao lead quando ele é convertido — sem valor vinculado, o evento sai com R$ 0.</div>
+          )}
+        </div>
+        <button className="btn btn-primary" onClick={saveValores} disabled={savingValores} style={{ marginBottom: 28 }}>{savingValores ? "Salvando…" : "Salvar regras de valor"}</button>
+
+        <SectionTitle>Pré-visualização</SectionTitle>
+        <SectionSub>Dado um lead real (pelo ID), qual valor seria enviado e por quê.</SectionSub>
+        <div className="card" style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <input className="input" type="number" placeholder="ID do lead" value={previewLeadId} onChange={(e) => setPreviewLeadId(e.target.value)} style={{ width: 110, height: 32 }} />
+          <select className="input" value={previewEvento} onChange={(e) => setPreviewEvento(e.target.value as (typeof EVENTOS_CANONICOS)[number]["key"])} style={{ height: 32, fontSize: 12.5 }}>
+            {EVENTOS_CANONICOS.map((e) => <option key={e.key} value={e.key}>{e.label}</option>)}
+          </select>
+          <button className="btn btn-secondary" onClick={doPreview} disabled={previewLoading || !previewLeadId} style={{ height: 32, fontSize: 12 }}>{previewLoading ? "…" : "Pré-visualizar"}</button>
+          {previewResultado && (
+            <span style={{ fontSize: 12.5, color: "var(--text)" }}>→ <strong>R$ {(previewResultado.cents / 100).toFixed(2)}</strong> — {previewResultado.motivo}</span>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // ─────────────────────────── Landing pages (captação) ───────────────────────────
+  function LandingPagesSection() {
+    const [rows, setRows] = useState<LandingPageRow[] | null>(null)
+    const [menu, setMenu] = useState<number | null>(null)
+    const [editing, setEditing] = useState<LandingPageRow | null | "new">(null)
+    const [snippetFor, setSnippetFor] = useState<LandingPageRow | null>(null)
+    const [rotated, setRotated] = useState<{ row: LandingPageRow; chave: string } | null>(null)
+
+    const load = useCallback(async () => {
+      try { setRows(await listLandingPages()) } catch (e) { toast(e instanceof Error ? e.message : "Erro", { tone: "neg", icon: "alertTriangle" }) }
+    }, [])
+    useEffect(() => { void load() }, [load])
+
+    const toggleAtivo = async (r: LandingPageRow) => {
+      setMenu(null)
+      try {
+        if (r.ativo) await revokeLandingPage(r.id)
+        else await updateLandingPage(r.id, { nome: r.nome, dominios: r.dominios, campanhaPadraoId: r.campanhaPadraoId, areaPadrao: r.areaPadrao, responsavelPadraoUserId: r.responsavelPadraoUserId, consentimentoVersao: r.consentimentoVersao, ativo: true })
+        toast(r.ativo ? "Landing page revogada" : "Landing page reativada")
+        await load()
+      } catch (e) {
+        toast(e instanceof Error ? e.message : "Erro", { tone: "neg", icon: "alertTriangle" })
+      }
+    }
+
+    const rotate = async (r: LandingPageRow) => {
+      setMenu(null)
+      try {
+        const res = await rotateLandingPageKey(r.id)
+        setRotated(res)
+        toast("Chave rotacionada — a antiga parou de funcionar")
+        await load()
+      } catch (e) {
+        toast(e instanceof Error ? e.message : "Erro", { tone: "neg", icon: "alertTriangle" })
+      }
+    }
+
+    return (
+      <div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            {rows ? `${rows.length} landing page${rows.length === 1 ? "" : "s"}` : "Carregando…"}
+          </div>
+          <button className="btn btn-primary" onClick={() => setEditing("new")} style={{ height: 32, fontSize: 12 }}>
+            <Icon name="plus" size={14} />
+            Nova landing page
+          </button>
+        </div>
+
+        {rows && rows.length === 0 && <CrmEmpty icon="globe" title="Nenhuma landing page" sub="Cadastre uma para gerar a chave de API e o snippet de captação." />}
+
+        <div className="card" style={{ overflow: "visible" }}>
+          {(rows ?? []).map((r, i) => (
+            <div key={r.id} style={{ position: "relative", display: "flex", alignItems: "center", gap: 12, padding: "11px 14px", borderTop: i ? "1px solid var(--border)" : "none" }}>
+              <Icon name="globe" size={16} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{r.nome}</div>
+                <div style={{ fontSize: 12, color: "var(--text-subtle)" }}>
+                  {r.dominios.join(", ")} · <span style={{ fontFamily: "var(--font-mono)" }}>{r.chavePrefixo}…</span>
+                  {r.campanhaPadraoNome && <> · {r.campanhaPadraoNome}</>}
+                </div>
+              </div>
+              <CrmBadge tone={r.ativo ? "pos" : "neg"} dot>{r.ativo ? "Ativa" : "Revogada"}</CrmBadge>
+              <button className="btn btn-ghost" style={{ width: 28, height: 28, padding: 0 }} onClick={() => setMenu(menu === r.id ? null : r.id)}>
+                <Icon name="moreHorizontal" size={16} />
+              </button>
+              {menu === r.id && (
+                <>
+                  <div onClick={() => setMenu(null)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
+                  <div className={`card ${lexGlassStrong}`} style={{ position: "absolute", right: 12, top: 44, zIndex: 50, width: 200, padding: 6, ...glassElevation("0 12px 28px rgba(2,13,37,0.16)") }}>
+                    <button onClick={() => { setMenu(null); setEditing(r) }} style={menuItemStyle(false)}>
+                      <Icon name="edit" size={13} />Editar
+                    </button>
+                    <button onClick={() => { setMenu(null); setSnippetFor(r) }} style={menuItemStyle(false)}>
+                      <Icon name="braces" size={13} />Ver snippet
+                    </button>
+                    <button onClick={() => void rotate(r)} style={menuItemStyle(false)}>
+                      <Icon name="refreshCw" size={13} />Rotacionar chave
+                    </button>
+                    <div style={{ borderTop: "1px solid var(--border)", margin: "5px 0" }} />
+                    <button onClick={() => void toggleAtivo(r)} style={{ ...menuItemStyle(false), color: r.ativo ? "var(--crit)" : undefined }}>
+                      <Icon name={r.ativo ? "minusCircle" : "checkCircle"} size={13} />{r.ativo ? "Revogar" : "Reativar"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {editing && <LandingPageModal edit={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={load} />}
+        {snippetFor && <SnippetModal lp={snippetFor} onClose={() => setSnippetFor(null)} />}
+        {rotated && <ChaveReveladaModal titulo="Chave rotacionada" chave={rotated.chave} onClose={() => setRotated(null)} />}
+      </div>
+    )
+  }
+
+  /** Card copiável de chave em claro — mostrada UMA vez só (criação ou rotação). */
+  function ChaveReveladaModal({ titulo, chave, onClose }: { titulo: string; chave: string; onClose: () => void }) {
+    const copiar = async () => {
+      try { await navigator.clipboard.writeText(chave) } catch { window.prompt("Copie a chave:", chave) }
+      toast("Chave copiada")
+    }
+    return (
+      <div onMouseDown={onClose} className="crm-scope" style={{ position: "fixed", inset: 0, zIndex: 1300, display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", padding: 24 }}>
+        <div onMouseDown={(e) => e.stopPropagation()} className={`crm-pop-in ${lexGlass}`} style={{ width: 460, maxWidth: "100%", borderRadius: "var(--r-lg)", ...glassElevation("0 40px 100px rgba(2,13,37,0.42), 0 12px 32px rgba(2,13,37,0.24)") }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 22px 14px", borderBottom: "1px solid var(--border)" }}>
+            <div style={{ fontSize: 16, fontWeight: 500, color: "var(--text)", letterSpacing: "-0.02em" }}>{titulo}</div>
+            <button onClick={onClose} className="btn btn-ghost" style={{ width: 30, height: 30, padding: 0, borderRadius: 8 }}><Icon name="x" size={16} /></button>
+          </div>
+          <div style={{ padding: "20px 22px", display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6 }}>
+              Esta chave <strong style={{ color: "var(--text)" }}>não será exibida de novo</strong>. Copie e cole no snippet da landing page agora.
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <input readOnly value={chave} onFocus={(e) => e.currentTarget.select()} style={{ flex: 1, minWidth: 0, fontSize: 12, padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border-strong)", background: "var(--bg-sunken)", color: "var(--text)", fontFamily: "var(--font-mono)" }} />
+              <button className="btn btn-secondary" onClick={() => void copiar()} style={{ height: 34 }}><Icon name="copy" size={14} />Copiar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  function LandingPageModal({ edit, onClose, onSaved }: { edit: LandingPageRow | null; onClose: () => void; onSaved: () => Promise<void> }) {
+    const [nome, setNome] = useState(edit?.nome ?? "")
+    const [dominios, setDominios] = useState(edit?.dominios.join("\n") ?? "")
+    const [campanhaId, setCampanhaId] = useState<string | null>(edit?.campanhaPadraoId ? String(edit.campanhaPadraoId) : null)
+    const [areaPadrao, setAreaPadrao] = useState<string | null>(edit?.areaPadrao ?? null)
+    const [responsavelId, setResponsavelId] = useState<string | null>(edit?.responsavelPadraoUserId ? String(edit.responsavelPadraoUserId) : null)
+    const [consentimentoVersao, setConsentimentoVersao] = useState(edit?.consentimentoVersao ?? "")
+    const [busy, setBusy] = useState(false)
+    const [criada, setCriada] = useState<{ chave: string } | null>(null)
+    const [campanhas, setCampanhas] = useState<CampanhaOption[]>([])
+    const [usuarios, setUsuarios] = useState<UserRow[]>([])
+    const areaOpts = toAreaOptions(useAreasStore((s) => s.areas))
+
+    useEffect(() => {
+      void getCampanhaOptions().then(setCampanhas).catch(() => {})
+      void listUsers().then(setUsuarios).catch(() => {})
+    }, [])
+
+    const submit = async () => {
+      const doms = dominios.split(/[\n,]/).map((d) => d.trim()).filter(Boolean)
+      if (!nome.trim() || !doms.length) {
+        toast("Preencha nome e ao menos um domínio", { tone: "neg", icon: "alertTriangle" })
+        return
+      }
+      setBusy(true)
+      try {
+        const body: LandingPageInput = {
+          nome: nome.trim(),
+          dominios: doms,
+          campanhaPadraoId: campanhaId ? Number(campanhaId) : null,
+          areaPadrao,
+          responsavelPadraoUserId: responsavelId ? Number(responsavelId) : null,
+          consentimentoVersao: consentimentoVersao.trim() || null,
+        }
+        if (edit) {
+          await updateLandingPage(edit.id, body)
+          toast("Landing page atualizada")
+          await onSaved()
+          onClose()
+        } else {
+          const r = await createLandingPage(body)
+          setCriada({ chave: r.chave })
+          toast("Landing page criada")
+          await onSaved()
+        }
+      } catch (e) {
+        toast(e instanceof Error ? e.message : "Erro", { tone: "neg", icon: "alertTriangle" })
+      } finally {
+        setBusy(false)
+      }
+    }
+
+    if (criada) return <ChaveReveladaModal titulo="Landing page criada" chave={criada.chave} onClose={onClose} />
+
+    return (
+      <div onMouseDown={onClose} className="crm-scope" style={{ position: "fixed", inset: 0, zIndex: 1300, display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", padding: 24 }}>
+        <div onMouseDown={(e) => e.stopPropagation()} className={`crm-pop-in ${lexGlass}`} style={{ width: 480, maxWidth: "100%", maxHeight: "85vh", overflowY: "auto", borderRadius: "var(--r-lg)", ...glassElevation("0 40px 100px rgba(2,13,37,0.42), 0 12px 32px rgba(2,13,37,0.24)") }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 22px 14px", borderBottom: "1px solid var(--border)" }}>
+            <div style={{ fontSize: 16, fontWeight: 500, color: "var(--text)", letterSpacing: "-0.02em" }}>{edit ? "Editar landing page" : "Nova landing page"}</div>
+            <button onClick={onClose} className="btn btn-ghost" style={{ width: 30, height: 30, padding: 0, borderRadius: 8 }}><Icon name="x" size={16} /></button>
+          </div>
+          <div style={{ padding: "20px 22px", display: "flex", flexDirection: "column", gap: 14 }}>
+            <CrmField label="Nome"><FxInput value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Inventário" /></CrmField>
+            <CrmField label="Domínios autorizados (um por linha)">
+              <textarea className="textarea" value={dominios} onChange={(e) => setDominios(e.target.value)} placeholder={"inventario.ncm.adv.br\nwww.inventario.ncm.adv.br"} rows={3} style={{ fontFamily: "var(--font-mono)", fontSize: 12 }} />
+            </CrmField>
+            <CrmField label="Campanha padrão (opcional)">
+              <Combobox
+                value={campanhaId}
+                onChange={setCampanhaId}
+                options={campanhas.map((c) => ({ value: String(c.id), label: c.nome }))}
+                placeholder="Sem campanha padrão"
+              />
+            </CrmField>
+            <CrmField label="Área padrão (opcional)">
+              <Combobox value={areaPadrao} onChange={setAreaPadrao} options={areaOpts.map((a) => ({ value: a.id, label: a.label }))} placeholder="Sem área padrão" />
+            </CrmField>
+            <CrmField label="Responsável padrão (opcional)">
+              <Combobox value={responsavelId} onChange={setResponsavelId} options={usuarios.map((u) => ({ value: String(u.id), label: u.nome }))} placeholder="Notifica os gestores" />
+            </CrmField>
+            <CrmField label="Versão do texto de consentimento">
+              <FxInput value={consentimentoVersao} onChange={(e) => setConsentimentoVersao(e.target.value)} placeholder="v1" />
+              <div style={{ fontSize: 11, color: "var(--text-subtle)", marginTop: 4 }}>Ex.: v1 — usada na LP para versionar o texto aceito.</div>
+            </CrmField>
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, padding: "14px 22px", borderTop: "1px solid var(--border)", background: "color-mix(in srgb, var(--bg-soft) 55%, transparent)" }}>
+            <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
+            <button className="btn btn-primary" onClick={submit} disabled={busy}>{busy ? "Salvando…" : edit ? "Salvar" : "Criar"}</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  function SnippetModal({ lp, onClose }: { lp: LandingPageRow; onClose: () => void }) {
+    const [copiado, setCopiado] = useState(false)
+    const endpoint = typeof window !== "undefined" ? `${window.location.origin}/api/captacao/lead` : "/api/captacao/lead"
+    const snippet = `<script>
+(function () {
+  var ENDPOINT = ${JSON.stringify(endpoint)};
+  var LP_KEY = "SUA_CHAVE_AQUI"; // gere em Configurações → Landing pages → "${lp.nome}" → ⋯ → Rotacionar chave
+  // 1) captura atribuição na entrada (a pessoa pode navegar antes de preencher — nunca lê da URL no submit)
+  function qs(n) { return new URLSearchParams(location.search).get(n); }
+  var atrib = JSON.parse(sessionStorage.getItem("ncm_atrib") || "null");
+  if (!atrib) {
+    atrib = {
+      gclid: qs("gclid"), wbraid: qs("wbraid"), gbraid: qs("gbraid"),
+      utm: { source: qs("utm_source"), medium: qs("utm_medium"), campaign: qs("utm_campaign"), term: qs("utm_term"), content: qs("utm_content") },
+      matchtype: qs("matchtype"), device: qs("device"), network: qs("network"),
+      landingPage: location.href, referrer: document.referrer || null,
+      cliqueEm: new Date().toISOString(),
+    };
+    sessionStorage.setItem("ncm_atrib", JSON.stringify(atrib));
+  }
+  window.NCM_CAPTACAO = {
+    // chame no submit do formulário (o script de 4 campos da LP já existente)
+    enviar: function (dados) {
+      var payload = {
+        contato: { nome: dados.nome, telefone: dados.telefone, email: dados.email || null },
+        triagem: dados.triagem || {},
+        atribuicao: atrib,
+        consentimento: { aceito: true, versao: ${JSON.stringify(lp.consentimentoVersao ?? "v1")}, em: new Date().toISOString() },
+        site: dados.site || "", // honeypot
+      };
+      return fetch(ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Lexia-Lp-Key": LP_KEY, "Idempotency-Key": (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random()) },
+        body: JSON.stringify(payload),
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (r) { return r.protocolo || null; })
+        .catch(function () { return null; }); // 3) se falhar, o chamador ainda abre o WhatsApp
+    },
+  };
+})();
+</script>`
+
+    const copiar = async () => {
+      try { await navigator.clipboard.writeText(snippet) } catch { /* fallback: seleção manual no textarea */ }
+      setCopiado(true)
+      setTimeout(() => setCopiado(false), 2000)
+    }
+
+    return (
+      <div onMouseDown={onClose} className="crm-scope" style={{ position: "fixed", inset: 0, zIndex: 1300, display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", padding: 24 }}>
+        <div onMouseDown={(e) => e.stopPropagation()} className={`crm-pop-in ${lexGlass}`} style={{ width: 640, maxWidth: "100%", maxHeight: "85vh", display: "flex", flexDirection: "column", borderRadius: "var(--r-lg)", ...glassElevation("0 40px 100px rgba(2,13,37,0.42), 0 12px 32px rgba(2,13,37,0.24)") }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 22px 14px", borderBottom: "1px solid var(--border)" }}>
+            <div style={{ fontSize: 16, fontWeight: 500, color: "var(--text)", letterSpacing: "-0.02em" }}>Snippet — {lp.nome}</div>
+            <button onClick={onClose} className="btn btn-ghost" style={{ width: 30, height: 30, padding: 0, borderRadius: 8 }}><Icon name="x" size={16} /></button>
+          </div>
+          <div style={{ padding: "16px 22px 8px", fontSize: 12, color: "var(--text-muted)" }}>
+            Cole antes do `&lt;/body&gt;`; troque <code style={{ fontFamily: "var(--font-mono)" }}>SUA_CHAVE_AQUI</code> pela chave gerada (⋯ → Rotacionar chave), e chame <code style={{ fontFamily: "var(--font-mono)" }}>NCM_CAPTACAO.enviar(dados)</code> no submit do formulário existente — <strong>depois</strong> abra o WhatsApp com o protocolo devolvido.
+          </div>
+          <textarea readOnly value={snippet} onFocus={(e) => e.currentTarget.select()} style={{ flex: 1, minHeight: 280, margin: "8px 22px", fontFamily: "var(--font-mono)", fontSize: 11.5, padding: 12, borderRadius: 8, border: "1px solid var(--border-strong)", background: "var(--bg-sunken)", color: "var(--text)", resize: "vertical" }} />
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, padding: "14px 22px", borderTop: "1px solid var(--border)", background: "color-mix(in srgb, var(--bg-soft) 55%, transparent)" }}>
+            <button className="btn btn-secondary" onClick={onClose}>Fechar</button>
+            <button className="btn btn-primary" onClick={() => void copiar()}><Icon name="copy" size={14} />{copiado ? "Copiado!" : "Copiar snippet"}</button>
+          </div>
+        </div>
       </div>
     )
   }

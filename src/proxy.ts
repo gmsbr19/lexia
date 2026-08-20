@@ -45,8 +45,14 @@ export const proxy = auth((req) => {
 export const config = {
   // Everything except: login page, the public access-link page + its endpoint
   // (convidado sem sessão), Auth.js own endpoints, health check (uptime pinger
-  // has no cookie), Next internals and static assets.
+  // has no cookie), the cron-triggered jobs (own X-Job-Token guard — see
+  // src/lib/jobs/guard.ts; excluded here or the proxy 401s before that guard
+  // ever runs), the public lead-capture endpoint (own API-key guard — see
+  // src/lib/captacao/landing-pages.ts), the Google Ads CSV feeds (own HTTP
+  // Basic Auth guard — see src/lib/captacao/feed-auth.ts; Google's scheduled
+  // fetch never carries a session cookie, and a redirect/HTML/login page here
+  // would silently break the daily read), Next internals and static assets.
   matcher: [
-    "/((?!login|definir-senha|api/auth|api/convite|api/health|_next/static|_next/image|favicon\\.ico|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|woff2?)$).*)",
+    "/((?!login|definir-senha|api/auth|api/convite|api/health|api/jobs|api/captacao|feeds/google-ads|_next/static|_next/image|favicon\\.ico|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|woff2?)$).*)",
   ],
 }

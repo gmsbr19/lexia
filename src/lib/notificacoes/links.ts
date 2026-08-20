@@ -31,7 +31,7 @@ export function linkParaNotificacao(
     case "documento":
       return refId ? `/documents/doc/${refId}` : "/documents"
     case "captura":
-      return "/processos?view=captura"
+      return "/processos"
     default:
       break
   }

@@ -61,6 +61,14 @@ const envSchema = z.object({
   ONEDRIVE_CLIENT_SECRET: z.string().optional(),
   ONEDRIVE_DRIVE_ID: z.string().optional(),
   ONEDRIVE_FOLDER: z.string().optional(),
+  // ── Captação — feed CSV de conversões offline (Google Ads lê por HTTPS) ─────
+  // Credenciais de HTTP Basic Auth dos 2 feeds públicos GET /feeds/google-ads/
+  // {conversions,adjustments}.csv (o Google Ads AGENDA a leitura, uma vez por
+  // dia — não é push, não há chamada de API, nenhuma credencial do Google
+  // entra no app). Sem as 2 vars, os feeds ficam desabilitados (404). NUNCA em
+  // AppSetting (texto claro no backup) — só aqui.
+  GADS_FEED_USER: z.string().optional(),
+  GADS_FEED_PASS: z.string().optional(),
 })
 
 const parsed = envSchema.safeParse(process.env)
