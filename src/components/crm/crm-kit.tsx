@@ -418,7 +418,9 @@ export function CrmTipoBadge({ tipo }: { tipo: string }) {
   return <CrmBadge tone="neutral">{tipo.toUpperCase()}</CrmBadge>
 }
 export function CrmClasseBadge({ classe }: { classe: string }) {
-  return classe === "lead" ? <CrmBadge tone="gold" dot>Lead</CrmBadge> : <CrmBadge tone="pos" dot>Cliente</CrmBadge>
+  if (classe === "lead") return <CrmBadge tone="gold" dot>Lead</CrmBadge>
+  if (classe === "rede") return <CrmBadge tone="blue" dot>Rede</CrmBadge>
+  return <CrmBadge tone="pos" dot>Cliente</CrmBadge>
 }
 export function CrmCasoTipoPill({ tipo }: { tipo: string }) {
   const lit = tipo === "litígio" || tipo === "litigio"
