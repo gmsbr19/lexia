@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "prisma migrate deploy && next start",
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -74,6 +74,7 @@
     "pdf-lib": "^1.17.1",
     "pino": "^10.3.1",
     "postcss": "^8.5.15",
+    "prisma": "^6.3.1",
     "puppeteer": "^25.0.4",
     "radix-ui": "^1.4.3",
     "react": "19.2.4",
@@ -94,7 +95,6 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
-    "prisma": "^6.3.1",
     "tsx": "^4.19.2",
     "typescript": "^5",
     "vitest": "^4.1.8"
