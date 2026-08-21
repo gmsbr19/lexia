@@ -29,7 +29,10 @@ export function normalizarE164(v: string | null | undefined): string {
 }
 
 /**
- * Chave de idempotência do submit de um formulário. Preferência: o header
+ * Chave de idempotência do submit de um formulário. `fonteKey` é o id da
+ * landing page (número) ou o identificador da fonte sem LP (ex. "site", o
+ * site institucional que posta em POST /api/lead) — o prefixo "lp:" é mantido
+ * para não invalidar as chaves já gravadas. Preferência: o header
  * `Idempotency-Key` que a LP manda (um valor por submit — cobre duplo-clique
  * e retry de rede com precisão). Sem o header, cai para uma chave derivada de
  * telefone|email|dia — ainda dedupa um duplo-clique, mas dois submits
@@ -37,16 +40,16 @@ export function normalizarE164(v: string | null | undefined): string {
  * fallback: o header é o caminho recomendado no snippet).
  */
 export function derivarCaptacaoKey(
-  landingPageId: number,
+  fonteKey: number | string,
   idempotencyKeyHeader: string | null | undefined,
   fallback: { telefone?: string | null; email?: string | null; diaISO: string },
 ): string {
   if (idempotencyKeyHeader && idempotencyKeyHeader.trim()) {
-    return `lp:${landingPageId}:${idempotencyKeyHeader.trim().slice(0, 128)}`
+    return `lp:${fonteKey}:${idempotencyKeyHeader.trim().slice(0, 128)}`
   }
   const tel = normalizarE164(fallback.telefone)
   const email = (fallback.email ?? "").trim().toLowerCase()
-  return `lp:${landingPageId}:fallback:${tel || "sem-tel"}:${email || "sem-email"}:${fallback.diaISO}`
+  return `lp:${fonteKey}:fallback:${tel || "sem-tel"}:${email || "sem-email"}:${fallback.diaISO}`
 }
 
 /** Deriva `Lead.origem` a partir da atribuição do submit — clique pago tem

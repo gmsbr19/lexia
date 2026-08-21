@@ -10,11 +10,37 @@ import { UserError } from "@/lib/errors"
 import { writeAudit } from "@/lib/finance/api"
 import { notificarLeadCaptado } from "@/lib/notificacoes/triggers"
 import { derivarCaptacaoKey, derivarOrigemCaptacao, gerarProtocolo } from "./core"
-import type { LandingPageResolvida } from "./landing-pages"
 import type { CaptacaoLeadInput } from "./schemas"
 
 export interface CaptarLeadResult {
   protocolo: string
+}
+
+/**
+ * De onde o lead veio. Uma `LandingPageResolvida` satisfaz este shape
+ * estruturalmente (o endpoint público das LPs continua passando a LP inteira);
+ * `id: null` cobre a fonte SEM linha de LandingPage — hoje o site
+ * institucional, que autentica por segredo compartilhado e não por chave de LP
+ * (ver site-auth.ts + app/api/lead/route.ts). `Lead.landingPageId` é anulável,
+ * então nada precisa ser inventado no banco.
+ */
+export interface FonteCaptacao {
+  id: number | null
+  nome: string
+  /** Namespace da chave de idempotência quando não há LP (ex.: "site"). */
+  chaveFonte?: string
+  campanhaPadraoId: number | null
+  areaPadrao: string | null
+  responsavelPadraoUserId: number | null
+  consentimentoVersao: string | null
+}
+
+export interface CaptarLeadOpts {
+  /** Momento do envio (default: agora). Vira `dataEntrada` e, por consequência,
+   *  o `ConversaoEvento.ocorreuEm` — que NUNCA é recalculado depois. */
+  dataEntrada?: Date
+  /** Corpo cru recebido, preservado sem normalização (ver site-lead.ts). */
+  captacaoRaw?: string | null
 }
 
 function isUniqueViolation(e: unknown, field: string): boolean {
@@ -35,9 +61,10 @@ const MAX_TENTATIVAS_PROTOCOLO = 3
  * assume que já passou dessa checagem.
  */
 export async function captarLead(
-  lp: LandingPageResolvida,
+  lp: FonteCaptacao,
   input: CaptacaoLeadInput,
   idempotencyKeyHeader: string | null,
+  opts: CaptarLeadOpts = {},
 ): Promise<CaptarLeadResult> {
   const nome = input.contato.nome.trim()
   if (!nome) throw new UserError("Nome é obrigatório")
@@ -50,8 +77,10 @@ export async function captarLead(
     gbraid: atrib?.gbraid,
     utmSource: atrib?.utm?.source,
   })
-  const diaISO = new Date().toISOString().slice(0, 10)
-  const captacaoKey = derivarCaptacaoKey(lp.id, idempotencyKeyHeader, { telefone, email, diaISO })
+  const agora = opts.dataEntrada ?? new Date()
+  const diaISO = agora.toISOString().slice(0, 10)
+  const fonteKey = lp.id ?? lp.chaveFonte ?? "sem-lp"
+  const captacaoKey = derivarCaptacaoKey(fonteKey, idempotencyKeyHeader, { telefone, email, diaISO })
 
   // Idempotência do submit: mesma chave já gravada → devolve o protocolo existente
   // sem criar um 2º lead (retry de rede / duplo-clique da LP).
@@ -63,7 +92,6 @@ export async function captarLead(
   const consentimentoEm = consent?.aceito ? (consent.em ? new Date(consent.em) : new Date()) : null
   const consentimentoVersao = consent?.aceito ? (consent.versao ?? lp.consentimentoVersao ?? null) : null
   const cliqueEm = atrib?.cliqueEm ? new Date(atrib.cliqueEm) : null
-  const agora = new Date()
 
   let tentativa = 0
   for (;;) {
@@ -103,6 +131,7 @@ export async function captarLead(
             cliqueEm,
             consentimentoEm,
             consentimentoVersao,
+            captacaoRaw: opts.captacaoRaw ?? null,
           },
         })
         await tx.conversaoEvento.createMany({
@@ -126,13 +155,14 @@ export async function captarLead(
         responsavelUserId: lp.responsavelPadraoUserId,
       })
       void writeAudit(
-        `captacao:lp-${lp.id}`,
+        `captacao:${lp.id ? `lp-${lp.id}` : (lp.chaveFonte ?? "sem-lp")}`,
         {
           action: "captacao.lead",
           entity: "Lead",
           entityId: leadId,
           payload: {
             landingPageId: lp.id,
+            fonte: lp.id ? null : (lp.chaveFonte ?? "sem-lp"),
             protocolo,
             temClique: !!(atrib?.gclid || atrib?.wbraid || atrib?.gbraid),
             origem,

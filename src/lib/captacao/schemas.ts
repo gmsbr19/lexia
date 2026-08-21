@@ -47,6 +47,34 @@ export const captacaoLeadSchema = z.object({
 })
 export type CaptacaoLeadInput = z.infer<typeof captacaoLeadSchema>
 
+// ── endpoint interno POST /api/lead (site institucional ncm.adv.br) ───────────
+// Contrato do proxy do site (app/api/lead/route.ts do repo ncm_institucional).
+// Deliberadamente TOLERANTE: só `nome` é exigido — tudo que o contrato marca
+// como opcional pode faltar sem virar 500. Objetos livres (`triagem`,
+// `atribuicao`, `consentimento`, `cliente`) NÃO têm schema fixo: as chaves
+// variam por página e por versão do site, e descartá-las destruiria a base de
+// atribuição. O corpo cru é preservado inteiro em `Lead.captacaoRaw` (ver
+// site-lead.ts) — este schema serve só para não explodir com lixo.
+const objetoLivre = z.record(z.string(), z.unknown())
+
+export const siteLeadSchema = z.object({
+  origem: z.string().max(120).nullish(),
+  tipo: z.string().max(120).nullish(),
+  nome: z.string().min(1).max(200),
+  telefone: z.string().max(40).nullish(),
+  telefone_e164: z.string().max(40).nullish(),
+  triagem: objetoLivre.nullish(),
+  atribuicao: objetoLivre.nullish(),
+  consentimento: objetoLivre.nullish(),
+  pagina: z.string().max(500).nullish(),
+  cliente: objetoLivre.nullish(),
+  enviado_em: z.string().max(40).nullish(),
+  // honeypot — o proxy do site já remove antes de repassar; aceito e ignorado
+  // aqui só para não quebrar caso chegue (ver §"Contrato do corpo").
+  site: z.string().max(200).nullish(),
+})
+export type SiteLeadInput = z.infer<typeof siteLeadSchema>
+
 // ── landing pages (rotas admin) ────────────────────────────────────────────────
 export const landingPageSchema = z.object({
   nome: z.string().min(1).max(200),

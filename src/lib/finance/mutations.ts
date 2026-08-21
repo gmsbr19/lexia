@@ -737,6 +737,7 @@ export async function anonimizarCliente(id: number) {
         // pessoal, ainda necessária para medir performance de mídia mesmo com
         // o lead anonimizado.
         triagem: null,
+        captacaoRaw: null, // corpo cru do submit — mesmo motivo da triagem
         referrer: null,
         landingPageUrl: null,
         consentimentoEm: null,

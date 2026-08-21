@@ -51,8 +51,12 @@ export const config = {
   // src/lib/captacao/landing-pages.ts), the Google Ads CSV feeds (own HTTP
   // Basic Auth guard — see src/lib/captacao/feed-auth.ts; Google's scheduled
   // fetch never carries a session cookie, and a redirect/HTML/login page here
-  // would silently break the daily read), Next internals and static assets.
+  // would silently break the daily read), the institutional-site lead intake
+  // (POST /api/lead — own shared-secret guard, see src/lib/captacao/site-auth.ts;
+  // EXACT path only, so /api/leads* and any other route stays gated, and the
+  // route itself calls requireUser() when the secret is absent, so a sessionless
+  // caller still gets 401), Next internals and static assets.
   matcher: [
-    "/((?!login|definir-senha|api/auth|api/convite|api/health|api/jobs|api/captacao|feeds/google-ads|_next/static|_next/image|favicon\\.ico|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|woff2?)$).*)",
+    "/((?!login|definir-senha|api/auth|api/convite|api/health|api/jobs|api/captacao|api/lead$|feeds/google-ads|_next/static|_next/image|favicon\\.ico|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|woff2?)$).*)",
   ],
 }

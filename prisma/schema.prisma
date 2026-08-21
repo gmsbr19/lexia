@@ -466,6 +466,10 @@ model Lead {
   landingPageId        Int?
   landingPage          LandingPage?            @relation(fields: [landingPageId], references: [id])
   triagem              String? // JSON TEXT: respostas chave/valor da LP (cada LP tem as suas)
+  captacaoRaw          String? // JSON TEXT: corpo do submit COMO RECEBIDO (sem nome/telefone, que já têm coluna).
+  // Preserva o que ainda não tem coluna dedicada (msclkid/fbclid, `tipo`, `cliente`,
+  // consentimento de publicidade…) — é a base de qualquer atribuição futura, por isso
+  // NUNCA é normalizado nem tem chave desconhecida descartada. Ver captacao/site-lead.ts.
   consentimentoEm      DateTime?
   consentimentoVersao  String?
   conversoes           ConversaoEvento[]

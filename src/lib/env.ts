@@ -69,6 +69,16 @@ const envSchema = z.object({
   // AppSetting (texto claro no backup) — só aqui.
   GADS_FEED_USER: z.string().optional(),
   GADS_FEED_PASS: z.string().optional(),
+  // ── Captação — segredo compartilhado com o site institucional (ncm.adv.br) ──
+  // O site é público/anônimo: o visitante nunca tem sessão. Em vez de abrir a
+  // API do Lexia para a internet, o site recebe o POST do navegador
+  // (same-origin), valida/rate-limita/honeypot, e repassa o lead pela rede
+  // interna do projeto (http://lexia:3000) autenticando com o header
+  // `x-ncm-secret`. Vale SÓ para POST /api/lead — nenhuma outra rota aceita
+  // esse header. Sem a var configurada, a autenticação por header nunca passa
+  // (mesmo padrão de JOBS_TOKEN/GADS_FEED_*: só serve quando propositalmente
+  // ligado). NUNCA em AppSetting (texto claro no backup) — só aqui.
+  LEXIA_SECRET: z.string().optional(),
 })
 
 const parsed = envSchema.safeParse(process.env)
