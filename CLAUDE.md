@@ -145,6 +145,78 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **`POST /api/lead` — intake do site institucional (ncm.adv.br) por segredo compartilhado (this session,
+  VERIFIED tsc 0 novos erros, 833/834 testes — +32 novos; a 1 falha é a `notificacoes-links.test.ts`
+  PRÉ-EXISTENTE de sempre —, eslint limpo, migração `20260821120000_lead_captacao_raw` JÁ APLICADA por mim
+  (`prisma migrate deploy`, aditiva) e a rota VERIFICADA ponta-a-ponta contra o Postgres local, com os 3
+  leads de teste depois REMOVIDOS do banco).**
+  **⚠️ Correção de premissa do pedido (importante p/ sessões futuras):** o usuário descreveu "a rota
+  `POST /api/lead` do lexia, hoje protegida por NextAuth". Ela **não existia** — e a rota parecida que
+  existe, `POST /api/captacao/lead`, **nunca** foi protegida por NextAuth (autentica por chave de landing
+  page, `x-lexia-lp-key`, e já está fora do `proxy.ts`), além de ter um contrato de corpo **diferente**
+  (`contato:{...}`, `atribuicao.utm.{source…}`, `consentimento.{aceito}`). Então nada foi "afrouxado": a
+  rota `/api/lead` foi **criada** como adaptador do contrato do site sobre o pipeline de captação que já
+  existia. A `/api/captacao/lead` das LPs segue intacta.
+  **Auth (2 formas, nesta ordem)** — [site-auth.ts](src/lib/captacao/site-auth.ts) `autenticadoPeloSite`:
+  header `x-ncm-secret` comparado em **tempo constante** (`timingSafeEqual` + checagem de tamanho ANTES,
+  senão lança) contra `LEXIA_SECRET`, lida SÓ de `process.env` via [env.ts](src/lib/env.ts), **nunca
+  hardcoded, nunca logada**; **env ausente/vazia ⇒ a checagem SEMPRE falha** (mesmo padrão de `JOBS_TOKEN`/
+  `GADS_FEED_*`). Sem segredo válido → `requireUser()` na própria rota → 401. **A rota precisou entrar no
+  matcher de [proxy.ts](src/proxy.ts)** (senão o proxy 401 antes do guard rodar) — entrou como **`api/lead$`,
+  caminho EXATO**, então `/api/leads*` e todo o resto seguem gated; e como está fora do proxy, o 401 do
+  caminho-2 é emitido pelo `requireUser()` da rota. Nenhuma outra rota lê `x-ncm-secret`.
+  **Adaptação de contrato** — [site-lead.ts](src/lib/captacao/site-lead.ts) (PURO, testado): `mapearSiteLead`
+  achata `utm_source/medium/campaign/term/content` → `utm.{…}`, `pagina_entrada` → `landingPage` (cai p/
+  `pagina`), `capturado_em` → `cliqueEm`, e traduz o consentimento do site (`{medicao,publicidade,versao,
+  decidido_em}`) → o do lexia (**`medicao` é o que vira `consentimentoEm`** — é ele que habilita atribuição/
+  conversão offline; `publicidade` não tem coluna e fica só no cru; `versao` chega **número** e vira texto).
+  `dataEnvioSegura` usa `enviado_em` como `dataEntrada` **só se estiver a ±24h de agora** — `dataEntrada`
+  vira `ConversaoEvento.ocorreuEm`, que é **gravado uma vez e NUNCA recalculado**, e uma data absurda
+  inutilizaria a janela de 90 dias do Google. Zod `siteLeadSchema` ([schemas.ts](src/lib/captacao/schemas.ts))
+  é **deliberadamente tolerante**: só `nome` é exigido; `triagem`/`atribuicao`/`consentimento`/`cliente` são
+  objetos livres (as chaves variam por página do site). Honeypot `site` é aceito e descartado em silêncio
+  (o proxy do site já remove; só dispara se postarem direto).
+  **Preservação sem perda (a parte que exigiu schema)** — o modelo hoje SHREDA a atribuição em colunas, o que
+  perderia `msclkid`/`fbclid`/`tipo`/`cliente`/consentimento-de-publicidade. Nova coluna aditiva
+  **`Lead.captacaoRaw String?`** guarda o corpo recebido INTEIRO como JSON, sem normalizar nem descartar
+  chave desconhecida (`envelopeCru`). **Nome/telefone/telefone_e164/site ficam FORA do envelope** (já têm
+  coluna; não duplicar PII), e o campo é **zerado na anonimização LGPD** junto da triagem
+  ([finance/mutations.ts](src/lib/finance/mutations.ts)).
+  **`captarLead` generalizado** ([captar.ts](src/lib/captacao/captar.ts)): o 1º parâmetro virou
+  `FonteCaptacao` (`id: number | null` + `chaveFonte?`) — `LandingPageResolvida` satisfaz o shape
+  estruturalmente, então **o endpoint das LPs não mudou nenhuma linha**; o site entra com
+  `landingPageId: null` (coluna já anulável, nenhuma linha de LandingPage inventada). Novo `opts`
+  (`dataEntrada`/`captacaoRaw`). `derivarCaptacaoKey` ([core.ts](src/lib/captacao/core.ts)) aceita
+  `number | string` — **o prefixo `lp:` foi mantido de propósito**, então as chaves já gravadas continuam
+  byte a byte iguais (site = `lp:site:…`, nunca colide com uma LP).
+  **Resposta/latência**: `200 {protocolo}` (curto, ex. `NCM-7F3K2Q` — vai na mensagem de WhatsApp), `400`
+  p/ corpo inválido, `429` no rate limit (60/min por IP + 5/h por telefone). Só a transação entra no ciclo
+  request/response — notificação e auditoria já eram fire-and-forget dentro do `captarLead` (bem dentro dos
+  3s de orçamento do site). Idempotência: `Idempotency-Key` funciona (o mesmo header devolve o mesmo
+  protocolo — verificado). **Privacidade**: nada de corpo completo em log (só `fonte` + a mensagem do erro),
+  o segredo nunca aparece em log nem em resposta, e a auditoria de rejeição grava só o motivo estruturado.
+  **Testes novos (32)**: [captacao-site-lead.test.ts](tests/captacao-site-lead.test.ts) (25 — contrato,
+  mapeamento, envelope cru, clamp de data, namespace da chave) + [captacao-site-auth.test.ts](tests/captacao-site-auth.test.ts)
+  (7 — segredo certo/errado/mesmo-tamanho/prefixo/ausente/env-vazia/case). **Nota de ambiente:** rotas não
+  são testáveis sob vitest (next-auth importa `next/server` sem extensão) — a verificação ponta-a-ponta foi
+  feita num teste temporário com só `@/lib/auth/session` stubado, já removido. Achado paralelo (PRÉ-EXISTENTE,
+  não corrigido): `tests/setup-env.ts` ainda crava `DATABASE_URL` no SQLite antigo, e `tests/cm-meta.test.ts`
+  tem 1 erro de tsc (`temClique` faltando na fixture) — ambos confirmados na árvore limpa via `git stash`.
+  **User action:** (1) definir **`LEXIA_SECRET`** no `.env` local e no serviço `lexia` do EasyPanel, com o
+  MESMO valor do lado do site (`openssl rand -base64 32`); documentado em `.env.example`. (2) A migração já
+  está aplicada no banco LOCAL — **em produção rodar `npx prisma migrate deploy`**. (3) Conferir o critério
+  de aceite: `curl -X POST https://lexia.ncm.adv.br/api/lead -H 'Content-Type: application/json' -d '{}'` →
+  **401**; o mesmo com `-H 'x-ncm-secret: <valor>'` e `{"origem":"teste","nome":"Teste Aceite","telefone":
+  "11999998888"}` → **200 `{"protocolo":"NCM-XXXXXX"}`** + linha nova em Leads; e qualquer outra rota (ex.
+  `GET /api/comercial/leads`) com um `x-ncm-secret` válido → segue **401**. O lead do site cai no funil
+  **sem campanha/área/responsável padrão** (fonte sem LandingPage) — se quiser roteamento automático, dá p/
+  criar uma LandingPage e apontar a fonte p/ ela numa próxima sessão.
+  **NOTA — §3 desta CLAUDE.md está DESATUALIZADA:** o projeto **já migrou para PostgreSQL**
+  (`schema.prisma` → `provider = "postgresql"`, DB `ncm` em `localhost:5432`) e o histórico de migrações
+  foi **esmagado numa única `20260820153739_init`**. O `prisma/dev.db` (SQLite) que sobrou na pasta é
+  **artefato morto** e está muito atrás do schema — não use como fonte de verdade. O aviso de lock do
+  engine no Windows continua valendo p/ `prisma generate`/`migrate dev` (`migrate deploy` não regenera o
+  client, então não trava).
 - **Captação de leads + conversões offline — feed CSV lido pelo Google Ads (PIVÔ na mesma sessão: a primeira
   versão usava a Data Manager API — push, OAuth, worker de retry; o usuário trocou o mecanismo depois de eu
   já ter entregado aquela versão — "as conversões offline não serão mais enviadas por upload manual nem pela
