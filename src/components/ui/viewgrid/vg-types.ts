@@ -29,6 +29,12 @@ export type VgColumn = {
   enum?: string; // chave no registry de enums
   enumList?: string[]; // enum sem cor (valores livres, ex.: campanhas)
   personType?: boolean; // text fixo com "contact mark" PF/PJ (Contatos)
+  /** Chave da linha com o texto do tooltip da célula (hover) — útil quando a
+   *  célula mostra um resumo ("Sim"/"Não") e o valor bruto interessa. */
+  titleKey?: string;
+  /** Chave da linha usada NO CSV no lugar de `key` — exporta o valor bruto
+   *  (ex.: o gclid completo) onde a tela mostra o resumo. */
+  csvKey?: string;
 };
 
 export type VgSchema = {

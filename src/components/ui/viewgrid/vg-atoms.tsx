@@ -220,6 +220,15 @@ export function VgMeter({ value, tone }: { value: number; tone?: "gold" | "blue"
 
 // ---------- renderização de célula (compartilhada tabela + kanban) ----------
 export function vgRenderCell(row: VgRow, col: VgColumn, schema: VgSchema): React.ReactNode {
+  const cell = vgCellBody(row, col, schema);
+  // tooltip por LINHA (col.titleKey) — o valor bruto atrás de um resumo
+  // ("Sim"/"Não" → o gclid inteiro). Só embrulha quando há texto.
+  const title = col.titleKey ? String(row[col.titleKey] ?? "") : "";
+  if (!title) return cell;
+  return <span title={title} style={{ display: "inline-flex", alignItems: "center", minWidth: 0, cursor: "help" }}>{cell}</span>;
+}
+
+function vgCellBody(row: VgRow, col: VgColumn, schema: VgSchema): React.ReactNode {
   const v = row[col.key];
   switch (col.type) {
     case "text":

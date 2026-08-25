@@ -202,7 +202,11 @@ export const vgFmtMoney = (n: unknown): string =>
 
 export function vgFmtDate(iso: string | null | undefined, todayISO: string): string {
   if (!iso) return "—";
-  const d = new Date(iso + "T12:00:00");
+  // Aceita 'YYYY-MM-DD' E um ISO completo ('...T12:00:00.000Z'): sem esta
+  // normalização a concatenação com "T12:00:00" produzia Invalid Date.
+  const dia = String(iso).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return "—";
+  const d = new Date(dia + "T12:00:00");
   const today = new Date(todayISO + "T12:00:00");
   const days = Math.round((d.getTime() - today.getTime()) / 86400000);
   if (days === 0) return "hoje";
@@ -248,8 +252,10 @@ function csvCell(v: unknown): string {
 export function vgToCSV(rows: VgRow[], cols: VgColumn[], schema: VgSchema): string {
   const head = cols.map((c) => `"${c.label}"`).join(";");
   const line = (r: VgRow) => cols.map((c) => {
-    let v: unknown = r[c.key];
-    if (c.type === "person") v = schema.peopleMap[String(v)]?.nome || "";
+    // csvKey: a coluna exporta o valor BRUTO da linha (ex.: o gclid completo)
+    // em vez do resumo mostrado na tela ("Sim"/"Não").
+    let v: unknown = c.csvKey ? r[c.csvKey] : r[c.key];
+    if (!c.csvKey && c.type === "person") v = schema.peopleMap[String(v)]?.nome || "";
     return csvCell(v);
   }).join(";");
   return [head, ...rows.map(line)].join("\n");
