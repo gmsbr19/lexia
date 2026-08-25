@@ -59,7 +59,7 @@ type Modal =
   | { type: "importarMeta" }
   | null
 
-export function ComercialApp({ dataset: serverDataset, verFin }: { dataset: CmDataset; verFin: boolean }) {
+export function ComercialApp({ dataset: serverDataset, verFin, podeExcluir = false }: { dataset: CmDataset; verFin: boolean; podeExcluir?: boolean }) {
   const { dataset, revalidate } = useComercialData(serverDataset)
   const [ref0, setRef] = useState<CmRef>(() => cmRefToday())
   const [period, setPeriod] = useState<Periodo>("mes")
@@ -212,7 +212,7 @@ export function ComercialApp({ dataset: serverDataset, verFin }: { dataset: CmDa
               onReabrir={onReabrir}
             />
           )}
-          {tab === "leads" && <CmLeads dataset={dataset} scores={scores} hoje={hoje} injectFilter={leadInject} lastImport={lastImport} onNew={openLeadNew} onConvert={openConverter} onLose={openPerdido} onEdit={openLeadEdit} onImport={openImportar} onImportMap={openImportarMapeado} onMerge={openMesclar} />}
+          {tab === "leads" && <CmLeads dataset={dataset} scores={scores} hoje={hoje} injectFilter={leadInject} lastImport={lastImport} onNew={openLeadNew} onConvert={openConverter} onLose={openPerdido} onEdit={openLeadEdit} onImport={openImportar} onImportMap={openImportarMapeado} onMerge={openMesclar} podeExcluir={podeExcluir} onChanged={refresh} />}
           {tab === "campanhas" && <CmCampanhas dataset={dataset} ref0={ref0} setRef={setRef} period={period} setPeriod={setPeriod} scope={scope} verFin={verFin} onNew={() => setModal({ type: "campanha", edit: null })} onGasto={(c) => setModal({ type: "gasto", campanha: c })} onEdit={(c) => setModal({ type: "campanha", edit: c })} onLeads={goLeadsCampaign} onImport={() => setModal({ type: "importarMeta" })} />}
           {tab === "captacao" && verFin && <CmCaptacao />}
           {tab === "exportar" && <CmExportar dataset={dataset} ref0={ref0} period={period} scope={scope} />}

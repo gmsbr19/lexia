@@ -18,7 +18,7 @@ import {
 import { Icon } from "@/components/ui/viewgrid/vg-icons";
 import { VgPopover, VgDot, VgAvatar, VgEnumChip } from "@/components/ui/viewgrid/vg-atoms";
 import { ORIGEM_COLOR, ORIGEM_LABEL, cmDate, type CmLeadScore } from "../cm-meta";
-import { CX_TEMPERATURAS, CX_TEMP_MAP } from "../cx-kit";
+import { CX_TEMPERATURAS, CX_TEMP_MAP, CxModal } from "../cx-kit";
 import type { CmDataset, CmDatasetLead } from "@/lib/comercial/types";
 import { resolveAreaColor, resolveAreaLabel, toAreaOptions, useAreasStore } from "@/lib/areas/store";
 import { resolveEtapaLabel, toStageOptions, usePipelineStore } from "@/lib/comercial/pipeline/store";
@@ -133,9 +133,10 @@ function VgLeadsKanban({ rows, schema, stageList, leadById, onMove, onConvert, o
 }
 
 // ---------- menu de ações por linha (⋯) ----------
-function LeadRowMenu({ lead, onEdit, onConvert, onMerge, onLose, onReopen }: {
+function LeadRowMenu({ lead, onEdit, onConvert, onMerge, onLose, onReopen, onDelete }: {
   lead: CmDatasetLead; onEdit: (l: CmDatasetLead) => void; onConvert: (l: CmDatasetLead) => void;
   onMerge: (l: CmDatasetLead) => void; onLose: (l: CmDatasetLead) => void; onReopen: (id: number) => void;
+  onDelete?: (l: CmDatasetLead) => void;
 }) {
   const ref = React.useRef<HTMLButtonElement>(null);
   const [open, setOpen] = React.useState(false);
@@ -150,9 +151,70 @@ function LeadRowMenu({ lead, onEdit, onConvert, onMerge, onLose, onReopen }: {
           <button className="vc-menuitem" onClick={() => { setOpen(false); onMerge(lead); }}><Icon name="gitMerge" size={14} />Mesclar com cliente</button>
           {lead.etapa !== "perdido" && <button className="vc-menuitem danger" onClick={() => { setOpen(false); onLose(lead); }}><Icon name="x" size={14} />Marcar como perdido</button>}
           {terminal && <><div className="vc-menu-sep" /><button className="vc-menuitem" onClick={() => { setOpen(false); onReopen(lead.id); }}><Icon name="refreshCw" size={14} />Reabrir lead</button></>}
+          {onDelete && <><div className="vc-menu-sep" /><button className="vc-menuitem danger" onClick={() => { setOpen(false); onDelete(lead); }}><Icon name="trash2" size={14} />Excluir definitivamente</button></>}
         </div>
       </VgPopover>
     </>
+  );
+}
+
+// ---------- confirmação de exclusão DEFINITIVA ----------
+// Lead não tem soft-delete: apagar remove a linha e, em cascata, os eventos de
+// conversão (fila da Captação / feed do Google Ads) e a timeline de atividades.
+// Tarefas e eventos de agenda vinculados sobrevivem, só perdem o vínculo.
+// Por ser irreversível, exige digitar EXCLUIR — mesmo espírito do fluxo de
+// anonimização/mesclagem de contatos.
+const PALAVRA_CONFIRMA = "EXCLUIR";
+
+function CmExcluirLeadsModal({ leads, onClose, onConfirm }: {
+  leads: CmDatasetLead[];
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const [txt, setTxt] = useState("");
+  const ok = txt.trim().toUpperCase() === PALAVRA_CONFIRMA;
+  const n = leads.length;
+  return (
+    <CxModal
+      title={n === 1 ? "Excluir oportunidade" : `Excluir ${n} oportunidades`}
+      sub="Ação definitiva — não há lixeira nem desfazer"
+      icon="trash2"
+      width={520}
+      onClose={onClose}
+      footer={<>
+        <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+        <button className="btn btn-danger" disabled={!ok} onClick={() => ok && onConfirm()}>
+          Excluir definitivamente
+        </button>
+      </>}
+    >
+      <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6 }}>
+        <p style={{ margin: "0 0 10px" }}>
+          {n === 1 ? "Este registro será apagado" : "Estes registros serão apagados"} do banco, junto com
+          {" "}<strong style={{ color: "var(--text)" }}>os eventos de conversão</strong> (fila da Captação / feed do Google Ads)
+          {" "}e <strong style={{ color: "var(--text)" }}>o histórico de atividades</strong>. Contatos, tarefas e compromissos
+          {" "}vinculados permanecem — apenas perdem o vínculo.
+        </p>
+        <div style={{ maxHeight: 168, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", margin: "0 0 14px", background: "var(--bg-sunken)" }}>
+          {leads.map((l) => (
+            <div key={l.id} style={{ fontSize: 12.5, color: "var(--text)", padding: "2px 0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {l.nome}{l.contato ? <span style={{ color: "var(--text-subtle)" }}> · {l.contato}</span> : null}
+            </div>
+          ))}
+        </div>
+        <label style={{ display: "block", fontSize: 12, color: "var(--text-subtle)", marginBottom: 5 }}>
+          Digite <strong style={{ color: "var(--text)" }}>{PALAVRA_CONFIRMA}</strong> para confirmar
+        </label>
+        <input
+          autoFocus
+          value={txt}
+          onChange={(e) => setTxt(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && ok) onConfirm(); }}
+          placeholder={PALAVRA_CONFIRMA}
+          style={{ width: "100%", height: 36, padding: "0 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13 }}
+        />
+      </div>
+    </CxModal>
   );
 }
 
@@ -181,12 +243,17 @@ function LeadsToolbar({ onImport, onImportMap, onNew }: { onImport: () => void; 
 }
 
 // ---------- container ----------
-export function CmLeads({ dataset, scores, hoje, injectFilter, lastImport, onNew, onConvert, onLose, onEdit, onMerge, onImport, onImportMap }: {
+export function CmLeads({ dataset, scores, hoje, injectFilter, lastImport, podeExcluir = false, onChanged, onNew, onConvert, onLose, onEdit, onMerge, onImport, onImportMap }: {
   dataset: CmDataset;
   scores: Map<number, CmLeadScore>;
   hoje: string;
   injectFilter: LeadInject | null;
   lastImport: LastImport | null;
+  /** Sócio/admin: libera a exclusão DEFINITIVA (linha e lote). */
+  podeExcluir?: boolean;
+  /** Revalida o dataset compartilhado — as outras abas (Visão/Funil/Campanhas)
+   *  leem `dataset`, não as linhas otimistas desta grade. */
+  onChanged?: () => void;
   onNew: () => void;
   onConvert: (l: CmDatasetLead) => void;
   onLose: (l: CmDatasetLead) => void;
@@ -211,6 +278,20 @@ export function CmLeads({ dataset, scores, hoje, injectFilter, lastImport, onNew
     applyLocal(id, { etapa } as Partial<CmDatasetLead>);
     void apiSend(`/api/comercial/leads/${id}/etapa`, "POST", { etapa }).catch(() => toast("Erro ao mover etapa", { kind: "error" }));
   }, [applyLocal]);
+
+  // exclusão definitiva: a confirmação guarda os leads-alvo (linha OU seleção)
+  const [aExcluir, setAExcluir] = useState<CmDatasetLead[] | null>(null);
+  const { bulkDelete } = optimistic;
+  const confirmarExclusao = useCallback(() => {
+    const alvos = aExcluir ?? [];
+    setAExcluir(null);
+    if (!alvos.length) return;
+    void bulkDelete(alvos.map((l) => l.id)).then((ok) => {
+      if (!ok) return;
+      toast(alvos.length === 1 ? "Oportunidade excluída" : `${alvos.length} oportunidades excluídas`);
+      onChanged?.();
+    });
+  }, [aExcluir, bulkDelete, onChanged]);
 
   const campMap = useMemo(() => new Map(dataset.campaigns.map((c) => [c.id, c.nome])), [dataset.campaigns]);
 
@@ -286,11 +367,18 @@ export function CmLeads({ dataset, scores, hoje, injectFilter, lastImport, onNew
   // ações de linha / lote
   const onRowClick = useCallback((r: VgRow) => { const l = leadById.get(Number(r.id)); if (l) onEdit(l); }, [leadById, onEdit]);
   const reopen = useCallback((id: number) => moveEtapa(id, openStages[0]?.key ?? "contato"), [moveEtapa, openStages]);
+  const pedirExclusao = useCallback((l: CmDatasetLead) => setAExcluir([l]), []);
   const rowActions = useCallback((r: VgRow) => {
     const l = leadById.get(Number(r.id));
     if (!l) return null;
-    return <LeadRowMenu lead={l} onEdit={onEdit} onConvert={onConvert} onMerge={onMerge} onLose={onLose} onReopen={reopen} />;
-  }, [leadById, onEdit, onConvert, onMerge, onLose, reopen]);
+    return <LeadRowMenu lead={l} onEdit={onEdit} onConvert={onConvert} onMerge={onMerge} onLose={onLose} onReopen={reopen} onDelete={podeExcluir ? pedirExclusao : undefined} />;
+  }, [leadById, onEdit, onConvert, onMerge, onLose, reopen, podeExcluir, pedirExclusao]);
+
+  // lote: a barra de seleção só oferece "Excluir" para quem pode
+  const onBulkDelete = useCallback((ids: (string | number)[]) => {
+    const alvos = ids.map((id) => leadById.get(Number(id))).filter((l): l is CmDatasetLead => !!l);
+    if (alvos.length) setAExcluir(alvos);
+  }, [leadById]);
   const bulkFields: VgBulkField[] = useMemo(() => [
     { field: "etapa", label: "Etapa", icon: "circleDot", options: openStages.map((s) => ({ value: s.key, label: s.nome, color: s.cor })) },
     { field: "responsavelUserId", label: "Responsável", icon: "user", options: [...dataset.usuarios.map((u) => ({ value: String(u.id), label: u.nome, person: String(u.id) })), { value: null, label: "Sem responsável" }] },
@@ -342,12 +430,14 @@ export function CmLeads({ dataset, scores, hoje, injectFilter, lastImport, onNew
           selectable
           bulkFields={bulkFields}
           onBulkApply={onBulkApply}
+          onBulkDelete={podeExcluir ? onBulkDelete : undefined}
           toolbarExtra={toolbarExtra}
           csvName={() => `lexia-leads-${hoje}.csv`}
           kanbanRender={kanbanRender}
           inject={inject}
         />
       </div>
+      {aExcluir && <CmExcluirLeadsModal leads={aExcluir} onClose={() => setAExcluir(null)} onConfirm={confirmarExclusao} />}
     </div>
   );
 }

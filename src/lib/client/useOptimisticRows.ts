@@ -35,7 +35,10 @@ export interface OptimisticRowsApi<T> {
    *  a failed bulk touches rows the user isn't looking at, so unlike
    *  commit/liveEdit this DOES roll back (see CLAUDE.md §11 Fase 2). */
   bulkApply: (ids: number[], field: string, value: unknown) => Promise<void>
-  bulkDelete: (ids: number[]) => Promise<void>
+  /** Resolve `true` só quando o servidor confirmou; em falha faz rollback,
+   *  avisa via onError/toast e resolve `false` — o chamador não deve dar um
+   *  "excluído com sucesso" às cegas. */
+  bulkDelete: (ids: number[]) => Promise<boolean>
 }
 
 export function useOptimisticRows<T>(config: OptimisticRowsConfig<T>): OptimisticRowsApi<T> {
@@ -117,14 +120,16 @@ export function useOptimisticRows<T>(config: OptimisticRowsConfig<T>): Optimisti
 
   const bulkDelete = useCallback(
     async (ids: number[]) => {
-      if (!bulkUrl || !ids.length) return
+      if (!bulkUrl || !ids.length) return false
       const snapshot = rows
       setRows((rs) => rs.filter((r) => !ids.includes(getId(r))))
       try {
         await apiSend(bulkUrl, "PATCH", { ids, excluir: true })
-      } catch {
+        return true
+      } catch (e) {
         setRows(snapshot)
-        fail("Erro ao excluir em lote")
+        fail(e instanceof Error ? e.message : "Erro ao excluir em lote")
+        return false
       }
     },
     [bulkUrl, rows, getId, fail],

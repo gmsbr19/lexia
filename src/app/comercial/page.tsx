@@ -12,6 +12,10 @@ export const dynamic = "force-dynamic"
 // ad-spend); the client app does period scoping + metric computation.
 export default async function Page() {
   const [session, dataset] = await Promise.all([auth(), getComercialDataset()])
-  const verFin = verFinanceiro((session?.user?.role as Role) ?? "socio")
-  return <ComercialApp dataset={dataset} verFin={verFin} />
+  const role = (session?.user?.role as Role) ?? "socio"
+  const verFin = verFinanceiro(role)
+  // Exclusão definitiva de oportunidade é irreversível (cascateia eventos de
+  // conversão + atividades) — mesmo gate da rota: sócio ou admin.
+  const podeExcluir = role === "admin" || role === "socio"
+  return <ComercialApp dataset={dataset} verFin={verFin} podeExcluir={podeExcluir} />
 }

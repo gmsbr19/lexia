@@ -19,11 +19,16 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
   })
 }
 
+// Exclusão DEFINITIVA (hard delete — o Lead não tem soft-delete): apaga em
+// cascata os eventos de conversão e a timeline de atividades da oportunidade.
+// Diferente do resto do módulo (aberto de propósito), esta é destrutiva e
+// irreversível — gated a sócio ('admin' passa implicitamente).
 export async function DELETE(_req: Request, ctx: RouteCtx) {
   const { id } = await ctx.params
   return runMutation(() => deleteLead(parseId(id)), {
     action: "lead.excluir",
     entity: "Lead",
     entityId: id,
+    roles: ["socio"],
   })
 }
