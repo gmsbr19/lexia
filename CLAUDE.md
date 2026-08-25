@@ -145,6 +145,53 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **Captação: data inválida, gclid visível/exportável + exclusão DEFINITIVA de leads (this session, VERIFIED
+  tsc 0 novos erros — só o `tests/cm-meta.test.ts` `temClique` PRÉ-EXISTENTE —, 839/840 testes (+6 novos; a 1
+  falha é a `notificacoes-links.test.ts` PRÉ-EXISTENTE de sempre), eslint limpo nos arquivos tocados, SEM
+  migração.** 3 pedidos do usuário sobre `/comercial` → aba Captação.
+  **(1) "Invalid Date" na coluna Ocorreu em:** o motor de datas do ViewGrid trabalha em `'YYYY-MM-DD'` e
+  concatena `+ "T12:00:00"` — a fila entregava o ISO COMPLETO (`ocorreuEm: r.ocorreuEm.toISOString()`), então
+  `new Date("…000ZT12:00:00")` = Invalid Date. **2 camadas:** a fonte agora fatia (`e.ocorreuEm.slice(0,10)` em
+  [CmCaptacao.tsx](src/components/comercial/tabs/CmCaptacao.tsx)) — o que ALÉM do texto conserta o **filtro de
+  data** (`vgEvalRule` compara strings ISO cruas: um timestamp completo nunca casava um `eq`); e
+  `vgFmtDate` ([vg-engine.ts](src/components/ui/viewgrid/vg-engine.ts)) passou a normalizar por `slice(0,10)` +
+  validar o formato (fallback `—`), então nenhum grid volta a exibir "Invalid Date". Auditadas as outras 3
+  colunas `type:"date"` do app (Entrada/Próx. ação/Conversão em CmLeads): usam `isoDate` (já fatiado) —
+  **não estavam afetadas**.
+  **(2) gclid no hover + no CSV:** 2 opções GENÉRICAS novas em `VgColumn` ([vg-types.ts](src/components/ui/viewgrid/vg-types.ts)) —
+  **`titleKey`** (chave da linha com o texto do tooltip; `vgRenderCell` embrulha a célula num `<span title>` —
+  refatorado em `vgRenderCell`+`vgCellBody` p/ valer p/ QUALQUER tipo de coluna) e **`csvKey`** (a coluna
+  exporta o valor BRUTO da linha em vez do resumo da tela). A coluna `temGclid` da Captação usa as duas: hover
+  mostra `gclid: <valor>` (ou "Sem gclid — este evento NÃO entra no feed do Google Ads") e o CSV traz o gclid
+  inteiro sob o cabeçalho "gclid" (vazio = não tinha). `EventoRow.gclid` novo em
+  [fila.ts](src/lib/captacao/fila.ts) (a query JÁ selecionava `lead.gclid`, só não expunha) e `gclid` entrou
+  nos `searchKeys` — dá p/ buscar um gclid na fila. A guarda anti-injeção de fórmula do CSV continua valendo
+  p/ o valor do `csvKey`.
+  **(3) Excluir leads definitivamente:** o backend JÁ tinha hard delete (`deleteLead` + `bulkUpdateLeads
+  ({excluir:true})`, com `onDelete: Cascade` em `ConversaoEvento`/`OportunidadeAtividade` e `SetNull` em
+  `Tarefa`/`Evento`) e o `ViewGrid`/`useOptimisticRows` já tinham `onBulkDelete`/`bulkDelete` — **faltava só a
+  UI**, que nunca ligou nada disso. Agora: item **"Excluir definitivamente"** no menu ⋯ da linha + botão
+  Excluir na barra de lote, ambos abrindo `CmExcluirLeadsModal` ([CmLeads.tsx](src/components/comercial/tabs/CmLeads.tsx)) —
+  lista os alvos, explica o que cascateia, e **exige digitar `EXCLUIR`** (espírito do anonimizar/mesclar de
+  contatos). **Gate novo (tightening deliberado):** as rotas de comercial são abertas de propósito, mas
+  exclusão irreversível não — `DELETE /api/comercial/leads/[id]` e o **ramo `excluir`** de
+  `PATCH /api/comercial/leads/lote` agora pedem `roles:["socio"]` (admin passa implicitamente); o resto do
+  lote segue aberto. O gate do lote lê a flag **CRUA** do corpo e o `parseBody` fica DENTRO do `runMutation`
+  (hoistá-lo transformava corpo inválido em 500 em vez de 400 — pego e corrigido durante a implementação);
+  um `excluir` malformado não burla nada (passa pelo gate mas o Zod rejeita). Auditoria dedicada
+  `lead.excluir-lote`. `podeExcluir` (admin|socio) desce de [page.tsx](src/app/comercial/page.tsx) →
+  ComercialApp → CmLeads. **`useOptimisticRows.bulkDelete` agora devolve `Promise<boolean>`**
+  ([useOptimisticRows.ts](src/lib/client/useOptimisticRows.ts)) — engolia o erro e o chamador daria um "excluído
+  com sucesso" falso; o toast de sucesso e o `onChanged` (revalida o dataset p/ Visão/Funil/Campanhas não
+  ficarem com o lead fantasma) só disparam quando o servidor confirmou. Único chamador é o novo.
+  **Testes novos** [tests/viewgrid-engine.test.ts](tests/viewgrid-engine.test.ts) (6: `vgFmtDate` com ISO
+  completo/curto/inválido — regressão do bug —, `vgToCSV` com e sem `csvKey` + injeção de fórmula).
+  **User action:** só visual (sem passo de DB) — `/comercial` → **Captação**: a coluna "Ocorreu em" mostra a
+  data de verdade (e o filtro de data funciona), hover no "Sim" da coluna gclid mostra o identificador
+  inteiro, "Exportar CSV" traz a coluna gclid preenchida; → **Leads** (como sócio/admin): ⋯ de um lead de
+  teste → "Excluir definitivamente" → digitar EXCLUIR; ou selecionar vários → barra de lote → Excluir. Como
+  advogado/estagiário/financeiro a opção não aparece (e a rota recusa). Depois de excluir, conferir que o
+  evento sumiu da fila da Captação (cascata).
 - **`POST /api/lead` — intake do site institucional (ncm.adv.br) por segredo compartilhado (this session,
   VERIFIED tsc 0 novos erros, 833/834 testes — +32 novos; a 1 falha é a `notificacoes-links.test.ts`
   PRÉ-EXISTENTE de sempre —, eslint limpo, migração `20260821120000_lead_captacao_raw` JÁ APLICADA por mim
