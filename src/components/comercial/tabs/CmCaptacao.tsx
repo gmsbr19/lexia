@@ -35,7 +35,8 @@ const COLS: VgColumn[] = [
   { key: "tipo", label: "Tipo", type: "enum", enum: "tipo", group: true, def: true, w: 160 },
   { key: "status", label: "Status", type: "enum", enum: "status", group: true, def: true, w: 110 },
   { key: "valor", label: "Valor", type: "money", def: true, w: 110, align: "right", agg: "sum" },
-  { key: "temGclid", label: "gclid", type: "enum", enum: "temGclid", group: true, def: true, w: 90 },
+  // titleKey/csvKey: a tela mostra Sim/Não, o hover e o CSV mostram o gclid inteiro.
+  { key: "temGclid", label: "gclid", type: "enum", enum: "temGclid", group: true, def: true, w: 90, titleKey: "gclidTitulo", csvKey: "gclid" },
   { key: "campanha", label: "Campanha", type: "enum", enumList: [], group: true, def: false, w: 160 },
   { key: "ocorreuEm", label: "Ocorreu em", type: "date", def: true, w: 120 },
   { key: "ajuste", label: "Ajuste", type: "enum", enum: "ajuste", group: true, def: false, w: 90 },
@@ -62,8 +63,12 @@ function FilaView() {
       status: STATUS_LABEL[e.status] ?? e.status,
       valor: e.valorCents / 100,
       temGclid: e.temGclid ? "Sim" : "Não",
+      gclid: e.gclid ?? "",
+      gclidTitulo: e.gclid ? `gclid: ${e.gclid}` : "Sem gclid — este evento NÃO entra no feed do Google Ads",
       campanha: e.campanhaNome ?? "—",
-      ocorreuEm: e.ocorreuEm,
+      // o motor de datas do ViewGrid trabalha em 'YYYY-MM-DD' (filtro e
+      // formatação); o ISO completo do servidor virava "Invalid Date".
+      ocorreuEm: e.ocorreuEm.slice(0, 10),
       ajuste: e.temAjuste ? "Sim" : "Não",
       motivoDescarte: e.motivoDescarte ?? "",
     })),
@@ -119,7 +124,7 @@ function FilaView() {
         <ViewGrid
           schema={schema}
           rows={rows}
-          searchKeys={["lead", "motivoDescarte"]}
+          searchKeys={["lead", "motivoDescarte", "gclid"]}
           initialStore={saved.initial}
           seedViews={[{ id: "todos", name: "Todos", icon: "list", isDefault: true, state: makeDefaultState({ cols: COLS }) }]}
           onStoreChange={(s: VgGridStore) => saved.onChange(s)}

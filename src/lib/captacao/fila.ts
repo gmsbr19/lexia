@@ -17,6 +17,7 @@ export interface EventoRow {
   status: string
   valorCents: number
   temGclid: boolean
+  gclid: string | null // bruto — tooltip na fila + coluna do CSV de conferência
   campanhaNome: string | null
   ocorreuEm: string
   motivoDescarte: string | null
@@ -39,6 +40,7 @@ export async function listarEventosConversao(): Promise<EventoRow[]> {
     status: r.status,
     valorCents: r.valorCents,
     temGclid: !!r.lead.gclid,
+    gclid: r.lead.gclid,
     campanhaNome: r.lead.campanha?.nome ?? null,
     ocorreuEm: r.ocorreuEm.toISOString(),
     motivoDescarte: r.motivoDescarte,
