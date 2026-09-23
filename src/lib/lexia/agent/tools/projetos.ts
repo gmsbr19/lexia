@@ -1,398 +1,241 @@
-// Projetos tools — list/detail (readonly) + criar/instanciar (confirmation-gated,
-// gated to sócio/advogado). Lets the LexIA read project health and create or
-// instantiate projects (e.g. "crie um projeto Holding para o cliente X").
+// Projetos tools (redesign): projeto é FILTRO do quadro único de Tarefas.
+// Leitura aberta; criar/editar/arquivar/excluir e criar a partir de modelo só
+// para sócio/advogado (admin passa). `criar_estrutura_projeto` cria projeto +
+// tarefas + ligações numa única chamada (economia de tokens na criação em massa).
 import { z } from "zod"
 import { prisma } from "@/lib/db"
 import {
-  createProjeto,
-  createSecao,
-  createSecoes,
-  deleteProjeto,
-  deleteSecao,
-  instanciarTemplateProjeto,
-  montarEstruturaProjetos,
-  reordenarSecoes,
-  updateProjeto,
-  updateSecao,
+  atualizarProjeto,
+  criarProjeto,
+  criarProjetoDeModelo,
+  excluirProjeto,
+  montarEstruturaProjeto,
 } from "@/lib/projetos/mutations"
-import { getProjeto, getProjetosDataset, getTemplates } from "@/lib/projetos/queries"
+import { gruposPadrao } from "@/lib/projetos/modelo"
 import { ROLES_PROJETO_ESCRITA } from "@/lib/projetos/types"
+import { getModelos, getProjetos, getTarefas } from "@/lib/tarefas/queries"
+import { hojeSP, indexar, motivosRisco, vencida } from "@/lib/tarefas/regras"
+import { resolverAtor } from "@/lib/tarefas/mutations"
+import { statusLabel } from "@/lib/tarefas/types"
 import { idOpt, idReq } from "@/lib/validation"
-import { dataBr, diffRow, nomeCaso, nomeCliente, nomeUsuario } from "../confirmar"
+import { dataBr, diffRow, nomeArea, nomeCliente, nomeUsuario } from "../confirmar"
 import { defineTool } from "../types"
 import { cap, limite } from "./shared"
 
 const dataISO = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "use o formato YYYY-MM-DD")
 
-const STATUS_PROJETO = ["ativo", "pausado", "concluido", "arquivado"] as const
-const STATUS_LABEL: Record<string, string> = {
-  ativo: "Ativo",
-  pausado: "Pausado",
-  concluido: "Concluído",
-  arquivado: "Arquivado",
-}
-
-// Árvore projeto → seções → tarefas para criação em UMA chamada (criar_estrutura_projetos).
-const estTarefa = z.object({
-  titulo: z.string().min(3).max(300).describe("Título 'verbo de ação + objeto'"),
-  descricao: z.string().max(4000).optional().describe("Descrição/contexto (opcional aqui)"),
-  responsavelId: idOpt.describe("Responsável (id via listar_tarefas → socios)"),
-  prazo: dataISO.optional().describe("Prazo (YYYY-MM-DD)"),
-  prio: z.number().int().min(1).max(4).optional().describe("1=Urgente..4=Normal (padrão 3)"),
-  dor: z.array(z.string().min(1)).max(6).optional().describe("Definition of Ready (opcional)"),
-  dod: z.array(z.string().min(1)).max(6).optional().describe("Definition of Done (opcional)"),
-})
-const estSecao = z.object({
-  nome: z.string().min(1).max(120).describe("Nome da seção (coluna)"),
-  cor: z.string().max(40).optional(),
-  tarefas: z.array(estTarefa).max(100).optional().describe("Tarefas desta seção"),
-})
-const estProjeto = z.object({
-  nome: z.string().min(2).max(200).describe("Nome do projeto"),
-  descricao: z.string().max(2000).optional(),
-  area: z.string().max(40).optional().describe("Área (tag): trab/soc/trib/civ…"),
-  responsavelId: idOpt.describe("Líder do projeto (id via listar_tarefas → socios)"),
-  prazo: dataISO.optional(),
-  casoId: idOpt.describe("Vincular a um caso (id via buscar)"),
-  clienteId: idOpt.describe("Vincular a um cliente (id via buscar)"),
-  secoes: z.array(estSecao).max(50).optional().describe("Seções (colunas), cada uma com suas tarefas"),
-  tarefas: z.array(estTarefa).max(100).optional().describe("Tarefas do projeto sem seção"),
+const projetoCampos = z.object({
+  nomeCurto: z.string().min(1).max(24).describe("Nome curto (aparece nos cartões com a cor), ex.: 'Alfa'"),
+  nome: z.string().min(2).max(200).describe("Nome completo, ex.: 'Integralização Holding Alfa'"),
+  clienteId: idOpt.describe("Cliente (id via buscar) — todas as tarefas herdam esse cliente"),
+  area: z.string().max(60).optional().describe("Chave da área do direito (ex.: 'soc', 'trab')"),
+  responsavelId: idOpt.describe("Responsável (id via listar_tarefas → pessoas)"),
+  prazo: dataISO.optional().describe("Prazo final (opcional)"),
+  descricao: z.string().max(4000).optional(),
 })
 
-function contarEstrutura(projetos: z.infer<typeof estProjeto>[]) {
-  let secoes = 0
-  let tarefas = 0
-  for (const p of projetos) {
-    tarefas += p.tarefas?.length ?? 0
-    for (const s of p.secoes ?? []) {
-      secoes += 1
-      tarefas += s.tarefas?.length ?? 0
-    }
-  }
-  return { projetos: projetos.length, secoes, tarefas }
+async function detalhesProjeto(i: Partial<z.infer<typeof projetoCampos>>) {
+  return [
+    i.nomeCurto ? { label: "Projeto", valor: `${i.nomeCurto}${i.nome ? ` — ${i.nome}` : ""}` } : null,
+    i.clienteId ? { label: "Cliente", valor: await nomeCliente(i.clienteId) } : null,
+    i.area ? { label: "Área", valor: await nomeArea(i.area) } : null,
+    i.responsavelId ? { label: "Responsável", valor: await nomeUsuario(i.responsavelId) } : null,
+    i.prazo ? { label: "Prazo final", valor: dataBr(i.prazo) } : null,
+  ].filter((d): d is NonNullable<typeof d> => d != null)
 }
 
 export const projetosTools = [
   defineTool({
-    name: "criar_estrutura_projetos",
-    kind: "mutation",
-    roles: ROLES_PROJETO_ESCRITA,
-    description:
-      "Cria uma ESTRUTURA INTEIRA de uma vez, numa ÚNICA chamada: um ou mais projetos, cada um com suas SEÇÕES e as TAREFAS de cada seção. Use SEMPRE que o pedido for 'crie um projeto com as seções A/B/C e as tarefas …' ou vários projetos — em vez de criar em etapas (criar_projeto → criar_secao → criar_tarefa). Você NÃO precisa descobrir ids de seção antes: mande a árvore aninhada e o servidor conecta tudo (projeto→seção→tarefa) numa transação. Cada tarefa: título 'verbo + objeto' e, quando souber, responsavelId (via listar_tarefas → socios) e prazo; DoR/DoD são OPCIONAIS aqui. DICA: se forem MUITAS tarefas, chame esta ferramenta UM PROJETO por vez (evita estourar o limite de tamanho da resposta). Só para sócio/advogado.",
-    schema: z.object({
-      projetos: z.array(estProjeto).min(1).max(20).describe("Árvore de projetos → seções → tarefas"),
-    }),
-    resumo: (i) => {
-      const c = contarEstrutura(i.projetos)
-      return `Criar ${c.projetos} projeto(s), ${c.secoes} seções e ${c.tarefas} tarefas`
-    },
-    montarConfirmacao: async (_ctx, i) => {
-      const c = contarEstrutura(i.projetos)
-      return {
-        resumo: `Criar estrutura: ${c.projetos} projeto(s), ${c.secoes} seções, ${c.tarefas} tarefas`,
-        detalhes: [
-          { label: "Projetos", valor: i.projetos.map((p) => p.nome).join(" · ") },
-          { label: "Seções", valor: String(c.secoes) },
-          { label: "Tarefas", valor: String(c.tarefas) },
-        ],
-      }
-    },
-    run: async (ctx, i) => montarEstruturaProjetos(i.projetos, ctx.user.email),
-  }),
-  defineTool({
     name: "listar_projetos",
     kind: "readonly",
     description:
-      "Lista os projetos (containers de trabalho) com saúde, progresso (%), nº de tarefas e atrasadas, " +
-      "responsável, prazo-alvo e vínculo. Use para 'quais projetos temos?', 'saúde dos projetos', " +
-      "'projetos atrasados', 'projetos do cliente X'.",
-    schema: z.object({
-      status: z.string().max(20).optional().describe("Filtra por status (ativo/pausado/concluido/arquivado)"),
-      limite,
-    }),
-    run: async (_ctx, { status, limite: l }) => {
-      const ds = await getProjetosDataset()
-      const projetos = status ? ds.projetos.filter((p) => p.status === status) : ds.projetos
-      return { ...cap(projetos, l), socios: ds.socios }
+      "Lista os projetos (ativos e arquivados) com cliente, responsável, prazo final, progresso ('x de y') e nº de tarefas vencidas. " +
+      "Use para 'quais projetos temos?', 'como está o projeto X?', 'projetos com tarefas vencidas'.",
+    schema: z.object({ arquivados: z.boolean().optional().describe("true = só arquivados; padrão = só ativos"), limite }),
+    run: async (_ctx, { arquivados, limite: l }) => {
+      const [projetos, tarefas] = await Promise.all([getProjetos(), getTarefas({ projetoId: { not: null } })])
+      const hoje = hojeSP()
+      const lista = projetos
+        .filter((p) => (arquivados ? !!p.arquivadoEm : !p.arquivadoEm))
+        .map((p) => {
+          const ts = tarefas.filter((t) => t.projetoId === p.id)
+          return {
+            id: p.id,
+            nomeCurto: p.nomeCurto,
+            nome: p.nome,
+            clienteId: p.clienteId,
+            responsavelId: p.responsavelId,
+            prazo: p.prazo,
+            arquivadoEm: p.arquivadoEm,
+            progresso: `${ts.filter((t) => t.status === "done").length} de ${ts.length}`,
+            vencidas: ts.filter((t) => vencida(t, hoje)).length,
+          }
+        })
+      return cap(lista, l)
     },
   }),
   defineTool({
     name: "detalhe_projeto",
     kind: "readonly",
     description:
-      "Detalha um projeto: status, saúde, progresso, prazo-alvo, responsável, contagem de tarefas e as SEÇÕES " +
-      "(colunas do quadro, com id/nome/cor/ordem). Id via listar_projetos. Use os ids das seções para " +
-      "editar_secao/excluir_secao/reordenar_secoes e para colocar uma tarefa numa seção (criar_tarefa/editar_tarefa).",
-    schema: z.object({ id: idReq.describe("Id do projeto") }),
+      "Detalha um projeto: dados, grupos e TODAS as tarefas (status, prazo, prazo fatal, responsável, grupo, anteriores, em risco). " +
+      "Use antes de editar/ligar tarefas de um projeto.",
+    schema: z.object({ id: idReq.describe("Id do projeto (via listar_projetos)") }),
     run: async (_ctx, { id }) => {
-      const p = await getProjeto(id)
+      const [p, tarefas] = await Promise.all([
+        prisma.projeto.findFirst({ where: { id, excluidoEm: null } }),
+        getTarefas({ projetoId: id }),
+      ])
       if (!p) return { erro: "Projeto não encontrado" }
-      const secoes = await prisma.projetoSecao.findMany({
-        where: { projetoId: id },
-        orderBy: { ordem: "asc" },
-        select: { id: true, nome: true, cor: true, ordem: true },
-      })
-      return { ...p, secoes }
+      const hoje = hojeSP()
+      const map = indexar(tarefas)
+      return {
+        id: p.id,
+        nomeCurto: p.nomeCurto,
+        nome: p.nome,
+        clienteId: p.clienteId,
+        area: p.area,
+        responsavelId: p.responsavelId,
+        prazo: p.prazo?.toISOString().slice(0, 10) ?? null,
+        arquivado: !!p.arquivadoEm,
+        descricao: p.descricao,
+        grupos: [...new Set(tarefas.map((t) => t.grupo).filter(Boolean))],
+        tarefas: tarefas.map((t) => ({
+          id: t.id,
+          titulo: t.titulo,
+          status: statusLabel(t.status),
+          prazo: t.prazo,
+          prazoFatal: t.prazoFatal,
+          vencida: vencida(t, hoje),
+          grupo: t.grupo,
+          responsavelId: t.responsavelId,
+          anteriores: t.anteriores,
+          emRisco: motivosRisco(t, map, hoje).length > 0,
+        })),
+      }
     },
   }),
   defineTool({
-    name: "listar_templates_projeto",
+    name: "listar_modelos_projeto",
     kind: "readonly",
     description:
-      "Lista os templates de projeto do escritório (processos repetíveis, ex.: 'Holding Patrimonial') com o nº de tarefas e quantas vezes já foram usados. Use antes de instanciar_template_projeto.",
-    schema: z.object({ limite }),
-    run: async (_ctx, { limite: l }) => {
-      const templates = await getTemplates()
-      const resumo = templates.map((t) => ({ id: t.id, nome: t.nome, area: t.area, tarefas: t.itens.length, usos: t.usos }))
-      return cap(resumo, l)
-    },
+      "Lista os modelos de projeto (processos repetíveis do escritório): papéis, passos, 'dias antes do prazo do grupo', prazos fatais e ligações. " +
+      "Use antes de criar_projeto_de_modelo.",
+    schema: z.object({}),
+    run: async () => ({ modelos: await getModelos() }),
   }),
   defineTool({
     name: "criar_projeto",
     kind: "mutation",
     roles: ROLES_PROJETO_ESCRITA,
-    description:
-      "Cria um projeto (container de trabalho) em branco. Informe nome e, quando indicado, responsável (id via " +
-      "listar_projetos → socios), prazo-alvo e vínculo a um caso OU cliente (id via buscar). Para um processo " +
-      "repetível (ex.: Holding), prefira instanciar_template_projeto.",
-    schema: z.object({
-      nome: z.string().min(2).max(200).describe("Nome do projeto"),
-      descricao: z.string().max(2000).optional(),
-      area: z.string().max(40).optional().describe("Área de prática (tag), ex.: trab/soc/trib/civ"),
-      responsavelId: idOpt.describe("Líder do projeto (id via listar_projetos → socios)"),
-      prazo: dataISO.optional().describe("Data-alvo do projeto"),
-      casoId: idOpt.describe("Vincular a um caso (id via buscar)"),
-      clienteId: idOpt.describe("Vincular a um cliente (id via buscar)"),
-    }),
-    resumo: (i) => `Criar projeto: ${i.nome}`,
-    montarConfirmacao: async (_ctx, i) => {
-      const det: { label: string; valor: string }[] = [{ label: "Projeto", valor: i.nome }]
-      if (i.responsavelId) det.push({ label: "Responsável", valor: await nomeUsuario(i.responsavelId) })
-      if (i.prazo) det.push({ label: "Prazo-alvo", valor: dataBr(i.prazo) })
-      if (i.casoId) det.push({ label: "Caso", valor: await nomeCaso(i.casoId) })
-      if (i.clienteId) det.push({ label: "Cliente", valor: await nomeCliente(i.clienteId) })
-      return { resumo: `Criar projeto: ${i.nome}`, detalhes: det }
-    },
-    run: async (_ctx, i) =>
-      createProjeto({
-        nome: i.nome,
-        descricao: i.descricao ?? null,
-        area: i.area ?? null,
-        responsavelId: i.responsavelId ?? null,
-        prazo: i.prazo ?? null,
-        casoId: i.casoId ?? null,
-        clienteId: i.clienteId ?? null,
-      }),
+    description: "Cria um projeto em branco. Para projeto com tarefas prontas prefira criar_estrutura_projeto (uma chamada) ou criar_projeto_de_modelo.",
+    schema: projetoCampos,
+    resumo: (i) => `Criar projeto: ${i.nomeCurto}`,
+    montarConfirmacao: async (_ctx, i) => ({ resumo: `Criar projeto: ${i.nomeCurto}`, detalhes: await detalhesProjeto(i) }),
+    run: async (ctx, i) => criarProjeto(i, await resolverAtor(ctx.user.email)),
   }),
   defineTool({
     name: "editar_projeto",
     kind: "mutation",
     roles: ROLES_PROJETO_ESCRITA,
-    description:
-      "Edita um projeto (id via listar_projetos). Envie SÓ o que muda. Para arquivar/pausar/concluir use " +
-      "status ('ativo'/'pausado'/'concluido'/'arquivado'). Também: nome, descrição, área, prazo-alvo, " +
-      "responsável (id via listar_projetos → socios) e vínculo a caso/cliente.",
-    schema: z.object({
-      id: idReq.describe("Id do projeto"),
-      nome: z.string().min(2).max(200).optional(),
-      descricao: z.string().max(2000).optional(),
-      status: z.enum(STATUS_PROJETO).optional().describe("ativo/pausado/concluido/arquivado"),
-      area: z.string().max(40).optional(),
-      prazo: dataISO.optional().describe("Data-alvo (YYYY-MM-DD)"),
-      responsavelId: idOpt.describe("Novo líder (id via listar_projetos → socios)"),
-      casoId: idOpt.describe("Vincular a um caso (id via buscar)"),
-      clienteId: idOpt.describe("Vincular a um cliente (id via buscar)"),
-    }),
+    description: "Edita um projeto (id via listar_projetos): nome curto/completo, cliente, área, responsável, prazo final, descrição, ou arquivado=true/false.",
+    schema: projetoCampos.partial().extend({ id: idReq, arquivado: z.boolean().optional() }),
     resumo: (i) => `Editar projeto #${i.id}`,
     montarConfirmacao: async (_ctx, i) => {
-      const antes = await prisma.projeto.findFirst({
-        where: { id: i.id, excluidoEm: null },
-        select: { nome: true, status: true, prazo: true, responsavelId: true },
-      })
+      const a = await prisma.projeto.findUnique({ where: { id: i.id }, select: { nomeCurto: true, arquivadoEm: true } })
       const det = [
-        diffRow("Nome", i.nome, antes?.nome),
-        diffRow("Status", i.status ? STATUS_LABEL[i.status] : undefined, antes?.status ? STATUS_LABEL[antes.status] ?? antes.status : undefined),
-        diffRow("Prazo-alvo", i.prazo ? dataBr(i.prazo) : undefined, antes?.prazo ? dataBr(antes.prazo.toISOString().slice(0, 10)) : undefined),
-        i.responsavelId != null
-          ? diffRow("Responsável", await nomeUsuario(i.responsavelId), antes?.responsavelId ? await nomeUsuario(antes.responsavelId) : undefined)
-          : null,
+        ...(await detalhesProjeto(i)),
+        diffRow("Arquivado", i.arquivado === undefined ? undefined : i.arquivado ? "Sim" : "Não", a ? (a.arquivadoEm ? "Sim" : "Não") : undefined),
       ].filter((d): d is NonNullable<typeof d> => d != null)
-      return { resumo: "Editar projeto", detalhes: det.length ? det : undefined }
+      return { resumo: `Editar projeto: ${a?.nomeCurto ?? `#${i.id}`}`, detalhes: det.length ? det : undefined }
     },
-    run: async (_ctx, i) =>
-      updateProjeto(i.id, {
-        nome: i.nome,
-        descricao: i.descricao,
-        status: i.status,
-        area: i.area,
-        prazo: i.prazo,
-        responsavelId: i.responsavelId,
-        casoId: i.casoId,
-        clienteId: i.clienteId,
-      }),
+    run: async (ctx, { id, ...patch }) => atualizarProjeto(id, patch, await resolverAtor(ctx.user.email)),
   }),
   defineTool({
     name: "excluir_projeto",
     kind: "mutation",
     roles: ROLES_PROJETO_ESCRITA,
-    description:
-      "Exclui um projeto (soft-delete REVERSÍVEL). As tarefas do projeto NÃO são apagadas — passam a ler como " +
-      "'sem projeto'. Id via listar_projetos.",
-    schema: z.object({ id: idReq.describe("Id do projeto") }),
+    description: "Exclui um projeto (reversível). As tarefas NÃO somem — ficam 'Sem projeto'.",
+    schema: z.object({ id: idReq }),
     resumo: (i) => `Excluir projeto #${i.id}`,
     montarConfirmacao: async (_ctx, i) => {
-      const p = await prisma.projeto.findFirst({ where: { id: i.id, excluidoEm: null }, select: { nome: true } })
-      return { resumo: "Excluir projeto", detalhes: [{ label: "Projeto", valor: p?.nome ?? `#${i.id}` }] }
+      const p = await prisma.projeto.findUnique({ where: { id: i.id }, select: { nomeCurto: true } })
+      return { resumo: `Excluir projeto: ${p?.nomeCurto ?? `#${i.id}`}` }
     },
-    run: async (_ctx, i) => deleteProjeto(i.id),
+    run: async (ctx, i) => excluirProjeto(i.id, await resolverAtor(ctx.user.email)),
   }),
   defineTool({
-    name: "criar_secao",
+    name: "criar_projeto_de_modelo",
     kind: "mutation",
     roles: ROLES_PROJETO_ESCRITA,
     description:
-      "Cria uma seção (coluna do quadro / grupo da lista, estilo Todoist) num projeto. Informe o projetoId " +
-      "(via listar_projetos) e o nome; a ordem é anexada ao final automaticamente.",
+      "Cria um projeto a partir de um modelo (id via listar_modelos_projeto): gera, para cada GRUPO, uma tarefa por passo do modelo, " +
+      "com prazo = prazo do grupo − dias antes, e as ligações do modelo. Informe os grupos (nome + prazo) ou só a quantidade " +
+      "(nomes e prazos padrão), e o responsável de cada papel (papelId → id da pessoa; omitido = padrão do modelo).",
     schema: z.object({
-      projetoId: idReq.describe("Id do projeto (via listar_projetos)"),
-      nome: z.string().min(1).max(120).describe("Nome da seção"),
-      cor: z.string().max(40).optional().describe("Cor opcional (hex ou token)"),
+      modeloId: idReq,
+      projeto: projetoCampos,
+      grupos: z.array(z.object({ nome: z.string().min(1).max(160), prazo: dataISO })).max(12).optional(),
+      quantidadeGrupos: z.number().int().min(1).max(12).optional(),
+      responsaveis: z.record(z.string(), idOpt).optional().describe("{ papelId: idDaPessoa }"),
     }),
-    resumo: (i) => `Criar seção "${i.nome}"`,
+    resumo: (i) => `Criar projeto ${i.projeto.nomeCurto} a partir de modelo`,
     montarConfirmacao: async (_ctx, i) => {
-      const p = await prisma.projeto.findFirst({ where: { id: i.projetoId, excluidoEm: null }, select: { nome: true } })
+      const m = (await getModelos()).find((x) => x.id === i.modeloId)
+      const n = i.grupos?.length ?? i.quantidadeGrupos ?? 1
       return {
-        resumo: `Criar seção: ${i.nome}`,
+        resumo: `Criar projeto ${i.projeto.nomeCurto} (${m?.nome ?? "modelo"})`,
         detalhes: [
-          { label: "Projeto", valor: p?.nome ?? `#${i.projetoId}` },
-          { label: "Seção", valor: i.nome },
+          ...(await detalhesProjeto(i.projeto)),
+          { label: "Grupos", valor: String(n) },
+          { label: "Tarefas", valor: String(n * (m?.passos.length ?? 0)) },
         ],
       }
     },
-    run: async (_ctx, i) => createSecao(i.projetoId, { nome: i.nome, cor: i.cor ?? null }),
+    run: async (ctx, i) => {
+      const m = (await getModelos()).find((x) => x.id === i.modeloId)
+      if (!m) return { erro: "Modelo não encontrado" }
+      const grupos = i.grupos?.length ? i.grupos : gruposPadrao(m, i.quantidadeGrupos ?? 1, hojeSP())
+      return criarProjetoDeModelo(
+        { modeloId: i.modeloId, projeto: i.projeto, grupos, responsaveis: i.responsaveis },
+        await resolverAtor(ctx.user.email),
+      )
+    },
   }),
   defineTool({
-    name: "criar_secoes_lote",
+    name: "criar_estrutura_projeto",
     kind: "mutation",
     roles: ROLES_PROJETO_ESCRITA,
     description:
-      "Cria VÁRIAS seções num projeto de UMA vez (prefira isto a repetir criar_secao — muito mais rápido e barato). " +
-      "Informe o projetoId (via listar_projetos) e a lista de seções (nome + cor opcional), na ordem desejada. " +
-      "DEVOLVE os ids das seções criadas — use-os direto em criar_tarefas_lote (secaoId) SEM re-detalhar o projeto.",
+      "Cria UM projeto com TODAS as tarefas (e as ligações entre elas) numa ÚNICA chamada — use SEMPRE que o pedido for 'crie um projeto com as tarefas …'. " +
+      "Cada tarefa: título, grupo (opcional, ex.: 'Protocolo 01'), responsavelId e prazo quando souber (prazo omitido = sexta desta semana), prazoFatal, " +
+      "e depoisDe = índices (0-based) de tarefas ANTERIORES desta mesma lista que precisam terminar antes. Não é preciso descobrir ids.",
     schema: z.object({
-      projetoId: idReq.describe("Id do projeto (via listar_projetos)"),
-      secoes: z
-        .array(z.object({ nome: z.string().min(1).max(120).describe("Nome da seção"), cor: z.string().max(40).optional() }))
-        .min(1)
-        .max(50)
-        .describe("Seções a criar, na ordem desejada"),
+      projeto: projetoCampos,
+      tarefas: z
+        .array(
+          z.object({
+            titulo: z.string().min(2).max(300),
+            grupo: z.string().max(160).optional(),
+            responsavelId: idOpt,
+            prazo: dataISO.optional(),
+            prazoFatal: z.boolean().optional(),
+            descricao: z.string().max(4000).optional(),
+            checklist: z.array(z.string().max(300)).max(30).optional(),
+            depoisDe: z.array(z.number().int().min(0)).max(20).optional(),
+          }),
+        )
+        .max(120),
     }),
-    resumo: (i) => `Criar ${i.secoes.length} seções`,
-    montarConfirmacao: async (_ctx, i) => {
-      const p = await prisma.projeto.findFirst({ where: { id: i.projetoId, excluidoEm: null }, select: { nome: true } })
-      return {
-        resumo: `Criar ${i.secoes.length} seções`,
-        detalhes: [
-          { label: "Projeto", valor: p?.nome ?? `#${i.projetoId}` },
-          { label: "Seções", valor: i.secoes.map((s) => s.nome).join(" · ") },
-        ],
-      }
-    },
-    run: async (_ctx, i) => createSecoes(i.projetoId, i.secoes.map((s) => ({ nome: s.nome, cor: s.cor ?? null }))),
-  }),
-  defineTool({
-    name: "editar_secao",
-    kind: "mutation",
-    roles: ROLES_PROJETO_ESCRITA,
-    description: "Renomeia/recolore uma seção. Id da seção via detalhe_projeto. Envie só o que muda (nome, cor).",
-    schema: z.object({
-      id: idReq.describe("Id da seção (via detalhe_projeto → secoes)"),
-      nome: z.string().min(1).max(120).optional(),
-      cor: z.string().max(40).optional(),
+    resumo: (i) => `Criar projeto ${i.projeto.nomeCurto} com ${i.tarefas.length} tarefas`,
+    montarConfirmacao: async (_ctx, i) => ({
+      resumo: `Criar projeto ${i.projeto.nomeCurto} com ${i.tarefas.length} tarefas`,
+      detalhes: [
+        ...(await detalhesProjeto(i.projeto)),
+        { label: "Tarefas", valor: String(i.tarefas.length) },
+        { label: "Ligações", valor: String(i.tarefas.reduce((n, t) => n + (t.depoisDe?.length ?? 0), 0)) },
+      ],
     }),
-    resumo: (i) => `Editar seção #${i.id}`,
-    montarConfirmacao: async (_ctx, i) => {
-      const antes = await prisma.projetoSecao.findUnique({ where: { id: i.id }, select: { nome: true } })
-      const det = [diffRow("Nome", i.nome, antes?.nome)].filter((d): d is NonNullable<typeof d> => d != null)
-      return { resumo: "Editar seção", detalhes: det.length ? det : undefined }
-    },
-    run: async (_ctx, i) => updateSecao(i.id, { nome: i.nome, cor: i.cor }),
-  }),
-  defineTool({
-    name: "excluir_secao",
-    kind: "mutation",
-    roles: ROLES_PROJETO_ESCRITA,
-    description:
-      "Exclui uma seção. As tarefas dela NÃO são apagadas — viram 'Sem seção'. Id da seção via detalhe_projeto.",
-    schema: z.object({ id: idReq.describe("Id da seção (via detalhe_projeto → secoes)") }),
-    resumo: (i) => `Excluir seção #${i.id}`,
-    montarConfirmacao: async (_ctx, i) => {
-      const s = await prisma.projetoSecao.findUnique({ where: { id: i.id }, select: { nome: true } })
-      return { resumo: "Excluir seção", detalhes: [{ label: "Seção", valor: s?.nome ?? `#${i.id}` }] }
-    },
-    run: async (_ctx, i) => deleteSecao(i.id),
-  }),
-  defineTool({
-    name: "reordenar_secoes",
-    kind: "mutation",
-    roles: ROLES_PROJETO_ESCRITA,
-    description:
-      "Reordena as seções de um projeto. Passe o projetoId e a lista de ids das seções na NOVA ordem desejada " +
-      "(ids via detalhe_projeto → secoes).",
-    schema: z.object({
-      projetoId: idReq.describe("Id do projeto"),
-      ids: z.array(idReq).min(1).max(100).describe("Ids das seções na nova ordem"),
-    }),
-    resumo: (i) => `Reordenar ${i.ids.length} seções do projeto #${i.projetoId}`,
-    montarConfirmacao: async (_ctx, i) => {
-      const p = await prisma.projeto.findFirst({ where: { id: i.projetoId, excluidoEm: null }, select: { nome: true } })
-      return {
-        resumo: "Reordenar seções",
-        detalhes: [{ label: "Projeto", valor: p?.nome ?? `#${i.projetoId}` }, { label: "Nova ordem", valor: `${i.ids.length} seções` }],
-      }
-    },
-    run: async (_ctx, i) => reordenarSecoes(i.projetoId, i.ids),
-  }),
-  defineTool({
-    name: "instanciar_template_projeto",
-    kind: "mutation",
-    roles: ROLES_PROJETO_ESCRITA,
-    description:
-      "Instancia um template de projeto: cria 1 projeto + as tarefas-padrão com prazos relativos calculados em " +
-      "DIAS ÚTEIS a partir da data de início. Obtenha o templateId em listar_templates_projeto. Vincule a um " +
-      "caso/cliente quando indicado e defina o responsável (líder + responsável-padrão das tarefas).",
-    schema: z.object({
-      templateId: idReq.describe("Id do template (via listar_templates_projeto)"),
-      dataInicio: dataISO.describe("Data de início (AAAA-MM-DD) — base dos prazos relativos"),
-      nome: z.string().max(200).optional().describe("Nome do projeto (padrão = nome do template)"),
-      responsavelId: idOpt.describe("Líder + responsável-padrão (id via listar_projetos → socios)"),
-      casoId: idOpt.describe("Vincular a um caso (id via buscar)"),
-      clienteId: idOpt.describe("Vincular a um cliente (id via buscar)"),
-    }),
-    resumo: (i) => `Instanciar template #${i.templateId} em ${i.dataInicio}`,
-    montarConfirmacao: async (_ctx, i) => {
-      const t = await prisma.projetoTemplate.findUnique({ where: { id: i.templateId }, select: { nome: true } })
-      const det: { label: string; valor: string }[] = [
-        { label: "Template", valor: t?.nome ?? `#${i.templateId}` },
-        { label: "Início", valor: dataBr(i.dataInicio) },
-      ]
-      if (i.nome) det.push({ label: "Nome do projeto", valor: i.nome })
-      if (i.responsavelId) det.push({ label: "Responsável", valor: await nomeUsuario(i.responsavelId) })
-      if (i.casoId) det.push({ label: "Caso", valor: await nomeCaso(i.casoId) })
-      if (i.clienteId) det.push({ label: "Cliente", valor: await nomeCliente(i.clienteId) })
-      return { resumo: `Instanciar "${t?.nome ?? "template"}"`, detalhes: det }
-    },
-    run: async (ctx, i) =>
-      instanciarTemplateProjeto(
-        {
-          templateId: i.templateId,
-          dataInicio: i.dataInicio,
-          nome: i.nome,
-          responsavelId: i.responsavelId ?? null,
-          casoId: i.casoId ?? null,
-          clienteId: i.clienteId ?? null,
-        },
-        ctx.user.email,
-      ),
+    run: async (ctx, i) => montarEstruturaProjeto(i.projeto, i.tarefas, await resolverAtor(ctx.user.email)),
   }),
 ]

@@ -105,11 +105,11 @@ interface TaskRowLike {
   id: number
   titulo: string
   status: string
-  prio?: number
+  prazoFatal?: boolean
   prazo?: string | null
 }
 function tarefaRow(t: TaskRowLike): CardTarefaData {
-  return { id: t.id, titulo: t.titulo, status: t.status, prio: t.prio, prazo: t.prazo }
+  return { id: t.id, titulo: t.titulo, status: t.status, prazoFatal: t.prazoFatal, prazo: t.prazo }
 }
 
 // ── Processos & Casos (mesma família de card — ver cards-types.ts) ───────────

@@ -285,20 +285,16 @@ describe("registry — deterministic, valid tool schemas", () => {
     // leitura disponível para todos (inclusive estagiário/staff)
     for (const role of ["estagiario", "staff", "advogado", "socio", "admin"]) {
       expect(nomes(role).has("listar_projetos"), role).toBe(true)
-      expect(nomes(role).has("listar_templates_projeto"), role).toBe(true)
+      expect(nomes(role).has("detalhe_projeto"), role).toBe(true)
+      expect(nomes(role).has("listar_modelos_projeto"), role).toBe(true)
     }
-    // criar/editar/excluir projeto + CRUD de seção + instanciar: só sócio/advogado (+ admin implícito)
+    // criar/editar/excluir projeto + criar de modelo + estrutura: só sócio/advogado (+ admin implícito)
     const ESCRITA = [
       "criar_projeto",
-      "criar_estrutura_projetos",
+      "criar_estrutura_projeto",
+      "criar_projeto_de_modelo",
       "editar_projeto",
       "excluir_projeto",
-      "criar_secao",
-      "criar_secoes_lote",
-      "editar_secao",
-      "excluir_secao",
-      "reordenar_secoes",
-      "instanciar_template_projeto",
     ]
     for (const n of ESCRITA) {
       expect(nomes("estagiario").has(n)).toBe(false)
@@ -308,25 +304,27 @@ describe("registry — deterministic, valid tool schemas", () => {
     }
   })
 
-  it("as tools de LOTE existem, são mutações e criar_tarefas_lote fica aberta a toda a equipe", () => {
-    expect(TOOLS_BY_NAME.get("criar_tarefas_lote")?.kind).toBe("mutation")
-    expect(TOOLS_BY_NAME.get("criar_secoes_lote")?.kind).toBe("mutation")
-    // criar_tarefas_lote não tem gate de papel (igual a criar_tarefa) → todos veem
+  it("as tools de tarefa (lote, concluir, ligar) são mutações abertas a toda a equipe", () => {
+    for (const n of ["criar_tarefas_lote", "concluir_tarefa", "ligar_tarefas", "desligar_tarefas", "editar_tarefa"]) {
+      expect(TOOLS_BY_NAME.get(n)?.kind, n).toBe("mutation")
+    }
+    // sem gate de papel: qualquer usuário edita tarefas do escritório
     for (const role of ["estagiario", "staff", "advogado", "socio", "admin"]) {
-      expect(new Set(toApiTools(role).map((t) => t.name)).has("criar_tarefas_lote"), role).toBe(true)
+      const nomes = new Set(toApiTools(role).map((t) => t.name))
+      for (const n of ["criar_tarefas_lote", "concluir_tarefa", "ligar_tarefas"]) expect(nomes.has(n), `${role}:${n}`).toBe(true)
     }
   })
 })
 
 describe("deveAutoExecutar — política do modo automático (sem confirmar cada criação)", () => {
   it("auto ligado + modo agente: TODA criação/edição executa sem confirmação (várias por vez)", () => {
-    for (const n of ["criar_projeto", "criar_estrutura_projetos", "criar_secao", "criar_secoes_lote", "criar_tarefa", "criar_tarefas_lote", "editar_projeto", "reordenar_secoes", "instanciar_template_projeto"]) {
+    for (const n of ["criar_projeto", "criar_estrutura_projeto", "criar_projeto_de_modelo", "criar_tarefa", "criar_tarefas_lote", "editar_projeto", "concluir_tarefa", "ligar_tarefas"]) {
       expect(deveAutoExecutar(true, "agente", n), n).toBe(true)
     }
   })
 
   it("auto DESLIGADO: sempre pede confirmação", () => {
-    expect(deveAutoExecutar(false, "agente", "criar_secao")).toBe(false)
+    expect(deveAutoExecutar(false, "agente", "criar_projeto")).toBe(false)
     expect(deveAutoExecutar(undefined, "agente", "criar_tarefa")).toBe(false)
   })
 
@@ -336,7 +334,7 @@ describe("deveAutoExecutar — política do modo automático (sem confirmar cada
 
   it("ações destrutivas (excluir/anonimizar) confirmam mesmo com auto ligado", () => {
     expect(deveAutoExecutar(true, "agente", "excluir_projeto")).toBe(false)
-    expect(deveAutoExecutar(true, "agente", "excluir_secao")).toBe(false)
+    expect(deveAutoExecutar(true, "agente", "excluir_tarefa")).toBe(false)
     expect(deveAutoExecutar(true, "agente", "anonimizar_cliente")).toBe(false)
   })
 })

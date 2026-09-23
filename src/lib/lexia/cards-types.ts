@@ -52,7 +52,7 @@ export interface CardTarefaData {
   id: number
   titulo: string
   status: string
-  prio?: number
+  prazoFatal?: boolean
   prazo?: string | null // ISO
   responsavel?: string | null
 }

@@ -108,6 +108,13 @@ export function linkParaResultado(toolName: string, result: unknown, payload: un
       bruto = { rota: id ? `/tarefas?tarefa=${id}` : "/tarefas", label: "Ver tarefa" }
       break
     }
+    case "criar_projeto":
+    case "criar_estrutura_projeto":
+    case "criar_projeto_de_modelo": {
+      const id = idDe(result)
+      bruto = { rota: id ? `/projetos/${id}` : "/projetos", label: "Ver projeto" }
+      break
+    }
     default:
       return null
   }
