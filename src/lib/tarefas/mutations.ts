@@ -15,6 +15,7 @@ import { parseRecur, proximaOcorrencia } from "@/lib/datas/recorrencia"
 import { notificarSuaVez, notificarTarefaAtribuida, notificarTarefaConcluida } from "@/lib/notificacoes/triggers"
 import { RegistroAcao } from "./acoes"
 import { fromDate, optId, optStr, parseArr, reqStr, toDate } from "./_input"
+import { posicaoDepois } from "./filtros"
 import {
   aguardandoRotulo,
   criariaCiclo,
@@ -29,6 +30,7 @@ import {
   precisaTextoAguardando,
   statusAoDesligar,
   statusAoLigar,
+  tituloCopia,
 } from "./regras"
 import { isStatus, statusLabel, type ChecklistItem, type TaskStatus } from "./types"
 
@@ -251,6 +253,80 @@ export async function criarTarefas(lista: NovaTarefa[], ator: Ator) {
     await historico(tx, reg, ator, ids.map((id) => ({ tarefaId: id, texto: "Tarefa criada" })))
     return { ids, acaoId: await reg.salvar(`${ids.length} tarefas criadas`) }
   }, TX_OPTS)
+}
+
+// ── duplicar ─────────────────────────────────────────────────────────────────
+/**
+ * "Duplicar": nova tarefa com os mesmos dados — projeto, grupo, responsável,
+ * cliente, prazo, prazo fatal, descrição, checklist (desmarcado), repetição e
+ * vínculos — e as mesmas "só começa depois de" (as que ELA libera, não: isso
+ * mudaria outras tarefas). Nasce "a fazer", ou "aguardando" se alguma anterior
+ * ainda está aberta. Comentários, histórico e anexos não vêm junto. Na ordem
+ * manual de quem duplicou, entra logo abaixo da original.
+ */
+export async function duplicarTarefa(id: number, ator: Ator) {
+  const hoje = hojeSP()
+  const r = await prisma.$transaction(async (tx) => {
+    const nos = await grafo(tx, [id]) // trava o projeto: as ligações copiadas refletem o estado atual
+    const map = indexar(nos)
+    const o = map.get(id)
+    const t = await tx.tarefa.findUnique({ where: { id } })
+    if (!o || !t) throw new UserError("Tarefa não encontrada")
+    // ligações só existem dentro de um projeto (vivo); a cópia só RECEBE ligações → nunca forma ciclo
+    const anteriores =
+      o.projetoId == null
+        ? []
+        : o.anteriores.map((a) => map.get(a)).filter((a): a is NoGrafo => !!a && a.projetoId === o.projetoId)
+    const reg = new RegistroAcao(tx, ator.id)
+    const nova = await inserir(
+      tx,
+      reg,
+      ator,
+      {
+        titulo: tituloCopia(t.titulo),
+        projetoId: o.projetoId,
+        grupo: t.grupo,
+        responsavelId: t.responsavelId,
+        clienteId: t.clienteId,
+        prazo: o.prazo,
+        prazoFatal: t.prazoFatal,
+        descricao: t.notes,
+        checklist: checklistDe(t.checklist).map((c) => c.texto),
+        recur: t.recur,
+        casoId: t.casoId,
+        processoId: t.processoId,
+        leadId: t.leadId,
+        status: anteriores.some((a) => a.status !== "done") ? "wait" : "todo",
+        origem: "duplicada",
+      },
+      hoje,
+    )
+    if (anteriores.length) {
+      await tx.tarefaLigacao.createMany({ data: anteriores.map((a) => ({ anteriorId: a.id, seguinteId: nova.id })) })
+    }
+    await historico(tx, reg, ator, [{ tarefaId: nova.id, texto: `Duplicada de: ${t.titulo}` }])
+    // Ordem manual de quem duplicou (preferência pessoal: fora do Desfazer — some junto com a tarefa).
+    let ordem: number | null = null
+    if (ator.id != null) {
+      const minhas = await tx.tarefaOrdem.findMany({ where: { userId: ator.id }, select: { tarefaId: true, ordem: true } })
+      const daOriginal = minhas.find((m) => m.tarefaId === id)
+      if (daOriginal) {
+        ordem = posicaoDepois(daOriginal.ordem, minhas.map((m) => m.ordem))
+        await tx.tarefaOrdem.create({ data: { userId: ator.id, tarefaId: nova.id, ordem } })
+      }
+    }
+    return { nova, ordem, acaoId: await reg.salvar(`Duplicada: ${t.titulo}`) }
+  }, TX_OPTS)
+  if (r.nova.responsavelId && r.nova.responsavelId !== ator.id) {
+    void notificarTarefaAtribuida({
+      tarefaId: r.nova.id,
+      titulo: r.nova.titulo,
+      responsavelId: r.nova.responsavelId,
+      actorEmail: ator.email,
+      prazo: r.nova.prazo,
+    })
+  }
+  return { id: r.nova.id, titulo: r.nova.titulo, ordem: r.ordem, acaoId: r.acaoId }
 }
 
 // ── editar campos ────────────────────────────────────────────────────────────
