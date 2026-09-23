@@ -4,7 +4,7 @@
 // audiências, caixa de entrada de publicações a triar e tarefas pendentes.
 import { useMemo, useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
-import { FxFrame, CrmBadge, CrmEmpty, CrmPrioTag, useCrmToast } from "@/components/crm/crm-kit"
+import { FxFrame, CrmBadge, CrmEmpty, CrmPrazoFatalTag, useCrmToast } from "@/components/crm/crm-kit"
 import { crmDate } from "@/components/crm/crm-fmt"
 import { Icon, type CrmIconName } from "@/components/crm/crm-icons"
 import type { ProcessosDataset } from "@/lib/processos/dataset"
@@ -234,7 +234,7 @@ export function ProcPainel({
           ) : (
             tarefas.slice(0, 5).map((t, i) => (
               <div key={t.id} className="crm-row" style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 18px", borderTop: i ? "1px solid var(--border)" : "none" }}>
-                <CrmPrioTag p={t.prio} />
+                {t.prazoFatal && <CrmPrazoFatalTag />}
                 <span style={{ flex: 1, fontSize: 13, color: "var(--text)", minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.titulo}</span>
                 {t.prazo && <span style={{ fontSize: 11, color: "var(--text-subtle)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{crmDate(t.prazo)}</span>}
                 <ProcResp nome={respNome(t.responsavelId)} showName={false} size={20} />
