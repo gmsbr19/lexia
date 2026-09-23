@@ -114,7 +114,16 @@ function TkCardBase({
               Concluir
             </TkMenuItem>
           )}
-          {!done && <TkMenuSep />}
+          <TkMenuItem
+            icon="copy"
+            onClick={() => {
+              pop.close()
+              act.duplicar(t.id)
+            }}
+          >
+            Duplicar
+          </TkMenuItem>
+          <TkMenuSep />
           <TkMenuLabel>Mover para…</TkMenuLabel>
           {STATUS.map((st) => (
             <TkMenuItem

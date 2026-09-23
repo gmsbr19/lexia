@@ -492,6 +492,19 @@ export function TarefasApp(props: TarefasAppProps) {
   // Item recém-adicionado ainda tem id provisório até a recarga — não edita antes disso.
   const provisorio = (item: { id: string }) => item.id.startsWith("tmp-")
 
+  const duplicar = async (id: number, abrir: boolean) => {
+    const t = map.get(id)
+    if (!t) return
+    const r = await enviar<{ id: number; ordem: number | null; acaoId: string }>(`/api/tarefas/${id}/duplicar`, "POST")
+    if (!r) return
+    const { ordem } = r
+    // na ordem manual de quem duplicou, a cópia entra logo abaixo da original
+    if (ordem != null) setOrdemManual((m) => new Map(m).set(r.id, ordem))
+    avisar({ msg: `Duplicada: ${t.titulo}`, acaoId: r.acaoId })
+    await recarregar()
+    if (abrir) setOpenId(r.id)
+  }
+
   const comAviso = async (req: Promise<{ acaoId: string } | null>, msg: string) => {
     const r = await req
     if (!r) return
@@ -533,6 +546,7 @@ export function TarefasApp(props: TarefasAppProps) {
       if (openId === id) setOpenId(null)
       void comAviso(enviar(`/api/tarefas/${id}`, "DELETE"), `Excluída: ${t.titulo}`)
     },
+    duplicar: (id, abrir) => void duplicar(id, !!abrir),
     novaTarefa: () => setDialogo({ kind: "nova" }),
     criar: async (n) => {
       const r = await enviar<{ id: number; prazo: string; acaoId: string }>("/api/tarefas", "POST", n)

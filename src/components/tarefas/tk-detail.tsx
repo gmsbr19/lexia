@@ -861,6 +861,16 @@ export function TkDetail({ id, onClose }: { id: number; onClose: () => void }) {
       </span>
       <TkPop open={mais.open} onClose={mais.close} anchor={mais.anchor} align="right" width={180}>
         <TkMenuItem
+          icon="copy"
+          onClick={() => {
+            mais.close()
+            act.duplicar(t.id, true)
+          }}
+        >
+          Duplicar
+        </TkMenuItem>
+        <TkMenuSep />
+        <TkMenuItem
           icon="trash2"
           danger
           onClick={() => {

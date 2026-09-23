@@ -57,6 +57,8 @@ export interface Acoes {
   checklistRemover: (id: number, item: ChecklistItem) => void
   checklistParaTarefa: (id: number, item: ChecklistItem) => void
   excluir: (id: number) => void
+  /** Cria uma cópia; `abrir` troca o detalhe aberto pela cópia. */
+  duplicar: (id: number, abrir?: boolean) => void
   novaTarefa: () => void
   criar: (n: NovaTarefaUI) => Promise<boolean>
   criarProjeto: (v: ProjetoForm) => Promise<number | null>
