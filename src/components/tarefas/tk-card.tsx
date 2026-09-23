@@ -49,6 +49,7 @@ function TkCardBase({
   return (
     <div
       className={"tk-card" + (done ? " done" : "") + (dim ? " dim" : "") + (lit ? " lit" : "") + (pop.open ? " menu-open" : "")}
+      data-card={t.id}
       draggable={arrastavel}
       onDragStart={(e) => {
         e.dataTransfer.setData("text/plain", String(t.id))

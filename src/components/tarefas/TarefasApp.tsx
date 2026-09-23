@@ -7,7 +7,7 @@
 // prazos seguintes? / Quem cuida do próximo passo?) e o aviso (toast).
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import { apiSend } from "@/lib/client/api"
-import { FILTROS_PADRAO, SEM_PROJETO, type Filtros } from "@/lib/tarefas/filtros"
+import { FILTROS_PADRAO, SEM_PROJETO, reposicionar, type Filtros, type PrefsQuadro } from "@/lib/tarefas/filtros"
 import {
   aguardandoRotulo,
   criariaCiclo,
@@ -169,6 +169,10 @@ export interface TarefasAppProps {
   projetoId?: number | null
   tarefaId?: number | null
   visao?: Filtros["visao"] | null
+  /** Visão preferida de quem está vendo (ordenar, direção, agrupar). */
+  prefs: PrefsQuadro
+  /** Ordem manual de quem está vendo: { tarefaId: posição }. */
+  ordemManual: Record<number, number>
 }
 
 const msgErro = (e: unknown) => (e instanceof Error && e.message ? e.message : "Não foi possível concluir a ação")
@@ -178,6 +182,7 @@ export function TarefasApp(props: TarefasAppProps) {
   const [board, setBoard] = useState<TarefasBoard>(props.inicial)
   const filtrosIniciais = (projetoId: number | null | undefined, visao?: Filtros["visao"] | null): Filtros => ({
     ...FILTROS_PADRAO,
+    ...props.prefs,
     escopo: gestao ? "team" : "mine",
     projetos: projetoId ? [projetoId] : [],
     visao: visao && (visao !== "flow" || projetoId) ? visao : "board",
@@ -188,6 +193,9 @@ export function TarefasApp(props: TarefasAppProps) {
   const [dialogo, setDialogo] = useState<Dialogo | null>(null)
   const [aviso, setAviso] = useState<(Aviso & { k: number }) | null>(null)
   const [dragging, setDragging] = useState<number | null>(null)
+  const [ordemManual, setOrdemManual] = useState<Map<number, number>>(
+    () => new Map(Object.entries(props.ordemManual).map(([k, v]) => [Number(k), v])),
+  )
   const [ultimoProjeto, setUltimoProjeto] = useState<number | null>(null)
   const [portal, setPortal] = useState<HTMLElement | null>(null)
   const mobile = useMobile()
@@ -203,6 +211,20 @@ export function TarefasApp(props: TarefasAppProps) {
   const nomePessoa = useCallback((id: number | null) => (id == null ? "sem responsável" : (pessoaMap.get(id)?.first ?? "sem responsável")), [pessoaMap])
 
   const setF = useCallback((p: Partial<Filtros>) => setFState((f) => ({ ...f, ...p })), [])
+  // Volta aos filtros padrão SEM perder a visão preferida (ordenar/direção/agrupar).
+  const resetFiltros = useCallback(
+    (p: Partial<Filtros>) => setFState((f) => ({ ...FILTROS_PADRAO, ordenar: f.ordenar, direcao: f.direcao, agrupar: f.agrupar, ...p })),
+    [],
+  )
+
+  // A visão (ordenar/direção/agrupar) fica salva por pessoa: grava quando muda.
+  const prefsSalvas = useRef(JSON.stringify(props.prefs))
+  useEffect(() => {
+    const atual = JSON.stringify({ ordenar: F.ordenar, direcao: F.direcao, agrupar: F.agrupar })
+    if (atual === prefsSalvas.current) return
+    prefsSalvas.current = atual
+    apiSend("/api/tarefas/preferencias", "PATCH", JSON.parse(atual)).catch(() => {})
+  }, [F.ordenar, F.direcao, F.agrupar])
 
   // ── URL ↔ estado (sem navegação do Next: nada é recarregado) ──
   useEffect(() => {
@@ -565,8 +587,18 @@ export function TarefasApp(props: TarefasAppProps) {
       return r.id
     },
     abrirProjeto: (id) => {
-      setFState({ ...FILTROS_PADRAO, escopo: gestao ? "team" : "mine", projetos: [id] })
+      resetFiltros({ escopo: gestao ? "team" : "mine", projetos: [id] })
       setPagina("board")
+    },
+    reordenar: (ids) => {
+      const itens = reposicionar(ids, ordemManual)
+      setOrdemManual((m) => {
+        const n = new Map(m)
+        for (const i of itens) n.set(i.id, i.ordem)
+        return n
+      })
+      if (F.ordenar !== "manual") setF({ ordenar: "manual" })
+      apiSend("/api/tarefas/ordem", "PUT", { itens }).catch(erro)
     },
     recarregar,
     avisar,
@@ -604,6 +636,7 @@ export function TarefasApp(props: TarefasAppProps) {
     mobile,
     act: acoes,
     openTask: setOpenId,
+    ordemManual: (id) => ordemManual.get(id),
     dragging,
     setDragging,
     portal,
@@ -632,7 +665,7 @@ export function TarefasApp(props: TarefasAppProps) {
     ) : (
       <TkTeamPage
         onAbrirPessoa={(id) => {
-          setFState({ ...FILTROS_PADRAO, escopo: "team", responsavel: id })
+          resetFiltros({ escopo: "team", responsavel: id })
           setPagina("board")
         }}
       />

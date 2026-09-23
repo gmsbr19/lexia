@@ -25,18 +25,13 @@ const VAZIO: Record<TaskStatus, string> = {
 
 export function TkMobileBoard({ F, setF, limpar }: { F: Filtros; setF: SetFiltros; limpar: () => void }) {
   const { tarefas, meId, hoje, gestao, projetosAtivos, projeto, act } = useTk()
-  const { ordemProjeto, nomePessoa } = useOrdenacao()
+  const ord = useOrdenacao()
   const [aba, setAba] = useState<TaskStatus>("todo")
   const pf = usePop()
   const esc = noEscopo(tarefas, F, meId)
   const vis = visiveis(tarefas, F, meId, hoje)
   const single = F.projetos.length === 1 && F.projetos[0] !== SEM_PROJETO ? projeto(F.projetos[0]) : null
-  const lista = ordenar(
-    vis.filter((t) => t.status === aba),
-    "due",
-    ordemProjeto,
-    nomePessoa,
-  )
+  const lista = ordenar(vis.filter((t) => t.status === aba), F.ordenar, ord, F.direcao)
   const nFiltros = F.projetos.length + (F.responsavel != null ? 1 : 0) + (F.prazo ? 1 : 0)
   const fluxo = F.visao === "flow" && single
   const toggleProj = (id: number) => setF({ projetos: F.projetos.includes(id) ? F.projetos.filter((x) => x !== id) : [...F.projetos, id] })

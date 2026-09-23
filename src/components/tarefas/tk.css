@@ -79,6 +79,10 @@
 .tk-scope .tk-cols { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .tk-scope .tk-col { display: flex; flex-direction: column; gap: 8px; min-height: 80px; padding: 3px; margin: -3px; border-radius: var(--r-md); transition: background var(--dur); }
 .tk-scope .tk-col.over { background: var(--accent-soft); outline: 1px dashed var(--border-gold); }
+/* onde o cartão arrastado vai entrar (não mexe no layout: margem negativa = o gap) */
+.tk-scope .tk-drop-line { height: 2px; margin: -5px 2px; border-radius: 1px; background: var(--accent-strong); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-strong) 25%, transparent); pointer-events: none; }
+/* Ordenar / Agrupar à vista na linha de filtros */
+.tk-scope .tk-viewbtn { gap: 5px; padding: 0 10px; }
 .tk-scope .tk-lane { border-top: 1px solid var(--border); padding-top: 2px; }
 .tk-scope .tk-lane-head { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 2px; border: none; background: transparent; color: var(--text); font: 500 14px var(--font-sans); cursor: pointer; }
 

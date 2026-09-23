@@ -6,7 +6,10 @@ import {
   AlertTriangle,
   Archive,
   ArchiveRestore,
+  ArrowDownWideNarrow,
   ArrowRight,
+  ArrowUpDown,
+  ArrowUpNarrowWide,
   AtSign,
   BarChart3,
   Bell,
@@ -72,6 +75,7 @@ import {
   Users,
   Workflow,
   X,
+  Layers,
 } from "lucide-react"
 
 const ICONS = {
@@ -144,6 +148,10 @@ const ICONS = {
   workflow: Workflow,
   download: Download,
   archiveRestore: ArchiveRestore,
+  arrowUpDown: ArrowUpDown,
+  sortAsc: ArrowUpNarrowWide,
+  sortDesc: ArrowDownWideNarrow,
+  layers: Layers,
 } satisfies Record<string, LucideIcon>
 
 export type TfIconName = keyof typeof ICONS

@@ -2,8 +2,10 @@
 
 // Tarefas — página Quadro: cabeçalho (título, linha-resumo clicável, Quadro |
 // Lista | Fluxo), linha de filtros (Minhas | Equipe, filtros ativos, Filtrar,
-// Mais opções), cabeçalho compacto do projeto quando há UM projeto filtrado,
-// colunas fixas com títulos que grudam ao rolar, raias e a Lista por prazo.
+// Ordenar e Agrupar à vista), cabeçalho compacto do projeto quando há UM projeto
+// filtrado, colunas fixas com títulos que grudam ao rolar, raias (projeto,
+// responsável, grupo) e a Lista por prazo. Arrastar um cartão para cima/baixo na
+// coluna grava a ordem manual DE QUEM ESTÁ VENDO e liga o "Ordenar: Manual".
 import { Fragment, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react"
 import { useAreasStore, resolveAreaLabel } from "@/lib/areas/store"
 import {
@@ -12,8 +14,11 @@ import {
   noEscopo,
   ordenar,
   visiveis,
+  type Agrupamento,
+  type CtxOrdenacao,
   type Filtros,
   type FiltroPrazo,
+  type Ordenacao,
 } from "@/lib/tarefas/filtros"
 import { cadeia, dataCurta, faixa, resumo, selo } from "@/lib/tarefas/regras"
 import { STATUS, statusLabel, type ProjetoRow, type TaskRow, type TaskStatus } from "@/lib/tarefas/types"
@@ -22,6 +27,7 @@ import { TkCard, TkCardSkeleton, type CardProps } from "./tk-card"
 import { useTk } from "./tk-context"
 import { TkFlowView } from "./tk-flow"
 import {
+  TkAvatar,
   TkChip,
   TkDot,
   TkDue,
@@ -41,13 +47,80 @@ import {
 export type SetFiltros = (p: Partial<Filtros>) => void
 
 // ── helpers ──────────────────────────────────────────────────────────────────
-export function useOrdenacao() {
-  const { projetos, nomePessoa } = useTk()
+/** Tudo que o `ordenar` precisa: ordem dos projetos, nomes e a ordem manual de quem vê. */
+export function useOrdenacao(): CtxOrdenacao {
+  const { projetos, nomePessoa, ordemManual } = useTk()
   const ordemProjeto = useMemo(() => {
     const m = new Map(projetos.map((p, i) => [p.id, i]))
     return (id: number | null) => (id == null ? 9999 : (m.get(id) ?? 9998))
   }, [projetos])
-  return { ordemProjeto, nomePessoa }
+  return { ordemProjeto, nomePessoa, ordemManual }
+}
+
+const ROTULO_ORDENAR: Record<Ordenacao, string> = { manual: "Manual", due: "Prazo", proj: "Projeto", owner: "Responsável" }
+const ROTULO_AGRUPAR: Record<Agrupamento, string> = { none: "Nenhum", proj: "Projeto", owner: "Responsável", group: "Grupo" }
+
+/** "Ordenar: Prazo" à vista na linha de filtros; cada critério crescente ou decrescente. */
+function TkOrdenarChip({ F, setF }: { F: Filtros; setF: SetFiltros }) {
+  const pop = usePop()
+  const manual = F.ordenar === "manual"
+  return (
+    <span style={{ display: "inline-flex" }}>
+      <button type="button" className="btn btn-ghost btn-sm tk-viewbtn" onClick={pop.toggle}>
+        <Icon name={manual ? "arrowUpDown" : F.direcao === "desc" ? "sortDesc" : "sortAsc"} size={14} />
+        <span style={{ color: "var(--text-muted)" }}>Ordenar:</span>
+        {ROTULO_ORDENAR[F.ordenar]}
+      </button>
+      <TkPop open={pop.open} onClose={pop.close} anchor={pop.anchor} align="right" width={220}>
+        <TkMenuLabel>Ordenar por</TkMenuLabel>
+        {(["due", "proj", "owner", "manual"] as Ordenacao[]).map((o) => (
+          <TkMenuItem key={o} checked={F.ordenar === o} onClick={() => setF({ ordenar: o })}>
+            {ROTULO_ORDENAR[o]}
+          </TkMenuItem>
+        ))}
+        <TkMenuSep />
+        <TkMenuLabel>Direção</TkMenuLabel>
+        <TkMenuItem icon="sortAsc" disabled={manual} checked={!manual && F.direcao === "asc"} onClick={() => setF({ direcao: "asc" })}>
+          Crescente
+        </TkMenuItem>
+        <TkMenuItem icon="sortDesc" disabled={manual} checked={!manual && F.direcao === "desc"} onClick={() => setF({ direcao: "desc" })}>
+          Decrescente
+        </TkMenuItem>
+      </TkPop>
+    </span>
+  )
+}
+
+/** "Agrupar: Projeto" — raias por projeto, responsável ou (dentro de um projeto) grupo. */
+function TkAgruparChip({ F, setF, single }: { F: Filtros; setF: SetFiltros; single: boolean }) {
+  const pop = usePop()
+  const efetivo: Agrupamento = (F.agrupar === "group" && !single) || (F.agrupar === "proj" && single) ? "none" : F.agrupar
+  const opcoes: Agrupamento[] = single ? ["none", "group", "owner"] : ["none", "proj", "owner"]
+  const ativo = efetivo !== "none"
+  return (
+    <span style={{ display: "inline-flex" }}>
+      <button type="button" className="btn btn-ghost btn-sm tk-viewbtn" onClick={pop.toggle} style={{ color: ativo ? "var(--accent)" : undefined }}>
+        <Icon name="layers" size={14} />
+        <span style={{ color: ativo ? undefined : "var(--text-muted)" }}>Agrupar:</span>
+        {ROTULO_AGRUPAR[efetivo]}
+      </button>
+      <TkPop open={pop.open} onClose={pop.close} anchor={pop.anchor} align="right" width={200}>
+        <TkMenuLabel>Agrupar por</TkMenuLabel>
+        {opcoes.map((a) => (
+          <TkMenuItem
+            key={a}
+            checked={efetivo === a}
+            onClick={() => {
+              setF({ agrupar: a })
+              pop.close()
+            }}
+          >
+            {ROTULO_AGRUPAR[a]}
+          </TkMenuItem>
+        ))}
+      </TkPop>
+    </span>
+  )
 }
 
 // ── linha-resumo clicável ────────────────────────────────────────────────────
@@ -147,7 +220,6 @@ export function TkFilterBar({
 }) {
   const { projetosAtivos, pessoas, gestao, projeto, pessoa } = useTk()
   const pf = usePop()
-  const pm = usePop()
   const pp = usePop()
   const projOpts = [
     ...projetosAtivos.map((p) => ({ id: p.id, label: p.nomeCurto, cor: p.cor })),
@@ -229,7 +301,7 @@ export function TkFilterBar({
           </button>
         </div>
       )}
-      <div style={{ display: "flex", alignItems: "center", gap: 2, marginLeft: "auto" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 4, marginLeft: "auto" }}>
         <span style={{ display: "inline-flex" }}>
           <button type="button" className="btn btn-ghost btn-sm" onClick={pf.toggle} style={{ color: n ? "var(--accent)" : undefined }}>
             <Icon name="filter" size={14} />
@@ -263,36 +335,8 @@ export function TkFilterBar({
             </TkMenuItem>
           ))}
         </TkPop>
-        <span style={{ display: "inline-flex" }}>
-          <TkIconBtn icon="moreHorizontal" title="Mais opções" onClick={pm.toggle} style={{ width: 32, height: 32 }} />
-        </span>
-        <TkPop open={pm.open} onClose={pm.close} anchor={pm.anchor} align="right" width={220}>
-          <TkMenuLabel>Ordenar</TkMenuLabel>
-          {(
-            [
-              ["due", "Prazo"],
-              ["proj", "Projeto"],
-              ["owner", "Responsável"],
-            ] as const
-          ).map(([id, label]) => (
-            <TkMenuItem key={id} checked={F.ordenar === id} onClick={() => setF({ ordenar: id })}>
-              {label}
-            </TkMenuItem>
-          ))}
-          {F.visao === "board" && (
-            <>
-              <TkMenuSep />
-              <TkMenuItem checked={F.agrupar === "proj"} onClick={() => setF({ agrupar: F.agrupar === "proj" ? "none" : "proj" })}>
-                Agrupar por projeto
-              </TkMenuItem>
-              {single && (
-                <TkMenuItem checked={F.agrupar === "group"} onClick={() => setF({ agrupar: F.agrupar === "group" ? "none" : "group" })}>
-                  Agrupar por grupo
-                </TkMenuItem>
-              )}
-            </>
-          )}
-        </TkPop>
+        <TkOrdenarChip F={F} setF={setF} />
+        {F.visao === "board" && <TkAgruparChip F={F} setF={setF} single={!!single} />}
       </div>
     </div>
   )
@@ -313,6 +357,7 @@ function TkColumn({
   hover,
   chain,
   setHover,
+  manual,
   cap = 15,
 }: {
   status: TaskStatus
@@ -321,42 +366,91 @@ function TkColumn({
   hover: number | null
   chain: Set<number>
   setHover: (id: number | null) => void
+  /** "Ordenar: Manual": vindo de outra coluna, o cartão entra onde foi solto. */
+  manual: boolean
   cap?: number
 }) {
-  const { act, dragging } = useTk()
+  const { act, dragging, map } = useTk()
   const [over, setOver] = useState(false)
   const [todas, setTodas] = useState(false)
+  // posição de inserção entre os cartões visíveis (linha dourada)
+  const [alvo, setAlvo] = useState<number | null>(null)
   const shown = todas ? cards : cards.slice(0, cap)
   const realce = hover != null && chain.size > 1
+  const de = dragging != null ? cards.findIndex((c) => c.id === dragging) : -1
+  const mostrarLinha = dragging != null && alvo != null && !(de >= 0 && (alvo === de || alvo === de + 1))
+  const linha = <div className="tk-drop-line" aria-hidden />
   return (
     <div
       className={"tk-col" + (over ? " over" : "")}
       onDragOver={(e) => {
         e.preventDefault()
         if (!over) setOver(true)
+        if (dragging == null) return
+        // reordena na própria lista; vindo de outra coluna, só no modo Manual
+        const posiciona = de >= 0 || (manual && map.get(dragging)?.status !== status)
+        if (!posiciona) {
+          if (alvo != null) setAlvo(null)
+          return
+        }
+        const els = e.currentTarget.querySelectorAll<HTMLElement>("[data-card]")
+        let i = els.length
+        for (let k = 0; k < els.length; k++) {
+          const r = els[k].getBoundingClientRect()
+          if (e.clientY < r.top + r.height / 2) {
+            i = k
+            break
+          }
+        }
+        if (i !== alvo) setAlvo(i)
       }}
       onDragLeave={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver(false)
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+          setOver(false)
+          setAlvo(null)
+        }
       }}
       onDrop={(e) => {
         e.preventDefault()
         setOver(false)
+        const i = alvo
+        setAlvo(null)
         // Só aceita um cartão arrastado deste quadro (não texto solto de fora).
         const id = dragging
-        if (id != null && id === Number(e.dataTransfer.getData("text/plain"))) act.mover(id, status)
+        if (id == null || id !== Number(e.dataTransfer.getData("text/plain"))) return
+        const ids = cards.map((c) => c.id)
+        if (de >= 0) {
+          // mesma lista: nova posição manual (liga o "Ordenar: Manual")
+          if (i == null) return
+          const para = i > de ? i - 1 : i
+          if (para === de) return
+          ids.splice(de, 1)
+          ids.splice(para, 0, id)
+          act.reordenar(ids)
+          return
+        }
+        if (map.get(id)?.status === status) return // outra raia, mesmo status: nada muda
+        act.mover(id, status)
+        if (manual && i != null) {
+          ids.splice(Math.min(i, ids.length), 0, id)
+          act.reordenar(ids)
+        }
       }}
     >
-      {shown.map((t) => (
-        <TkCard
-          key={t.id}
-          t={t}
-          {...cardProps}
-          naColunaAguardando={status === "wait"}
-          onHover={setHover}
-          dim={realce && !chain.has(t.id)}
-          lit={realce && chain.has(t.id)}
-        />
+      {shown.map((t, k) => (
+        <Fragment key={t.id}>
+          {mostrarLinha && alvo === k && linha}
+          <TkCard
+            t={t}
+            {...cardProps}
+            naColunaAguardando={status === "wait"}
+            onHover={setHover}
+            dim={realce && !chain.has(t.id)}
+            lit={realce && chain.has(t.id)}
+          />
+        </Fragment>
       ))}
+      {mostrarLinha && alvo === shown.length && linha}
       {cards.length > shown.length && (
         <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTodas(true)} style={{ justifyContent: "flex-start" }}>
           Mostrar mais {cards.length - shown.length}
@@ -383,12 +477,12 @@ export function TkColumnHeads({ counts }: { counts: Record<TaskStatus, number> |
 }
 
 function TkBoardView({ visible, F, single, loading }: { visible: TaskRow[]; F: Filtros; single: ProjetoRow | null; loading?: boolean }) {
-  const { map, seguintes, projetos, projetosAtivos, tarefas } = useTk()
-  const { ordemProjeto, nomePessoa } = useOrdenacao()
+  const { map, seguintes, projetos, projetosAtivos, tarefas, pessoas } = useTk()
+  const ord = useOrdenacao()
   const [hover, setHover] = useState<number | null>(null)
   const [recolhidas, setRecolhidas] = useState<Record<string, boolean>>({})
   const chain = useMemo(() => (hover != null ? cadeia(hover, map, seguintes) : new Set<number>()), [hover, map, seguintes])
-  const agrupar = F.agrupar === "group" && !single ? "none" : F.agrupar
+  const agrupar = (F.agrupar === "group" && !single) || (F.agrupar === "proj" && single) ? "none" : F.agrupar
   const cardProps: CardProps = {
     mostrarProjeto: !single && agrupar !== "proj",
     mostrarGrupo: agrupar !== "group",
@@ -411,17 +505,36 @@ function TkBoardView({ visible, F, single, loading }: { visible: TaskRow[]; F: F
       <TkColumn
         key={s.id}
         status={s.id}
-        cards={ordenar(lista.filter((t) => t.status === s.id), F.ordenar, ordemProjeto, nomePessoa)}
+        cards={ordenar(lista.filter((t) => t.status === s.id), F.ordenar, ord, F.direcao)}
         cardProps={cardProps}
         hover={hover}
         chain={chain}
         setHover={setHover}
+        manual={F.ordenar === "manual"}
       />
     ))
   if (agrupar === "none") return <div className="tk-cols">{cols(visible)}</div>
 
   const raias =
-    agrupar === "proj"
+    agrupar === "owner"
+      ? [
+          ...pessoas.map((p) => ({
+            key: `u${p.id}`,
+            head: (
+              <>
+                <TkAvatar id={p.id} size={20} />
+                {p.nome}
+              </>
+            ),
+            lista: visible.filter((t) => t.responsavelId === p.id),
+          })),
+          {
+            key: "u0",
+            head: <>Sem responsável</>,
+            lista: visible.filter((t) => t.responsavelId == null || !pessoas.some((p) => p.id === t.responsavelId)),
+          },
+        ]
+      : agrupar === "proj"
       ? [
           // Ativos primeiro; um arquivado só ganha raia se tiver tarefa visível (raias vazias somem abaixo).
           ...[...projetosAtivos, ...projetos.filter((p) => p.arquivadoEm != null)].map((p) => ({
@@ -499,9 +612,9 @@ const FAIXAS = [
 
 function TkListView({ visible, F, single }: { visible: TaskRow[]; F: Filtros; single: ProjetoRow | null }) {
   const { map, act, openTask, hoje, nomePessoa: nome } = useTk()
-  const { ordemProjeto, nomePessoa } = useOrdenacao()
+  const ord = useOrdenacao()
   const abertas = visible.filter((t) => t.status !== "done")
-  const grupos = FAIXAS.map((b) => ({ ...b, lista: ordenar(abertas.filter((t) => faixa(t, hoje) === b.id), F.ordenar, ordemProjeto, nomePessoa) })).filter(
+  const grupos = FAIXAS.map((b) => ({ ...b, lista: ordenar(abertas.filter((t) => faixa(t, hoje) === b.id), F.ordenar, ord, F.direcao) })).filter(
     (g) => g.lista.length,
   )
   if (!grupos.length) return <div style={{ fontSize: 14, color: "var(--text-muted)", padding: "16px 0" }}>Nenhuma tarefa</div>

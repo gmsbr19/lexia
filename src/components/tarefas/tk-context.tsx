@@ -10,6 +10,7 @@ import type { GrupoWizard } from "@/lib/projetos/modelo"
 export interface NovaTarefaUI {
   titulo: string
   projetoId: number | null
+  grupo?: string | null
   responsavelId: number | null
   clienteId: number | null
   prazo: string
@@ -68,6 +69,8 @@ export interface Acoes {
     responsaveis: Record<string, number | null>,
   ) => Promise<number | null>
   abrirProjeto: (id: number) => void
+  /** Nova ordem manual (de quem está vendo) para uma lista de cartões; liga o "Ordenar: Manual". */
+  reordenar: (ids: number[]) => void
   recarregar: () => Promise<void>
   avisar: (a: Aviso) => void
   erro: (e: unknown) => void
@@ -95,6 +98,8 @@ export interface TkCtxValue {
   mobile: boolean
   act: Acoes
   openTask: (id: number | null) => void
+  /** Posição manual desta pessoa para a tarefa (sem posição = undefined). */
+  ordemManual: (id: number) => number | undefined
   dragging: number | null
   setDragging: (id: number | null) => void
   portal: HTMLElement | null
