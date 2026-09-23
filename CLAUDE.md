@@ -227,7 +227,23 @@ This Next (16.2.6) has breaking changes vs. training data — consult
   linha fina (`.tk-dsec`); Descrição começa baixa e cresce com o texto; Ligações em 2 colunas ("Só começa
   depois de…" | "Libera"); coluna de atividade 360px com estado vazio. **Menu de data sem rolagem:**
   atalhos em grade 2×2 (`.tk-atalhos`), o mini calendário corta as semanas finais que são todas do mês
-  seguinte, e `TkPop` ganhou `alto` (sem o teto de 480px, só o da janela) — usado pelo `TkDatePop`. **User action (REQUIRED — Prisma lock no Windows):** parar `next dev` →
+  seguinte, e `TkPop` ganhou `alto` (sem o teto de 480px, só o da janela) — usado pelo `TkDatePop`.
+  **Ordenar/Agrupar à vista + ordem manual POR PESSOA + criar projeto/grupo da tarefa (migração
+  `20260924120000_tarefas_ordem_prefs`, ADITIVA — NÃO aplicada; gerada offline com `prisma migrate diff`):**
+  o menu "…" saiu; a linha de filtros tem os chips **Ordenar** (Prazo/Projeto/Responsável/Manual, cada um
+  crescente ou decrescente — "Sem projeto/responsável" sempre no fim) e **Agrupar** (Projeto/Responsável;
+  dentro de um projeto, Grupo/Responsável). A visão (ordenar/direção/agrupar) fica salva por pessoa em
+  `User.tarefasPrefs` (`PATCH /api/tarefas/preferencias`, carregada no `carregarPagina`). **Ordem manual**:
+  nova tabela `TarefaOrdem(userId, tarefaId, ordem)`; arrastar um cartão para cima/baixo na coluna mostra a
+  linha de inserção, liga "Ordenar: Manual" e grava (`PUT /api/tarefas/ordem`); em Manual, vindo de outra
+  coluna ele entra onde foi solto. `filtros.reposicionar` (puro, testado) REAPROVEITA as posições da própria
+  lista (não bagunça itens de outras raias/colunas) e dá posições novas no fim a quem não tinha; sem posição
+  = fim, por prazo. Não entra no histórico nem no Desfazer (é preferência pessoal). **Criar da tarefa:** Nova
+  tarefa ganhou o campo Grupo (com projeto) e os menus "Novo projeto…" (formulário de projeto; `TkProjectForm`
+  ganhou `onCriado` — devolve o id em vez de navegar) e "Novo grupo…" (`TkGrupoDialog`); o detalhe também.
+  **`TkDialog` agora sempre em portal** — dentro de uma janela de vidro (backdrop-filter) um `position:fixed`
+  ficava preso e cortado (afetava o diálogo "Link" de anexo no detalhe). **User action (REQUIRED — Prisma lock
+  no Windows):** parar `next dev` → `npx prisma migrate deploy` → `npx prisma generate` → `npm run dev`. **User action (REQUIRED — Prisma lock no Windows):** parar `next dev` →
   `npm install` (este checkout estava sem node_modules/.env) → `npx prisma migrate deploy` (aplica a migração;
   em produção ela roda sozinha no boot) → `npx prisma generate` → `npm run db:seed:projetos` (modelos; opcional
   `-- --demo`) → `npm run dev`. Visual: `/tarefas` (Quadro/Lista/Fluxo, filtros, arrastar entre colunas,
