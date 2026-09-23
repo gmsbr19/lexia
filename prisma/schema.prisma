@@ -41,6 +41,9 @@ model User {
   // ("oportunidades"|"contatos"): { visibleColumns, filters, sort, groupBy }.
   // null = sem view salva (grid usa os defaults). Ver src/lib/crm/view-prefs.ts.
   crmViewPrefs            String?
+  // Preferências de visão do quadro de Tarefas (JSON): { ordenar, direcao, agrupar }.
+  // null = padrão (Prazo crescente, sem agrupar). Ver src/lib/tarefas/preferencias.ts.
+  tarefasPrefs            String?
   createdAt               DateTime                @default(now())
   updatedAt               DateTime                @updatedAt
   tarefas                 Tarefa[] // tasks delegated to this user
@@ -54,6 +57,7 @@ model User {
   comentarios             TarefaComentario[] // comentários que este usuário escreveu em tarefas
   tarefaHistorico         TarefaHistorico[]       @relation("TarefaHistoricoAutor") // linhas de histórico de tarefa que este usuário gerou
   tarefaAnexos            TarefaAnexo[]           @relation("TarefaAnexoAutor") // anexos de tarefa que este usuário enviou
+  tarefaOrdens            TarefaOrdem[]           @relation("TarefaOrdemUsuario") // a ordem manual das tarefas NESTE usuário
   leadsResp               Lead[]                  @relation("LeadResponsavelUser") // oportunidades das quais este usuário é dono
   oportunidadeAtividades  OportunidadeAtividade[] // atividades de oportunidade que este usuário registrou
   landingPagesResponsavel LandingPage[]           @relation("LandingPageResponsavel") // landing pages onde este usuário é o responsável padrão
@@ -658,6 +662,7 @@ model Tarefa {
   seguintes       TarefaLigacao[]    @relation("LigacaoAnterior") // ligações em que esta é a ANTERIOR
   historico       TarefaHistorico[]
   anexos          TarefaAnexo[]
+  ordens          TarefaOrdem[]
 
   @@index([status])
   @@index([responsavelId])
@@ -714,6 +719,21 @@ model TarefaAnexo {
   autor     User?    @relation("TarefaAnexoAutor", fields: [autorId], references: [id])
   createdAt DateTime @default(now())
 
+  @@index([tarefaId])
+}
+
+// Ordem manual do quadro, POR PESSOA: cada usuário arrasta os cartões na coluna
+// do seu jeito sem mexer na ordem dos outros. `ordem` é só uma chave de
+// classificação (quem não tem linha vai para o fim, por prazo). Excluir a tarefa
+// ou o usuário leva as linhas junto.
+model TarefaOrdem {
+  userId   Int
+  user     User   @relation("TarefaOrdemUsuario", fields: [userId], references: [id], onDelete: Cascade)
+  tarefaId Int
+  tarefa   Tarefa @relation(fields: [tarefaId], references: [id], onDelete: Cascade)
+  ordem    Float
+
+  @@id([userId, tarefaId])
   @@index([tarefaId])
 }
 
