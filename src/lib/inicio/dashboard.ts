@@ -8,7 +8,8 @@ import { getDevedoresDashboard, type DevedorDash } from "@/lib/clientes/cobranca
 import { addDiasISO, hojeISO } from "@/lib/lexia/agent/datas"
 import { listEventos } from "@/lib/agenda/queries"
 import { getComercialKpis } from "@/lib/comercial/queries"
-import { getTarefasDataset } from "@/lib/tarefas/queries"
+import { getTarefas } from "@/lib/tarefas/queries"
+import { vencida } from "@/lib/tarefas/regras"
 import { getBriefing } from "@/lib/finance/briefing"
 import { getKpis } from "@/lib/finance/queries"
 import type { BriefingPrazo } from "@/lib/finance/types"
@@ -67,26 +68,26 @@ export interface DashboardData {
  */
 export async function getDashboard(verFin = true): Promise<DashboardData> {
   const hoje = hojeISO()
-  const [kpis, briefing, devedores, eventos, tarefasDs, comercial, clientesTotal, casosAtivos] = await Promise.all([
+  const [kpis, briefing, devedores, eventos, pend, comercial, clientesTotal, casosAtivos] = await Promise.all([
     verFin ? getKpis() : null,
     getBriefing(),
     verFin ? getDevedoresDashboard(5) : null,
     listEventos({ de: hoje, ate: addDiasISO(hoje, 7) }),
-    getTarefasDataset(),
+    getTarefas({ done: false }),
     getComercialKpis(),
     prisma.cliente.count({ where: { classificacao: "cliente" } }),
     prisma.caso.count({ where: { status: "Ativo", excluidoEm: null } }),
   ])
 
-  // tarefas — pending only, urgency-ranked (atrasadas → hoje → resto), top 5.
-  const pend = tarefasDs.tarefas.filter((t) => !t.done)
+  // tarefas — abertas, por urgência (atrasadas → hoje → resto), top 5. Atraso =
+  // a regra única de regras.ts.
   const itens: DashTarefa[] = pend
     .map((t) => ({
       id: t.id,
       titulo: t.titulo,
       prazo: t.prazo,
-      atrasada: !!t.prazo && t.prazo < hoje,
-      hoje: t.prazo === hoje || t.data === hoje,
+      atrasada: vencida(t, hoje),
+      hoje: t.prazo === hoje,
     }))
     .sort((a, b) => {
       const rank = (x: DashTarefa) => (x.atrasada ? 0 : x.hoje ? 1 : 2)
@@ -94,8 +95,8 @@ export async function getDashboard(verFin = true): Promise<DashboardData> {
       return (a.prazo ?? "9999-99-99").localeCompare(b.prazo ?? "9999-99-99")
     })
     .slice(0, 5)
-  const atrasadas = pend.filter((t) => t.prazo && t.prazo < hoje).length
-  const tarefasHoje = pend.filter((t) => t.prazo === hoje || t.data === hoje).length
+  const atrasadas = pend.filter((t) => vencida(t, hoje)).length
+  const tarefasHoje = pend.filter((t) => t.prazo === hoje).length
 
   const agendaEventos: DashAgendaEvento[] = eventos.slice(0, 6).map((e) => ({
     id: e.id,

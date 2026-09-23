@@ -12,7 +12,8 @@ import { log } from "@/lib/log"
 import { getSetting, setSetting } from "@/lib/settings"
 import { getCobrancaResumo, getDevedoresDashboard } from "@/lib/clientes/cobranca"
 import { listEventos } from "@/lib/agenda/queries"
-import { getTarefasDataset } from "@/lib/tarefas/queries"
+import { getTarefas } from "@/lib/tarefas/queries"
+import { vencida } from "@/lib/tarefas/regras"
 import { getBriefing } from "./briefing"
 import { formatBRL, formatBRLCompact } from "./money"
 import type { BriefingData, BriefingDestaque, BriefingDiario } from "./types"
@@ -63,16 +64,16 @@ Regras:
 /** Assemble a compact, bounded JSON of today's operational context for the model. */
 async function coletarContexto(incluirFinanceiro: boolean): Promise<{ dados: BriefingData; contexto: unknown }> {
   const hoje = hojeISO()
-  const [dados, devedores, tarefasDs, eventos, cobranca] = await Promise.all([
+  const [dados, devedores, abertas, eventos, cobranca] = await Promise.all([
     getBriefing(),
     getDevedoresDashboard(6),
-    getTarefasDataset(),
+    getTarefas({ done: false }),
     listEventos({ de: hoje, ate: addDiasISO(hoje, 7) }),
     getCobrancaResumo(),
   ])
 
-  const tarefasAtrasadas = tarefasDs.tarefas.filter((t) => !t.done && t.prazo && t.prazo < hoje)
-  const tarefasHoje = tarefasDs.tarefas.filter((t) => !t.done && (t.prazo === hoje || t.data === hoje))
+  const tarefasAtrasadas = abertas.filter((t) => vencida(t, hoje))
+  const tarefasHoje = abertas.filter((t) => t.prazo === hoje)
 
   const contexto = {
     hoje,
