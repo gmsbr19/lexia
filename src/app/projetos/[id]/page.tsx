@@ -1,19 +1,15 @@
-import "@/components/tarefas/tf-theme.css"
-import "@/components/projetos/pj-theme.css"
-import { auth } from "@/lib/auth"
-import type { Role } from "@/lib/auth/session"
-import { getWorkspaceData } from "@/lib/projetos/workspace"
-import { ProjetosWorkspace } from "@/components/projetos/ProjetosWorkspace"
+import "@/components/tarefas/tk.css"
+import { TarefasApp } from "@/components/tarefas/TarefasApp"
+import { carregarPagina, paramId } from "@/lib/tarefas/pagina"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-// Deep-link to a specific project (LexIA "/projetos/<id>"). Opens the Projetos
-// tab with that project pre-selected (falls back to the first if it 404s).
+// Link direto de um projeto (LexIA "/projetos/<id>"): não existe quadro por
+// projeto — abre o Quadro único filtrado por ele.
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
-  const [session, { id }] = await Promise.all([auth(), params])
-  const role = (session?.user?.role as Role) ?? "estagiario"
-  const projetoId = Number(id)
-  const data = await getWorkspaceData(session?.user?.email)
-  return <ProjetosWorkspace dataset={data} role={role} initialTab="projetos" initialProjetoId={Number.isInteger(projetoId) ? projetoId : null} />
+  const [carga, { id }] = await Promise.all([carregarPagina(), params])
+  const projetoId = paramId(id)
+  const existe = projetoId != null && carga.inicial.projetos.some((p) => p.id === projetoId)
+  return <TarefasApp {...carga} pagina="board" projetoId={existe ? projetoId : null} />
 }
