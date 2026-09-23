@@ -160,3 +160,10 @@ export function reposicionar(ids: number[], atual: ReadonlyMap<number, number>):
   }
   return ids.map((id, i) => ({ id, ordem: vagas[i] }))
 }
+
+/** Posição manual logo DEPOIS de `apos` (entre ela e a seguinte) — onde entra a cópia de uma tarefa. */
+export function posicaoDepois(apos: number, posicoes: Iterable<number>): number {
+  let prox: number | null = null
+  for (const v of posicoes) if (v > apos && (prox == null || v < prox)) prox = v
+  return prox == null ? apos + 1024 : (apos + prox) / 2
+}

@@ -28,8 +28,9 @@ import {
   vencida,
   hojeSP,
   clienteEfetivo,
+  tituloCopia,
 } from "@/lib/tarefas/regras"
-import { FILTROS_PADRAO, lerPreferencias, noEscopo, ordenar, reposicionar, visiveis } from "@/lib/tarefas/filtros"
+import { FILTROS_PADRAO, lerPreferencias, noEscopo, ordenar, posicaoDepois, reposicionar, visiveis } from "@/lib/tarefas/filtros"
 import { painelEquipe } from "@/lib/tarefas/equipe"
 import { layoutFluxo, listaFluxo, profundidades } from "@/lib/tarefas/fluxo"
 import type { ProjetoRow, TaskRow, TeamMember } from "@/lib/tarefas/types"
@@ -304,6 +305,11 @@ describe("ordem manual e preferências", () => {
       { id: 1, ordem: 6024 },
     ])
   })
+  it("posicaoDepois põe a cópia entre a original e a seguinte (ou depois de todas)", () => {
+    expect(posicaoDepois(100, [100, 200, 5000])).toBe(150)
+    expect(posicaoDepois(200, [300, 100, 200, 250])).toBe(225)
+    expect(posicaoDepois(5000, [100, 5000])).toBe(6024)
+  })
   it("lerPreferencias aceita só valores conhecidos", () => {
     expect(lerPreferencias(JSON.stringify({ ordenar: "manual", direcao: "desc", agrupar: "owner" }))).toEqual({
       ordenar: "manual",
@@ -362,5 +368,16 @@ describe("fluxo", () => {
   it("celular: lista por grupo na ordem das ligações", () => {
     const g = listaFluxo(alfa)
     expect(g[1].tarefas.map((x) => x.id)).toEqual([4, 6, 5, 7])
+  })
+})
+
+describe("duplicar", () => {
+  it("tituloCopia acrescenta (cópia) sem empilhar e respeita o limite", () => {
+    expect(tituloCopia("Protocolar petição")).toBe("Protocolar petição (cópia)")
+    expect(tituloCopia("  Protocolar petição  ")).toBe("Protocolar petição (cópia)")
+    expect(tituloCopia("Protocolar petição (cópia)")).toBe("Protocolar petição (cópia)")
+    const longo = tituloCopia("a".repeat(300))
+    expect(longo.length).toBeLessThanOrEqual(300)
+    expect(longo.endsWith(" (cópia)")).toBe(true)
   })
 })

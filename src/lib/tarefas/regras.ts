@@ -344,6 +344,15 @@ export function rotuloQuando(iso: string, hoje: string): string {
   return dataCurta(iso)
 }
 
+const SUFIXO_COPIA = " (cópia)"
+
+/** Título da cópia ("Duplicar"): "Título (cópia)" — sem empilhar sufixos, até 300 caracteres. */
+export function tituloCopia(titulo: string): string {
+  const base = titulo.trim()
+  if (base.endsWith(SUFIXO_COPIA.trim())) return base.slice(0, 300)
+  return base.slice(0, 300 - SUFIXO_COPIA.length).trimEnd() + SUFIXO_COPIA
+}
+
 /** Primeira parte do grupo ("Protocolo 02 · 1º RI Taubaté" → "Protocolo 02"). */
 export function grupoCurto(grupo: string | null): string | null {
   return grupo ? grupo.split(" · ")[0] : null
