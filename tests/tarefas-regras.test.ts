@@ -29,7 +29,7 @@ import {
   hojeSP,
   clienteEfetivo,
 } from "@/lib/tarefas/regras"
-import { FILTROS_PADRAO, noEscopo, ordenar, visiveis } from "@/lib/tarefas/filtros"
+import { FILTROS_PADRAO, lerPreferencias, noEscopo, ordenar, reposicionar, visiveis } from "@/lib/tarefas/filtros"
 import { painelEquipe } from "@/lib/tarefas/equipe"
 import { layoutFluxo, listaFluxo, profundidades } from "@/lib/tarefas/fluxo"
 import type { ProjetoRow, TaskRow, TeamMember } from "@/lib/tarefas/types"
@@ -267,11 +267,52 @@ describe("filtros do quadro", () => {
     const f = { ...FILTROS_PADRAO, projetos: [0] }
     expect(noEscopo(SEED, f, TH).map((x) => x.id)).toEqual([61, 62])
   })
+  const ctx = { ordemProjeto: () => 0, nomePessoa: nome }
   it("ordenar por prazo e por responsável (sem responsável por último)", () => {
-    const ord = ordenar([a3, a10, a2], "due", () => 0, nome)
+    const ord = ordenar([a3, a10, a2], "due", ctx)
     expect(ord.map((x) => x.id)).toEqual([2, 3, 10])
-    const porResp = ordenar([a10, a3, a8], "owner", () => 0, nome)
+    const porResp = ordenar([a10, a3, a8], "owner", ctx)
     expect(porResp.map((x) => x.id)).toEqual([8, 3, 10]) // Eduarda, Leonardo, sem
+  })
+  it("decrescente inverte o critério, mas \"sem responsável\" continua no fim", () => {
+    expect(ordenar([a3, a10, a2], "due", ctx, "desc").map((x) => x.id)).toEqual([10, 3, 2])
+    expect(ordenar([a10, a3, a8], "owner", ctx, "desc").map((x) => x.id)).toEqual([3, 8, 10]) // Leonardo, Eduarda, sem
+  })
+  it("manual: quem tem posição vem primeiro, na ordem; o resto por prazo", () => {
+    const pos = new Map([
+      [10, 1],
+      [3, 2],
+    ])
+    const ord = ordenar([a2, a3, a10], "manual", { ...ctx, ordemManual: (id) => pos.get(id) })
+    expect(ord.map((x) => x.id)).toEqual([10, 3, 2])
+  })
+})
+
+describe("ordem manual e preferências", () => {
+  it("reposicionar reaproveita as posições da lista e põe os novos depois de todas", () => {
+    const atual = new Map([
+      [1, 100],
+      [2, 200],
+      [9, 5000], // fora da lista: não mexe
+    ])
+    expect(reposicionar([2, 1], atual)).toEqual([
+      { id: 2, ordem: 100 },
+      { id: 1, ordem: 200 },
+    ])
+    expect(reposicionar([3, 1], atual)).toEqual([
+      { id: 3, ordem: 100 },
+      { id: 1, ordem: 6024 },
+    ])
+  })
+  it("lerPreferencias aceita só valores conhecidos", () => {
+    expect(lerPreferencias(JSON.stringify({ ordenar: "manual", direcao: "desc", agrupar: "owner" }))).toEqual({
+      ordenar: "manual",
+      direcao: "desc",
+      agrupar: "owner",
+    })
+    expect(lerPreferencias("{lixo")).toEqual({ ordenar: "due", direcao: "asc", agrupar: "none" })
+    expect(lerPreferencias({ ordenar: "x", direcao: "y", agrupar: 1 })).toEqual({ ordenar: "due", direcao: "asc", agrupar: "none" })
+    expect(lerPreferencias(null)).toEqual({ ordenar: "due", direcao: "asc", agrupar: "none" })
   })
 })
 
