@@ -149,9 +149,7 @@ export async function getCasoDetail(id: number): Promise<CasoDetail | null> {
         id: true,
         titulo: true,
         status: true,
-        prio: true,
-        data: true,
-        hora: true,
+        prazoFatal: true,
         prazo: true,
         responsavelId: true,
       },
@@ -244,10 +242,8 @@ export async function getCasoDetail(id: number): Promise<CasoDetail | null> {
     id: r.id,
     titulo: r.titulo,
     status: r.status,
-    prio: r.prio,
-    data: isoDate(r.data),
-    hora: r.hora,
-    prazo: isoDate(r.prazo),
+    prazoFatal: r.prazoFatal,
+    prazo: isoDate(r.prazo) ?? "",
     responsavelId: r.responsavelId,
   }))
 

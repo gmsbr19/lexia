@@ -102,6 +102,12 @@ export const createLancamento = (body: unknown) => mut(`/api/financeiro/lancamen
 export const createTarefa = (body: unknown) => mut(`/api/tarefas`, "POST", body)
 export const patchTarefa = (id: number, body: unknown) => mut(`/api/tarefas/${id}`, "PATCH", body)
 export const deleteTarefa = (id: number) => mut(`/api/tarefas/${id}`, "DELETE")
+export const patchPrazoTarefa = (id: number, prazo: string) => mut(`/api/tarefas/${id}/prazo`, "PATCH", { prazo, ajustarSeguintes: false })
+/** Status pelas regras do quadro: concluir libera as seguintes; "Em andamento" confirma o início. */
+export const moverTarefa = (id: number, status: string) =>
+  status === "done"
+    ? mut(`/api/tarefas/${id}/concluir`, "POST")
+    : mut(`/api/tarefas/${id}/status`, "POST", { status, confirmarInicio: true })
 
 // ── evento mutations ──
 export const createEvento = (body: unknown) => mut(`/api/eventos`, "POST", body)

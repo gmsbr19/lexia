@@ -31,10 +31,8 @@ export interface CasoTarefaRow {
   id: number
   titulo: string
   status: string
-  prio: number
-  data: string | null // ISO date
-  hora: string | null
-  prazo: string | null // ISO date
+  prazoFatal: boolean
+  prazo: string // ISO date (toda tarefa tem prazo)
   responsavelId: number | null
 }
 

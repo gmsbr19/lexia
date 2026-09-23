@@ -28,15 +28,15 @@ export interface EventoRow {
   lead: string | null
 }
 
-/** A Tarefa with a scheduled `data` — shown on the calendar as a secondary item. */
+/** Uma Tarefa ABERTA no dia do seu prazo — item secundário do calendário. */
 export interface AgendaTarefaRow {
   id: number
   titulo: string
-  data: string // ISO date ("YYYY-MM-DD")
-  hora: string | null // "HH:MM"
-  prazo: string | null // ISO date
+  data: string // ISO date ("YYYY-MM-DD") = o prazo da tarefa
+  hora: string | null // sempre null (tarefa tem só a data do prazo)
+  prazo: string // ISO date
   status: string
-  prio: number
+  prazoFatal: boolean
   responsavelId: number | null
   casoId: number | null
   caso: string | null

@@ -11,7 +11,7 @@ import {
   CrmContratoStatus,
   CrmEmpty,
   CrmLink,
-  CrmPrioTag,
+  CrmPrazoFatalTag,
   CrmRow,
   CrmTipoBadge,
   CRM_EVT,
@@ -629,7 +629,7 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
                 const resp = dataset.socios.find((s) => s.id === t.responsavelId)?.nome
                 return (
                   <CrmRow key={t.id} onClick={() => setModal({ type: "tarefa", tarefa: t })} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderTop: i ? "1px solid var(--border)" : "none" }}>
-                    <CrmPrioTag p={t.prio} />
+                    {t.prazoFatal && <CrmPrazoFatalTag />}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{t.titulo}</div>
                       <div style={{ fontSize: 12, color: "var(--text-subtle)" }}>Prazo {crmDate(t.prazo)}{resp ? ` · ${resp}` : ""}</div>

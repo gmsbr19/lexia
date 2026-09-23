@@ -12,7 +12,7 @@ import {
   CRM_TODAY,
   CrmBadge,
   CrmEmpty,
-  CrmPrioTag,
+  CrmPrazoFatalTag,
   FxCheck,
   FxInput,
   FxLabel,
@@ -756,7 +756,7 @@ export function CrmAgendaPage({ dataset, role: _role, nav }: Props) {
                             Tarefa{t.caso ? ` · ${t.caso}` : t.cliente ? ` · ${t.cliente}` : ""}
                           </div>
                         </div>
-                        <CrmPrioTag p={t.prio} />
+                        {t.prazoFatal && <CrmPrazoFatalTag />}
                       </div>
                     )
                   }

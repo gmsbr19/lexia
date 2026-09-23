@@ -1,5 +1,5 @@
 // Agenda — read layer. SERVER ONLY. The calendar aggregates two item kinds:
-// Evento rows (audiência/prazo/reunião/outro) + Tarefa rows that carry `data`.
+// Evento rows (audiência/prazo/reunião/outro) + Tarefas ABERTAS no dia do prazo.
 import type { Prisma } from "@prisma/client"
 import { ehEtapaAberta } from "@/lib/comercial/analytics"
 import { prisma } from "@/lib/db"
@@ -81,36 +81,34 @@ export async function listEventos(filtro: EventoFiltro = {}): Promise<EventoRow[
   return rows.map(toEventoRow)
 }
 
-/** Tarefas with a scheduled `data` inside the range — the calendar's secondary items. */
+/** Tarefas abertas com prazo dentro do intervalo — itens secundários do calendário. */
 export async function listTarefasAgendadas(de?: string, ate?: string): Promise<AgendaTarefaRow[]> {
   const deD = rangeDate(de, false)
   const ateD = rangeDate(ate, true)
   const rows = await prisma.tarefa.findMany({
-    where: { data: { not: null, ...(deD ? { gte: deD } : {}), ...(ateD ? { lte: ateD } : {}) } },
+    where: { done: false, prazo: { ...(deD ? { gte: deD } : {}), ...(ateD ? { lte: ateD } : {}) } },
     select: {
       id: true,
       titulo: true,
-      data: true,
-      hora: true,
       prazo: true,
       status: true,
-      prio: true,
+      prazoFatal: true,
       responsavelId: true,
       casoId: true,
       clienteId: true,
       caso: { select: { titulo: true } },
       cliente: { select: { nome: true } },
     },
-    orderBy: { data: "asc" },
+    orderBy: [{ prazo: "asc" }, { id: "asc" }],
   })
   return rows.map((r) => ({
     id: r.id,
     titulo: r.titulo,
-    data: isoDate(r.data) ?? "",
-    hora: r.hora,
-    prazo: isoDate(r.prazo),
+    data: isoDate(r.prazo) ?? "",
+    hora: null,
+    prazo: isoDate(r.prazo) ?? "",
     status: r.status,
-    prio: r.prio,
+    prazoFatal: r.prazoFatal,
     responsavelId: r.responsavelId,
     casoId: r.casoId,
     caso: r.caso?.titulo ?? null,
