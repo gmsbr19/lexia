@@ -56,8 +56,11 @@ LexIA AI assistant, and a real-time Notifications system.
   `components/crm/CrmRoutes.tsx`; cliente detail = `/clientes/[id]`. Processos =
   first-class (1 caso→N), pure tested prazo engine (CPC dias úteis), CNJ capture
   (Comunica/DJEN + DataJud). Memories `project_processos_module`, `project_captura_cnj`.
-- **Tarefas**: DB-backed, 5 views + modal; assignee + (new) creator. Memory
-  `project_tarefas_module`.
+- **Tarefas & Projetos (redesign, Sep/2026)**: UM quadro único do escritório (Quadro | Lista |
+  Fluxo; Projetos; Equipe só gestão), UMA data (prazo obrigatório; padrão = sexta), prazo fatal,
+  grupos livres, ligações "só começa depois de", histórico, anexos, "Desfazer" (TarefaAcao).
+  Regras ÚNICAS em `lib/tarefas/regras.ts` (servidor + cliente). UI `components/tarefas/tk-*.tsx`
+  + `TarefasApp.tsx` + `tk.css`. Memory `project_tarefas_redesign`.
 - **Início**: greeting + AI BriefingCard + OfficeDashboard. Memory
   `project_inicio_dashboard`.
 - **LexIA**: agentic assistant over the Anthropic API (`lib/lexia/agent/*`:
@@ -145,7 +148,92 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
-- **Captação: data inválida, gclid visível/exportável + exclusão DEFINITIVA de leads (this session, VERIFIED
+- **Tarefas — REDESIGN COMPLETO (spec Claude Design "LexIA - Tarefas (Redesign)", `lexia.zip` → `src/tk/*`)
+  (this session; tsc 0 novos erros — só o `cm-meta` PRÉ-EXISTENTE —, testes verdes exceto a
+  `notificacoes-links` PRÉ-EXISTENTE, eslint limpo em todos os arquivos tocados; migração
+  `20260923120000_tarefas_redesign` ESCRITA À MÃO e VALIDADA num Postgres embutido (PGlite) com dados
+  legados + `prisma migrate diff` = ZERO drift — NÃO aplicada em nenhum banco real).** Substitui por completo
+  o módulo anterior (5 visões, data planejada/hora, P1–P4, DoR/DoD, seções, templates antigos, Ramble,
+  quick-add com sintaxe, Dashboard de produtividade — tudo REMOVIDO, arquivos deletados). **Decisões do
+  usuário onde o spec era omisso:** manter recorrência como linha "Repetir"; Agenda mostra tarefas ABERTAS
+  no dia do prazo; incluir editor simples de modelos (só sócio); DESCARTAR DoR/DoD antigos na migração.
+  **Modelo:** `Tarefa.prazo` NOT NULL (padrão = sexta da semana; sáb/dom → sexta seguinte; fuso SP),
+  `prazoFatal`, `grupo` (etiqueta livre no projeto), `aguardandoTexto`, `checklist` JSON `{id,texto,marcado}`,
+  status `todo|doing|wait|done`; novas `TarefaLigacao` (só mesmo projeto, sem ciclo), `TarefaHistorico`
+  (gravado pelo backend), `TarefaAnexo` (arquivo base64 ≤10MB ou link), `TarefaAcao` (snapshot p/ "Desfazer",
+  10 min, só o autor, restaura em cascata inclusive tarefas excluídas/criadas por modelo). `Projeto` ganhou
+  `nomeCurto` + `arquivadoEm`, perdeu status/icone/ordem; `ProjetoModelo`/`ProjetoModeloPasso` (papéis, dias
+  antes do prazo do grupo, anteriores, checklist) substituem ProjetoTemplate*/ProjetoSecao. **Migração converte
+  os dados:** review→doing; prazo = prazo ?? data ?? sexta da semana de criação (SP); subtasks→checklist;
+  seção→grupo; "Caixa de entrada" → tarefas sem projeto + projeto excluído; nome curto derivado; cor garantida;
+  arquivado/concluído → arquivadoEm; templates → modelos (ids preservados, cadeia "anterior" vira ligação,
+  dias úteis ≈ dias corridos × 7/5). **Regras ÚNICAS** puras em `lib/tarefas/regras.ts` (atraso, faixas,
+  prazo padrão, risco transitivo, conflito, aguardando, selo, ciclo, liberação, ajuste em cadeia que nunca
+  toca prazo fatal, cliente efetivo, texto livre de data) + `filtros.ts`, `equipe.ts`, `fluxo.ts`,
+  `lib/projetos/modelo.ts` — usadas pelo servidor E pelo cliente (prévia otimista). **API** (`runMutation`,
+  histórico + `acaoId` em toda escrita): `/api/tarefas` (GET carga única, `?derivados=1`; POST),
+  `[id]` (GET detalhe/PATCH/DELETE), `[id]/{prazo,status,concluir,responsavel,checklist[/item[/virar-tarefa]],
+  anexos[/anexoId]}`, `ligacoes`, `sugerir` (IA Haiku, degrada), `acoes/[id]/desfazer`, `equipe` (só gestão);
+  `/api/projetos` (+`[id]`, `de-modelo`, `modelos[/id]`). Notificação nova **"Sua vez"** (trigger
+  `notificarSuaVez`). **UI** `components/tarefas/`: `TarefasApp.tsx` + `tk-{context,ui,pickers,card,board,flow,
+  detail,newtask,projects,team,mobile}.tsx` + `tk.css` (vidro só na estrutura, blur no `::before`, popovers em
+  portal com inversão, Esc fecha só a janela do topo) + `TkCarregando.tsx` (loading.tsx). Rotas: `/tarefas`
+  (Quadro; `?pagina=equipe`, `?projeto=`, `?visao=lista|fluxo`, `?tarefa=`), `/projetos`, `/projetos/[id]`
+  (Quadro filtrado). Celular ≤720px: quadro por abas de status + barra inferior + Fluxo em lista. **Outros
+  módulos ajustados:** Agenda (prazo), Cliente/Caso/Processos/Busca/Spotlight (prazo fatal no lugar de P1–P4;
+  ficha do cliente inclui tarefas herdadas do projeto), cron de notificações (sem lembretes), relatório
+  diário, Início/briefing, modais de tarefa do CRM, cartão de tarefa da LexIA. **LexIA:** tools reescritas
+  (`listar/criar/criar_lote/editar/concluir/ligar/desligar/excluir_tarefa`, `listar/detalhe/criar/editar/
+  excluir_projeto`, `listar_modelos_projeto`, `criar_projeto_de_modelo`, `criar_estrutura_projeto` — projeto
+  + tarefas + ligações numa chamada) + bullets TAREFAS/PROJETOS do prompt. Seed `db:seed:projetos` reescrito
+  (áreas + 3 modelos create-only; `-- --demo` = dados de exemplo do spec; `-- --limpar-demo`). Testes novos
+  `tests/tarefas-regras.test.ts` (cenário do protótipo: "2 vencidas · 1 hoje · 4 na semana") e
+  `tests/projetos-modelo.test.ts`. **Revisão (2 agentes: servidor + UI) → achados corrigidos:** corridas no
+  grafo de ligações (lock `pg_advisory_xact_lock(7331, projetoId)` em `grafo()`; concluir trava antes de ler),
+  migração que jogava tarefas abertas antigas como vencidas (prazo padrão agora parte de max(criação, hoje)),
+  cliente efetivo na ficha do cliente, relatório diário (meio-dia UTC), projeto excluído tratado como vivo,
+  desfazer "projeto por modelo" com tarefas acrescentadas depois, data UTC na sugestão de IA; na UI: recarga
+  obsoleta (o `apiSend` deduplica GET → recarga usa `fetch` com sequência), URL fora de sincronia com o router
+  (`replaceState(null,…)`), título/descrição do detalhe não voltavam no Desfazer, datas UTC em comentários/
+  histórico, tokens `@[id]` crus ao editar comentário, lista de menção e menu "Remover" da seta do Fluxo agora
+  em portal, diálogos de status que não fechavam, soltar a alça "Ligar" no próprio cartão abria o detalhe,
+  checklist/anexo sem ações no toque (`@media (hover:none)`), raias "por projeto" ignoravam arquivados com
+  tarefa visível, soltar texto externo numa coluna, microfone some sem Web Speech, e **editor de modelos
+  agora tem Desfazer** (snapshot `modelos`/`modelosCriados` em `acoes.ts`). 829/830 testes (só a
+  `notificacoes-links` PRÉ-EXISTENTE). **Ajustes pós-visual (mesma sessão):** janelas/menus/aviso agora
+  usam o vidro do APP (`lexGlass`/`lexGlassStrong` + elevação do CRM, via `tk-glass.ts`; fundo da janela
+  transparente como nos modais do app; o vidro próprio `--tk-glass*` saiu do `tk.css`); a sidebar global
+  recolhe ao ENTRAR em `/tarefas`/`/projetos` (mesmo mecanismo do editor de documentos, agora ajuste
+  durante o render em `UnifiedShell`, sem efeito); a barra lateral do módulo copia a global (234px,
+  `--bg-soft`, título "Tarefas", itens 8px/10px, ícone 17); quadro vazio mostra estado ("Nenhuma tarefa
+  ainda" + Nova tarefa; "Nenhuma tarefa com estes filtros" + Limpar filtros; "Nenhuma tarefa neste
+  projeto"). **Ambiente:** o `.env.example` ainda era SQLite — corrigido p/ `postgresql://`.
+  **Detalhe + cartão no estilo Trello (pedido do usuário, tokens do LexIA):** `tk-detail.tsx` reescrito —
+  topo com status em pílula (menu) + "…" + fechar; esquerda com círculo de concluir/reabrir + título 22px,
+  ações "Checklist / Anexo / Ligação" (botões com borda), campos em pílulas com rótulo em cima
+  (Responsável = avatar, Projeto = etiqueta na cor do projeto, Grupo, Prazo + selo Vencida/Hoje + "Prazo
+  fatal", Repetir, Cliente) e seções com ícone na calha (Descrição em caixa, Checklist com barra de %,
+  Anexos, Ligações); direita (400px) "Comentários e atividade": comentário no topo, feed mais novo primeiro
+  com avatar + balão, histórico só com "Mostrar detalhes". Pickers ganharam variante `chip`; `TkMoveMenu`
+  saiu. Cartão: rodapé com o prazo em PÍLULA colorida (`TkPrazoBadge`: vencida vermelho, hoje âmbar,
+  fatal com bandeira/contorno), contadores de checklist/comentários/anexos e `TkAvatar` do responsável à
+  direita (sempre — `mostrarResponsavel` removido). **Espera ≠ data:** o relógio é SÓ do prazo; o estado
+  "aguardando" virou `TkEspera` (tk-ui) — corrente + "Depois de **<tarefa>** · <pessoa>" (ligação, via
+  `pendentes`) ou pessoa + "Aguardando: <texto>" (terceiro) —, no cartão num bloco próprio ACIMA do rodapé
+  (o prazo fica sozinho na última linha); também na Lista e no topo do detalhe. **Organização do detalhe
+  (feedback "informação jogada"):** campos num PAINEL com borda em grade fixa 3×2 (`.tk-dmeta`: Responsável
+  = avatar + nome, Prazo, Repetir · Projeto, Grupo, Cliente; 2 colunas no celular); "Prazo fatal" saiu da
+  linha e virou opção no menu da data (a pílula da data fica vermelha com bandeira); seções separadas por
+  linha fina (`.tk-dsec`); Descrição começa baixa e cresce com o texto; Ligações em 2 colunas ("Só começa
+  depois de…" | "Libera"); coluna de atividade 360px com estado vazio. **Menu de data sem rolagem:**
+  atalhos em grade 2×2 (`.tk-atalhos`), o mini calendário corta as semanas finais que são todas do mês
+  seguinte, e `TkPop` ganhou `alto` (sem o teto de 480px, só o da janela) — usado pelo `TkDatePop`. **User action (REQUIRED — Prisma lock no Windows):** parar `next dev` →
+  `npm install` (este checkout estava sem node_modules/.env) → `npx prisma migrate deploy` (aplica a migração;
+  em produção ela roda sozinha no boot) → `npx prisma generate` → `npm run db:seed:projetos` (modelos; opcional
+  `-- --demo`) → `npm run dev`. Visual: `/tarefas` (Quadro/Lista/Fluxo, filtros, arrastar entre colunas,
+  concluir → "Sua vez" + Desfazer, detalhe, Nova tarefa com ditado e "Sugerir com IA"), `/projetos` (Ativos,
+  Arquivados, Modelos → Usar → assistente), Equipe (sócio/admin), tema claro/escuro, celular.
+- **Captação: data inválida, gclid visível/exportável + exclusão DEFINITIVA de leads (prior session, VERIFIED
   tsc 0 novos erros — só o `tests/cm-meta.test.ts` `temClique` PRÉ-EXISTENTE —, 839/840 testes (+6 novos; a 1
   falha é a `notificacoes-links.test.ts` PRÉ-EXISTENTE de sempre), eslint limpo nos arquivos tocados, SEM
   migração.** 3 pedidos do usuário sobre `/comercial` → aba Captação.
