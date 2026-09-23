@@ -484,7 +484,11 @@ export function TkPrazoBadge({ t }: { t: Pick<TaskRow, "prazo" | "status" | "pra
   )
 }
 
-/** Janela de confirmação (vidro). Esc / clique fora = onClose. */
+/**
+ * Janela de confirmação (vidro). Esc / clique fora = onClose. Sempre em PORTAL:
+ * dentro de outra janela de vidro (backdrop-filter) um position:fixed ficaria
+ * preso na janela de fora e cortado por ela.
+ */
 export function TkDialog({
   title,
   children,
@@ -498,8 +502,9 @@ export function TkDialog({
   onClose: () => void
   width?: number
 }) {
+  const { portal } = useTk()
   useEsc(onClose)
-  return (
+  const janela = (
     <div className="tk-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()} style={{ zIndex: 1150 }}>
       <div className={TK_JANELA} role="dialog" aria-label={title} style={{ ...ELEVACAO_JANELA, width, maxWidth: "calc(100% - 32px)", padding: 20 }}>
         <div style={{ fontSize: 16, fontWeight: 500, lineHeight: 1.3, marginBottom: children ? 8 : 16 }}>{title}</div>
@@ -508,6 +513,7 @@ export function TkDialog({
       </div>
     </div>
   )
+  return portal ? createPortal(janela, portal) : janela
 }
 
 // Pilha de janelas abertas: Esc fecha SÓ a do topo (um diálogo por cima do
