@@ -1,86 +1,58 @@
-// Zod schemas for the projetos mutation payloads — enforced at the route boundary
-// (parseBody → UserError → clean PT-BR 400). Enum-ish fields stay loose strings;
-// the _input.ts coercers clamp them to valid values.
+// Zod dos payloads de Projetos e Modelos (borda da rota → UserError → 400).
 import { z } from "zod"
-import { dateStr, idOpt, idReq } from "@/lib/validation"
+import { idOpt, idReq } from "@/lib/validation"
+
+const iso = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+const cor = z.string().regex(/^#[0-9A-Fa-f]{6}$/)
 
 export const projetoCreateSchema = z.object({
-  nome: z.string().min(1).max(200),
-  descricao: z.string().max(4000).nullish(),
-  status: z.string().max(20).optional(),
-  cor: z.string().max(40).nullish(),
-  icone: z.string().max(40).nullish(),
-  area: z.string().max(40).nullish(),
-  prazo: dateStr.nullish(),
-  responsavelId: idOpt,
-  casoId: idOpt,
+  nomeCurto: z.string().trim().min(1).max(24),
+  nome: z.string().trim().min(1).max(200),
   clienteId: idOpt,
-  ordem: z.number().int().optional(),
-})
-
-export const projetoPatchSchema = projetoCreateSchema.partial()
-
-// Seções personalizadas de um projeto (colunas do quadro / grupos da lista).
-export const secaoCreateSchema = z.object({
-  nome: z.string().min(1).max(120),
-  cor: z.string().max(40).nullish(),
-  ordem: z.number().int().optional(),
-})
-export const secaoPatchSchema = secaoCreateSchema.partial()
-export const reordenarSecoesSchema = z.object({ ids: z.array(idReq).min(1).max(100) })
-
-// Bulk edit of tasks (F4): apply ONE of the listed fields across many tasks.
-export const tarefasLoteSchema = z.object({
-  ids: z.array(idReq).min(1).max(200),
-  status: z.enum(["todo", "doing", "review", "done"]).optional(),
+  area: z.string().max(60).nullish(),
   responsavelId: idOpt,
-  data: dateStr.nullish(),
-  prazo: dateStr.nullish(),
-  projetoId: idOpt,
-  prio: z.number().int().min(1).max(4).optional(),
-  excluir: z.boolean().optional(),
-})
-
-// Template item (for the admin editor + instantiation).
-const templateItemSchema = z.object({
-  titulo: z.string().min(1).max(300),
+  prazo: iso.nullish(),
+  cor: cor.nullish(),
   descricao: z.string().max(4000).nullish(),
-  prio: z.number().int().min(1).max(4).optional(),
-  responsavelPlaceholder: z.string().max(120).nullish(),
-  offsetDias: z.number().int().min(0).max(3650).optional(),
-  base: z.enum(["inicio", "anterior"]).optional(),
-  dor: z.array(z.string().min(1)).max(12).optional(),
-  dod: z.array(z.string().min(1)).max(12).optional(),
-  secaoOrdem: z.number().int().min(0).max(99).nullish(), // índice da seção-modelo
 })
 
-// Seção-modelo do template.
-const templateSecaoSchema = z.object({
-  nome: z.string().min(1).max(120),
-  cor: z.string().max(40).nullish(),
+export const projetoPatchSchema = projetoCreateSchema.partial().extend({
+  arquivado: z.boolean().optional(),
 })
 
-export const templateCreateSchema = z.object({
-  nome: z.string().min(1).max(200),
-  descricao: z.string().max(4000).nullish(),
-  area: z.string().max(40).nullish(),
-  cor: z.string().max(40).nullish(),
-  icone: z.string().max(40).nullish(),
-  ativo: z.boolean().optional(),
-  itens: z.array(templateItemSchema).max(100).optional(),
-  secoes: z.array(templateSecaoSchema).max(30).optional(),
+export const deModeloSchema = z.object({
+  modeloId: idReq,
+  projeto: projetoCreateSchema,
+  grupos: z
+    .array(z.object({ nome: z.string().trim().min(1).max(160), prazo: iso }))
+    .min(1)
+    .max(12),
+  responsaveis: z.record(z.string().max(60), idOpt).optional(),
 })
 
-export const templatePatchSchema = templateCreateSchema.partial()
+const passoSchema = z.object({
+  chave: z.string().trim().min(1).max(40),
+  titulo: z.string().trim().min(1).max(300),
+  papelId: z.string().max(60).nullish(),
+  diasAntes: z.number().int().min(0).max(3650),
+  prazoFatal: z.boolean().optional(),
+  anteriores: z.array(z.string().max(40)).max(40).optional(),
+  checklist: z.array(z.string().trim().max(300)).max(40).optional(),
+})
 
-// Instantiate a template into a real project + its tasks.
-export const instanciarSchema = z.object({
-  templateId: idReq,
-  dataInicio: dateStr,
-  nome: z.string().min(1).max(200).optional(), // overrides the template name
-  responsavelId: idOpt, // project lead + fallback assignee
-  casoId: idOpt,
-  clienteId: idOpt,
-  // map each item ordem → a real User id (responsavelPlaceholder → membro)
-  responsaveis: z.array(z.object({ ordem: z.number().int().min(0), responsavelId: idReq })).max(100).optional(),
+export const modeloSchema = z.object({
+  nome: z.string().trim().min(1).max(160),
+  area: z.string().max(60).nullish(),
+  palavraGrupo: z.string().trim().min(1).max(40),
+  sufixoGrupo: z.string().max(120).optional(),
+  papeis: z
+    .array(
+      z.object({
+        id: z.string().trim().min(1).max(60),
+        rotulo: z.string().trim().min(1).max(80),
+        padraoUsuarioId: idOpt,
+      }),
+    )
+    .max(12),
+  passos: z.array(passoSchema).min(1).max(60),
 })

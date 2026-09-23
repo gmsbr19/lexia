@@ -26,9 +26,10 @@ const TZ = "America/Sao_Paulo"
 const ROLES_GESTOR = new Set(["socio", "admin"])
 const MAX_LINHAS_EQUIPE = 30 // corta o e-mail da equipe p/ não estourar
 
+// Meio-dia UTC — mesma convenção com que o prazo das tarefas é gravado (tarefas/_input.ts toDate).
 function noon(isoDate: string): Date {
   const [y, m, d] = isoDate.split("-").map(Number)
-  return new Date(y, m - 1, d, 12, 0, 0)
+  return new Date(Date.UTC(y, m - 1, d, 12, 0, 0))
 }
 
 /** Hora do relógio de parede São Paulo (0–23). */
@@ -215,7 +216,7 @@ export async function enviarRelatoriosDiarios(opts?: EnviarRelatoriosOpts): Prom
   const pendentes = await prisma.tarefa.findMany({
     where: {
       done: false,
-      prazo: { not: null, lte: noon(hoje) },
+      prazo: { lte: noon(hoje) },
       responsavel: { email: { in: emails } },
     },
     select: {
@@ -230,7 +231,7 @@ export async function enviarRelatoriosDiarios(opts?: EnviarRelatoriosOpts): Prom
   const porEmail = new Map<string, TarefaLinha[]>()
   for (const t of pendentes) {
     const email = t.responsavel?.email
-    if (!email || !t.prazo) continue
+    if (!email) continue
     const linha: TarefaLinha = {
       id: t.id,
       titulo: t.titulo,
@@ -246,7 +247,7 @@ export async function enviarRelatoriosDiarios(opts?: EnviarRelatoriosOpts): Prom
   let equipe: TarefaLinha[] = []
   if (destinatarios.some((d) => d.gestor)) {
     const atrasadasEquipe = await prisma.tarefa.findMany({
-      where: { done: false, prazo: { not: null, lt: noon(hoje) }, responsavelId: { not: null } },
+      where: { done: false, prazo: { lt: noon(hoje) }, responsavelId: { not: null } },
       orderBy: { prazo: "asc" },
       select: {
         id: true,
@@ -257,12 +258,10 @@ export async function enviarRelatoriosDiarios(opts?: EnviarRelatoriosOpts): Prom
         projetoRef: { select: { nome: true } },
       },
     })
-    equipe = atrasadasEquipe
-      .filter((t) => t.prazo)
-      .map((t) => ({
+    equipe = atrasadasEquipe.map((t) => ({
         id: t.id,
         titulo: t.titulo,
-        prazoISO: toISODate(t.prazo as Date),
+        prazoISO: toISODate(t.prazo),
         contexto: t.cliente?.nome ?? t.projetoRef?.nome ?? null,
         responsavelNome: t.responsavel?.nome ?? null,
       }))

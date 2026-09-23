@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db"
 import { UserError } from "@/lib/errors"
 import { userIdPorEmail, usuarioPorEmail } from "@/lib/notificacoes/recipients"
 import { notificarComentarioTarefa } from "@/lib/notificacoes/triggers"
+import { RegistroAcao } from "./acoes"
 import type { ComentarioRow } from "./comentario-core"
 
 const SELECT = {
@@ -52,7 +53,7 @@ export async function criarComentario(
   tarefaId: number,
   input: ComentarioInput,
   actorEmail?: string | null,
-): Promise<ComentarioRow> {
+): Promise<ComentarioRow & { acaoId: string }> {
   const conteudo = input.conteudo.trim()
   if (!conteudo) throw new UserError("O comentário não pode ficar vazio")
   const tarefa = await prisma.tarefa.findUnique({
@@ -78,7 +79,9 @@ export async function criarComentario(
     criadoPorId: tarefa.criadoPorId,
     actorEmail,
   })
-  return toRow(criado)
+  const reg = new RegistroAcao(prisma, autorId)
+  reg.comentario(criado.id)
+  return { ...toRow(criado), acaoId: await reg.salvar("Comentário publicado") }
 }
 
 export async function editarComentario(
@@ -86,29 +89,31 @@ export async function editarComentario(
   comentarioId: number,
   input: ComentarioInput,
   actorEmail?: string | null,
-): Promise<ComentarioRow> {
+): Promise<ComentarioRow & { acaoId: string }> {
   const conteudo = input.conteudo.trim()
   if (!conteudo) throw new UserError("O comentário não pode ficar vazio")
   const atorId = await userIdPorEmail(actorEmail)
   const row = await prisma.tarefaComentario.findFirst({
     where: { id: comentarioId, tarefaId, excluidoEm: null },
-    select: { id: true, autorId: true },
+    select: { id: true, autorId: true, conteudo: true, editadoEm: true },
   })
   if (!row) throw new UserError("Comentário não encontrado")
   if (row.autorId !== atorId) throw new ForbiddenError() // só o autor edita
+  const reg = new RegistroAcao(prisma, atorId)
+  reg.comentarioEditado(row)
   const atualizado = await prisma.tarefaComentario.update({
     where: { id: row.id },
     data: { conteudo, editadoEm: new Date() },
     select: SELECT,
   })
-  return toRow(atualizado)
+  return { ...toRow(atualizado), acaoId: await reg.salvar("Comentário editado") }
 }
 
 export async function excluirComentario(
   tarefaId: number,
   comentarioId: number,
   actorEmail?: string | null,
-): Promise<{ id: number }> {
+): Promise<{ id: number; acaoId: string }> {
   const ator = await usuarioPorEmail(actorEmail)
   const row = await prisma.tarefaComentario.findFirst({
     where: { id: comentarioId, tarefaId, excluidoEm: null },
@@ -123,5 +128,7 @@ export async function excluirComentario(
     where: { id: row.id },
     data: { excluidoEm: new Date() },
   })
-  return { id: row.id }
+  const reg = new RegistroAcao(prisma, ator?.id ?? null)
+  reg.comentarioExcluido(row.id)
+  return { id: row.id, acaoId: await reg.salvar("Comentário excluído") }
 }

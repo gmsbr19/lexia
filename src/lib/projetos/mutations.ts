@@ -1,510 +1,392 @@
-// Projetos — write layer. SERVER ONLY. CRUD for Projeto + ProjetoTemplate, the
-// template→projeto instantiation (relative deadlines via the CPC prazo engine),
-// and the tasks bulk-edit (F4). Soft-delete (`excluidoEm`) on Projeto/Template;
-// task rows are NEVER hidden — a deleted project's tasks read as "sem projeto".
-//
-// Notifications: single-task assignment notifies (tarefas/mutations). Template
-// instantiation and bulk edits deliberately DON'T fan out per-task notifications
-// (avoids spamming a recipient with N notices for one action).
+// Projetos & Modelos — camada de escrita. SERVER ONLY. Projeto é FILTRO do quadro
+// único; criar a partir de modelo gera projeto + tarefas + ligações numa única
+// transação (e o "Desfazer" apaga tudo). Mudanças em projetos também entram no
+// registro de ações.
 import { randomUUID } from "node:crypto"
-import { Prisma } from "@prisma/client"
+import type { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/db"
 import { UserError } from "@/lib/errors"
-import { userIdPorEmail } from "@/lib/notificacoes/recipients"
-import { anosParaPrazo, carregarContextoPrazo } from "@/lib/processos/contexto"
-import {
-  clampPrio3,
-  optId,
-  optOffset,
-  optStr,
-  reqStr,
-  strArray,
-  toDate,
-  validBase,
-  validProjetoStatus,
-} from "./_input"
-import { instanciarTemplate, type TemplateItemInput } from "./template"
-import type { TemplateBase } from "./types"
+import { isValidISO } from "@/lib/datas/util"
+import { RegistroAcao } from "@/lib/tarefas/acoes"
+import { optId, optStr, reqStr, toDate } from "@/lib/tarefas/_input"
+import { historico, TX_OPTS, type Ator } from "@/lib/tarefas/mutations"
+import { hojeSP, prazoPadrao } from "@/lib/tarefas/regras"
+import { CORES_PROJETO, type PapelModelo, type PassoModelo } from "@/lib/tarefas/types"
+import { cicloNoModelo, instanciarModelo, type GrupoWizard } from "./modelo"
 
-const ISO = /^\d{4}-\d{2}-\d{2}$/
-function parseJsonStrArr(s: string | null | undefined): string[] {
-  if (!s) return []
-  try {
-    const v = JSON.parse(s)
-    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []
-  } catch {
-    return []
-  }
-}
+type Tx = Prisma.TransactionClient
 
-// ── Projeto CRUD ───────────────────────────────────────────────────────────────
-export interface ProjetoCreate {
+export interface ProjetoInput {
+  nomeCurto: string
   nome: string
-  descricao?: string | null
-  status?: string
-  cor?: string | null
-  icone?: string | null
-  area?: string | null
-  prazo?: string | null
-  responsavelId?: number | null
-  casoId?: number | null
   clienteId?: number | null
-  ordem?: number
-}
-
-export async function createProjeto(input: ProjetoCreate) {
-  return prisma.projeto.create({
-    data: {
-      nome: reqStr(input.nome, "nome"),
-      descricao: optStr(input.descricao),
-      status: validProjetoStatus(input.status),
-      cor: optStr(input.cor),
-      icone: optStr(input.icone),
-      area: optStr(input.area),
-      prazo: toDate(input.prazo),
-      responsavelId: optId(input.responsavelId),
-      casoId: optId(input.casoId),
-      clienteId: optId(input.clienteId),
-      ordem: Number.isInteger(input.ordem) ? (input.ordem as number) : 0,
-    },
-  })
-}
-
-export type ProjetoPatch = Partial<ProjetoCreate>
-
-export async function updateProjeto(id: number, patch: ProjetoPatch) {
-  const existing = await prisma.projeto.findFirst({ where: { id, excluidoEm: null }, select: { id: true } })
-  if (!existing) throw new UserError("Projeto não encontrado")
-  const data: Prisma.ProjetoUncheckedUpdateInput = {}
-  if (patch.nome !== undefined) data.nome = reqStr(patch.nome, "nome")
-  if (patch.descricao !== undefined) data.descricao = optStr(patch.descricao)
-  if (patch.status !== undefined) data.status = validProjetoStatus(patch.status)
-  if (patch.cor !== undefined) data.cor = optStr(patch.cor)
-  if (patch.icone !== undefined) data.icone = optStr(patch.icone)
-  if (patch.area !== undefined) data.area = optStr(patch.area)
-  if (patch.prazo !== undefined) data.prazo = toDate(patch.prazo)
-  if (patch.responsavelId !== undefined) data.responsavelId = optId(patch.responsavelId)
-  if (patch.casoId !== undefined) data.casoId = optId(patch.casoId)
-  if (patch.clienteId !== undefined) data.clienteId = optId(patch.clienteId)
-  if (patch.ordem !== undefined && Number.isInteger(patch.ordem)) data.ordem = patch.ordem
-  return prisma.projeto.update({ where: { id }, data })
-}
-
-/** Soft-delete: the project's tasks survive (read as "sem projeto"). Reversible. */
-export async function deleteProjeto(id: number) {
-  const existing = await prisma.projeto.findFirst({ where: { id, excluidoEm: null }, select: { id: true } })
-  if (!existing) throw new UserError("Projeto não encontrado")
-  await prisma.projeto.update({ where: { id }, data: { excluidoEm: new Date() } })
-  return { id }
-}
-
-// ── Seções (colunas do quadro do projeto, estilo Todoist) ────────────────────────
-export interface SecaoCreate {
-  nome: string
+  area?: string | null
+  responsavelId?: number | null
+  prazo?: string | null
   cor?: string | null
-  ordem?: number
+  descricao?: string | null
 }
 
-export async function createSecao(projetoId: number, input: SecaoCreate) {
-  const proj = await prisma.projeto.findFirst({ where: { id: projetoId, excluidoEm: null }, select: { id: true } })
-  if (!proj) throw new UserError("Projeto não encontrado")
-  const ordem = Number.isInteger(input.ordem)
-    ? (input.ordem as number)
-    : ((await prisma.projetoSecao.aggregate({ where: { projetoId }, _max: { ordem: true } }))._max.ordem ?? -1) + 1
-  return prisma.projetoSecao.create({
-    data: { projetoId, nome: reqStr(input.nome, "nome"), cor: optStr(input.cor), ordem },
-  })
-}
-
-/**
- * Cria VÁRIAS seções num projeto numa única transação (a ordem é anexada em
- * sequência ao final, a menos que informada). Devolve os ids/nomes criados —
- * a IA usa esses ids para colocar tarefas nas seções SEM re-detalhar o projeto.
- * Colapsa N chamadas criar_secao (N round-trips ao modelo) numa só.
- */
-export async function createSecoes(projetoId: number, itens: SecaoCreate[]) {
-  const proj = await prisma.projeto.findFirst({ where: { id: projetoId, excluidoEm: null }, select: { id: true } })
-  if (!proj) throw new UserError("Projeto não encontrado")
-  if (!itens.length) throw new UserError("Nenhuma seção informada")
-  const base = ((await prisma.projetoSecao.aggregate({ where: { projetoId }, _max: { ordem: true } }))._max.ordem ?? -1) + 1
-  const secoes = await prisma.$transaction(
-    itens.map((s, i) =>
-      prisma.projetoSecao.create({
-        data: {
-          projetoId,
-          nome: reqStr(s.nome, "nome"),
-          cor: optStr(s.cor),
-          ordem: Number.isInteger(s.ordem) ? (s.ordem as number) : base + i,
-        },
-        select: { id: true, nome: true, ordem: true },
-      }),
-    ),
+async function corLivre(tx: Tx): Promise<string> {
+  const usadas = new Set(
+    (await tx.projeto.findMany({ where: { excluidoEm: null, arquivadoEm: null }, select: { cor: true } })).map((p) => p.cor),
   )
-  return { criadas: secoes.length, secoes }
+  return CORES_PROJETO.find((c) => !usadas.has(c)) ?? CORES_PROJETO[0]
 }
 
-export type SecaoPatch = Partial<SecaoCreate>
-
-export async function updateSecao(id: number, patch: SecaoPatch) {
-  const existing = await prisma.projetoSecao.findUnique({ where: { id }, select: { id: true } })
-  if (!existing) throw new UserError("Seção não encontrada")
-  const data: Prisma.ProjetoSecaoUncheckedUpdateInput = {}
-  if (patch.nome !== undefined) data.nome = reqStr(patch.nome, "nome")
-  if (patch.cor !== undefined) data.cor = optStr(patch.cor)
-  if (patch.ordem !== undefined && Number.isInteger(patch.ordem)) data.ordem = patch.ordem
-  return prisma.projetoSecao.update({ where: { id }, data })
-}
-
-/** Exclui a seção; as tarefas dela viram "Sem seção" (FK onDelete: SetNull). */
-export async function deleteSecao(id: number) {
-  const existing = await prisma.projetoSecao.findUnique({ where: { id }, select: { id: true } })
-  if (!existing) throw new UserError("Seção não encontrada")
-  await prisma.projetoSecao.delete({ where: { id } })
-  return { id }
-}
-
-/** Reordena as seções de um projeto conforme a ordem dos ids recebidos. */
-export async function reordenarSecoes(projetoId: number, ids: number[]) {
-  const secoes = await prisma.projetoSecao.findMany({ where: { projetoId }, select: { id: true } })
-  const validos = new Set(secoes.map((s) => s.id))
-  const ordenados = (ids ?? []).filter((id) => validos.has(id))
-  await prisma.$transaction(ordenados.map((id, i) => prisma.projetoSecao.update({ where: { id }, data: { ordem: i } })))
-  return { ok: true }
-}
-
-// ── Estrutura completa numa transação (árvore projeto → seções → tarefas) ────────
-// O jeito EFICIENTE de criar em massa: a IA envia a árvore inteira numa ÚNICA
-// chamada e o servidor conecta os ids (projeto→seção→tarefa) sozinho — sem o
-// vai-e-volta de "criar projeto, ler o id, criar seção, ler o id, criar tarefa"
-// que fazia um turno agêntico virar dezenas de mensagens.
-export interface EstruturaTarefa {
-  titulo: string
-  descricao?: string | null
-  responsavelId?: number | null
-  prazo?: string | null
-  prio?: number
-  dor?: string[]
-  dod?: string[]
-}
-export interface EstruturaSecao {
-  nome: string
-  cor?: string | null
-  tarefas?: EstruturaTarefa[]
-}
-export interface EstruturaProjeto {
-  nome: string
-  descricao?: string | null
-  area?: string | null
-  responsavelId?: number | null
-  prazo?: string | null
-  casoId?: number | null
-  clienteId?: number | null
-  secoes?: EstruturaSecao[]
-  tarefas?: EstruturaTarefa[] // tarefas do projeto sem seção
-}
-
-function estruturaTarefaData(t: EstruturaTarefa, projetoId: number, secaoId: number | null, area: string, criadoPorId: number | null) {
-  const prio = Number.isInteger(t.prio) ? Math.min(4, Math.max(1, t.prio as number)) : 3
-  return {
-    astreaId: `app-tarefa-${randomUUID()}`,
-    titulo: reqStr(t.titulo, "título"),
-    status: "todo",
-    done: false,
-    prio,
-    projeto: area, // espelho da coluna-string legada
-    prazo: toDate(t.prazo),
-    notes: optStr(t.descricao),
-    dor: JSON.stringify((t.dor ?? []).map((text) => ({ text, done: false }))),
-    dod: JSON.stringify((t.dod ?? []).map((text) => ({ text, done: false }))),
-    responsavelId: optId(t.responsavelId),
-    criadoPorId,
-    projetoId,
-    secaoId,
-    origem: "manual",
-    geradoPorApp: true,
-    ai: true,
+async function validarRefs(tx: Tx, clienteId: number | null, responsavelId: number | null) {
+  if (clienteId != null && !(await tx.cliente.findUnique({ where: { id: clienteId }, select: { id: true } }))) {
+    throw new UserError("Cliente não encontrado")
+  }
+  if (responsavelId != null && !(await tx.user.findUnique({ where: { id: responsavelId }, select: { id: true } }))) {
+    throw new UserError("Responsável não encontrado")
   }
 }
 
-/**
- * Cria N projetos, cada um com suas seções e as tarefas de cada seção, numa ÚNICA
- * transação. A IA manda a árvore completa; o servidor resolve toda a ligação de
- * ids. NÃO dispara notificação por-tarefa (convenção de bulk). Devolve os ids dos
- * projetos criados + as contagens.
- */
-export async function montarEstruturaProjetos(projetos: EstruturaProjeto[], actorEmail?: string | null) {
-  if (!projetos.length) throw new UserError("Nenhum projeto informado")
-  const criadoPorId = await userIdPorEmail(actorEmail)
-  let nSec = 0
-  let nTar = 0
-  const criados = await prisma.$transaction(async (tx) => {
-    const out: { id: number; nome: string }[] = []
-    for (const p of projetos) {
-      const proj = await tx.projeto.create({
-        data: {
-          nome: reqStr(p.nome, "nome"),
-          descricao: optStr(p.descricao),
-          status: "ativo",
-          area: optStr(p.area),
-          prazo: toDate(p.prazo),
-          responsavelId: optId(p.responsavelId),
-          casoId: optId(p.casoId),
-          clienteId: optId(p.clienteId),
-        },
-      })
-      out.push({ id: proj.id, nome: proj.nome })
-      const area = optStr(p.area) ?? "inbox"
-      const soltas = p.tarefas ?? []
-      if (soltas.length) {
-        await tx.tarefa.createMany({ data: soltas.map((t) => estruturaTarefaData(t, proj.id, null, area, criadoPorId)) })
-        nTar += soltas.length
-      }
-      let ordem = 0
-      for (const s of p.secoes ?? []) {
-        const sec = await tx.projetoSecao.create({
-          data: { projetoId: proj.id, nome: reqStr(s.nome, "nome"), cor: optStr(s.cor), ordem: ordem++ },
-        })
-        nSec++
-        const ts = s.tarefas ?? []
-        if (ts.length) {
-          await tx.tarefa.createMany({ data: ts.map((t) => estruturaTarefaData(t, proj.id, sec.id, area, criadoPorId)) })
-          nTar += ts.length
-        }
-      }
-    }
-    return out
-  })
-  return { projetos: criados.length, secoes: nSec, tarefas: nTar, criados }
+function prazoOpt(v: string | null | undefined): Date | null {
+  if (!v) return null
+  if (!isValidISO(v)) throw new UserError("Prazo inválido")
+  return toDate(v)
 }
 
-// ── Bulk task edit (F4) ─────────────────────────────────────────────────────────
-export interface TarefasLote {
-  ids: number[]
-  status?: "todo" | "doing" | "review" | "done"
-  responsavelId?: number | null
-  data?: string | null
-  prazo?: string | null
-  projetoId?: number | null
-  prio?: number
-  excluir?: boolean
-}
-
-export async function bulkUpdateTarefas(input: TarefasLote) {
-  const ids = (input.ids ?? []).filter((n) => Number.isInteger(n) && n > 0)
-  if (!ids.length) throw new UserError("Selecione ao menos uma tarefa")
-  if (input.excluir) {
-    const r = await prisma.tarefa.deleteMany({ where: { id: { in: ids } } })
-    return { excluidas: r.count }
-  }
-  const data: Prisma.TarefaUncheckedUpdateManyInput = {}
-  if (input.status !== undefined) {
-    data.status = input.status
-    data.done = input.status === "done"
-    data.concluidoEm = input.status === "done" ? new Date() : null
-  }
-  if (input.responsavelId !== undefined) data.responsavelId = optId(input.responsavelId)
-  if (input.data !== undefined) data.data = toDate(input.data)
-  if (input.prazo !== undefined) data.prazo = toDate(input.prazo)
-  if (input.projetoId !== undefined) data.projetoId = optId(input.projetoId)
-  if (input.prio !== undefined) data.prio = Math.min(4, Math.max(1, Math.round(input.prio)))
-  if (Object.keys(data).length === 0) throw new UserError("Nenhuma alteração informada")
-  const r = await prisma.tarefa.updateMany({ where: { id: { in: ids } }, data })
-  return { atualizadas: r.count }
-}
-
-// ── Templates ─────────────────────────────────────────────────────────────────
-export interface TemplateItemCreate {
-  titulo: string
-  descricao?: string | null
-  prio?: number
-  responsavelPlaceholder?: string | null
-  offsetDias?: number
-  base?: string
-  dor?: string[]
-  dod?: string[]
-  secaoOrdem?: number | null
-}
-export interface TemplateSecaoCreate {
-  nome: string
-  cor?: string | null
-}
-export interface TemplateCreate {
-  nome: string
-  descricao?: string | null
-  area?: string | null
-  cor?: string | null
-  icone?: string | null
-  ativo?: boolean
-  itens?: TemplateItemCreate[]
-  secoes?: TemplateSecaoCreate[]
-}
-
-const optSecaoOrdem = (v: unknown): number | null =>
-  typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : null
-
-function itemData(it: TemplateItemCreate, ordem: number) {
-  return {
-    titulo: reqStr(it.titulo, "título"),
-    descricao: optStr(it.descricao),
-    prio: clampPrio3(it.prio),
-    responsavelPlaceholder: optStr(it.responsavelPlaceholder),
-    offsetDias: optOffset(it.offsetDias),
-    base: validBase(it.base),
-    dor: JSON.stringify(strArray(it.dor)),
-    dod: JSON.stringify(strArray(it.dod)),
-    ordem,
-    secaoOrdem: optSecaoOrdem(it.secaoOrdem),
-  }
-}
-
-function secaoData(s: TemplateSecaoCreate, ordem: number) {
-  return { nome: reqStr(s.nome, "nome"), cor: optStr(s.cor), ordem }
-}
-
-export async function createTemplate(input: TemplateCreate) {
-  const itens = (input.itens ?? []).map((it, i) => itemData(it, i))
-  const secoes = (input.secoes ?? []).map((s, i) => secaoData(s, i))
-  return prisma.projetoTemplate.create({
+async function inserirProjeto(tx: Tx, reg: RegistroAcao, input: ProjetoInput, modeloOrigemId: number | null) {
+  const clienteId = optId(input.clienteId)
+  const responsavelId = optId(input.responsavelId)
+  await validarRefs(tx, clienteId, responsavelId)
+  const p = await tx.projeto.create({
     data: {
-      nome: reqStr(input.nome, "nome"),
-      descricao: optStr(input.descricao),
+      nomeCurto: reqStr(input.nomeCurto, "nome curto").slice(0, 24),
+      nome: reqStr(input.nome, "nome completo").slice(0, 200),
+      clienteId,
       area: optStr(input.area),
-      cor: optStr(input.cor),
-      icone: optStr(input.icone),
-      ativo: input.ativo ?? true,
-      itens: { create: itens },
-      secoes: { create: secoes },
+      responsavelId,
+      prazo: prazoOpt(input.prazo),
+      cor: input.cor && /^#[0-9A-Fa-f]{6}$/.test(input.cor) ? input.cor : await corLivre(tx),
+      descricao: optStr(input.descricao),
+      modeloOrigemId,
     },
+    select: { id: true, nomeCurto: true },
   })
+  reg.projetoCriado(p.id)
+  return p
 }
 
-export async function updateTemplate(id: number, patch: Partial<TemplateCreate>) {
-  const existing = await prisma.projetoTemplate.findFirst({ where: { id, excluidoEm: null }, select: { id: true } })
-  if (!existing) throw new UserError("Template não encontrado")
-  const data: Prisma.ProjetoTemplateUncheckedUpdateInput = {}
-  if (patch.nome !== undefined) data.nome = reqStr(patch.nome, "nome")
-  if (patch.descricao !== undefined) data.descricao = optStr(patch.descricao)
-  if (patch.area !== undefined) data.area = optStr(patch.area)
-  if (patch.cor !== undefined) data.cor = optStr(patch.cor)
-  if (patch.icone !== undefined) data.icone = optStr(patch.icone)
-  if (patch.ativo !== undefined) data.ativo = !!patch.ativo
-  // The editor sends the FULL item/section lists → replace-all (keeps ordem authoritative).
-  const replaceItens = patch.itens !== undefined
-  const replaceSecoes = patch.secoes !== undefined
-  if (replaceItens || replaceSecoes) {
-    const itens = replaceItens ? patch.itens!.map((it, i) => itemData(it, i)) : null
-    const secoes = replaceSecoes ? patch.secoes!.map((s, i) => secaoData(s, i)) : null
-    return prisma.$transaction(async (tx) => {
-      if (replaceItens) await tx.projetoTemplateTarefa.deleteMany({ where: { templateId: id } })
-      if (replaceSecoes) await tx.projetoTemplateSecao.deleteMany({ where: { templateId: id } })
-      const write: Prisma.ProjetoTemplateUncheckedUpdateInput = { ...data }
-      if (itens) write.itens = { create: itens }
-      if (secoes) write.secoes = { create: secoes }
-      return tx.projetoTemplate.update({ where: { id }, data: write })
-    })
+export async function criarProjeto(input: ProjetoInput, ator: Ator) {
+  return prisma.$transaction(async (tx) => {
+    const reg = new RegistroAcao(tx, ator.id)
+    const p = await inserirProjeto(tx, reg, input, null)
+    return { id: p.id, acaoId: await reg.salvar(`Projeto criado: ${p.nomeCurto}`) }
+  }, TX_OPTS)
+}
+
+export interface ProjetoPatch extends Partial<ProjetoInput> {
+  arquivado?: boolean
+}
+
+export async function atualizarProjeto(id: number, patch: ProjetoPatch, ator: Ator) {
+  return prisma.$transaction(async (tx) => {
+    const antes = await tx.projeto.findFirst({ where: { id, excluidoEm: null }, select: { id: true, nomeCurto: true, arquivadoEm: true } })
+    if (!antes) throw new UserError("Projeto não encontrado")
+    const reg = new RegistroAcao(tx, ator.id)
+    await reg.guardarProjeto(id)
+    const data: Prisma.ProjetoUncheckedUpdateInput = {}
+    if (patch.nomeCurto !== undefined) data.nomeCurto = reqStr(patch.nomeCurto, "nome curto").slice(0, 24)
+    if (patch.nome !== undefined) data.nome = reqStr(patch.nome, "nome completo").slice(0, 200)
+    if (patch.area !== undefined) data.area = optStr(patch.area)
+    if (patch.prazo !== undefined) data.prazo = prazoOpt(patch.prazo)
+    if (patch.descricao !== undefined) data.descricao = optStr(patch.descricao)
+    if (patch.cor !== undefined && patch.cor && /^#[0-9A-Fa-f]{6}$/.test(patch.cor)) data.cor = patch.cor
+    if (patch.clienteId !== undefined || patch.responsavelId !== undefined) {
+      await validarRefs(tx, optId(patch.clienteId), optId(patch.responsavelId))
+      if (patch.clienteId !== undefined) data.clienteId = optId(patch.clienteId)
+      if (patch.responsavelId !== undefined) data.responsavelId = optId(patch.responsavelId)
+    }
+    let msg = `Projeto alterado: ${antes.nomeCurto}`
+    if (patch.arquivado !== undefined && patch.arquivado !== !!antes.arquivadoEm) {
+      data.arquivadoEm = patch.arquivado ? new Date() : null
+      msg = patch.arquivado ? `Projeto arquivado: ${antes.nomeCurto}` : `Projeto desarquivado: ${antes.nomeCurto}`
+    }
+    if (!Object.keys(data).length) return { acaoId: null as string | null }
+    await tx.projeto.update({ where: { id }, data })
+    return { acaoId: await reg.salvar(msg) }
+  }, TX_OPTS)
+}
+
+/** Exclusão (soft): as tarefas ficam, lidas como "Sem projeto". */
+export async function excluirProjeto(id: number, ator: Ator) {
+  return prisma.$transaction(async (tx) => {
+    const p = await tx.projeto.findFirst({ where: { id, excluidoEm: null }, select: { nomeCurto: true } })
+    if (!p) throw new UserError("Projeto não encontrado")
+    const reg = new RegistroAcao(tx, ator.id)
+    await reg.guardarProjeto(id)
+    await tx.projeto.update({ where: { id }, data: { excluidoEm: new Date() } })
+    return { acaoId: await reg.salvar(`Projeto excluído: ${p.nomeCurto}`) }
+  }, TX_OPTS)
+}
+
+// ── criar a partir de modelo ─────────────────────────────────────────────────
+export interface DeModeloInput {
+  modeloId: number
+  projeto: ProjetoInput
+  grupos: GrupoWizard[]
+  responsaveis?: Record<string, number | null | undefined>
+}
+
+export async function criarProjetoDeModelo(input: DeModeloInput, ator: Ator) {
+  for (const g of input.grupos) if (!isValidISO(g.prazo)) throw new UserError("Prazo do grupo inválido")
+  const modelo = await carregarModelo(input.modeloId)
+  const responsaveis: Record<string, number | null> = {}
+  for (const papel of modelo.papeis) {
+    const v = input.responsaveis?.[papel.id]
+    responsaveis[papel.id] = v === undefined ? papel.padraoUsuarioId : optId(v)
   }
-  return prisma.projetoTemplate.update({ where: { id }, data })
+  const geradas = instanciarModelo(modelo, input.grupos, responsaveis)
+
+  return prisma.$transaction(async (tx) => {
+    const reg = new RegistroAcao(tx, ator.id)
+    for (const uid of new Set(Object.values(responsaveis))) await validarRefs(tx, null, uid)
+    const projeto = await inserirProjeto(tx, reg, input.projeto, modelo.id)
+    const ids = new Map<string, number>()
+    for (const g of geradas) {
+      const t = await tx.tarefa.create({
+        data: {
+          astreaId: `app-tarefa-${randomUUID()}`,
+          titulo: g.titulo,
+          status: g.status,
+          done: false,
+          prazo: toDate(g.prazo)!,
+          prazoFatal: g.prazoFatal,
+          grupo: g.grupo,
+          checklist: JSON.stringify(g.checklist.map((texto, i) => ({ id: `c${i + 1}`, texto, marcado: false }))),
+          origem: "modelo",
+          geradoPorApp: true,
+          responsavelId: g.responsavelId,
+          criadoPorId: ator.id,
+          projetoId: projeto.id,
+        },
+        select: { id: true },
+      })
+      ids.set(g.chave, t.id)
+      reg.criada(t.id)
+    }
+    const ligacoes = geradas.flatMap((g) =>
+      g.anteriores.map((a) => ({ anteriorId: ids.get(a)!, seguinteId: ids.get(g.chave)! })),
+    )
+    if (ligacoes.length) await tx.tarefaLigacao.createMany({ data: ligacoes, skipDuplicates: true })
+    await historico(
+      tx,
+      reg,
+      ator,
+      [...ids.values()].map((tarefaId) => ({ tarefaId, texto: "Criada pelo modelo" })),
+    )
+    const acaoId = await reg.salvar(`Projeto criado: ${projeto.nomeCurto}`)
+    return { id: projeto.id, acaoId, tarefas: geradas.length, ligacoes: ligacoes.length }
+  }, TX_OPTS)
 }
 
-export async function deleteTemplate(id: number) {
-  const existing = await prisma.projetoTemplate.findFirst({ where: { id, excluidoEm: null }, select: { id: true } })
-  if (!existing) throw new UserError("Template não encontrado")
-  await prisma.projetoTemplate.update({ where: { id }, data: { excluidoEm: new Date(), ativo: false } })
-  return { id }
-}
-
-// ── Instantiation: template → 1 Projeto + N Tarefa with relative deadlines ───────
-export interface InstanciarInput {
-  templateId: number
-  dataInicio: string // "YYYY-MM-DD"
-  nome?: string
-  responsavelId?: number | null // project lead + fallback assignee
-  casoId?: number | null
-  clienteId?: number | null
-  responsaveis?: { ordem: number; responsavelId: number }[] // item ordem → User id
-}
-
-export async function instanciarTemplateProjeto(input: InstanciarInput, actorEmail?: string | null) {
-  const template = await prisma.projetoTemplate.findFirst({
-    where: { id: input.templateId, excluidoEm: null },
-    include: { itens: { orderBy: { ordem: "asc" } }, secoes: { orderBy: { ordem: "asc" } } },
+// ── modelos (editor — só sócio) ──────────────────────────────────────────────
+async function carregarModelo(id: number) {
+  const m = await prisma.projetoModelo.findFirst({
+    where: { id, excluidoEm: null },
+    include: { passos: { orderBy: [{ ordem: "asc" }, { id: "asc" }] } },
   })
-  if (!template) throw new UserError("Template não encontrado")
+  if (!m) throw new UserError("Modelo não encontrado")
+  const json = <T>(s: string): T[] => {
+    try {
+      const v = JSON.parse(s)
+      return Array.isArray(v) ? v : []
+    } catch {
+      return []
+    }
+  }
+  return {
+    id: m.id,
+    palavraGrupo: m.palavraGrupo,
+    sufixoGrupo: m.sufixoGrupo,
+    papeis: json<PapelModelo>(m.papeis),
+    passos: m.passos.map<PassoModelo>((p) => ({
+      chave: p.chave,
+      titulo: p.titulo,
+      papelId: p.papelId,
+      diasAntes: p.diasAntes,
+      prazoFatal: p.prazoFatal,
+      anteriores: json<string>(p.anteriores),
+      checklist: json<string>(p.checklist),
+    })),
+  }
+}
 
-  const inicioISO = typeof input.dataInicio === "string" && ISO.test(input.dataInicio) ? input.dataInicio : null
-  if (!inicioISO) throw new UserError("Data de início inválida (use AAAA-MM-DD)")
+export interface ModeloInput {
+  nome: string
+  area?: string | null
+  palavraGrupo: string
+  sufixoGrupo?: string
+  papeis: { id: string; rotulo: string; padraoUsuarioId?: number | null }[]
+  passos: {
+    chave: string
+    titulo: string
+    papelId?: string | null
+    diasAntes: number
+    prazoFatal?: boolean
+    anteriores?: string[]
+    checklist?: string[]
+  }[]
+}
 
-  const itensInput: TemplateItemInput[] = template.itens.map((it) => ({
-    titulo: it.titulo,
-    descricao: it.descricao,
-    prio: it.prio,
-    responsavelPlaceholder: it.responsavelPlaceholder,
-    offsetDias: it.offsetDias,
-    base: it.base as TemplateBase,
-    dor: parseJsonStrArr(it.dor),
-    dod: parseJsonStrArr(it.dod),
-    ordem: it.ordem,
-    secaoOrdem: it.secaoOrdem,
+function normalizarModelo(input: ModeloInput) {
+  const papeis: PapelModelo[] = input.papeis.map((p) => ({
+    id: p.id.trim(),
+    rotulo: p.rotulo.trim(),
+    padraoUsuarioId: optId(p.padraoUsuarioId),
   }))
+  const papelIds = new Set(papeis.map((p) => p.id))
+  if (papelIds.size !== papeis.length) throw new UserError("Papéis repetidos")
+  const chaves = new Set<string>()
+  for (const p of input.passos) {
+    if (chaves.has(p.chave)) throw new UserError("Passos repetidos")
+    chaves.add(p.chave)
+  }
+  const passos: PassoModelo[] = input.passos.map((p) => ({
+    chave: p.chave.trim(),
+    titulo: p.titulo.trim(),
+    papelId: p.papelId && papelIds.has(p.papelId) ? p.papelId : null,
+    diasAntes: Math.max(0, Math.trunc(p.diasAntes)),
+    prazoFatal: !!p.prazoFatal,
+    anteriores: (p.anteriores ?? []).filter((a) => a !== p.chave && chaves.has(a)),
+    checklist: (p.checklist ?? []).map((c) => c.trim()).filter(Boolean),
+  }))
+  if (cicloNoModelo(passos)) throw new UserError("Não é possível: os passos ficariam esperando uns pelos outros.")
+  return { papeis, passos }
+}
 
-  // Load just enough holiday context for the longest chain (generous range).
-  const totalDias = itensInput.reduce((s, i) => s + i.offsetDias, 0) + itensInput.length + 30
-  const ctx = await carregarContextoPrazo(anosParaPrazo(Number(inicioISO.slice(0, 4)), totalDias))
-  const instanciados = instanciarTemplate(itensInput, { dataInicio: inicioISO, ctx })
+async function gravarPassos(tx: Tx, modeloId: number, passos: PassoModelo[]) {
+  await tx.projetoModeloPasso.deleteMany({ where: { modeloId } })
+  await tx.projetoModeloPasso.createMany({
+    data: passos.map((p, i) => ({
+      modeloId,
+      chave: p.chave,
+      titulo: p.titulo,
+      papelId: p.papelId,
+      diasAntes: p.diasAntes,
+      prazoFatal: p.prazoFatal,
+      anteriores: JSON.stringify(p.anteriores),
+      checklist: JSON.stringify(p.checklist),
+      ordem: i,
+    })),
+  })
+}
 
-  const respMap = new Map<number, number>()
-  for (const r of input.responsaveis ?? []) respMap.set(r.ordem, r.responsavelId)
-  const fallbackResp = optId(input.responsavelId)
-  const criadoPorId = await userIdPorEmail(actorEmail)
-  const projetoArea = optStr(template.area) ?? "inbox"
-
-  const projeto = await prisma.$transaction(async (tx) => {
-    const p = await tx.projeto.create({
+export async function criarModelo(input: ModeloInput, ator: Ator) {
+  const { papeis, passos } = normalizarModelo(input)
+  return prisma.$transaction(async (tx) => {
+    const reg = new RegistroAcao(tx, ator.id)
+    const ordem = await tx.projetoModelo.count({ where: { excluidoEm: null } })
+    const m = await tx.projetoModelo.create({
       data: {
-        nome: reqStr(input.nome ?? template.nome, "nome"),
-        descricao: template.descricao,
-        status: "ativo",
-        cor: template.cor,
-        icone: template.icone,
-        area: template.area,
-        responsavelId: fallbackResp,
-        casoId: optId(input.casoId),
-        clienteId: optId(input.clienteId),
-        templateOrigemId: template.id,
+        nome: reqStr(input.nome, "nome"),
+        area: optStr(input.area),
+        palavraGrupo: reqStr(input.palavraGrupo, "palavra do grupo"),
+        sufixoGrupo: input.sufixoGrupo ?? "",
+        papeis: JSON.stringify(papeis),
+        ordem,
+      },
+      select: { id: true },
+    })
+    await gravarPassos(tx, m.id, passos)
+    reg.modeloCriado(m.id)
+    return { id: m.id, acaoId: await reg.salvar(`Modelo criado: ${reqStr(input.nome, "nome")}`) }
+  }, TX_OPTS)
+}
+
+export async function atualizarModelo(id: number, input: ModeloInput, ator: Ator) {
+  const { papeis, passos } = normalizarModelo(input)
+  return prisma.$transaction(async (tx) => {
+    const m = await tx.projetoModelo.findFirst({ where: { id, excluidoEm: null }, select: { id: true, nome: true } })
+    if (!m) throw new UserError("Modelo não encontrado")
+    const reg = new RegistroAcao(tx, ator.id)
+    await reg.guardarModelo(id)
+    await tx.projetoModelo.update({
+      where: { id },
+      data: {
+        nome: reqStr(input.nome, "nome"),
+        area: optStr(input.area),
+        palavraGrupo: reqStr(input.palavraGrupo, "palavra do grupo"),
+        sufixoGrupo: input.sufixoGrupo ?? "",
+        papeis: JSON.stringify(papeis),
       },
     })
-    // Seções-modelo → seções reais do projeto; map por ÍNDICE de ordem.
-    const secaoOrdemToId = new Map<number, number>()
-    for (const s of template.secoes) {
-      const nova = await tx.projetoSecao.create({
-        data: { projetoId: p.id, nome: s.nome, cor: s.cor, ordem: s.ordem },
-      })
-      secaoOrdemToId.set(s.ordem, nova.id)
-    }
-    if (instanciados.length) {
-      await tx.tarefa.createMany({
-        data: instanciados.map((it, i) => ({
+    await gravarPassos(tx, id, passos)
+    return { id, acaoId: await reg.salvar(`Modelo alterado: ${m.nome}`) }
+  }, TX_OPTS)
+}
+
+export async function excluirModelo(id: number, ator: Ator) {
+  return prisma.$transaction(async (tx) => {
+    const m = await tx.projetoModelo.findFirst({ where: { id, excluidoEm: null }, select: { id: true, nome: true } })
+    if (!m) throw new UserError("Modelo não encontrado")
+    const reg = new RegistroAcao(tx, ator.id)
+    await reg.guardarModelo(id)
+    await tx.projetoModelo.update({ where: { id }, data: { excluidoEm: new Date() } })
+    return { id, acaoId: await reg.salvar(`Modelo excluído: ${m.nome}`) }
+  }, TX_OPTS)
+}
+
+
+// ── estrutura inteira numa chamada (LexIA: economia de tokens) ───────────────
+export interface EstruturaTarefa {
+  titulo: string
+  grupo?: string | null
+  responsavelId?: number | null
+  prazo?: string | null
+  prazoFatal?: boolean
+  descricao?: string | null
+  checklist?: string[]
+  /** Índices (0-based) de tarefas ANTERIORES nesta mesma lista que precisam terminar antes. */
+  depoisDe?: number[]
+}
+
+/**
+ * Cria 1 projeto + as tarefas + as ligações numa única transação. `depoisDe` só
+ * aceita índices menores que o da própria tarefa — ciclos são impossíveis por
+ * construção. Tarefas com anterior nascem "aguardando". Prazo ausente = sexta da
+ * semana. "Desfazer" apaga tudo.
+ */
+export async function montarEstruturaProjeto(projeto: ProjetoInput, tarefas: EstruturaTarefa[], ator: Ator) {
+  const hoje = hojeSP()
+  return prisma.$transaction(async (tx) => {
+    const reg = new RegistroAcao(tx, ator.id)
+    const p = await inserirProjeto(tx, reg, projeto, null)
+    const ids: number[] = []
+    for (const [i, t] of tarefas.entries()) {
+      const antes = [...new Set((t.depoisDe ?? []).filter((j) => Number.isInteger(j) && j >= 0 && j < i))]
+      if (t.responsavelId != null) await validarRefs(tx, null, t.responsavelId)
+      const criada = await tx.tarefa.create({
+        data: {
           astreaId: `app-tarefa-${randomUUID()}`,
-          titulo: it.titulo,
-          status: "todo",
+          titulo: reqStr(t.titulo, "título").slice(0, 300),
+          status: antes.length ? "wait" : "todo",
           done: false,
-          prio: clampPrio3(it.prio),
-          projeto: projetoArea, // legacy string-column mirror (Fase 4 retira)
-          prazo: toDate(it.prazoISO),
-          notes: it.descricao ?? null,
-          dor: JSON.stringify((it.dor ?? []).map((text) => ({ text, done: false }))),
-          dod: JSON.stringify((it.dod ?? []).map((text) => ({ text, done: false }))),
-          responsavelId: respMap.get(it.ordem ?? i) ?? fallbackResp ?? null,
-          criadoPorId,
-          projetoId: p.id,
-          secaoId: it.secaoOrdem != null ? secaoOrdemToId.get(it.secaoOrdem) ?? null : null,
-          origem: "template",
+          prazo: toDate(t.prazo && isValidISO(t.prazo) ? t.prazo : prazoPadrao(hoje))!,
+          prazoFatal: !!t.prazoFatal,
+          grupo: optStr(t.grupo),
+          notes: optStr(t.descricao),
+          checklist: JSON.stringify((t.checklist ?? []).filter((c) => c.trim()).map((texto, k) => ({ id: `c${k + 1}`, texto: texto.trim(), marcado: false }))),
+          origem: "lexia",
           geradoPorApp: true,
-          ai: false,
-        })),
+          responsavelId: t.responsavelId === undefined ? ator.id : optId(t.responsavelId),
+          criadoPorId: ator.id,
+          projetoId: p.id,
+        },
+        select: { id: true },
       })
+      ids.push(criada.id)
+      reg.criada(criada.id)
+      if (antes.length) {
+        await tx.tarefaLigacao.createMany({ data: antes.map((j) => ({ anteriorId: ids[j], seguinteId: criada.id })), skipDuplicates: true })
+      }
     }
-    return p
-  })
-  return { id: projeto.id, nome: projeto.nome, tarefas: instanciados.length }
+    await historico(tx, reg, ator, ids.map((tarefaId) => ({ tarefaId, texto: "Tarefa criada" })))
+    const acaoId = await reg.salvar(`Projeto criado: ${p.nomeCurto}`)
+    return { id: p.id, acaoId, tarefas: ids.length }
+  }, TX_OPTS)
 }

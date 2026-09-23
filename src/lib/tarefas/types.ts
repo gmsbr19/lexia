@@ -1,113 +1,49 @@
-// Tarefas — canonical string unions, static taxonomies, and client-safe view
-// models (no Prisma imports here). Mirrors src/lib/comercial/types.ts.
-//
-// A task has TWO distinct dates: `data` (quando fazer / scheduled, optional
-// `hora`) and `prazo` (deadline, drives urgency color). `projeto` is a static
-// practice-area key (see PROJECTS below — NOT a Caso). The vínculo links to a
-// real Caso OR Cliente (mutually exclusive); the responsável is a registered User.
+// Tarefas — string unions, taxonomias fixas e view models client-safe (sem
+// imports de Prisma). Redesign "Tarefas": um quadro único com todas as tarefas do
+// escritório; projeto é FILTRO; UMA data só (prazo, obrigatório); prazo fatal é um
+// marcador sobre o mesmo prazo; ligações "só começa depois de" entre tarefas do
+// mesmo projeto. As regras derivadas (vencida, em risco, conflito, aguardando…)
+// vivem em ./regras.ts — implementação ÚNICA usada pelo servidor e pelo cliente.
+import type { Role } from "@/lib/auth/session"
 
-export type TaskStatus = "todo" | "doing" | "review" | "done"
-export type TaskPrio = 1 | 2 | 3 | 4
-export type ProjetoKey = "inbox" | "trab" | "soc" | "trib" | "civ" | "int"
-export type VinculoTipo = "caso" | "cliente"
+export type TaskStatus = "todo" | "doing" | "wait" | "done"
 
-// ── static taxonomies (ported from the design's tasks-data.jsx) ──────────────
 export interface StatusDef {
   id: TaskStatus
   label: string
-  color: string
 }
+// Colunas fixas do quadro, nesta ordem.
 export const STATUS: StatusDef[] = [
-  { id: "todo", label: "A fazer", color: "#7A8699" },
-  { id: "doing", label: "Em andamento", color: "var(--text-muted)" },
-  { id: "review", label: "Em revisão", color: "#9A6B2E" },
-  { id: "done", label: "Concluída", color: "#1F8A5B" },
+  { id: "todo", label: "A fazer" },
+  { id: "doing", label: "Em andamento" },
+  { id: "wait", label: "Aguardando" },
+  { id: "done", label: "Concluído" },
 ]
-export const statusMeta = (id: string): StatusDef => STATUS.find((s) => s.id === id) ?? STATUS[0]
+export const STATUS_IDS: TaskStatus[] = STATUS.map((s) => s.id)
+export const statusLabel = (id: string): string => STATUS.find((s) => s.id === id)?.label ?? "A fazer"
+export const isStatus = (v: unknown): v is TaskStatus => typeof v === "string" && (STATUS_IDS as string[]).includes(v)
 
-export interface PrioDef {
-  label: string
-  short: string
-  color: string
-}
-export const PRIO: Record<TaskPrio, PrioDef> = {
-  1: { label: "Urgente", short: "P1", color: "#C0492F" },
-  2: { label: "Alta", short: "P2", color: "#D98A2B" },
-  3: { label: "Média", short: "P3", color: "var(--text-muted)" },
-  4: { label: "Normal", short: "P4", color: "var(--text-subtle)" },
-}
+// Cores de projeto (reaproveitadas do app — não são cores novas).
+export const CORES_PROJETO = ["#2E7D6B", "#5A4F9A", "#9A6B2E", "#9A2E5A", "#7A8699", "#C0492F"] as const
 
-export interface ProjetoDef {
-  id: ProjetoKey
-  name: string
-  color: string
-  inbox?: boolean
-}
-// Practice-area containers (NOT casos — the caso link is the separate vínculo).
-export const PROJECTS: ProjetoDef[] = [
-  { id: "inbox", name: "Caixa de entrada", color: "#7A8699", inbox: true },
-  { id: "trab", name: "Contencioso trabalhista", color: "#C0492F" },
-  { id: "soc", name: "Societário & M&A", color: "#1F8A5B" },
-  { id: "trib", name: "Tributário", color: "#C0A147" },
-  { id: "civ", name: "Cível & contratos", color: "var(--text-muted)" },
-  { id: "int", name: "Operação interna", color: "var(--text-subtle)" },
-]
-export const PROJECT_IDS: ProjetoKey[] = PROJECTS.map((p) => p.id)
+// "Equipe" (visão da equipe, filtro por outras pessoas, painel) só para gestão.
+export const ROLES_GESTAO: Role[] = ["socio"] // admin passa implícito
+export const ehGestao = (role: string | null | undefined): boolean => role === "admin" || role === "socio"
 
-export const RECUR_OPTS = [
-  "Não repete",
-  "Diariamente",
-  "Toda terça",
-  "Toda semana",
-  "A cada 15 dias",
-  "Todo dia 15",
-  "Mensalmente",
-] as const
-export const REMINDER_OPTS = [
-  "Sem lembrete",
-  "15 min antes",
-  "30 min antes",
-  "1 h antes",
-  "1 dia antes",
-  "Na data do prazo",
-] as const
-
-// DoR / DoD canned suggestions (used by the modal "Gerar" button in Phase A;
-// Phase B swaps this for a real Claude call).
-export const DOR_GENERIC = [
-  "Caso e partes confirmados no sistema",
-  "Documentos-base anexados",
-  "Prazo legal validado no calendário",
-  "Responsável e revisor definidos",
-]
-export const DOD_GENERIC = [
-  "Peça revisada por outro advogado",
-  "Protocolo/comprovante anexado",
-  "Cliente informado do andamento",
-  "Prazo do desdobramento agendado",
-]
-
-export const VINCULO_ICON: Record<VinculoTipo, string> = { caso: "briefcase", cliente: "user" }
-
-// ── view models ──────────────────────────────────────────────────────────────
-export interface SubItem {
+export interface ChecklistItem {
   id: string
-  title: string
-  done: boolean
-}
-export interface Criterio {
-  text: string
-  done: boolean
+  texto: string
+  marcado: boolean
 }
 
-/** An active registered user rendered as an assignable team member. */
+/** Membro ativo da equipe (User) — responsável possível de uma tarefa. */
 export interface TeamMember {
   id: number // User.id
-  nome: string // full name
-  first: string // first word of nome (for quick-add @match)
+  nome: string
+  first: string // primeiro nome (rótulos curtos: "Leonardo recebeu…")
   initials: string
   color: string
-  role: string // role label ("Admin" | "Sócio" | "Equipe")
+  role: string // rótulo do papel ("Admin" | "Sócio" | "Equipe")
 }
 
 export interface IdNome {
@@ -115,42 +51,98 @@ export interface IdNome {
   nome: string
 }
 
-/** Resolved vínculo for display (a task links to at most one caso OR cliente). */
-export interface VinculoRef {
-  tipo: VinculoTipo
-  id: number
-  nome: string
-}
-
+/** Uma tarefa do quadro — só campos-base; os derivados saem de regras.ts. */
 export interface TaskRow {
   id: number
   titulo: string
   status: TaskStatus
-  done: boolean
-  prio: TaskPrio
-  projeto: ProjetoKey
-  data: string | null // "YYYY-MM-DD"
-  hora: string | null // "HH:MM"
-  prazo: string | null // "YYYY-MM-DD"
-  notes: string | null
-  reminder: string | null
-  recur: string | null
-  ai: boolean
-  subtasks: SubItem[]
-  dor: Criterio[]
-  dod: Criterio[]
+  prazo: string // "YYYY-MM-DD" (sempre presente)
+  prazoFatal: boolean
+  projetoId: number | null // null = "Sem projeto" (ou projeto excluído)
+  grupo: string | null
+  clienteId: number | null // vínculo PRÓPRIO (o efetivo considera o projeto)
   responsavelId: number | null
-  casoId: number | null
-  clienteId: number | null
-  projetoId: number | null // container de trabalho dinâmico (null = sem projeto / projeto excluído)
-  secaoId: number | null // seção personalizada dentro do projeto (null = "Sem seção")
-  vinculo: VinculoRef | null
-  ordem: number
+  aguardandoTexto: string | null
+  descricao: string | null
+  checklist: ChecklistItem[]
+  recur: string | null
+  anteriores: number[] // ids das tarefas que precisam terminar antes
+  concluidaEm: string | null // "YYYY-MM-DD" (fuso do escritório)
+  criadaEm: string // ISO datetime
+  nComentarios: number
+  nAnexos: number
 }
 
-export interface TarefasDataset {
+/** Projeto como o quadro/Projetos o enxergam. */
+export interface ProjetoRow {
+  id: number
+  nomeCurto: string
+  nome: string
+  cor: string
+  clienteId: number | null
+  area: string | null // chave de AreaDireito
+  responsavelId: number | null
+  prazo: string | null // "YYYY-MM-DD"
+  descricao: string | null
+  arquivadoEm: string | null // "YYYY-MM-DD"
+  modeloOrigemId: number | null
+}
+
+export interface PapelModelo {
+  id: string
+  rotulo: string
+  padraoUsuarioId: number | null
+}
+export interface PassoModelo {
+  chave: string
+  titulo: string
+  papelId: string | null
+  diasAntes: number
+  prazoFatal: boolean
+  anteriores: string[] // chaves
+  checklist: string[]
+}
+export interface ModeloView {
+  id: number
+  nome: string
+  area: string | null
+  palavraGrupo: string
+  sufixoGrupo: string
+  papeis: PapelModelo[]
+  passos: PassoModelo[]
+}
+
+/** Carga única que alimenta o módulo (quadro + projetos + equipe). */
+export interface TarefasBoard {
   tarefas: TaskRow[]
-  socios: TeamMember[]
-  casos: IdNome[]
+  projetos: ProjetoRow[] // ativos + arquivados (a tela separa)
+  pessoas: TeamMember[]
   clientes: IdNome[]
+  modelos: ModeloView[]
+  hoje: string // "YYYY-MM-DD" no fuso do escritório (servidor)
+}
+
+// ── detalhe (carregado ao abrir a tarefa) ──
+export interface HistoricoRow {
+  id: number
+  texto: string
+  autorId: number | null
+  criadoEm: string // ISO datetime
+}
+export interface AnexoRow {
+  id: number
+  tipo: "arquivo" | "link"
+  nome: string
+  url: string | null // link externo ou rota de download do arquivo
+  tamanho: number | null
+  criadoEm: string
+}
+export interface TarefaDetalhe {
+  historico: HistoricoRow[]
+  anexos: AnexoRow[]
+}
+
+/** Resposta padrão de toda mutação do módulo: o id da ação p/ "Desfazer". */
+export interface ResultadoAcao {
+  acaoId: string | null
 }
