@@ -74,3 +74,14 @@ export const comentarioCreateSchema = z.object({
 })
 export const comentarioEditSchema = comentarioCreateSchema
 
+
+// ── visão e ordem manual (por pessoa) ─────────────────────────────────────────
+export const prefsQuadroSchema = z.object({
+  ordenar: z.enum(["manual", "due", "proj", "owner"]),
+  direcao: z.enum(["asc", "desc"]),
+  agrupar: z.enum(["none", "proj", "owner", "group"]),
+})
+
+export const ordemSchema = z.object({
+  itens: z.array(z.object({ id: idReq, ordem: z.number().finite() })).max(2000),
+})
