@@ -19,7 +19,7 @@ import {
 import { addDays } from "@/lib/datas/util"
 import { Icon, type TfIconName } from "./tf-icons"
 import { useTk } from "./tk-context"
-import { TkDot, TkIconBtn, TkMenuItem, TkMenuSep, TkPop, usePop } from "./tk-ui"
+import { TkDialog, TkDot, TkIconBtn, TkMenuItem, TkMenuSep, TkPop, usePop } from "./tk-ui"
 
 // ── mini calendário ──────────────────────────────────────────────────────────
 const DIAS = ["DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SÁB"]
@@ -269,6 +269,7 @@ export function TkPropMenu<T extends string | number | null>({
   muted,
   width = 220,
   chip,
+  acao,
 }: {
   value: T
   options: OpcaoMenu<T>[]
@@ -276,6 +277,8 @@ export function TkPropMenu<T extends string | number | null>({
   muted?: boolean
   width?: number
   chip?: boolean
+  /** Item extra no fim do menu (ex.: "Novo projeto…"), abre uma janela de criação. */
+  acao?: { label: string; onClick: () => void }
 }) {
   const pop = usePop()
   const cur = options.find((o) => o.id === value)
@@ -299,8 +302,70 @@ export function TkPropMenu<T extends string | number | null>({
             {o.label}
           </TkMenuItem>
         ))}
+        {acao && (
+          <>
+            <TkMenuSep />
+            <TkMenuItem
+              icon="plus"
+              onClick={() => {
+                pop.close()
+                acao.onClick()
+              }}
+            >
+              {acao.label}
+            </TkMenuItem>
+          </>
+        )}
       </TkPop>
     </span>
+  )
+}
+
+/** Grupos já usados no projeto (ordem natural: "Protocolo 2" antes de "Protocolo 10"). */
+export function useGruposDoProjeto(projetoId: number | null): string[] {
+  const { tarefas } = useTk()
+  if (projetoId == null) return []
+  return [...new Set(tarefas.filter((x) => x.projetoId === projetoId && x.grupo).map((x) => x.grupo!))].sort((a, b) =>
+    a.localeCompare(b, "pt-BR", { numeric: true }),
+  )
+}
+
+/** Janela "Novo grupo": o grupo é só um nome dentro do projeto — sai já aplicado. */
+export function TkGrupoDialog({ onClose, onSalvar }: { onClose: () => void; onSalvar: (nome: string) => void }) {
+  const [nome, setNome] = useState("")
+  const salvar = () => {
+    if (!nome.trim()) return
+    onSalvar(nome.trim())
+    onClose()
+  }
+  return (
+    <TkDialog
+      title="Novo grupo"
+      onClose={onClose}
+      actions={
+        <>
+          <button type="button" className="btn btn-secondary" onClick={onClose}>
+            Cancelar
+          </button>
+          <button type="button" className="btn btn-primary" disabled={!nome.trim()} onClick={salvar}>
+            Criar
+          </button>
+        </>
+      }
+    >
+      <input
+        className="input"
+        autoFocus
+        placeholder="Grupo"
+        aria-label="Grupo"
+        value={nome}
+        onChange={(e) => setNome(e.target.value)}
+        style={{ color: "var(--text)" }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") salvar()
+        }}
+      />
+    </TkDialog>
   )
 }
 

@@ -3,13 +3,17 @@
 // Tarefas — Nova tarefa (janela 540px, vidro). Título com ditado por voz (Web
 // Speech API pt-BR; sem suporte = silêncio), propriedades em linhas, prazo JÁ
 // preenchido com a sexta da semana, "Sugerir com IA" discreto no rodapé. Sem
-// sintaxe especial no título.
+// sintaxe especial no título. Projeto e Grupo podem ser CRIADOS daqui: "Novo
+// projeto…" abre o formulário de projeto e "Novo grupo…" uma janelinha — ao
+// salvar, voltam já escolhidos nesta tarefa.
 import { useEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { apiSend } from "@/lib/client/api"
 import { prazoPadrao } from "@/lib/tarefas/regras"
 import { Icon } from "./tf-icons"
 import { useTk, type NovaTarefaUI } from "./tk-context"
-import { TkClientPicker, TkDatePop, TkPropMenu, useOpcoesPessoa, useOpcoesProjeto } from "./tk-pickers"
+import { TkClientPicker, TkDatePop, TkGrupoDialog, TkPropMenu, useGruposDoProjeto, useOpcoesPessoa, useOpcoesProjeto } from "./tk-pickers"
+import { TkProjectForm } from "./tk-projects"
 import { TkIconBtn, useEsc } from "./tk-ui"
 import { ELEVACAO_JANELA, TK_JANELA } from "./tk-glass"
 
@@ -34,9 +38,16 @@ interface ReconhecimentoFala {
 type CtorFala = new () => ReconhecimentoFala
 
 export function TkNewTask({ projetoInicial, onClose }: { projetoInicial: number | null; onClose: () => void }) {
-  const { act, meId, hoje, clienteDoProjeto } = useTk()
+  const { act, meId, hoje, clienteDoProjeto, podeProjeto, portal } = useTk()
   const [titulo, setTitulo] = useState("")
-  const [projetoId, setProjetoId] = useState<number | null>(projetoInicial)
+  const [projetoId, setProjetoIdState] = useState<number | null>(projetoInicial)
+  const [grupo, setGrupo] = useState<string | null>(null)
+  const [criando, setCriando] = useState<null | "projeto" | "grupo">(null)
+  // trocar de projeto zera o grupo (grupo só existe dentro do projeto)
+  const setProjetoId = (id: number | null) => {
+    setProjetoIdState(id)
+    if (id !== projetoId) setGrupo(null)
+  }
   const [responsavelId, setResponsavelId] = useState<number | null>(meId)
   const [prazo, setPrazo] = useState(() => prazoPadrao(hoje))
   const [prazoFatal, setPrazoFatal] = useState(false)
@@ -47,7 +58,13 @@ export function TkNewTask({ projetoInicial, onClose }: { projetoInicial: number 
   const rec = useRef<ReconhecimentoFala | null>(null)
   const opcoesProjeto = useOpcoesProjeto()
   const opcoesPessoa = useOpcoesPessoa(true)
-  useEsc(onClose)
+  const grupos = useGruposDoProjeto(projetoId)
+  const opcoesGrupo = [
+    ...(grupo && !grupos.includes(grupo) ? [grupo] : []),
+    ...grupos,
+  ].map((g) => ({ id: g as string | null, label: g }))
+  opcoesGrupo.push({ id: null, label: "Sem grupo" })
+  useEsc(onClose, criando == null)
   useEffect(() => () => rec.current?.stop(), [])
 
   const clienteHerdado = projetoId != null ? clienteDoProjeto(projetoId) : null
@@ -117,6 +134,7 @@ export function TkNewTask({ projetoInicial, onClose }: { projetoInicial: number 
     const n: NovaTarefaUI = {
       titulo: titulo.trim(),
       projetoId,
+      grupo: projetoId != null ? grupo : null,
       responsavelId,
       clienteId: clienteHerdado != null ? null : clienteId,
       prazo,
@@ -161,10 +179,29 @@ export function TkNewTask({ projetoInicial, onClose }: { projetoInicial: number 
             <div className="tk-prop">
               <span className="tk-prop-label">Projeto</span>
               <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
-                <TkPropMenu<number | null> value={projetoId} options={opcoesProjeto} onPick={setProjetoId} />
+                <TkPropMenu<number | null>
+                  value={projetoId}
+                  options={opcoesProjeto}
+                  onPick={setProjetoId}
+                  acao={podeProjeto ? { label: "Novo projeto…", onClick: () => setCriando("projeto") } : undefined}
+                />
                 {marca("projeto")}
               </div>
             </div>
+            {projetoId != null && (
+              <div className="tk-prop">
+                <span className="tk-prop-label">Grupo</span>
+                <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
+                  <TkPropMenu<string | null>
+                    value={grupo}
+                    options={opcoesGrupo}
+                    onPick={setGrupo}
+                    muted={grupo == null}
+                    acao={{ label: "Novo grupo…", onClick: () => setCriando("grupo") }}
+                  />
+                </div>
+              </div>
+            )}
             <div className="tk-prop">
               <span className="tk-prop-label">Responsável</span>
               <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
@@ -218,6 +255,10 @@ export function TkNewTask({ projetoInicial, onClose }: { projetoInicial: number 
           </button>
         </div>
       </div>
+      {criando === "projeto" &&
+        portal &&
+        createPortal(<TkProjectForm projeto={null} onClose={() => setCriando(null)} onCriado={(id) => setProjetoId(id)} />, portal)}
+      {criando === "grupo" && <TkGrupoDialog onClose={() => setCriando(null)} onSalvar={setGrupo} />}
     </div>
   )
 }

@@ -321,7 +321,16 @@ function TkProjFields({ v, set }: { v: ProjetoForm; set: (p: Partial<ProjetoForm
 }
 
 // ── projeto em branco / editar ───────────────────────────────────────────────
-export function TkProjectForm({ projeto, onClose }: { projeto: ProjetoRow | null; onClose: () => void }) {
+export function TkProjectForm({
+  projeto,
+  onClose,
+  onCriado,
+}: {
+  projeto: ProjetoRow | null
+  onClose: () => void
+  /** Aberto de dentro de uma tarefa: devolve o projeto novo em vez de navegar até ele. */
+  onCriado?: (id: number) => void
+}) {
   const { act, meId, projetos, hoje, tarefas } = useTk()
   const [v, setV] = useState<ProjetoForm>(() =>
     projeto
@@ -356,7 +365,8 @@ export function TkProjectForm({ projeto, onClose }: { projeto: ProjetoRow | null
       setSalvando(false)
       if (id != null) {
         onClose()
-        act.abrirProjeto(id)
+        if (onCriado) onCriado(id)
+        else act.abrirProjeto(id)
       }
     }
   }

@@ -9,6 +9,7 @@
 // comentários sempre; o histórico entra com "Mostrar detalhes". No celular:
 // tela cheia, uma coluna só.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { createPortal } from "react-dom"
 import { apiSend } from "@/lib/client/api"
 import { normalizar } from "@/lib/text"
 import {
@@ -26,7 +27,8 @@ import { segmentosComentario, serializeMencoes, type ComentarioRow, type MencaoP
 import { STATUS, statusLabel, type AnexoRow, type HistoricoRow, type TaskRow, type TaskStatus } from "@/lib/tarefas/types"
 import { Icon, type TfIconName } from "./tf-icons"
 import { useTk } from "./tk-context"
-import { TkClientPicker, TkDatePop, TkRecurMenu, useOpcoesProjeto, type OpcaoMenu } from "./tk-pickers"
+import { TkClientPicker, TkDatePop, TkGrupoDialog, TkRecurMenu, useGruposDoProjeto, useOpcoesProjeto, type OpcaoMenu } from "./tk-pickers"
+import { TkProjectForm } from "./tk-projects"
 import { TkAvatar, TkDialog, TkEspera, TkIconBtn, TkMenuItem, TkMenuLabel, TkMenuSep, TkPop, useEsc, usePop } from "./tk-ui"
 import { ELEVACAO_JANELA, TK_JANELA } from "./tk-glass"
 
@@ -143,9 +145,10 @@ function TkPessoaCampo({ t }: { t: TaskRow }) {
 
 /** Projeto como etiqueta colorida (a cor do projeto = a etiqueta do Trello). */
 function TkProjetoCampo({ t, opcoes }: { t: TaskRow; opcoes: OpcaoMenu<number | null>[] }) {
-  const { projeto, act } = useTk()
+  const { projeto, act, podeProjeto, portal } = useTk()
   const p = projeto(t.projetoId)
   const pop = usePop()
+  const [novo, setNovo] = useState(false)
   return (
     <span style={{ display: "inline-flex", minWidth: 0 }}>
       {p ? (
@@ -171,21 +174,38 @@ function TkProjetoCampo({ t, opcoes }: { t: TaskRow; opcoes: OpcaoMenu<number | 
             {o.label}
           </TkMenuItem>
         ))}
+        {podeProjeto && (
+          <>
+            <TkMenuSep />
+            <TkMenuItem
+              icon="plus"
+              onClick={() => {
+                pop.close()
+                setNovo(true)
+              }}
+            >
+              Novo projeto…
+            </TkMenuItem>
+          </>
+        )}
       </TkPop>
+      {novo &&
+        portal &&
+        createPortal(
+          <TkProjectForm projeto={null} onClose={() => setNovo(false)} onCriado={(id) => act.atualizar(t.id, { projetoId: id })} />,
+          portal,
+        )}
     </span>
   )
 }
 
 function TkGrupoMenu({ t }: { t: TaskRow }) {
-  const { tarefas, act } = useTk()
+  const { act } = useTk()
   const pop = usePop()
-  const [novo, setNovo] = useState("")
-  const grupos = [...new Set(tarefas.filter((x) => x.projetoId === t.projetoId && x.grupo).map((x) => x.grupo!))].sort((a, b) =>
-    a.localeCompare(b, "pt-BR", { numeric: true }),
-  )
+  const [novo, setNovo] = useState(false)
+  const grupos = useGruposDoProjeto(t.projetoId)
   const escolher = (g: string | null) => {
     pop.close()
-    setNovo("")
     if (g !== t.grupo) act.atualizar(t.id, { grupo: g })
   }
   return (
@@ -194,15 +214,7 @@ function TkGrupoMenu({ t }: { t: TaskRow }) {
         <span>{t.grupo ?? "Sem grupo"}</span>
         <Icon name="chevronDown" size={13} style={{ flexShrink: 0, color: "var(--text-muted)" }} />
       </button>
-      <TkPop
-        open={pop.open}
-        onClose={() => {
-          pop.close()
-          setNovo("")
-        }}
-        anchor={pop.anchor}
-        width={260}
-      >
+      <TkPop open={pop.open} onClose={pop.close} anchor={pop.anchor} width={260}>
         {grupos.map((g) => (
           <TkMenuItem key={g} checked={g === t.grupo} onClick={() => escolher(g)}>
             {g}
@@ -212,17 +224,17 @@ function TkGrupoMenu({ t }: { t: TaskRow }) {
           Sem grupo
         </TkMenuItem>
         <TkMenuSep />
-        <input
-          className="input"
-          placeholder="Grupo"
-          aria-label="Grupo"
-          value={novo}
-          onChange={(e) => setNovo(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && novo.trim()) escolher(novo.trim())
+        <TkMenuItem
+          icon="plus"
+          onClick={() => {
+            pop.close()
+            setNovo(true)
           }}
-        />
+        >
+          Novo grupo…
+        </TkMenuItem>
       </TkPop>
+      {novo && <TkGrupoDialog onClose={() => setNovo(false)} onSalvar={(g) => escolher(g)} />}
     </span>
   )
 }
