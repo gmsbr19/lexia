@@ -10,7 +10,7 @@ import { comentarioEmailHtml, msgComentarioTarefa } from "./comentario-msg"
 import { getPrefs, querConclusoesEquipe } from "./preferencias"
 import { emailDoUsuario, gestorEmails, nomePorEmail } from "./recipients"
 import { type CriarNotificacaoInput, criarNotificacao } from "./service"
-import { msgTarefaAtribuida, msgTarefaConcluida } from "./tarefa-msg"
+import { msgSuaVez, msgTarefaAtribuida, msgTarefaConcluida } from "./tarefa-msg"
 
 async function entregar(input: CriarNotificacaoInput): Promise<void> {
   try {
@@ -58,6 +58,35 @@ export async function notificarTarefaAtribuida(p: {
     })
   } catch (e) {
     log.error({ err: e instanceof Error ? e.message : String(e) }, "notificarTarefaAtribuida falhou")
+  }
+}
+
+/**
+ * "Sua vez": a anterior foi concluída e a tarefa foi liberada para o responsável
+ * (ou quem concluiu escolheu quem cuida do próximo passo). Não se auto-notifica.
+ */
+export async function notificarSuaVez(p: {
+  tarefaId: number
+  titulo: string
+  grupo?: string | null
+  responsavelId: number
+  actorEmail?: string | null
+}): Promise<void> {
+  try {
+    const to = await emailDoUsuario(p.responsavelId)
+    if (!to || (p.actorEmail && to === p.actorEmail)) return
+    await entregar({
+      userEmail: to,
+      tipo: "tarefa",
+      modulo: "tarefas",
+      prioridade: "alta",
+      refTipo: "tarefa",
+      refId: p.tarefaId,
+      mensagem: msgSuaVez({ titulo: p.titulo, grupo: p.grupo }),
+      actorEmail: p.actorEmail ?? null,
+    })
+  } catch (e) {
+    log.error({ err: e instanceof Error ? e.message : String(e) }, "notificarSuaVez falhou")
   }
 }
 
