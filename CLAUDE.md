@@ -148,6 +148,15 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **Tarefas — "Duplicar" (this session, tsc 0 novos erros — só o `cm-meta` PRÉ-EXISTENTE —, 835/836 testes — só a
+  `notificacoes-links` PRÉ-EXISTENTE —, eslint limpo, SEM migração).** Item "Duplicar" no menu "…" do cartão e do
+  detalhe (no detalhe, abre a cópia). `duplicarTarefa` ([mutations.ts](src/lib/tarefas/mutations.ts)) + `POST
+  /api/tarefas/[id]/duplicar`: copia projeto/grupo/responsável/cliente/prazo/prazo fatal/descrição/checklist
+  (desmarcado)/repetição/vínculos e as "só começa depois de" (NÃO as que ela libera — mudaria outras tarefas); nasce
+  "a fazer" ou "aguardando" se alguma anterior está aberta; comentários/histórico/anexos NÃO vêm; título
+  `tituloCopia` ("… (cópia)", sem empilhar); histórico "Duplicada de: …"; notifica o responsável como uma criação;
+  Desfazer normal (RegistroAcao). Na ordem manual de quem duplicou entra logo abaixo da original (`posicaoDepois`
+  em filtros.ts; fora do Desfazer, cascata com a tarefa). **User action:** só visual em `/tarefas`.
 - **Tarefas — REDESIGN COMPLETO (spec Claude Design "LexIA - Tarefas (Redesign)", `lexia.zip` → `src/tk/*`)
   (this session; tsc 0 novos erros — só o `cm-meta` PRÉ-EXISTENTE —, testes verdes exceto a
   `notificacoes-links` PRÉ-EXISTENTE, eslint limpo em todos os arquivos tocados; migração
