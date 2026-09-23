@@ -5,6 +5,7 @@ import {
   AlertCircle,
   AlertTriangle,
   Archive,
+  ArchiveRestore,
   ArrowRight,
   AtSign,
   BarChart3,
@@ -25,10 +26,12 @@ import {
   CircleDot,
   Clock,
   Copy,
+  Download,
   Eye,
   EyeOff,
   FileCheck2,
   FileText,
+  Filter,
   Flag,
   Flame,
   Folder,
@@ -45,6 +48,7 @@ import {
   ListTodo,
   type LucideIcon,
   MessageSquare,
+  Minus,
   Mic,
   MicOff,
   Moon,
@@ -66,6 +70,7 @@ import {
   User,
   UserPlus,
   Users,
+  Workflow,
   X,
 } from "lucide-react"
 
@@ -134,6 +139,11 @@ const ICONS = {
   checkSquare: CheckSquare,
   arrowRight: ArrowRight,
   clock: Clock,
+  filter: Filter,
+  minus: Minus,
+  workflow: Workflow,
+  download: Download,
+  archiveRestore: ArchiveRestore,
 } satisfies Record<string, LucideIcon>
 
 export type TfIconName = keyof typeof ICONS
