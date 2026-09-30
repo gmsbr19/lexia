@@ -338,7 +338,7 @@ export function UnifiedShell({ children }: { children: ReactNode }) {
       navPage: (page: CrmPage) => router.push(page === "clientes" ? "/contatos" : `/${page}`),
       openCliente: (id: number) => router.push(`/contatos/${id}`),
       openClienteTab: (id: number) => router.push(`/contatos/${id}`),
-      openCaso: (id: number) => router.push(`/processos?view=processos&caso=${id}`),
+      openCaso: (id: number) => router.push(`/casos/${id}`),
       openContrato: (id: number) => router.push(`/contratos?contrato=${id}`),
       openProcesso: (id: number) => router.push(`/processos/${id}`),
     }),

@@ -2555,8 +2555,8 @@ export function CrmSettings({
           <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px" }}>
             <Icon name="scale" size={16} style={{ color: "var(--text-muted)" }} />
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>Casos & Processos</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Oculta o menu, bloqueia as telas e impede a LexIA de consultar/agir sobre casos e processos.</div>
+              <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>Processos</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Oculta o menu Processos (prazos, andamentos, publicações, captura CNJ), bloqueia essas telas e impede a LexIA de agir sobre processos. Os Casos continuam disponíveis.</div>
             </div>
             <CrmSwitch on={processosOn} onChange={toggle} disabled={busy} />
           </div>
