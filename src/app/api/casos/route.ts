@@ -7,6 +7,7 @@ import { CASO_SORTABLE, listCasos } from "@/lib/casos/queries"
 import { casoCreateSchema } from "@/lib/casos/schemas"
 import { readJson, runMutation } from "@/lib/finance/api"
 import { intParam, parseListQuery, strParam } from "@/lib/list"
+import { resolveUserId, veTudo } from "@/lib/processos/rbac"
 import { parseBody } from "@/lib/validation"
 
 export const runtime = "nodejs"
@@ -31,7 +32,16 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const body = await readJson(req)
-  return runMutation(() => createCaso(parseBody(casoCreateSchema, body)), {
+  return runMutation(async () => {
+    const input = parseBody(casoCreateSchema, body)
+    // Advogado só enxerga os casos em que é responsável (scopeCasoWhere): criado
+    // sem responsável, ele perderia o acesso ao caso que acabou de criar.
+    const user = await requireUser()
+    if (input.responsavelUserId == null && !veTudo(user.role)) {
+      input.responsavelUserId = await resolveUserId(user.email)
+    }
+    return createCaso(input)
+  }, {
     action: "caso.criar",
     entity: "Caso",
     payload: body,

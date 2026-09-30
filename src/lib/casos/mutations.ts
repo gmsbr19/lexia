@@ -1,21 +1,13 @@
-// Casos — write layer (dados do processo). SERVER ONLY. The rateio entre
-// sócios has its own mutation (finance setCasoResponsaveis); this module covers
-// the editable processo/identity fields of the caso modal + create/soft-delete
-// for the Processos module.
+// Casos — write layer. SERVER ONLY. Covers the caso's identity (título, cliente,
+// contrato, tipo, área, status, responsável) + create / bulk / soft-delete. The
+// rateio entre sócios has its own mutation (finance setCasoResponsaveis). Dados
+// de processo (nº/tribunal/vara/…) NÃO moram mais aqui — ver lib/casos/legado.ts.
 import { randomUUID } from "node:crypto"
 import type { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/db"
 import { UserError } from "@/lib/errors"
+import { casoStatusCanonico } from "./status"
 
-function toDate(input: unknown): Date | null {
-  if (input === null || input === undefined || input === "") return null
-  if (input instanceof Date) return input
-  if (typeof input !== "string") return null
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(input)
-  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0)
-  const d = new Date(input)
-  return Number.isNaN(d.getTime()) ? null : d
-}
 function reqStr(v: unknown, name: string): string {
   if (typeof v !== "string" || !v.trim()) throw new UserError(`${name} obrigatório`)
   return v.trim()
@@ -39,39 +31,53 @@ export interface CasoPatch {
   responsavel?: string | null
   responsavelUserId?: number | null
   clientePrincipalId?: number | null
-  numeroProcesso?: string | null
-  tribunal?: string | null
-  vara?: string | null
-  instancia?: string | null
-  tipoAcao?: string | null
-  valorCausaCents?: number | null
-  dataDistribuicao?: string | null
-  ultimaMovimentacao?: string | null
+  contratoId?: number | null
 }
 
 function applyCasoFields(data: Prisma.CasoUncheckedUpdateInput, patch: CasoPatch): void {
   if (patch.titulo !== undefined) data.titulo = reqStr(patch.titulo, "título")
   if (patch.tipo !== undefined) data.tipo = patch.tipo === "litigio" ? "litigio" : "consultivo"
   if (patch.area !== undefined) data.area = optStr(patch.area)
-  if (patch.status !== undefined) data.status = optStr(patch.status)
+  if (patch.status !== undefined) data.status = casoStatusCanonico(patch.status)
   if (patch.responsavel !== undefined) data.responsavel = optStr(patch.responsavel)
   if (patch.responsavelUserId !== undefined) data.responsavelUserId = optInt(patch.responsavelUserId, "responsável")
   if (patch.clientePrincipalId !== undefined) data.clientePrincipalId = optInt(patch.clientePrincipalId, "cliente")
-  if (patch.numeroProcesso !== undefined) data.numeroProcesso = optStr(patch.numeroProcesso)
-  if (patch.tribunal !== undefined) data.tribunal = optStr(patch.tribunal)
-  if (patch.vara !== undefined) data.vara = optStr(patch.vara)
-  if (patch.instancia !== undefined) data.instancia = optStr(patch.instancia)
-  if (patch.tipoAcao !== undefined) data.tipoAcao = optStr(patch.tipoAcao)
-  if (patch.valorCausaCents !== undefined) data.valorCausaCents = optInt(patch.valorCausaCents, "valor da causa")
-  if (patch.dataDistribuicao !== undefined) data.dataDistribuicao = toDate(patch.dataDistribuicao)
-  if (patch.ultimaMovimentacao !== undefined) data.ultimaMovimentacao = toDate(patch.ultimaMovimentacao)
+  if (patch.contratoId !== undefined) data.contratoId = optInt(patch.contratoId, "contrato")
+}
+
+/**
+ * Coerência caso ↔ contrato: um contrato reúne casos de UM cliente (mesma regra
+ * de assertCasosDoCliente no Financeiro). Valida o par EFETIVO depois do patch —
+ * trocar o cliente de um caso que está no contrato de outro cliente exige soltar
+ * (ou trocar) o contrato na mesma edição.
+ */
+async function assertContratoDoCliente(clienteId: number | null, contratoId: number | null): Promise<void> {
+  if (contratoId == null) return
+  const contrato = await prisma.contrato.findFirst({
+    where: { id: contratoId, excluidoEm: null },
+    select: { titulo: true, clienteId: true },
+  })
+  if (!contrato) throw new UserError("Contrato não encontrado")
+  if (clienteId != null && contrato.clienteId != null && contrato.clienteId !== clienteId) {
+    throw new UserError(
+      `O contrato${contrato.titulo ? ` "${contrato.titulo}"` : ""} é de outro cliente — escolha um contrato deste cliente ou deixe sem contrato`,
+    )
+  }
 }
 
 export async function updateCaso(id: number, patch: CasoPatch) {
-  const existing = await prisma.caso.findFirst({ where: { id, excluidoEm: null }, select: { id: true } })
+  const existing = await prisma.caso.findFirst({
+    where: { id, excluidoEm: null },
+    select: { id: true, clientePrincipalId: true, contratoId: true },
+  })
   if (!existing) throw new UserError("Caso não encontrado")
   const data: Prisma.CasoUncheckedUpdateInput = {}
   applyCasoFields(data, patch)
+  if (patch.clientePrincipalId !== undefined || patch.contratoId !== undefined) {
+    const clienteId = patch.clientePrincipalId !== undefined ? (patch.clientePrincipalId ?? null) : existing.clientePrincipalId
+    const contratoId = patch.contratoId !== undefined ? (patch.contratoId ?? null) : existing.contratoId
+    await assertContratoDoCliente(clienteId, contratoId)
+  }
   return prisma.caso.update({ where: { id }, data })
 }
 
@@ -85,10 +91,38 @@ export async function createCaso(input: CasoCreate) {
     astreaId: `app-caso-${randomUUID()}`,
     titulo: reqStr(input.titulo, "título"),
     tipo: input.tipo === "litigio" ? "litigio" : "consultivo",
+    status: casoStatusCanonico(input.status),
     dataCriacao: new Date(),
   }
-  applyCasoFields(data as Prisma.CasoUncheckedUpdateInput, { ...input, titulo: undefined, tipo: undefined })
+  applyCasoFields(data as Prisma.CasoUncheckedUpdateInput, { ...input, titulo: undefined, tipo: undefined, status: undefined })
+  await assertContratoDoCliente(input.clientePrincipalId ?? null, input.contratoId ?? null)
   return prisma.caso.create({ data })
+}
+
+export interface CasosLote {
+  ids: number[]
+  tipo?: string
+  area?: string | null
+  status?: string
+  responsavelUserId?: number | null
+}
+
+/**
+ * Edição em lote (lista de casos): tipo/área/status/responsável. Sem exclusão.
+ * `scope` (scopeCasoWhere do usuário) garante que um advogado só altere os
+ * casos que enxerga — ids fora do escopo são ignorados.
+ */
+export async function bulkUpdateCasos(input: CasosLote, scope: Prisma.CasoWhereInput = {}) {
+  const ids = (input.ids ?? []).filter((n) => Number.isInteger(n) && n > 0)
+  if (!ids.length) throw new UserError("Selecione ao menos um caso")
+  const data: Prisma.CasoUncheckedUpdateManyInput = {}
+  if (input.tipo !== undefined) data.tipo = input.tipo === "litigio" ? "litigio" : "consultivo"
+  if (input.area !== undefined) data.area = optStr(input.area)
+  if (input.status !== undefined) data.status = casoStatusCanonico(input.status)
+  if (input.responsavelUserId !== undefined) data.responsavelUserId = optInt(input.responsavelUserId, "responsável")
+  if (Object.keys(data).length === 0) throw new UserError("Nenhuma alteração informada")
+  const r = await prisma.caso.updateMany({ where: { AND: [{ id: { in: ids }, excluidoEm: null }, scope] }, data })
+  return { atualizados: r.count }
 }
 
 /**
