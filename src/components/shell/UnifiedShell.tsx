@@ -37,7 +37,7 @@ import { usePipelineStore } from "@/lib/comercial/pipeline/store"
 import { useScoringStore } from "@/lib/comercial/scoring/store"
 
 function emptyDataset(clientes: ClienteRow[], role: Role, userName: string, userEmail: string): CrmDataset {
-  return { clientes, casos: [], contratos: [], socios: [], clienteOptions: [], casoOptions: [], contaOptions: [], role, userName, userEmail }
+  return { clientes, casos: [], contratos: [], socios: [], clienteOptions: [], casoOptions: [], contaOptions: [], usuarios: [], role, userName, userEmail }
 }
 
 const CHAT_SIDEBAR_W = 412 // keep in sync with the LexiaChat sidebar-mode width

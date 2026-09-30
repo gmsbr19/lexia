@@ -13,6 +13,7 @@ import {
 } from "@/lib/finance/queries"
 import type { CasoRow, ContaOption, ContratoRow, IdNome, SocioConta } from "@/lib/finance/types"
 import type { ClienteRow } from "@/lib/finance/types"
+import { getUsuariosAtivos } from "@/lib/users/queries"
 
 export interface CrmDataset {
   clientes: ClienteRow[]
@@ -22,13 +23,14 @@ export interface CrmDataset {
   clienteOptions: IdNome[]
   casoOptions: IdNome[]
   contaOptions: ContaOption[]
+  usuarios: IdNome[] // usuários ativos — responsável do caso (e demais pickers de pessoa)
   role: Role
   userName: string
   userEmail: string
 }
 
 export async function getCrmDataset(): Promise<CrmDataset> {
-  const [user, clientes, casos, contratos, socios, clienteOptions, casoOptions, contaOptions] = await Promise.all([
+  const [user, clientes, casos, contratos, socios, clienteOptions, casoOptions, contaOptions, usuarios] = await Promise.all([
     requireUser(),
     getClientes(),
     getCasos(),
@@ -37,6 +39,7 @@ export async function getCrmDataset(): Promise<CrmDataset> {
     getClienteOptions(),
     getCasoOptions(),
     getContasOptions(),
+    getUsuariosAtivos(),
   ])
   return {
     clientes,
@@ -46,6 +49,7 @@ export async function getCrmDataset(): Promise<CrmDataset> {
     clienteOptions,
     casoOptions,
     contaOptions,
+    usuarios: usuarios.map((u) => ({ id: u.id, nome: u.nome })),
     role: (user.role as Role) ?? "socio",
     userName: user.nome,
     userEmail: user.email,

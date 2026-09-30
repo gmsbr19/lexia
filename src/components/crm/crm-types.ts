@@ -48,6 +48,7 @@ export interface CrmDataset {
   clienteOptions: IdNome[]
   casoOptions: IdNome[]
   contaOptions: ContaOption[]
+  usuarios: IdNome[]
   role: Role
   userName: string
   userEmail: string
