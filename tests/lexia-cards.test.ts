@@ -103,17 +103,17 @@ describe("cardParaTool — processo/caso (mesma família de card)", () => {
     expect((card?.data as { diasPrazo: number | null }).diasPrazo).toBeNull()
   })
 
-  it("detalhe_caso usa 'titulo' (não numeroCnj) e rota para o cliente quando houver clienteId", () => {
+  it("detalhe_caso usa 'titulo' (não numeroCnj) e abre a página do caso", () => {
     const out = { id: 3, titulo: "Revisão contratual", tipo: "consultivo", status: "ativo", clienteId: 42 }
     const card = cardParaTool("detalhe_caso", {}, out) as Extract<ReturnType<typeof cardParaTool>, { type: "entity" }>
-    expect(card?.rota).toBe("/contatos/42")
+    expect(card?.rota).toBe("/casos/3")
     expect(card?.data).toMatchObject({ titulo: "Revisão contratual", classe: "consultivo" })
   })
 
-  it("detalhe_caso sem clienteId cai para a lista de casos", () => {
+  it("detalhe_caso sem cliente também abre a página do caso", () => {
     const out = { id: 3, titulo: "Revisão contratual", status: "ativo" }
     const card = cardParaTool("detalhe_caso", {}, out) as Extract<ReturnType<typeof cardParaTool>, { type: "entity" }>
-    expect(card?.rota).toBe("/casos")
+    expect(card?.rota).toBe("/casos/3")
   })
 })
 

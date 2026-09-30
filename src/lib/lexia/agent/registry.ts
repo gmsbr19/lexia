@@ -53,10 +53,11 @@ function podeUsar(role: string, tool: AgentTool): boolean {
 // dados reais) + estas duas, sem mutações de CRM.
 const DOC_TOOLS = new Set(["editar_documento_aberto", "detectar_campos_documento"])
 
-// Ferramentas do módulo "Casos & Processos" (casos + processos/prazos/publicações).
-// Removidas por inteiro quando o módulo está temporariamente desativado (Configurações
-// → Módulos) — ver processosHabilitado em lib/settings.ts.
-const PROCESSOS_MODULE_TOOLS = new Set([...casosTools, ...processosTools].map((t) => t.name))
+// Ferramentas do módulo "Processos" (processos/prazos/publicações/partes). Removidas
+// por inteiro quando o módulo está temporariamente desativado (Configurações →
+// Módulos) — ver processosHabilitado em lib/settings.ts. As de CASOS ficam sempre:
+// o caso (cliente/contrato/honorários) independe do módulo Processos.
+const PROCESSOS_MODULE_TOOLS = new Set(processosTools.map((t) => t.name))
 
 /**
  * Build the API `tools` array for this user's role. Tools the role can't use
@@ -73,7 +74,7 @@ const PROCESSOS_MODULE_TOOLS = new Set([...casosTools, ...processosTools].map((t
  * dois formatos estáveis de tool-surface (global vs doc) → cache previsível.
  *
  * `processosHabilitado` (default true): quando false, remove por inteiro as
- * ferramentas de Casos & Processos — o módulo foi temporariamente desativado.
+ * ferramentas de Processos — o módulo foi temporariamente desativado (os casos ficam).
  */
 export function toApiTools(
   role: string,

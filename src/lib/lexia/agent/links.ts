@@ -78,9 +78,7 @@ export function linkParaResultado(toolName: string, result: unknown, payload: un
     case "criar_caso":
     case "editar_caso": {
       const id = idDe(result)
-      bruto = id
-        ? { rota: `/processos?view=processos&caso=${id}`, label: "Ver caso" }
-        : { rota: "/processos?view=processos", label: "Ver casos" }
+      bruto = id ? { rota: `/casos/${id}`, label: "Ver caso" } : { rota: "/casos", label: "Ver casos" }
       break
     }
     case "editar_cliente": {

@@ -264,13 +264,17 @@ describe("registry — deterministic, valid tool schemas", () => {
     expect(pergunta.length).toBe(all.length - mutNames.size)
   })
 
-  it("processosHabilitado=false remove por inteiro as ferramentas de Casos & Processos", () => {
+  it("processosHabilitado=false remove as ferramentas de Processos, mas mantém as de Casos", () => {
     const on = new Set(toApiTools("admin").map((t) => t.name))
     const off = new Set(toApiTools("admin", "agente", false, false).map((t) => t.name))
-    const PROCESSOS_SAMPLE = ["listar_casos", "criar_caso", "listar_processos", "criar_processo", "listar_prazos", "cumprir_prazo"]
+    const PROCESSOS_SAMPLE = ["listar_processos", "criar_processo", "listar_prazos", "cumprir_prazo"]
     for (const n of PROCESSOS_SAMPLE) {
       expect(on.has(n), n).toBe(true)
       expect(off.has(n), n).toBe(false)
+    }
+    // o caso (cliente/contrato/honorários) independe do módulo Processos
+    for (const n of ["listar_casos", "detalhe_caso", "criar_caso", "editar_caso", "excluir_caso"]) {
+      expect(off.has(n), n).toBe(true)
     }
     // ferramentas de outros módulos continuam disponíveis
     expect(off.has("buscar")).toBe(true)

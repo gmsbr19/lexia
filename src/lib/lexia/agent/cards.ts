@@ -171,8 +171,8 @@ function dispatch(toolName: string, _input: unknown, out: unknown): CardPayload 
       return listCard("cliente", out as ClienteRowLike[], clienteRow, "/contatos")
 
     case "detalhe_caso": {
-      const c = o as { id: number; clienteId?: number | null }
-      return { type: "entity", kind: "processo", variant: "detail", rota: c.clienteId ? `/contatos/${c.clienteId}` : "/casos", data: casoRow(o as unknown as CasoRowLike) }
+      const c = o as { id: number }
+      return { type: "entity", kind: "processo", variant: "detail", rota: `/casos/${c.id}`, data: casoRow(o as unknown as CasoRowLike) }
     }
     case "listar_casos":
       return listCard("processo", out as CasoRowLike[], casoRow, "/casos")
