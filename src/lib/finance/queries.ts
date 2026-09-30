@@ -318,7 +318,12 @@ export async function getBreakEven(): Promise<{ custoFixoMensalCents: number; re
 // ── casos sem fee ──────────────────────────────────────────────────────────────
 export async function getCasosSemFee(): Promise<CasoSemFeeRow[]> {
   const rows = await prisma.caso.findMany({
-    where: { status: "Ativo", excluidoEm: null, lancamentos: { none: { tipo: "entrada", subTipo: "honorario" } } },
+    where: {
+      excluidoEm: null,
+      // "Ativo" do Astrea, "ativo" do modal antigo, ou vazio (casos criados no app)
+      OR: [{ status: null }, { status: { equals: "ativo", mode: "insensitive" } }],
+      lancamentos: { none: { tipo: "entrada", subTipo: "honorario" } },
+    },
     select: {
       id: true,
       titulo: true,
@@ -328,19 +333,24 @@ export async function getCasosSemFee(): Promise<CasoSemFeeRow[]> {
       ultimaMovimentacao: true,
       clientePrincipalId: true,
       clientePrincipal: { select: { nome: true } },
+      // valor da causa agora mora no Processo (a coluna do caso ficou legada)
+      processos: { where: { excluidoEm: null }, select: { valorCausaCents: true } },
     },
     orderBy: { ultimaMovimentacao: "desc" },
   })
-  return rows.map((r) => ({
-    id: r.id,
-    titulo: r.titulo,
-    cliente: r.clientePrincipal?.nome ?? null,
-    clienteId: r.clientePrincipalId,
-    tipo: r.tipo as CasoSemFeeRow["tipo"],
-    responsavel: r.responsavel,
-    ultimaMovimentacao: r.ultimaMovimentacao ? r.ultimaMovimentacao.toISOString() : null,
-    valorCausaCents: r.valorCausaCents,
-  }))
+  return rows.map((r) => {
+    const doProcesso = r.processos.reduce((a, p) => a + (p.valorCausaCents ?? 0), 0)
+    return {
+      id: r.id,
+      titulo: r.titulo,
+      cliente: r.clientePrincipal?.nome ?? null,
+      clienteId: r.clientePrincipalId,
+      tipo: r.tipo as CasoSemFeeRow["tipo"],
+      responsavel: r.responsavel,
+      ultimaMovimentacao: r.ultimaMovimentacao ? r.ultimaMovimentacao.toISOString() : null,
+      valorCausaCents: r.valorCausaCents ?? (doProcesso > 0 ? doProcesso : null),
+    }
+  })
 }
 
 // ── importação ────────────────────────────────────────────────────────────────
