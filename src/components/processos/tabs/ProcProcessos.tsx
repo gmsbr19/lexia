@@ -1,6 +1,6 @@
 "use client"
 
-// Contencioso · Casos & processos — o ACERVO aninhado do escritório (densidade
+// Contencioso · Processos — o ACERVO judicial do escritório (densidade
 // informativa estilo Astrea, calmo). Lista agrupada por CASO; cada caso expande
 // nos seus PROCESSOS. Clicar no caso abre o caso; clicar no processo abre a ficha
 // consolidada. Há também uma visão "Plano" (lista plana de processos).
@@ -289,8 +289,8 @@ export function ProcProcessos({
   return (
     <FxFrame>
       <CrmPageHead
-        title="Casos & processos"
-        sub="Acervo do escritório · casos e seus processos · clique para abrir"
+        title="Processos"
+        sub="Acervo judicial agrupado por caso · clique no processo para a ficha, no caso para a página do caso"
         right={<button className="btn btn-primary" onClick={onNovoProcesso}><Icon name="plus" size={15} />Novo processo</button>}
       />
 

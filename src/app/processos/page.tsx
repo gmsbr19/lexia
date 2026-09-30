@@ -20,16 +20,14 @@ export default async function Page({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  // Casos & Processos pode ser temporariamente desativado (Configurações → Módulos).
-  if (!processosHabilitado(await getModulosConfig())) redirect("/")
   const sp = await searchParams
+  // Links antigos (?caso=<id>) → o caso agora tem página própria, fora do módulo.
   const caso = num(sp.caso)
+  if (caso) redirect(`/casos/${caso}`)
+  // O módulo Processos pode ser temporariamente desativado (Configurações → Módulos).
+  if (!processosHabilitado(await getModulosConfig())) redirect("/")
   const raw = Array.isArray(sp.view) ? sp.view[0] : sp.view
-  const view: ProcView = (VIEWS as string[]).includes(raw ?? "")
-    ? (raw as ProcView)
-    : caso
-      ? "processos"
-      : "painel"
+  const view: ProcView = (VIEWS as string[]).includes(raw ?? "") ? (raw as ProcView) : "painel"
   const [dataset, crm] = await Promise.all([getProcessosDataset(), getCrmDataset()])
-  return <ProcessosApp dataset={dataset} crm={crm} initialView={view} openCaso={caso} />
+  return <ProcessosApp dataset={dataset} crm={crm} initialView={view} />
 }
