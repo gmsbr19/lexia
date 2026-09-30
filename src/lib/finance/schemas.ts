@@ -26,6 +26,7 @@ export const novoLancamentoSchema = z.object({
   caso: z.string().max(300).nullish(),
   contaId: idOpt,
   clienteId: idOpt,
+  casoId: idOpt, // explicit caso link (caso-scoped ledger) — overrides name resolution
   tipoHonorario: z.enum(["recorrente", "parcelado", "exito", "avista"]).nullish(),
   valorLiquidoCents: money.optional(),
   pago: z.boolean().optional(),
