@@ -56,10 +56,18 @@ export const fetchAgenda = (de: string, ate: string) => get<AgendaDataset>(`/api
 export const fetchDocumentos = (clienteId: number) => get<DocumentoRow[]>(`/api/documentos?clienteId=${clienteId}`)
 export const searchAll = (q: string) => get<SearchResults>(`/api/search?q=${encodeURIComponent(q)}`)
 
-// Quick-create a caso (título + optional client/área) — used by the contrato
-// modal's "criar caso" combobox option. Route gates on socio/advogado.
-export const createCaso = (body: { titulo: string; clientePrincipalId?: number; area?: string | null; tipo?: string }) =>
-  mut<{ id: number }>(`/api/casos`, "POST", body)
+// Create a caso — the "Novo caso" form (full) and the contrato modal's quick
+// "criar caso" combobox option (título + cliente/área). Route gates on socio/advogado.
+export interface CasoInput {
+  titulo: string
+  clientePrincipalId?: number | null
+  contratoId?: number | null
+  area?: string | null
+  tipo?: string
+  status?: string | null
+  responsavelUserId?: number | null
+}
+export const createCaso = (body: CasoInput) => mut<{ id: number }>(`/api/casos`, "POST", body)
 
 // ── cliente mutations ──
 export const createCliente = (body: unknown) => mut(`/api/clientes`, "POST", body)
@@ -83,7 +91,8 @@ export const setCobranca = (
 ) => mut(`/api/clientes/${id}/cobranca`, "POST", body)
 
 // ── caso mutations ──
-export const patchCaso = (id: number, body: unknown) => mut(`/api/casos/${id}`, "PATCH", body)
+export const patchCaso = (id: number, body: Partial<CasoInput>) => mut(`/api/casos/${id}`, "PATCH", body)
+export const deleteCaso = (id: number) => mut(`/api/casos/${id}`, "DELETE")
 export const setResponsaveis = (id: number, responsaveis: { contaId: number; percentual: number }[]) =>
   mut(`/api/financeiro/casos/${id}/responsaveis`, "PATCH", { responsaveis })
 

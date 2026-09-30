@@ -1,187 +1,189 @@
 "use client"
 
-// LexIA · CRM — Casos list. Lists over dataset.casos (CasoRow[]) with search +
-// segmented filters (Todos / Com honorário / Sem rateio definido). Row click →
-// nav.openCaso(id). Money is integer centavos (crmMoney). Ported from the design
-// prototype page-casos.jsx, rewired to the real CrmDataset.
-import { useMemo, useState } from "react"
+// LexIA · CRM — lista de CASOS (/casos) sobre o grid "Controles de Visão"
+// (ViewGrid), o mesmo de Contatos: visões salvas por usuário (gridId "casos"),
+// filtros E/OU, ordenação, agrupamento (ex.: por cliente), colunas, CSV e lote
+// (tipo/área/status/responsável). Visões-semente para arrumar a base: "Sem
+// cliente" e "Sem contrato". Clique na linha → página do caso (/casos/[id]).
+// Independe do módulo Processos (a coluna Processos só aparece com ele ligado).
+import { useCallback, useMemo } from "react"
+import { useRouter } from "next/navigation"
 import {
-  CrmCasoTipoPill,
-  CrmEmpty,
-  CrmKpiRow,
-  CrmPageHead,
-  CrmRow,
-  CrmSearch,
-  FxFrame,
-  FxSegmented,
-} from "../crm-kit"
-import { crmMoney } from "../crm-fmt"
-import type { CrmDataset, CrmNav, Role } from "../crm-types"
-import type { CasoRow } from "../crm-types"
+  ViewGrid, makeDefaultState,
+  type VgSchema, type VgColumn, type VgRow, type VgSavedView, type VgGridStore,
+  type VgEnumRegistry, type VgEnumOrder, type VgBulkField, type VgState,
+} from "@/components/ui/viewgrid"
+import { useOptimisticRows } from "@/lib/client/useOptimisticRows"
+import { useViewGridStore } from "@/lib/client/useViewGridStore"
+import { resolveAreaColor, resolveAreaLabel, toAreaOptions, useAreasStore } from "@/lib/areas/store"
+import { CASO_STATUS_OPTS, CASO_TIPO_LABEL, casoStatusLabel } from "@/lib/casos/status"
+import { processosHabilitado, useModulosStore } from "@/lib/modulos/store"
+import type { CasoPageRow } from "@/lib/casos/types"
+import { CrmKpiRow, CrmPageHead } from "../crm-kit"
+import { Icon } from "../crm-icons"
+import type { CrmDataset } from "../crm-types"
+
+const TIPO_ENUM: VgEnumRegistry["x"] = { Consultivo: { c: "#3B7DD8" }, "Litígio": { c: "#C0492F" } }
+const STATUS_ENUM: VgEnumRegistry["x"] = { Ativo: { c: "#2E9E5B" }, Suspenso: { c: "#C0A147" }, Arquivado: { c: "var(--text-subtle)" } }
+
+function buildCols(verFin: boolean, processosOk: boolean): VgColumn[] {
+  return [
+    { key: "titulo", label: "Caso", type: "text", fixed: true, def: true, w: 300 },
+    { key: "cliente", label: "Cliente", type: "text", group: true, def: true, w: 210 },
+    { key: "tipo", label: "Tipo", type: "enum", enum: "tipo", group: true, def: true, w: 120 },
+    { key: "area", label: "Área", type: "enum", enum: "area", group: true, def: true, w: 150 },
+    { key: "status", label: "Status", type: "enum", enum: "status", group: true, def: true, w: 120 },
+    { key: "responsavel", label: "Responsável", type: "text", group: true, def: true, w: 170 },
+    { key: "contrato", label: "Contrato", type: "text", group: true, def: true, w: 200 },
+    ...(processosOk ? [{ key: "numProcessos", label: "Processos", type: "num", def: true, w: 100, align: "right" } as VgColumn] : []),
+    ...(verFin
+      ? ([
+          { key: "honorarios", label: "Honorários", type: "money", def: true, w: 130, align: "right", agg: "sum" },
+          { key: "recebido", label: "Recebido", type: "money", def: false, w: 130, align: "right", agg: "sum" },
+          { key: "aberto", label: "Em aberto", type: "money", def: false, w: 130, align: "right", agg: "sum" },
+        ] as VgColumn[])
+      : []),
+    { key: "ultimaMovimentacao", label: "Movimentação", type: "date", def: false, w: 130 },
+    { key: "dataCriacao", label: "Aberto em", type: "date", def: false, w: 120 },
+  ]
+}
+
+const rule = (id: string, col: string, op: string, values: string[] = []) =>
+  ({ type: "rule" as const, id, col, op, value: "", value2: "", values })
+
+function casoSeedViews(cols: VgColumn[]): VgSavedView[] {
+  const base = () => makeDefaultState({ cols })
+  const withRule = (r: ReturnType<typeof rule>): VgState => {
+    const s = base()
+    s.filters = { type: "group", id: "root", combinator: "E", children: [r] }
+    return s
+  }
+  const porCliente = base()
+  porCliente.groupCols = ["cliente"]
+  porCliente.sort = [{ col: "titulo", dir: "asc" }]
+  return [
+    { id: "k-all", name: "Todos os casos", icon: "list", isDefault: true, state: base() },
+    { id: "k-ativos", name: "Ativos", icon: "checkCircle", state: withRule(rule("seed-ativo", "status", "in", ["Ativo"])) },
+    { id: "k-cliente", name: "Por cliente", icon: "users", state: porCliente },
+    { id: "k-semcli", name: "Sem cliente", icon: "alertCircle", state: withRule(rule("seed-semcli", "cliente", "empty")) },
+    { id: "k-semctr", name: "Sem contrato", icon: "fileText", state: withRule(rule("seed-semctr", "contrato", "empty")) },
+  ]
+}
 
 interface Props {
   dataset: CrmDataset
-  role: Role
-  nav: CrmNav
+  casos: CasoPageRow[]
+  verFin: boolean
+  podeCriar: boolean
+  onNovo: () => void
 }
 
-const CRM_CASO_COLS = "1fr 120px 140px 150px"
+export function CrmCasosPage({ dataset, casos, verFin, podeCriar, onNovo }: Props) {
+  const router = useRouter()
+  const processosOk = processosHabilitado(useModulosStore((s) => s.modulos))
+  const areas = useAreasStore((s) => s.areas)
+  const optimistic = useOptimisticRows<CasoPageRow>({
+    initialRows: casos,
+    getId: useCallback((c: CasoPageRow) => c.id, []),
+    patchUrl: (id) => `/api/casos/${id}`,
+    bulkUrl: "/api/casos/lote",
+  })
+  const saved = useViewGridStore("casos")
+  const today = useMemo(() => new Date().toISOString().slice(0, 10), [])
+  const cols = useMemo(() => buildCols(verFin, processosOk), [verFin, processosOk])
+  const userNome = useMemo(() => new Map(dataset.usuarios.map((u) => [u.id, u.nome])), [dataset.usuarios])
 
-const norm = (s: string | null | undefined) =>
-  (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
-const crmFirst = (s: string | null | undefined) => (s || "").split(/\s+/)[0] || "—"
-const withFin = (k: CasoRow) => k.honorariosCents > 0
-const semRateio = (k: CasoRow) => k.responsaveis.length === 0
+  const counts = useMemo(() => ({
+    total: optimistic.rows.length,
+    ativos: optimistic.rows.filter((c) => casoStatusLabel(c.status) === "Ativo").length,
+    semCliente: optimistic.rows.filter((c) => c.clienteId == null).length,
+    semContrato: optimistic.rows.filter((c) => c.contratoId == null).length,
+  }), [optimistic.rows])
 
-export function CrmCasosPage({ dataset, role, nav }: Props) {
-  const [q, setQ] = useState("")
-  const [seg, setSeg] = useState("todos")
-  const casos = dataset.casos
-  const nq = norm(q.trim())
+  const schema: VgSchema = useMemo(() => {
+    const areaKeys = [...new Set(optimistic.rows.map((c) => c.area).filter((a): a is string => !!a))]
+    const areaLabels = areaKeys.map((k) => resolveAreaLabel(areas, k) || k)
+    const areaEnum: VgEnumRegistry["x"] = Object.fromEntries(
+      areaKeys.map((k, i) => [areaLabels[i], { c: resolveAreaColor(areas, k) ?? "var(--text-muted)" }]),
+    )
+    const enums: VgEnumRegistry = { tipo: TIPO_ENUM, status: STATUS_ENUM, area: areaEnum }
+    const enumOrder: VgEnumOrder = {
+      tipo: ["Consultivo", "Litígio"],
+      status: ["Ativo", "Suspenso", "Arquivado"],
+      area: [...areaLabels].sort((a, b) => a.localeCompare(b)),
+    }
+    return { id: "casos", label: "Casos", primaryLabel: "Caso", icon: "fileText", cols, enums, enumOrder, people: [], peopleMap: {}, today }
+  }, [optimistic.rows, areas, cols, today])
 
-  const counts = useMemo(
-    () => ({
-      total: casos.length,
-      comHon: casos.filter(withFin).length,
-      semRateio: casos.filter(semRateio).length,
-    }),
-    [casos],
-  )
+  const rows: VgRow[] = useMemo(() => optimistic.rows.map((c) => ({
+    id: c.id,
+    titulo: c.titulo,
+    cliente: c.cliente ?? "",
+    tipo: CASO_TIPO_LABEL[c.tipo] ?? c.tipo,
+    area: c.area ? resolveAreaLabel(areas, c.area) || c.area : "",
+    status: casoStatusLabel(c.status),
+    // após um lote otimista só o id muda — o nome vem da lista de usuários
+    responsavel: (c.responsavelUserId != null ? userNome.get(c.responsavelUserId) : null) ?? c.responsavel ?? "",
+    contrato: c.contrato ?? "",
+    numProcessos: c.numProcessos,
+    honorarios: c.honorariosCents / 100,
+    recebido: c.recebidoCents / 100,
+    aberto: c.abertoCents / 100,
+    ultimaMovimentacao: c.ultimaMovimentacao ?? "",
+    dataCriacao: c.dataCriacao ?? "",
+  })), [optimistic.rows, areas, userNome])
 
-  const rows = useMemo(
-    () =>
-      casos.filter((k) => {
-        if (seg === "com" && !withFin(k)) return false
-        if (seg === "sem" && !semRateio(k)) return false
-        if (
-          nq &&
-          !(norm(k.titulo).includes(nq) || norm(k.cliente).includes(nq) || norm(k.responsavel).includes(nq))
-        )
-          return false
-        return true
-      }),
-    [casos, seg, nq],
-  )
+  const seedViews = useMemo(() => casoSeedViews(cols), [cols])
+
+  const bulkFields: VgBulkField[] = useMemo(() => [
+    { field: "tipo", label: "Tipo", icon: "flag", options: [{ value: "consultivo", label: "Consultivo" }, { value: "litigio", label: "Litígio" }] },
+    { field: "area", label: "Área", icon: "circleDot", options: toAreaOptions(areas).map((a) => ({ value: a.id, label: a.label })) },
+    { field: "status", label: "Status", icon: "checkCircle", options: CASO_STATUS_OPTS.map((o) => ({ value: o.value, label: o.label })) },
+    { field: "responsavelUserId", label: "Responsável", icon: "user", options: dataset.usuarios.map((u) => ({ value: String(u.id), label: u.nome })) },
+  ], [areas, dataset.usuarios])
+
+  const onBulkApply = useCallback((ids: (string | number)[], field: string, value: string | null) => {
+    const v: unknown = field === "responsavelUserId" ? (value == null ? null : Number(value)) : value
+    void optimistic.bulkApply(ids as number[], field, v)
+  }, [optimistic])
 
   return (
-    <FxFrame>
-      <CrmPageHead title="Casos" sub="Defina os responsáveis sócios e o rateio dos honorários de cada caso" />
-      <CrmKpiRow
-        kpis={[
-          { label: "Total de casos", value: counts.total, icon: "briefcase" },
-          { label: "Com honorário", value: counts.comHon, icon: "receipt", accent: "gold" },
-          { label: "Sem rateio", value: counts.semRateio, icon: "percent" },
-        ]}
-      />
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
-        <CrmSearch value={q} onChange={setQ} placeholder="Buscar por caso, cliente, responsável…" />
-        <FxSegmented
-          options={[
-            { value: "todos", label: "Todos" },
-            { value: "com", label: "Com honorário" },
-            { value: "sem", label: "Sem rateio" },
+    <div style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <div style={{ flexShrink: 0, padding: "20px 24px 10px" }}>
+        <CrmPageHead
+          title="Casos"
+          sub="A matéria de cada cliente — vincule cliente, contrato e honorários. Processos judiciais ficam dentro do caso."
+          right={podeCriar && <button className="btn btn-primary" onClick={onNovo}><Icon name="plus" size={15} />Novo caso</button>}
+        />
+        <CrmKpiRow
+          kpis={[
+            { label: "Total de casos", value: counts.total, icon: "briefcase" },
+            { label: "Ativos", value: counts.ativos, icon: "checkCircle" },
+            { label: "Sem cliente", value: counts.semCliente, icon: "user", accent: counts.semCliente ? "gold" : undefined },
+            { label: "Sem contrato", value: counts.semContrato, icon: "receipt" },
           ]}
-          value={seg}
-          onChange={setSeg}
         />
       </div>
-      <div className="card" style={{ overflow: "hidden" }}>
-        <div
-          style={{
-            display: "grid", gridTemplateColumns: CRM_CASO_COLS, gap: 14, padding: "11px 18px",
-            borderBottom: "1px solid var(--border)", background: "var(--bg-soft)",
-          }}
-        >
-          {["Caso", "Tipo", "Honorários", "Rateio (sócios)"].map((h, i) => (
-            <div
-              key={h}
-              style={{
-                fontSize: 11, fontWeight: 500, color: "var(--text-subtle)", textTransform: "uppercase",
-                letterSpacing: "0.08em", textAlign: i >= 2 ? "right" : "left",
-              }}
-            >
-              {h}
-            </div>
-          ))}
-        </div>
-        {rows.length === 0 ? (
-          <CrmEmpty icon="briefcase" title="Nenhum caso encontrado" sub="Ajuste a busca ou os filtros." />
+
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+        {saved.ready ? (
+          <ViewGrid
+            schema={schema}
+            rows={rows}
+            searchKeys={["titulo", "cliente", "contrato", "responsavel"]}
+            initialStore={saved.initial}
+            seedViews={seedViews}
+            onStoreChange={(s: VgGridStore) => saved.onChange(s)}
+            onRowClick={(r) => router.push(`/casos/${r.id}`)}
+            selectable={podeCriar}
+            bulkFields={bulkFields}
+            onBulkApply={onBulkApply}
+            csvName={() => `lexia-casos-${today}.csv`}
+          />
         ) : (
-          rows.map((k, i) => {
-            const r = k.responsaveis
-            const leandro = r[0]?.percentual ?? 50
-            const leonardo = r.length > 1 ? r[1].percentual : 100 - leandro
-            return (
-              <CrmRow
-                key={k.id}
-                onClick={() => nav.openCaso(k.id)}
-                style={{
-                  display: "grid", gridTemplateColumns: CRM_CASO_COLS, gap: 14, padding: "13px 18px",
-                  alignItems: "center", borderTop: i ? "1px solid var(--border)" : "none",
-                }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontSize: 13, fontWeight: 500, color: "var(--text)", whiteSpace: "nowrap",
-                      overflow: "hidden", textOverflow: "ellipsis",
-                    }}
-                  >
-                    {k.titulo}
-                  </div>
-                  <div style={{ fontSize: 12, color: "var(--text-subtle)", marginTop: 2 }}>
-                    {k.cliente || "—"} · resp. {crmFirst(k.responsavel)}
-                  </div>
-                </div>
-                <div>
-                  <CrmCasoTipoPill tipo={k.tipo} />
-                </div>
-                <div
-                  style={{
-                    textAlign: "right", fontSize: 13, fontWeight: 500, fontVariantNumeric: "tabular-nums",
-                    color: k.honorariosCents ? "var(--text)" : "var(--text-subtle)",
-                  }}
-                >
-                  {k.honorariosCents ? crmMoney(k.honorariosCents) : "—"}
-                  {k.honorariosCount > 0 && (
-                    <div style={{ fontSize: 11, fontWeight: 500, color: "var(--text-subtle)", marginTop: 2 }}>
-                      {k.honorariosCount} {k.honorariosCount === 1 ? "honorário" : "honorários"}
-                    </div>
-                  )}
-                </div>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
-                  {role === "staff" ? (
-                    <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>—</span>
-                  ) : semRateio(k) ? (
-                    <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>—</span>
-                  ) : (
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <div
-                        style={{
-                          width: 54, height: 7, borderRadius: 999, overflow: "hidden",
-                          background: "var(--brand-navy)", display: "flex",
-                        }}
-                      >
-                        <div style={{ width: `${leandro}%`, background: "var(--brand-gold)" }} />
-                      </div>
-                      <span
-                        style={{
-                          fontSize: 12, fontWeight: 500, color: "var(--text-muted)", fontVariantNumeric: "tabular-nums",
-                        }}
-                      >
-                        {leandro}/{leonardo}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </CrmRow>
-            )
-          })
+          <div className="vc-root" style={{ padding: 24 }}><div className="skeleton" style={{ height: 32, width: 260, borderRadius: 8 }} /></div>
         )}
       </div>
-      <div style={{ fontSize: 12, color: "var(--text-subtle)", textAlign: "center", marginTop: 14 }}>
-        {rows.length} de {casos.length} casos
-      </div>
-    </FxFrame>
+    </div>
   )
 }

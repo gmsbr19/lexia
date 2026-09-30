@@ -1,4 +1,5 @@
-// Casos — read layer for the caso detail modal + paginated list. SERVER ONLY.
+// Casos — read layer for the casos page/grid, the caso page and the paginated
+// API list. SERVER ONLY.
 import type { Prisma } from "@prisma/client"
 import type { SessionUser } from "@/lib/auth/session"
 import { prisma } from "@/lib/db"
@@ -8,7 +9,7 @@ import type { HonorarioRow, LancamentoRow } from "@/lib/finance/types"
 import { lancamentoToHonorarioRow } from "@/lib/finance/honorario-map"
 import { scopeCasoWhere } from "@/lib/processos/rbac"
 import type { ProcessoMini, ProcessoStatus } from "@/lib/processos/types"
-import type { CasoDetail, CasoDocumentoRow, CasoListRow, CasoTarefaRow } from "./types"
+import type { CasoDetail, CasoDocumentoRow, CasoListRow, CasoPageRow, CasoTarefaRow } from "./types"
 
 const isoDate = (d: Date | null): string | null => (d ? d.toISOString().slice(0, 10) : null)
 
@@ -32,7 +33,14 @@ export async function listCasos(filtros: CasoFiltros, q: ListQuery, user: Sessio
   if (filtros.area) and.push({ area: filtros.area })
   if (filtros.clienteId) and.push({ clientePrincipalId: filtros.clienteId })
   if (filtros.responsavelUserId) and.push({ responsavelUserId: filtros.responsavelUserId })
-  if (filtros.q) and.push({ OR: [{ titulo: { contains: filtros.q } }, { numeroProcesso: { contains: filtros.q } }] })
+  if (filtros.q) {
+    and.push({
+      OR: [
+        { titulo: { contains: filtros.q, mode: "insensitive" } },
+        { processos: { some: { excluidoEm: null, numeroCnj: { contains: filtros.q } } } },
+      ],
+    })
+  }
 
   const orderBy = { [q.sort]: q.order } as Prisma.CasoOrderByWithRelationInput
   const [rows, total] = await Promise.all([
@@ -87,13 +95,7 @@ export async function getCasoDetail(id: number): Promise<CasoDetail | null> {
       responsavelUser: { select: { nome: true } },
       clientePrincipalId: true,
       clientePrincipal: { select: { nome: true } },
-      numeroProcesso: true,
-      tribunal: true,
-      vara: true,
-      instancia: true,
-      tipoAcao: true,
-      valorCausaCents: true,
-      dataDistribuicao: true,
+      contrato: { select: { id: true, titulo: true, dataFechamento: true, excluidoEm: true } },
       dataCriacao: true,
       ultimaMovimentacao: true,
       responsaveis: {
@@ -103,7 +105,7 @@ export async function getCasoDetail(id: number): Promise<CasoDetail | null> {
   })
   if (!caso) return null
 
-  const [lancRows, honRows, tarefaRows, eventos, processoRows, documentoRows] = await Promise.all([
+  const [lancRows, honRows, tarefaRows, eventos, processoRows, documentoRows, anotacaoRows] = await Promise.all([
     prisma.lancamento.findMany({
       where: { casoId: id, isAnomalia: false },
       select: {
@@ -177,6 +179,11 @@ export async function getCasoDetail(id: number): Promise<CasoDetail | null> {
       where: { casoId: id },
       orderBy: { createdAt: "desc" },
       select: { id: true, nome: true, tipo: true, status: true, createdAt: true },
+    }),
+    prisma.anotacao.findMany({
+      where: { casoId: id, processoId: null, excluidoEm: null },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, autor: true, conteudo: true, createdAt: true },
     }),
   ])
 
@@ -259,13 +266,10 @@ export async function getCasoDetail(id: number): Promise<CasoDetail | null> {
     responsavelUser: caso.responsavelUser?.nome ?? null,
     clienteId: caso.clientePrincipalId,
     cliente: caso.clientePrincipal?.nome ?? null,
-    numeroProcesso: caso.numeroProcesso,
-    tribunal: caso.tribunal,
-    vara: caso.vara,
-    instancia: caso.instancia,
-    tipoAcao: caso.tipoAcao,
-    valorCausaCents: caso.valorCausaCents,
-    dataDistribuicao: isoDate(caso.dataDistribuicao),
+    contrato:
+      caso.contrato && !caso.contrato.excluidoEm
+        ? { id: caso.contrato.id, titulo: caso.contrato.titulo, dataFechamento: isoDate(caso.contrato.dataFechamento) }
+        : null,
     dataCriacao: isoDate(caso.dataCriacao),
     ultimaMovimentacao: isoDate(caso.ultimaMovimentacao),
     responsaveis: caso.responsaveis
@@ -282,5 +286,73 @@ export async function getCasoDetail(id: number): Promise<CasoDetail | null> {
     eventos,
     processos,
     documentos,
+    anotacoes: anotacaoRows.map((a) => ({
+      id: a.id,
+      autor: a.autor,
+      conteudo: a.conteudo,
+      createdAt: a.createdAt.toISOString(),
+    })),
   }
+}
+
+/**
+ * Lista da página /casos — escopada por papel (advogado vê só os seus, mesma
+ * regra do detalhe). Uma consulta: identidade + contrato + contagem de processos
+ * + soma dos honorários (fee-lançamentos). `verFin=false` zera os valores.
+ */
+export async function listCasosPagina(user: SessionUser, verFin: boolean): Promise<CasoPageRow[]> {
+  const scope = await scopeCasoWhere(user)
+  const rows = await prisma.caso.findMany({
+    where: { AND: [scope, { excluidoEm: null }] },
+    select: {
+      id: true,
+      titulo: true,
+      tipo: true,
+      area: true,
+      status: true,
+      responsavel: true,
+      responsavelUserId: true,
+      responsavelUser: { select: { nome: true } },
+      clientePrincipalId: true,
+      clientePrincipal: { select: { nome: true } },
+      contratoId: true,
+      contrato: { select: { titulo: true, dataFechamento: true, excluidoEm: true } },
+      dataCriacao: true,
+      ultimaMovimentacao: true,
+      _count: { select: { processos: { where: { excluidoEm: null } } } },
+      lancamentos: { where: { tipo: "entrada", subTipo: "honorario", isAnomalia: false }, select: { valorCents: true, status: true } },
+    },
+  })
+  const out: CasoPageRow[] = rows.map((r) => {
+    const fees = verFin ? r.lancamentos : []
+    const recebido = fees.filter((l) => l.status === "feito").reduce((a, l) => a + Math.abs(l.valorCents), 0)
+    const total = fees.reduce((a, l) => a + Math.abs(l.valorCents), 0)
+    const contratoVivo = r.contrato && !r.contrato.excluidoEm ? r.contrato : null
+    return {
+      id: r.id,
+      titulo: r.titulo,
+      tipo: r.tipo as CasoPageRow["tipo"],
+      area: r.area,
+      status: r.status,
+      clienteId: r.clientePrincipalId,
+      cliente: r.clientePrincipal?.nome ?? null,
+      responsavelUserId: r.responsavelUserId,
+      responsavel: r.responsavelUser?.nome ?? r.responsavel ?? null,
+      contratoId: contratoVivo ? r.contratoId : null,
+      contrato: contratoVivo ? (contratoVivo.titulo ?? `Contrato de ${brDate(contratoVivo.dataFechamento)}`) : null,
+      numProcessos: r._count.processos,
+      honorariosCents: total,
+      recebidoCents: recebido,
+      abertoCents: total - recebido,
+      dataCriacao: isoDate(r.dataCriacao),
+      ultimaMovimentacao: isoDate(r.ultimaMovimentacao ?? r.dataCriacao),
+    }
+  })
+  // Mais recente primeiro (movimentação → criação); sem data vai para o fim.
+  return out.sort((a, b) => (b.ultimaMovimentacao ?? "").localeCompare(a.ultimaMovimentacao ?? ""))
+}
+
+const brDate = (d: Date) => {
+  const iso = d.toISOString().slice(0, 10)
+  return `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`
 }
