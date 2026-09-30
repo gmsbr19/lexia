@@ -30,7 +30,9 @@ import {
   useCrmToast,
 } from "../crm-kit"
 import { Icon } from "../crm-icons"
-import { ProcSemaforo, urgenciaCalc } from "@/components/processos/proc-kit"
+import { CrmInfoLine, CrmMoneyStat, CrmProcessoSubRow, CrmStat } from "./crm-detail-kit"
+import { CrmCasoFormModal } from "./CrmCasoForm"
+import { PODE_CRIAR_CASO } from "@/lib/casos/status"
 import {
   addAnotacaoCliente,
   deleteAnotacaoCliente,
@@ -55,7 +57,6 @@ import type {
   CrmNav,
   EventoRow,
   LancamentoRow,
-  ProcessoMini,
   Role,
 } from "../crm-types"
 
@@ -75,75 +76,8 @@ type ClienteModal =
   | { type: "tarefa"; tarefa?: ClienteTarefaRow | null }
   | { type: "evento"; evento?: EventoRow | null }
   | { type: "documento" }
+  | { type: "caso" }
   | null
-
-// ───────────────────────── small atoms (from the design) ─────────────────────────
-function CrmStat({ label, value, tone }: { label: string; value: ReactNode; tone?: "pos" | "neg" | null }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-      <span style={{ fontSize: 11, color: "var(--text-subtle)", fontWeight: 500 }}>{label}</span>
-      <span
-        style={{
-          fontSize: 16, fontWeight: 500, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums",
-          color: tone === "neg" ? "var(--fin-neg,#C0492F)" : tone === "pos" ? "var(--fin-pos,#2E9E5B)" : "var(--text)",
-        }}
-      >
-        {value}
-      </span>
-    </div>
-  )
-}
-
-function CrmMoneyStat({ label, cents, tone }: { label: string; cents: number; tone?: "pos" | "neg" | null }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-      <span style={{ fontSize: 11, color: "var(--text-subtle)", fontWeight: 500 }}>{label}</span>
-      <span style={{ fontSize: 16, fontWeight: 500, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>
-        <FxMoney cents={cents} size={16} plain={tone == null} dir={tone === "neg" ? "out" : "in"} />
-      </span>
-    </div>
-  )
-}
-
-function CrmInfoLine({ icon, children }: { icon: string; children: ReactNode }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-muted)" }}>
-      <Icon name={icon} size={14} style={{ color: "var(--text-subtle)", flexShrink: 0 }} />
-      <span>{children}</span>
-    </div>
-  )
-}
-
-// ───────────────────────── processo sub-row (casos & processos tab) ─────────────────────────
-function CrmProcessoSubRow({ p, hoje, onClick }: { p: ProcessoMini; hoje: string; onClick: () => void }) {
-  const foro = [p.tribunal, p.vara].filter(Boolean).join(" · ")
-  return (
-    <CrmRow
-      onClick={onClick}
-      style={{
-        display: "flex", alignItems: "center", gap: 12, padding: "10px 16px 10px 40px",
-        borderTop: "1px solid var(--border)", background: "var(--bg-soft)",
-      }}
-    >
-      <Icon name="cornerDownRight" size={14} style={{ color: "var(--text-subtle)", flexShrink: 0 }} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12.5, fontWeight: 500, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {p.numeroCnj || "Sem CNJ"}
-        </div>
-        <div style={{ fontSize: 11.5, color: "var(--text-subtle)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {[p.classe, foro].filter(Boolean).join(" · ") || "—"}
-        </div>
-      </div>
-      <CrmBadge tone="neutral">{p.status}</CrmBadge>
-      {p.proximaDataFatal != null ? (
-        <ProcSemaforo urgencia={urgenciaCalc(p.proximaDataFatal, null, hoje)} />
-      ) : (
-        <span style={{ fontSize: 11.5, color: "var(--text-subtle)" }}>sem prazo</span>
-      )}
-      <Icon name="chevronRight" size={15} style={{ color: "var(--text-subtle)", flexShrink: 0 }} />
-    </CrmRow>
-  )
-}
 
 // ───────────────────────── lançamento row (financeiro tab) ─────────────────────────
 function CrmLancRow({
@@ -373,7 +307,7 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
     { id: "financeiro", label: "Financeiro", icon: "wallet", badge: detail.lancamentos.length || null },
     { id: "cobranca", label: "Cobrança & notas", icon: "handshake", badge: detail.anotacoes.length || null },
     { id: "tarefas", label: "Tarefas", icon: "listChecks", badge: detail.tarefas.length || null },
-    ...(processosOk ? [{ id: "casos", label: "Casos & Processos", icon: "briefcase", badge: detail.casos.length || null } as FxTabDef] : []),
+    { id: "casos", label: "Casos", icon: "briefcase", badge: detail.casos.length || null },
     { id: "contratos", label: "Contratos", icon: "receipt", badge: detail.contratos.length || null },
     { id: "eventos", label: "Eventos", icon: "calendar", badge: detail.eventos.length || null },
     { id: "documentos", label: "Documentos", icon: "fileText", badge: detail.documentos.length || null },
@@ -642,11 +576,21 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
           </>
         )}
 
-        {tab === "casos" && processosOk && (
+        {tab === "casos" && (
           <>
-            <FxCardTitle title="Casos & Processos" sub={`${detail.casos.length} caso(s)`} />
+            <FxCardTitle
+              title="Casos"
+              sub={`${detail.casos.length} caso(s) · clique para abrir a página do caso (honorários, contrato, processos)`}
+              right={
+                PODE_CRIAR_CASO.includes(role) && (
+                  <button className="btn btn-secondary" onClick={() => setModal({ type: "caso" })} style={{ height: 32 }}>
+                    <Icon name="plus" size={14} />Novo caso
+                  </button>
+                )
+              }
+            />
             {detail.casos.length === 0
-              ? sectionCard(<CrmEmpty icon="briefcase" title="Sem casos" />)
+              ? sectionCard(<CrmEmpty icon="briefcase" title="Sem casos" sub="Crie o caso deste contato para vincular honorários e contrato." />)
               : sectionCard(detail.casos.map((k, i) => (
                 <div key={k.id}>
                   <CrmRow onClick={() => nav.openCaso(k.id)} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 16px", borderTop: i ? "1px solid var(--border)" : "none" }}>
@@ -662,7 +606,7 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
                     </span>
                     <Icon name="chevronRight" size={16} style={{ color: "var(--text-subtle)" }} />
                   </CrmRow>
-                  {k.processos.length > 0 && k.processos.map((p) => (
+                  {processosOk && k.processos.length > 0 && k.processos.map((p) => (
                     <CrmProcessoSubRow key={p.id} p={p} hoje={hoje} onClick={() => nav.openProcesso(p.id)} />
                   ))}
                 </div>
@@ -783,6 +727,14 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
       )}
       {modal?.type === "documento" && (
         <CrmDocumentoModal clienteId={clienteId} onClose={() => setModal(null)} onSaved={() => { void load(); onRefresh() }} />
+      )}
+      {modal?.type === "caso" && (
+        <CrmCasoFormModal
+          dataset={dataset}
+          clienteInicial={{ id: clienteId, nome: detail.header.nome }}
+          onClose={() => setModal(null)}
+          onSaved={(id) => { setModal(null); onRefresh(); nav.openCaso(id) }}
+        />
       )}
     </div>
   )
