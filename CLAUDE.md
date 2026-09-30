@@ -198,9 +198,12 @@ This Next (16.2.6) has breaking changes vs. training data — consult
   de teste: criar/conflito/sem-CNJ/consultivo + 2ª rodada idempotente) e dados de teste REMOVIDOS. **LexIA:** tools de
   casos NUNCA mais são removidas com o módulo desligado (só as de processo); `criar_caso`/`editar_caso` aceitam
   `contratoId`/`tipo` (+`semContrato`); bullet **CASOS** no prompt (CORE — invalida o cache 1×); links/cards → `/casos/<id>`;
-  `navegar` aceita `/casos/<id>`. **User action (REQUIRED, na PRODUÇÃO):** (1) `npm run db:converter:casos -- --dry` e
-  conferir o relatório (conflitos = mesmo CNJ em 2 casos — decidir à mão); (2) `npm run db:converter:casos`; (3) reiniciar
-  o servidor (prompt/tools novos). Visual: menu **Casos** → lista (Novo caso, visões "Sem cliente"/"Sem contrato", agrupar
+  `navegar` aceita `/casos/<id>`. **Conversão AUTOMÁTICA no boot (follow-up):** [src/instrumentation.ts](src/instrumentation.ts)
+  (`register`, só runtime nodejs, nunca no `next build`) → [casos/boot.ts](src/lib/casos/boot.ts)
+  `agendarConversaoCasosNoBoot` roda o conversor em SEGUNDO PLANO a cada start (não atrasa nem derruba o boot; falha =
+  log); idempotente; log pino sem PII (contagens, ids de caso, CNJ); conflitos logados como `warn` a cada boot. O script
+  `db:converter:casos` segue p/ simulação/manual. **User action:** só o deploy — a conversão roda sozinha no 1º start;
+  conferir os logs do container ("casos: dados de processo legados convertidos…" / conflitos). Visual: menu **Casos** → lista (Novo caso, visões "Sem cliente"/"Sem contrato", agrupar
   por cliente, lote); abrir um caso → Editar (cliente/contrato), aba Honorários → "Novo lançamento" já vinculado ao caso
   e ao cliente; Excluir; ficha do contato → aba Casos → Novo caso; com o módulo Processos desligado tudo acima segue
   funcionando (só a aba/coluna Processos some).
