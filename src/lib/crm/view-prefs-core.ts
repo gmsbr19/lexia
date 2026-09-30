@@ -5,7 +5,7 @@
 // entradas fora do novo formato (ex.: blobs antigos), caindo p/ as visões-semente.
 import type { VgGridStore } from "@/components/ui/viewgrid/vg-types";
 
-export type GridId = "oportunidades" | "contatos" | "conversoes";
+export type GridId = "oportunidades" | "contatos" | "conversoes" | "casos";
 export type CrmViewPrefs = Partial<Record<GridId, VgGridStore>>;
 
 // valida (frouxamente) que um valor é um VgGridStore utilizável
@@ -25,7 +25,7 @@ export function parseViewPrefs(raw: string | null | undefined): CrmViewPrefs {
     const v = JSON.parse(raw);
     if (!v || typeof v !== "object") return {};
     const out: CrmViewPrefs = {};
-    for (const k of ["oportunidades", "contatos", "conversoes"] as GridId[]) {
+    for (const k of ["oportunidades", "contatos", "conversoes", "casos"] as GridId[]) {
       const store = (v as Record<string, unknown>)[k];
       if (isGridStore(store)) out[k] = store;
     }

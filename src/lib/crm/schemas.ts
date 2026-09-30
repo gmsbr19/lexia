@@ -62,5 +62,6 @@ export const crmViewPrefsSchema = z
     oportunidades: gridStoreSchema.optional(),
     contatos: gridStoreSchema.optional(),
     conversoes: gridStoreSchema.optional(),
+    casos: gridStoreSchema.optional(),
   })
   .strict();
