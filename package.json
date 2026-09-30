@@ -27,6 +27,7 @@
     "db:seed:documentos": "tsx scripts/seed-documentos.ts",
     "db:purge:processos:demo": "tsx scripts/purge-processos-demo.ts",
     "db:backfill:contratos": "tsx scripts/backfill-contratos-fase2.ts",
+    "db:converter:casos": "tsx scripts/converter-casos-processos.ts",
     "db:backfill:oportunidades": "tsx scripts/backfill-oportunidade-contatos.ts",
     "db:import:genions": "tsx scripts/import-genions.ts",
     "db:import:meta": "tsx scripts/import-meta-campaigns.ts",
