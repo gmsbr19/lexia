@@ -52,10 +52,13 @@ LexIA AI assistant, and a real-time Notifications system.
   (`CasoResponsavel`, 50/50 default). Memories `project_financeiro_*`.
 - **Comercial**: `/comercial` 5 tabs; `Campanha`+`Lead`; ad-spend→Lançamento;
   convert lead→Honorário; Genions CSV import.
-- **Clientes / Contratos / Casos & Processos / Agenda**: CRM routes via
-  `components/crm/CrmRoutes.tsx`; cliente detail = `/clientes/[id]`. Processos =
+- **Contatos / Casos / Contratos / Processos / Agenda**: CRM routes via
+  `components/crm/CrmRoutes.tsx`; contato = `/contatos/[id]`, caso = `/casos/[id]` (página
+  própria, INDEPENDE do módulo Processos). Caso ≠ processo: o caso é a matéria do cliente
+  (cliente, contrato, honorários, rateio); o Processo (nº CNJ, tribunal, vara, prazos) é
   first-class (1 caso→N), pure tested prazo engine (CPC dias úteis), CNJ capture
-  (Comunica/DJEN + DataJud). Memories `project_processos_module`, `project_captura_cnj`.
+  (Comunica/DJEN + DataJud). Memories `project_casos_module`, `project_processos_module`,
+  `project_captura_cnj`.
 - **Tarefas & Projetos (redesign, Sep/2026)**: UM quadro único do escritório (Quadro | Lista |
   Fluxo; Projetos; Equipe só gestão), UMA data (prazo obrigatório; padrão = sexta), prazo fatal,
   grupos livres, ligações "só começa depois de", histórico, anexos, "Desfazer" (TarefaAcao).
@@ -148,6 +151,59 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **Casos — módulo próprio, separado de Processos (this session, tsc 0 novos erros — só o `cm-meta`
+  PRÉ-EXISTENTE —, 848/849 testes — só a `notificacoes-links` PRÉ-EXISTENTE; +13 novos em
+  `tests/casos-legado.test.ts` —, eslint limpo nos arquivos novos/reescritos, SEM migração).** Pedido: acessar/criar/
+  editar/excluir casos com facilidade e associá-los a clientes e honorários — antes era "uma bagunça, misturado com
+  processos". **Diagnóstico:** `/casos` só redirecionava p/ `/processos` (e o kill-switch do módulo, DESLIGADO no ambiente
+  do usuário, bloqueava tudo); não existia "Novo caso"; o modal do caso não editava título/cliente/contrato/tipo/
+  responsável nem excluía; e era dominado pelos campos de processo LEGADOS do Astrea (nº/tribunal/vara/instância/valor/
+  distribuição/tipo de ação) gravados no próprio `Caso`. **Decisões do usuário:** item próprio "Casos" no menu; página
+  própria com abas; campos antigos CONVERTIDOS em Processos. **Menu:** "Casos" (briefcase) entre Contatos e Contratos,
+  NUNCA filtrado pelo toggle; "Casos & Processos" virou **"Processos"** (sidebar, abas, Configurações → Módulos, prompt).
+  **`/casos`** ([CrmCasosPage.tsx](src/components/crm/pages/CrmCasosPage.tsx)) = ViewGrid (gridId **"casos"**, novo em
+  `view-prefs-core`/`crm/schemas`): colunas Caso/Cliente/Tipo/Área/Status/Responsável/Contrato/Processos(só com o módulo)/
+  Honorários·Recebido·Em aberto(só `verFinanceiro`)/datas; visões-semente Todos · Ativos · Por cliente · **Sem cliente** ·
+  **Sem contrato** (p/ arrumar a base); lote tipo/área/status/responsável via **`PATCH /api/casos/lote`**
+  (`bulkUpdateCasos`, escopado por `scopeCasoWhere`); `?caso=<id>` redireciona. Dados: `listCasosPagina(user, verFin)`
+  ([casos/queries.ts](src/lib/casos/queries.ts), escopo por papel). **`/casos/[id]`**
+  ([CrmCasoDetail.tsx](src/components/crm/pages/CrmCasoDetail.tsx), `key={casoId}`): cabeçalho com vínculos clicáveis
+  (cliente→contato, contrato→modal do contrato, responsável; vínculo ausente = atalho "Vincular …" p/ o formulário),
+  Editar/Novo processo/Excluir (confirmação explica a cascata; lançamentos NÃO são apagados), números (Honorários/
+  Recebido/Em aberto só p/ verFin; Processos; Tarefas abertas) e abas **Honorários** (verFin = `LancamentosTable`
+  embutida com **`lockCaso`** + `lockCliente`; Equipe = lista só leitura) · **Processos** (só com o módulo; "Novo
+  processo" usa `ProcNovoProcessoModal` com `casoFixo`) · **Tarefas & agenda** (links p/ `/tarefas?tarefa=`/`/agenda`) ·
+  **Documentos** · **Rateio** (`CrmRateioSlider` extraído, só verFin) · **Notas** (anotações do caso, se houver).
+  **Formulário único** [CrmCasoForm.tsx](src/components/crm/pages/CrmCasoForm.tsx) (criar/editar): título, cliente
+  (Combobox + "Criar contato"), contrato (só do MESMO cliente ou sem cliente; trocar o cliente solta o contrato), tipo,
+  área, status, responsável. Também em "Novo caso" na aba **Casos** da ficha do contato (aba agora SEMPRE visível; sub-
+  linhas de processo só com o módulo). **Backend:** `casoPatchSchema` perdeu os campos de processo e ganhou `contratoId`
+  (+ `tipo` enum); `updateCaso`/`createCaso` validam contrato↔cliente (`assertContratoDoCliente`, mesma regra de
+  `assertCasosDoCliente`); status gravado CANÔNICO ("Ativo"/"Suspenso"/"Arquivado") via
+  [casos/status.ts](src/lib/casos/status.ts) (puro: bucket tolerante a "ativo"/"Encerrado"/…, `PODE_CRIAR_CASO`,
+  `CASO_TABS` — constantes FORA de arquivos "use client" p/ poderem ser usadas em páginas de servidor); PATCH/DELETE de
+  caso agora com `assertAcessoCaso`; POST (e `criar_caso` da LexIA) torna o advogado responsável quando vazio (senão ele
+  perderia acesso ao caso que criou). `GET /api/casos/[id]` devolve `contrato`, `anotacoes` e `lancOptions` (só verFin).
+  Lançamento ganhou **`casoId` explícito** (schema/mutations, `input.casoId ?? refs.casoId`; nome do caso só resolve
+  casos não excluídos). `getCasosSemFee`: status case-insensitive + nulo, valor da causa cai p/ a soma dos processos;
+  título do caso vira link. Busca global procura caso por título/cliente/CNJ dos processos. `CrmDataset.usuarios` (novo).
+  `CrmCasoModal.tsx` DELETADO; todo `openCaso` (shell/Spotlight/Agenda/Contrato/Processos) navega p/ `/casos/<id>`;
+  `/processos?caso=` redireciona. **Conversão dos campos legados** — núcleo puro
+  [legado-core.ts](src/lib/casos/legado-core.ts) (nada/manter/criar/completar/conflito/registrar; CNJ válido →
+  `formatarCnj` + tribunal/UF derivados; número fora do padrão → processo sem número + anotação com o original; caso já
+  com processo e sem CNJ válido → anotação no caso; consultivo só com valor → mantém) + executor
+  [legado.ts](src/lib/casos/legado.ts) (recebe o PrismaClient, 1 transação por caso, idempotente, `dry`) + script
+  **`npm run db:converter:casos`** (`-- --dry` = simulação). O import do Astrea agora só grava os dados de processo na
+  CRIAÇÃO do caso e converte em seguida (reimportar não os devolve). Verificado ponta a ponta no Postgres local (4 casos
+  de teste: criar/conflito/sem-CNJ/consultivo + 2ª rodada idempotente) e dados de teste REMOVIDOS. **LexIA:** tools de
+  casos NUNCA mais são removidas com o módulo desligado (só as de processo); `criar_caso`/`editar_caso` aceitam
+  `contratoId`/`tipo` (+`semContrato`); bullet **CASOS** no prompt (CORE — invalida o cache 1×); links/cards → `/casos/<id>`;
+  `navegar` aceita `/casos/<id>`. **User action (REQUIRED, na PRODUÇÃO):** (1) `npm run db:converter:casos -- --dry` e
+  conferir o relatório (conflitos = mesmo CNJ em 2 casos — decidir à mão); (2) `npm run db:converter:casos`; (3) reiniciar
+  o servidor (prompt/tools novos). Visual: menu **Casos** → lista (Novo caso, visões "Sem cliente"/"Sem contrato", agrupar
+  por cliente, lote); abrir um caso → Editar (cliente/contrato), aba Honorários → "Novo lançamento" já vinculado ao caso
+  e ao cliente; Excluir; ficha do contato → aba Casos → Novo caso; com o módulo Processos desligado tudo acima segue
+  funcionando (só a aba/coluna Processos some).
 - **Tarefas — "Duplicar" (this session, tsc 0 novos erros — só o `cm-meta` PRÉ-EXISTENTE —, 835/836 testes — só a
   `notificacoes-links` PRÉ-EXISTENTE —, eslint limpo, SEM migração).** Item "Duplicar" no menu "…" do cartão e do
   detalhe (no detalhe, abre a cópia). `duplicarTarefa` ([mutations.ts](src/lib/tarefas/mutations.ts)) + `POST
