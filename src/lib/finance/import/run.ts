@@ -9,6 +9,7 @@ import { parseBr, parseIso } from "./dates"
 import { classifyComposicao, detectAnomalia } from "./classify"
 import { toCents } from "../money"
 import type { ImportSummary } from "../types"
+import { converterDadosProcessuaisLegados } from "../../casos/legado"
 
 const lc = (v: string | null | undefined) => (v ?? "").toLowerCase()
 const yes = (v: string | null | undefined) => lc(v) === "sim"
@@ -132,6 +133,13 @@ export async function importAstrea(prisma: PrismaClient, dir: string): Promise<I
       status: cleanNull(r["Status"]),
       responsavel: user(cleanNull(r["Responsável"])),
       clientePrincipalId: resolve(clienteMap, firstMulti(r["Clientes"])),
+      dataCriacao: parseBr(r["Data de criação"]),
+      ultimaMovimentacao: parseBr(r["Última movimentação"]),
+    }
+    // Os dados de PROCESSO só entram na CRIAÇÃO — logo abaixo eles viram um
+    // Processo vinculado e saem do caso. Numa reimportação o update NÃO os devolve
+    // ao caso (senão a conversão rodaria de novo sobre dados já convertidos).
+    const dadosProcesso = {
       valorCausaCents: toCents(r["Valor"]),
       instancia: cleanNull(r["Instância"]),
       tipoAcao: cleanNull(r["Tipo de ação"]),
@@ -139,12 +147,17 @@ export async function importAstrea(prisma: PrismaClient, dir: string): Promise<I
       numeroProcesso: cleanNull(r["Número do processo"]),
       vara: cleanNull(r["Nome da Vara"]),
       dataDistribuicao: parseBr(r["Data de distribuição"]),
-      dataCriacao: parseBr(r["Data de criação"]),
-      ultimaMovimentacao: parseBr(r["Última movimentação"]),
     }
-    const row = await prisma.caso.upsert({ where: { astreaId }, create: { astreaId, ...data }, update: data })
+    const row = await prisma.caso.upsert({
+      where: { astreaId },
+      create: { astreaId, ...data, ...dadosProcesso },
+      update: data,
+    })
     casoMap.set(astreaId, row.id)
   }
+  // Caso ≠ processo: converte os dados de processo dos casos recém-criados em
+  // Processos vinculados (idempotente; conflitos de CNJ ficam intocados).
+  await converterDadosProcessuaisLegados(prisma, { casoIds: [...casoMap.values()] })
 
   // 6) Lançamentos (Entradas.csv) — the livro-caixa core. ISO dates here.
   const lancMap = new Map<string, number>()
