@@ -3,7 +3,9 @@
 // LexIA · CRM — lista de CASOS (/casos) sobre o grid "Controles de Visão"
 // (ViewGrid), o mesmo de Contatos: visões salvas por usuário (gridId "casos"),
 // filtros E/OU, ordenação, agrupamento (ex.: por cliente), colunas, CSV e lote
-// (tipo/área/status/responsável). Visões-semente para arrumar a base: "Sem
+// (tipo/área/status/responsável). O caso também é o "projeto" do quadro de
+// Tarefas: colunas de andamento (progresso, abertas, vencidas, prazo final) e a
+// visão "Com tarefas em andamento". Visões-semente para arrumar a base: "Sem
 // cliente" e "Sem contrato". Clique na linha → página do caso (/casos/[id]).
 // Independe do módulo Processos (a coluna Processos só aparece com ele ligado).
 import { useCallback, useMemo } from "react"
@@ -35,6 +37,10 @@ function buildCols(verFin: boolean, processosOk: boolean): VgColumn[] {
     { key: "status", label: "Status", type: "enum", enum: "status", group: true, def: true, w: 120 },
     { key: "responsavel", label: "Responsável", type: "text", group: true, def: true, w: 170 },
     { key: "contrato", label: "Contrato", type: "text", group: true, def: true, w: 200 },
+    { key: "progresso", label: "Progresso", type: "num", meter: "blue", def: true, w: 120, align: "right", titleKey: "progressoTxt", csvKey: "progressoTxt" },
+    { key: "tarefasAbertas", label: "Tarefas abertas", type: "num", def: true, w: 120, align: "right" },
+    { key: "tarefasVencidas", label: "Vencidas", type: "num", def: true, w: 100, align: "right" },
+    { key: "prazo", label: "Prazo final", type: "date", def: true, w: 120 },
     ...(processosOk ? [{ key: "numProcessos", label: "Processos", type: "num", def: true, w: 100, align: "right" } as VgColumn] : []),
     ...(verFin
       ? ([
@@ -64,9 +70,16 @@ function casoSeedViews(cols: VgColumn[]): VgSavedView[] {
   return [
     { id: "k-all", name: "Todos os casos", icon: "list", isDefault: true, state: base() },
     { id: "k-ativos", name: "Ativos", icon: "checkCircle", state: withRule(rule("seed-ativo", "status", "in", ["Ativo"])) },
+    {
+      id: "k-andamento",
+      name: "Com tarefas em andamento",
+      icon: "kanban",
+      state: withRule({ ...rule("seed-andamento", "tarefasAbertas", "gt"), value: "0" }),
+    },
     { id: "k-cliente", name: "Por cliente", icon: "users", state: porCliente },
     { id: "k-semcli", name: "Sem cliente", icon: "alertCircle", state: withRule(rule("seed-semcli", "cliente", "empty")) },
     { id: "k-semctr", name: "Sem contrato", icon: "fileText", state: withRule(rule("seed-semctr", "contrato", "empty")) },
+    { id: "k-arquivados", name: "Arquivados", icon: "list", state: withRule(rule("seed-arquivados", "status", "in", ["Arquivado"])) },
   ]
 }
 
@@ -125,6 +138,11 @@ export function CrmCasosPage({ dataset, casos, verFin, podeCriar, onNovo }: Prop
     // após um lote otimista só o id muda — o nome vem da lista de usuários
     responsavel: (c.responsavelUserId != null ? userNome.get(c.responsavelUserId) : null) ?? c.responsavel ?? "",
     contrato: c.contrato ?? "",
+    progresso: c.tarefasTotal ? Math.round((c.tarefasFeitas / c.tarefasTotal) * 100) : 0,
+    progressoTxt: c.tarefasTotal ? `${c.tarefasFeitas} de ${c.tarefasTotal} ${c.tarefasTotal === 1 ? "tarefa" : "tarefas"}` : "Sem tarefas",
+    tarefasAbertas: c.tarefasAbertas,
+    tarefasVencidas: c.tarefasVencidas,
+    prazo: c.prazo ?? "",
     numProcessos: c.numProcessos,
     honorarios: c.honorariosCents / 100,
     recebido: c.recebidoCents / 100,
@@ -153,7 +171,16 @@ export function CrmCasosPage({ dataset, casos, verFin, podeCriar, onNovo }: Prop
         <CrmPageHead
           title="Casos"
           sub="A matéria de cada cliente — vincule cliente, contrato e honorários. Processos judiciais ficam dentro do caso."
-          right={podeCriar && <button className="btn btn-primary" onClick={onNovo}><Icon name="plus" size={15} />Novo caso</button>}
+          right={
+            podeCriar && (
+              <span style={{ display: "inline-flex", gap: 8 }}>
+                <button className="btn btn-secondary" onClick={() => router.push("/tarefas?pagina=modelos")} title="Montar um caso a partir de um modelo de tarefas">
+                  <Icon name="layers" size={15} />A partir de modelo
+                </button>
+                <button className="btn btn-primary" onClick={onNovo}><Icon name="plus" size={15} />Novo caso</button>
+              </span>
+            )
+          }
         />
         <CrmKpiRow
           kpis={[

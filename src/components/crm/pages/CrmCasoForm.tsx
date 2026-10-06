@@ -2,16 +2,19 @@
 
 // LexIA · CRM — formulário do CASO (criar e editar). Um caso é a matéria do
 // cliente: título, cliente, contrato (documento assinado — só do MESMO cliente),
-// tipo, área, status e advogado responsável. Dados de processo (nº, tribunal,
-// vara…) NÃO ficam aqui — moram no Processo (módulo Processos).
+// tipo, área, status e advogado responsável — e a etiqueta do caso no quadro de
+// Tarefas (nome curto, cor, prazo final, descrição). Dados de processo (nº,
+// tribunal, vara…) NÃO ficam aqui — moram no Processo (módulo Processos).
 import { useMemo, useState } from "react"
-import { FxInput, FxLabel, FxModal, FxSegmented, FxSelect, useCrmToast } from "../crm-kit"
+import { FxInput, FxLabel, FxModal, FxSegmented, FxSelect, FxTextarea, useCrmToast } from "../crm-kit"
 import { Icon } from "../crm-icons"
 import { crmDate } from "../crm-fmt"
 import { createCaso, createCliente, patchCaso, type CasoInput } from "../crm-api"
 import { Combobox } from "@/components/ui/Combobox"
+import { DateField } from "@/components/ui/DatePicker"
 import { toAreaOptions, useAreasStore } from "@/lib/areas/store"
 import { CASO_STATUS_OPTS, casoStatusBucket, casoStatusCanonico } from "@/lib/casos/status"
+import { CORES_CASO } from "@/lib/tarefas/types"
 import type { CasoDetail, CrmDataset } from "../crm-types"
 
 const errMsg = (err: unknown) => (err instanceof Error ? err.message : "Erro")
@@ -44,6 +47,10 @@ export function CrmCasoFormModal({ dataset, caso = null, clienteInicial = null, 
   const [area, setArea] = useState(caso?.area ?? "")
   const [status, setStatus] = useState(casoStatusCanonico(caso?.status))
   const [responsavelId, setResponsavelId] = useState<string>(caso?.responsavelUserId != null ? String(caso.responsavelUserId) : "")
+  const [nomeCurto, setNomeCurto] = useState(caso?.nomeCurto ?? "")
+  const [cor, setCor] = useState<string | null>(caso?.cor ?? null)
+  const [prazo, setPrazo] = useState<string | null>(caso?.prazo ?? null)
+  const [descricao, setDescricao] = useState(caso?.descricao ?? "")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
   // clientes criados aqui (ainda fora do dataset) — p/ o combobox exibir o recém-criado
@@ -113,6 +120,10 @@ export function CrmCasoFormModal({ dataset, caso = null, clienteInicial = null, 
       area: area || null,
       status,
       responsavelUserId: responsavelId ? Number(responsavelId) : null,
+      nomeCurto: nomeCurto.trim() || null,
+      cor,
+      prazo,
+      descricao: descricao.trim() || null,
     }
     try {
       if (editing && caso) {
@@ -210,6 +221,39 @@ export function CrmCasoFormModal({ dataset, caso = null, clienteInicial = null, 
           <div>
             <FxLabel hint="quem conduz">Responsável</FxLabel>
             <FxSelect options={userOpts} value={responsavelId} onChange={(e) => setResponsavelId(e.target.value)} />
+          </div>
+        </div>
+        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={grid2}>
+            <div>
+              <FxLabel hint="aparece nas tarefas">Nome curto</FxLabel>
+              <FxInput value={nomeCurto} maxLength={24} onChange={(e) => setNomeCurto(e.target.value)} placeholder="Ex.: Despejo Rua X" />
+            </div>
+            <div>
+              <FxLabel>Prazo final</FxLabel>
+              <DateField value={prazo} onChange={(iso) => setPrazo(iso ?? null)} placeholder="Sem prazo" />
+            </div>
+          </div>
+          <div>
+            <FxLabel hint="etiqueta no quadro">Cor</FxLabel>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {CORES_CASO.map((c) => (
+                <button
+                  type="button"
+                  key={c}
+                  title={c}
+                  aria-label="Cor"
+                  aria-pressed={cor === c}
+                  onClick={() => setCor(cor === c ? null : c)}
+                  style={{ width: 24, height: 24, borderRadius: "50%", background: c, border: "none", cursor: "pointer", boxShadow: cor === c ? "0 0 0 2px var(--bg-elevated), 0 0 0 4px var(--text)" : "none" }}
+                />
+              ))}
+              {!cor && <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>Sem cor: usa a cor da área</span>}
+            </div>
+          </div>
+          <div>
+            <FxLabel>Descrição</FxLabel>
+            <FxTextarea rows={2} value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="O que é este trabalho, em poucas linhas" />
           </div>
         </div>
         {error && <div style={{ fontSize: 12.5, color: "var(--fin-neg,#C0492F)" }}>{error}</div>}

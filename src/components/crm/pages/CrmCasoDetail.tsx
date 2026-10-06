@@ -251,9 +251,16 @@ export function CrmCasoDetail({ casoId, tab, onTab, dataset, nav, onRefresh, onD
                 )}
               </CrmInfoLine>
               {detail.dataCriacao && <CrmInfoLine icon="calendar">Aberto em {crmDateLong(detail.dataCriacao)}</CrmInfoLine>}
+              {detail.prazo && <CrmInfoLine icon="flag">Prazo final {crmDateLong(detail.prazo)}</CrmInfoLine>}
             </div>
+            {detail.descricao && (
+              <div style={{ marginTop: 10, maxWidth: 820, fontSize: 13, color: "var(--text-muted)", whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{detail.descricao}</div>
+            )}
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <button className="btn btn-secondary" onClick={() => router.push(`/tarefas?caso=${detail.id}`)} title="Tarefas deste caso no quadro">
+              <Icon name="kanban" size={14} />Abrir no quadro
+            </button>
             {processosOk && podeCriar && (
               <button className="btn btn-secondary" onClick={() => setModal({ type: "processo" })}>
                 <Icon name="scale" size={14} />Novo processo
@@ -351,7 +358,15 @@ export function CrmCasoDetail({ casoId, tab, onTab, dataset, nav, onRefresh, onD
 
         {activeTab === "tarefas" && (
           <>
-            <FxCardTitle title="Tarefas" sub="Vinculadas a este caso · abrem no módulo Tarefas" />
+            <FxCardTitle
+              title="Tarefas"
+              sub="O quadro de Tarefas deste caso · cada tarefa abre no módulo Tarefas"
+              right={
+                <button className="btn btn-secondary btn-sm" onClick={() => router.push(`/tarefas?caso=${detail.id}`)}>
+                  <Icon name="kanban" size={13} />Abrir no quadro
+                </button>
+              }
+            />
             {detail.tarefas.length === 0
               ? sectionCard(<CrmEmpty icon="listChecks" title="Sem tarefas" />)
               : sectionCard(detail.tarefas.map((t, i) => {
@@ -471,6 +486,13 @@ export function CrmCasoDetail({ casoId, tab, onTab, dataset, nav, onRefresh, onD
               <li>{detail.processos.length} processo(s), com prazos, andamentos e publicações pendentes;</li>
               <li>os eventos da agenda vinculados (ficam cancelados).</li>
             </ul>
+            {detail.tarefas.length > 0 && (
+              <div>
+                {detail.tarefas.length === 1
+                  ? "A tarefa do caso continua no quadro, como \"Sem caso\"."
+                  : `As ${detail.tarefas.length} tarefas do caso continuam no quadro, como "Sem caso".`}
+              </div>
+            )}
             <div>
               {fin.lancamentos.length > 0
                 ? `Os ${fin.lancamentos.length} lançamento(s) financeiro(s) NÃO são apagados — continuam no Financeiro e na ficha do cliente.`

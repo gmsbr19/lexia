@@ -66,6 +66,11 @@ export interface CasoInput {
   tipo?: string
   status?: string | null
   responsavelUserId?: number | null
+  // etiqueta no quadro de Tarefas (o caso é o "projeto" do quadro)
+  nomeCurto?: string | null
+  cor?: string | null
+  prazo?: string | null
+  descricao?: string | null
 }
 export const createCaso = (body: CasoInput) => mut<{ id: number }>(`/api/casos`, "POST", body)
 
@@ -216,7 +221,7 @@ export const getAudit = (q?: string) => get<AuditRow[]>(`/api/audit${q ? `?q=${e
 // ── áreas do direito (admin) ──
 export type AreaComUsoResult = {
   id: number; chave: string; nome: string; cor: string | null; icone: string | null
-  ordem: number; ativo: boolean; projetos: number; casos: number; leads: number; campanhas: number
+  ordem: number; ativo: boolean; casos: number; leads: number; campanhas: number
 }
 export const listAreasComUso = () => get<AreaComUsoResult[]>(`/api/areas/uso`)
 export const createAreaAdmin = (body: { nome: string; chave?: string; cor?: string | null; icone?: string | null; ordem?: number }) =>
