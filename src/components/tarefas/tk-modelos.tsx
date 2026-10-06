@@ -1,491 +1,147 @@
 "use client"
 
-// Tarefas — Projetos: Ativos (tabela; clicar abre o Quadro filtrado), Arquivados
-// (somente leitura), Modelos (cartões com "Usar"). Janelas: projeto em branco /
-// editar, assistente "a partir de modelo" (Projeto · Grupos · Responsáveis) e o
-// editor de modelos (só sócio).
-import { useMemo, useState } from "react"
+// Tarefas — Modelos: processos repetíveis do escritório (cartões com "Usar"), o
+// assistente que aplica um modelo a um caso NOVO ou a um caso EXISTENTE (Caso ·
+// Grupos · Responsáveis) e o editor de modelos (só sócio). O caso é o "projeto"
+// do quadro; a lista de casos fica em /casos.
+import { useState } from "react"
 import { resolveAreaLabel, toAreaOptions, useAreasStore } from "@/lib/areas/store"
-import { ajustarGrupos, gruposPadrao, resumoModelo, textoDiasAntes, type GrupoWizard } from "@/lib/projetos/modelo"
-import { dataCurta, vencida } from "@/lib/tarefas/regras"
-import { CORES_PROJETO, type ModeloView, type PassoModelo, type PapelModelo, type ProjetoRow } from "@/lib/tarefas/types"
-import { addDays } from "@/lib/datas/util"
+import { ajustarGrupos, gruposPadrao, resumoModelo, textoDiasAntes, type GrupoWizard } from "@/lib/modelos/modelo"
+import { dataCurta } from "@/lib/tarefas/regras"
+import type { ModeloView, PassoModelo, PapelModelo } from "@/lib/tarefas/types"
 import { apiSend } from "@/lib/client/api"
 import { Icon } from "./tf-icons"
-import { useTk, type ProjetoForm } from "./tk-context"
-import { TkClientPicker } from "./tk-pickers"
-import { TkDialog, TkDot, TkIconBtn, TkMenuItem, TkPop, TkProgress, TkSeg, useEsc, usePop } from "./tk-ui"
+import { useTk, type CasoQuadroForm } from "./tk-context"
+import { TkCasoFields, casoVazio, useCoresEmUso } from "./tk-caso-form"
+import { TkCasoPicker, useGruposDoCaso } from "./tk-pickers"
+import { TkDialog, TkDot, TkIconBtn, TkSeg, useEsc } from "./tk-ui"
 import { ELEVACAO_JANELA, TK_JANELA } from "./tk-glass"
 
-const CAB = { fontSize: 12, color: "var(--text-muted)", fontWeight: 500 } as const
-
 // ── página ───────────────────────────────────────────────────────────────────
-export function TkProjectsPage({
-  onNovoEmBranco,
+export function TkModelosPage({
   onAssistente,
   onEditarModelo,
 }: {
-  onNovoEmBranco: () => void
   onAssistente: (modeloId: number | null) => void
   onEditarModelo: (m: ModeloView | null) => void
 }) {
-  const { tarefas, projetos, podeProjeto, podeModelo, hoje, cliente, pessoa, modelos, act } = useTk()
+  const { podeCriarCaso, podeModelo, modelos } = useTk()
   const areas = useAreasStore((s) => s.areas)
-  const [aba, setAba] = useState<"active" | "arch" | "tpl">("active")
-  const novo = usePop()
-  const ativos = projetos.filter((p) => !p.arquivadoEm)
-  const arquivados = projetos.filter((p) => p.arquivadoEm)
-  const stats = useMemo(() => {
-    const m = new Map<number, { total: number; feitas: number; vencidas: number }>()
-    for (const t of tarefas) {
-      if (t.projetoId == null) continue
-      const s = m.get(t.projetoId) ?? { total: 0, feitas: 0, vencidas: 0 }
-      s.total++
-      if (t.status === "done") s.feitas++
-      if (vencida(t, hoje)) s.vencidas++
-      m.set(t.projetoId, s)
-    }
-    return m
-  }, [tarefas, hoje])
-  const st = (id: number) => stats.get(id) ?? { total: 0, feitas: 0, vencidas: 0 }
-
   return (
     <main className="tk-main">
       <div className="tk-head">
         <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-          <h1 className="tk-h1">Projetos</h1>
-          <TkSeg
-            options={[
-              { id: "active", label: "Ativos", count: ativos.length },
-              { id: "arch", label: "Arquivados" },
-              { id: "tpl", label: "Modelos" },
-            ]}
-            value={aba}
-            onChange={setAba}
-          />
-          {podeProjeto && (
-            <span style={{ marginLeft: "auto", display: "inline-flex" }}>
-              <button type="button" className="btn btn-secondary btn-sm" onClick={novo.toggle}>
-                <Icon name="plus" size={14} />
-                Novo projeto
-              </button>
-            </span>
-          )}
-          <TkPop open={novo.open} onClose={novo.close} anchor={novo.anchor} align="right" width={200}>
-            <TkMenuItem
-              icon="folder"
-              onClick={() => {
-                novo.close()
-                onNovoEmBranco()
-              }}
-            >
-              Em branco
-            </TkMenuItem>
-            <TkMenuItem
-              icon="copy"
-              disabled={!modelos.length}
-              onClick={() => {
-                novo.close()
-                onAssistente(null)
-              }}
-            >
-              A partir de modelo
-            </TkMenuItem>
-          </TkPop>
+          <h1 className="tk-h1">Modelos</h1>
+          <span style={{ fontSize: 14, color: "var(--text-muted)" }}>Aplique um modelo a um caso novo ou a um caso que já existe.</span>
         </div>
       </div>
       <div className="tk-body" style={{ paddingTop: 4 }}>
-        {aba === "active" && (
-          <div style={{ maxWidth: 1120 }}>
-            <div className="tk-prow" style={{ cursor: "default", minHeight: 32 }}>
-              <span style={CAB}>Projeto</span>
-              <span style={CAB}>Cliente</span>
-              <span style={CAB}>Responsável</span>
-              <span style={CAB}>Prazo</span>
-              <span style={CAB}>Progresso</span>
-              <span style={{ ...CAB, textAlign: "right" }}>Vencidas</span>
-            </div>
-            {ativos.map((p) => {
-              const s = st(p.id)
-              return (
-                <div
-                  key={p.id}
-                  className="tk-prow tk-row-hover"
-                  tabIndex={0}
-                  onClick={() => act.abrirProjeto(p.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") act.abrirProjeto(p.id)
-                  }}
-                >
-                  <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
-                    <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 500 }}>
-                      <TkDot color={p.cor} />
-                      {p.nomeCurto}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12, maxWidth: 1120, alignItems: "start" }}>
+          {modelos.map((m) => (
+            <div key={m.id} className="card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 500 }}>{m.nome}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                    {[resolveAreaLabel(areas, m.area), `${m.passos.length} passos por ${m.palavraGrupo.toLowerCase()}`].filter(Boolean).join(" · ")}
+                  </div>
+                </div>
+                {podeModelo && <TkIconBtn icon="edit" title="Editar modelo" size={14} onClick={() => onEditarModelo(m)} />}
+                {podeCriarCaso && (
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => onAssistente(m.id)}>
+                    Usar
+                  </button>
+                )}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", borderTop: "1px solid var(--border)" }}>
+                {m.passos.map((s) => (
+                  <div key={s.chave} style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 30, fontSize: 13, borderBottom: "1px solid var(--border)" }}>
+                    <span style={{ flex: 1, minWidth: 0 }}>{s.titulo}</span>
+                    <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{m.papeis.find((r) => r.id === s.papelId)?.rotulo ?? ""}</span>
+                    <span style={{ fontSize: 12, color: s.prazoFatal ? "var(--crit)" : "var(--text-muted)", width: 118, textAlign: "right" }}>
+                      {s.prazoFatal ? "Prazo fatal" : textoDiasAntes(s.diasAntes)}
                     </span>
-                    <span style={{ fontSize: 12, color: "var(--text-muted)", paddingLeft: 16, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.nome}</span>
                   </div>
-                  <span style={{ fontSize: 14, color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {cliente(p.clienteId)?.nome ?? "Sem cliente"}
-                  </span>
-                  <span style={{ fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{pessoa(p.responsavelId)?.first ?? "—"}</span>
-                  <span style={{ fontSize: 14, color: "var(--text-muted)" }}>{p.prazo ? dataCurta(p.prazo) : "Sem prazo"}</span>
-                  <TkProgress feitas={s.feitas} total={s.total} width={72} />
-                  <span className="tnum" style={{ fontSize: 14, textAlign: "right", fontWeight: s.vencidas ? 500 : 400, color: s.vencidas ? "var(--crit)" : "var(--text-muted)" }}>
-                    {s.vencidas || "—"}
-                  </span>
-                </div>
-              )
-            })}
-            {!ativos.length && <div style={{ fontSize: 14, color: "var(--text-muted)", padding: "12px 0" }}>Nenhum projeto</div>}
-          </div>
-        )}
-        {aba === "arch" && (
-          <div style={{ maxWidth: 1120 }}>
-            {arquivados.map((p) => (
-              <div key={p.id} className="tk-prow" style={{ cursor: "default", gridTemplateColumns: "minmax(0,2fr) minmax(0,1.4fr) 120px minmax(0,1fr) 32px" }}>
-                <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 500, color: "var(--text-muted)" }}>
-                    <TkDot color={p.cor} />
-                    {p.nomeCurto}
-                  </span>
-                  <span style={{ fontSize: 12, color: "var(--text-muted)", paddingLeft: 16 }}>{p.nome}</span>
-                </div>
-                <span style={{ fontSize: 14, color: "var(--text-muted)" }}>{cliente(p.clienteId)?.nome ?? "Sem cliente"}</span>
-                <span style={{ fontSize: 14, color: "var(--text-muted)" }}>{pessoa(p.responsavelId)?.first ?? "—"}</span>
-                <span style={{ fontSize: 14, color: "var(--text-muted)" }}>
-                  Arquivado em {dataCurta(p.arquivadoEm!)} · {st(p.id).total} tarefas
-                </span>
-                {podeProjeto ? <ArquivadoMenu p={p} /> : <span />}
+                ))}
               </div>
-            ))}
-            {!arquivados.length && <div style={{ fontSize: 14, color: "var(--text-muted)", padding: "12px 0" }}>Nenhum projeto</div>}
-          </div>
-        )}
-        {aba === "tpl" && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12, maxWidth: 1120, alignItems: "start" }}>
-            {modelos.map((m) => (
-              <div key={m.id} className="card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
-                <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 500 }}>{m.nome}</div>
-                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                      {[resolveAreaLabel(areas, m.area), `${m.passos.length} passos por ${m.palavraGrupo.toLowerCase()}`].filter(Boolean).join(" · ")}
-                    </div>
-                  </div>
-                  {podeModelo && <TkIconBtn icon="edit" title="Editar modelo" size={14} onClick={() => onEditarModelo(m)} />}
-                  {podeProjeto && (
-                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => onAssistente(m.id)}>
-                      Usar
-                    </button>
-                  )}
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", borderTop: "1px solid var(--border)" }}>
-                  {m.passos.map((s) => (
-                    <div key={s.chave} style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 30, fontSize: 13, borderBottom: "1px solid var(--border)" }}>
-                      <span style={{ flex: 1, minWidth: 0 }}>{s.titulo}</span>
-                      <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{m.papeis.find((r) => r.id === s.papelId)?.rotulo ?? ""}</span>
-                      <span style={{ fontSize: 12, color: s.prazoFatal ? "var(--crit)" : "var(--text-muted)", width: 118, textAlign: "right" }}>
-                        {s.prazoFatal ? "Prazo fatal" : textoDiasAntes(s.diasAntes)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-            {podeModelo && (
-              <button
-                type="button"
-                className="card"
-                onClick={() => onEditarModelo(null)}
-                style={{ padding: 16, minHeight: 96, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, border: "1px dashed var(--border-strong)", background: "transparent", color: "var(--text-muted)", font: "500 14px var(--font-sans)", cursor: "pointer", boxShadow: "none" }}
-              >
-                <Icon name="plus" size={14} />
-                Novo modelo
-              </button>
-            )}
-            {!modelos.length && !podeModelo && <div style={{ fontSize: 14, color: "var(--text-muted)" }}>Nenhum modelo</div>}
-          </div>
-        )}
+            </div>
+          ))}
+          {podeModelo && (
+            <button
+              type="button"
+              className="card"
+              onClick={() => onEditarModelo(null)}
+              style={{ padding: 16, minHeight: 96, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, border: "1px dashed var(--border-strong)", background: "transparent", color: "var(--text-muted)", font: "500 14px var(--font-sans)", cursor: "pointer", boxShadow: "none" }}
+            >
+              <Icon name="plus" size={14} />
+              Novo modelo
+            </button>
+          )}
+          {!modelos.length && !podeModelo && <div style={{ fontSize: 14, color: "var(--text-muted)" }}>Nenhum modelo</div>}
+        </div>
       </div>
     </main>
   )
 }
 
-function ArquivadoMenu({ p }: { p: ProjetoRow }) {
-  const { act } = useTk()
-  const pop = usePop()
-  return (
-    <span style={{ display: "inline-flex", justifySelf: "end" }}>
-      <TkIconBtn icon="moreHorizontal" title="Mais opções" onClick={pop.toggle} />
-      <TkPop open={pop.open} onClose={pop.close} anchor={pop.anchor} align="right" width={180}>
-        <TkMenuItem
-          icon="archiveRestore"
-          onClick={() => {
-            pop.close()
-            void act.editarProjeto(p.id, { arquivado: false })
-          }}
-        >
-          Desarquivar
-        </TkMenuItem>
-      </TkPop>
-    </span>
-  )
-}
+// ── assistente: 1 Caso · 2 Grupos · 3 Responsáveis ───────────────────────────
+type Destino = "novo" | "existente"
 
-// ── campos compartilhados de projeto ─────────────────────────────────────────
-export function projetoVazio(meId: number | null, usadas: string[], area?: string | null, hoje?: string): ProjetoForm {
-  return {
-    nomeCurto: "",
-    nome: "",
-    clienteId: null,
-    area: area ?? null,
-    responsavelId: meId,
-    prazo: hoje ? addDays(hoje, 45) : null,
-    cor: CORES_PROJETO.find((c) => !usadas.includes(c)) ?? CORES_PROJETO[0],
-    descricao: "",
-  }
-}
-
-function TkProjFields({ v, set }: { v: ProjetoForm; set: (p: Partial<ProjetoForm>) => void }) {
-  const { pessoas } = useTk()
-  const areas = useAreasStore((s) => s.areas)
-  const opcoesArea = toAreaOptions(areas)
-  const areaAtual = v.area && !opcoesArea.some((a) => a.id === v.area) ? [{ id: v.area, label: resolveAreaLabel(areas, v.area) }] : []
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "160px minmax(0,1fr)", gap: 12 }}>
-      <label>
-        <span className="label">Nome curto</span>
-        <input className="input" style={{ height: 34 }} placeholder="Nome curto" maxLength={24} value={v.nomeCurto} onChange={(e) => set({ nomeCurto: e.target.value })} />
-      </label>
-      <label>
-        <span className="label">Nome completo</span>
-        <input className="input" style={{ height: 34 }} placeholder="Nome completo" value={v.nome} onChange={(e) => set({ nome: e.target.value })} />
-      </label>
-      <div style={{ gridColumn: "1 / -1" }}>
-        <span className="label">Cliente</span>
-        <TkClientPicker field value={v.clienteId} onChange={(c) => set({ clienteId: c })} />
-      </div>
-      <label style={{ gridColumn: "1 / -1" }}>
-        <span className="label">Área do direito</span>
-        <select className="input" style={{ height: 34, padding: "0 10px" }} value={v.area ?? ""} onChange={(e) => set({ area: e.target.value || null })}>
-          <option value="">—</option>
-          {[...areaAtual, ...opcoesArea].map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        <span className="label">Responsável</span>
-        <select
-          className="input"
-          style={{ height: 34, padding: "0 10px" }}
-          value={v.responsavelId ?? ""}
-          onChange={(e) => set({ responsavelId: e.target.value ? Number(e.target.value) : null })}
-        >
-          <option value="">Sem responsável</option>
-          {pessoas.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.nome}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        <span className="label">Prazo final</span>
-        <input type="date" className="input" style={{ height: 34 }} value={v.prazo ?? ""} onChange={(e) => set({ prazo: e.target.value || null })} />
-      </label>
-      <div style={{ gridColumn: "1 / -1" }}>
-        <span className="label">Cor</span>
-        <div style={{ display: "flex", gap: 8 }}>
-          {CORES_PROJETO.map((c) => (
-            <button
-              type="button"
-              key={c}
-              title={c}
-              aria-label="Cor"
-              aria-pressed={v.cor === c}
-              onClick={() => set({ cor: c })}
-              style={{ width: 24, height: 24, borderRadius: "50%", background: c, border: "none", cursor: "pointer", boxShadow: v.cor === c ? "0 0 0 2px var(--bg-elevated), 0 0 0 4px var(--text)" : "none" }}
-            />
-          ))}
-        </div>
-      </div>
-      <label style={{ gridColumn: "1 / -1" }}>
-        <span className="label">Descrição</span>
-        <textarea className="textarea" rows={2} placeholder="Descrição" value={v.descricao} onChange={(e) => set({ descricao: e.target.value })} />
-      </label>
-    </div>
-  )
-}
-
-// ── projeto em branco / editar ───────────────────────────────────────────────
-export function TkProjectForm({
-  projeto,
-  onClose,
-  onCriado,
-}: {
-  projeto: ProjetoRow | null
-  onClose: () => void
-  /** Aberto de dentro de uma tarefa: devolve o projeto novo em vez de navegar até ele. */
-  onCriado?: (id: number) => void
-}) {
-  const { act, meId, projetos, hoje, tarefas } = useTk()
-  const [v, setV] = useState<ProjetoForm>(() =>
-    projeto
-      ? {
-          nomeCurto: projeto.nomeCurto,
-          nome: projeto.nome,
-          clienteId: projeto.clienteId,
-          area: projeto.area,
-          responsavelId: projeto.responsavelId,
-          prazo: projeto.prazo,
-          cor: projeto.cor,
-          descricao: projeto.descricao ?? "",
-        }
-      : projetoVazio(meId, projetos.filter((p) => !p.arquivadoEm).map((p) => p.cor), null, hoje),
-  )
-  const [salvando, setSalvando] = useState(false)
-  const [confirmar, setConfirmar] = useState(false)
-  const mais = usePop()
-  const set = (p: Partial<ProjetoForm>) => setV((x) => ({ ...x, ...p }))
-  const ok = v.nomeCurto.trim() && v.nome.trim()
-  useEsc(onClose, !confirmar)
-
-  const salvar = async () => {
-    if (!ok || salvando) return
-    setSalvando(true)
-    if (projeto) {
-      const feito = await act.editarProjeto(projeto.id, v)
-      setSalvando(false)
-      if (feito) onClose()
-    } else {
-      const id = await act.criarProjeto(v)
-      setSalvando(false)
-      if (id != null) {
-        onClose()
-        if (onCriado) onCriado(id)
-        else act.abrirProjeto(id)
-      }
-    }
-  }
-  const nTarefas = projeto ? tarefas.filter((t) => t.projetoId === projeto.id).length : 0
-
-  return (
-    <div className="tk-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={TK_JANELA} role="dialog" aria-label={projeto ? "Editar projeto" : "Novo projeto"} style={{ ...ELEVACAO_JANELA, width: 560, maxWidth: "calc(100% - 32px)", maxHeight: "calc(100% - 48px)", display: "flex", flexDirection: "column" }}>
-        <div style={{ display: "flex", alignItems: "center", padding: "12px 12px 8px 20px" }}>
-          <span style={{ flex: 1, fontSize: 16, fontWeight: 500 }}>{projeto ? "Editar projeto" : "Novo projeto"}</span>
-          <TkIconBtn icon="x" title="Fechar" onClick={onClose} />
-        </div>
-        <div style={{ padding: "4px 20px 16px", overflowY: "auto" }}>
-          <TkProjFields v={v} set={set} />
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 20px 16px", borderTop: "1px solid var(--border)" }}>
-          {projeto && (
-            <span style={{ display: "inline-flex" }}>
-              <TkIconBtn icon="moreHorizontal" title="Mais opções" onClick={mais.toggle} />
-            </span>
-          )}
-          {projeto && (
-            <TkPop open={mais.open} onClose={mais.close} anchor={mais.anchor} up width={180}>
-              <TkMenuItem
-                icon="archive"
-                onClick={() => {
-                  mais.close()
-                  void act.editarProjeto(projeto.id, { arquivado: true }).then((f) => f && onClose())
-                }}
-              >
-                Arquivar
-              </TkMenuItem>
-              <TkMenuItem
-                icon="trash2"
-                danger
-                onClick={() => {
-                  mais.close()
-                  setConfirmar(true)
-                }}
-              >
-                Excluir
-              </TkMenuItem>
-            </TkPop>
-          )}
-          <div style={{ flex: 1 }} />
-          <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>
-            Cancelar
-          </button>
-          <button type="button" className="btn btn-primary btn-sm" disabled={!ok || salvando} onClick={() => void salvar()}>
-            {projeto ? "Salvar" : "Criar projeto"}
-          </button>
-        </div>
-      </div>
-      {confirmar && projeto && (
-        <TkDialog
-          title="Excluir projeto?"
-          onClose={() => setConfirmar(false)}
-          actions={
-            <>
-              <button type="button" className="btn btn-secondary" onClick={() => setConfirmar(false)}>
-                Cancelar
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                style={{ background: "var(--crit)", color: "#fff" }}
-                onClick={() => {
-                  setConfirmar(false)
-                  onClose()
-                  act.excluirProjeto(projeto.id)
-                }}
-              >
-                Excluir
-              </button>
-            </>
-          }
-        >
-          {nTarefas === 1 ? "1 tarefa fica sem projeto" : `${nTarefas} tarefas ficam sem projeto`}
-        </TkDialog>
-      )}
-    </div>
-  )
-}
-
-// ── assistente: 1 Projeto · 2 Grupos · 3 Responsáveis ────────────────────────
-export function TkWizard({ modeloId, onClose }: { modeloId: number | null; onClose: () => void }) {
-  const { modelos, pessoas, meId, projetos, hoje, act } = useTk()
+export function TkModeloWizard({ modeloId, onClose }: { modeloId: number | null; onClose: () => void }) {
+  const { modelos, pessoas, meId, hoje, act, caso, tarefas } = useTk()
+  const usadas = useCoresEmUso()
   const [passo, setPasso] = useState(0)
   const [mid, setMid] = useState<number>(modeloId ?? modelos[0]?.id ?? 0)
   const m = modelos.find((x) => x.id === mid) ?? modelos[0]
-  const usadas = projetos.filter((p) => !p.arquivadoEm).map((p) => p.cor)
-  const [v, setV] = useState<ProjetoForm>(() => projetoVazio(meId, usadas, m?.area, hoje))
+  const [destino, setDestino] = useState<Destino>("novo")
+  const [casoId, setCasoId] = useState<number | null>(null)
+  const [v, setV] = useState<CasoQuadroForm>(() => casoVazio(meId, usadas, m?.area, hoje))
+  // num caso existente, a numeração dos grupos continua depois dos que ele já tem
+  const gruposExistentes = useGruposDoCaso(destino === "existente" ? casoId : null).length
   const [grupos, setGrupos] = useState<GrupoWizard[]>(() => (m ? gruposPadrao(m, 2, hoje) : []))
   const [papeis, setPapeis] = useState<Record<string, number | null>>(() => Object.fromEntries((m?.papeis ?? []).map((r) => [r.id, r.padraoUsuarioId])))
   const [salvando, setSalvando] = useState(false)
   useEsc(onClose)
   if (!m) return null
-  const set = (p: Partial<ProjetoForm>) => setV((x) => ({ ...x, ...p }))
+  const set = (p: Partial<CasoQuadroForm>) => setV((x) => ({ ...x, ...p }))
+  const renumerar = (n: number, inicio: number, base = m) => setGrupos(gruposPadrao(base, n, hoje, inicio))
   const trocarModelo = (id: number) => {
     const n = modelos.find((x) => x.id === id)
     if (!n) return
     setMid(id)
     set({ area: n.area })
-    setGrupos(gruposPadrao(n, grupos.length, hoje))
+    renumerar(grupos.length, gruposExistentes, n)
     setPapeis(Object.fromEntries(n.papeis.map((r) => [r.id, r.padraoUsuarioId])))
   }
+  const trocarDestino = (d: Destino) => {
+    setDestino(d)
+    if (d === "novo") renumerar(grupos.length, 0)
+  }
+  const escolherCaso = (id: number | null) => {
+    setCasoId(id)
+    // grupos já existentes no caso escolhido (lidos do quadro)
+    const ja = id == null ? 0 : new Set(tarefas.filter((t) => t.casoId === id && t.grupo).map((t) => t.grupo)).size
+    renumerar(grupos.length, ja)
+  }
   const resumo = resumoModelo(m, grupos)
-  const ok0 = v.nomeCurto.trim() && v.nome.trim()
+  const alvo = caso(casoId)
+  const ok0 = destino === "novo" ? !!(v.nomeCurto.trim() && v.nome.trim()) : casoId != null
   const ok1 = grupos.every((g) => g.nome.trim() && g.prazo)
-  const ETAPAS = ["Projeto", "Grupos", "Responsáveis"]
+  const ETAPAS = ["Caso", "Grupos", "Responsáveis"]
 
   const criar = async () => {
     if (salvando) return
     setSalvando(true)
-    const id = await act.criarDeModelo(m.id, { ...v, prazo: v.prazo ?? resumo.prazoMax }, grupos, papeis)
+    const id = await act.usarModelo(
+      m.id,
+      destino === "novo" ? { caso: { ...v, prazo: v.prazo ?? resumo.prazoMax } } : { casoId: casoId! },
+      grupos,
+      papeis,
+    )
     setSalvando(false)
     if (id != null) {
       onClose()
-      act.abrirProjeto(id)
+      act.abrirCaso(id)
     }
   }
 
@@ -494,11 +150,11 @@ export function TkWizard({ modeloId, onClose }: { modeloId: number | null; onClo
       <div
         className={TK_JANELA}
         role="dialog"
-        aria-label="Novo projeto a partir de modelo"
+        aria-label="Usar modelo"
         style={{ ...ELEVACAO_JANELA, width: 640, maxWidth: "calc(100% - 32px)", maxHeight: "calc(100% - 64px)", display: "flex", flexDirection: "column" }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "12px 12px 12px 20px", borderBottom: "1px solid var(--border)" }}>
-          <span style={{ fontSize: 16, fontWeight: 500 }}>Novo projeto</span>
+          <span style={{ fontSize: 16, fontWeight: 500 }}>Usar modelo</span>
           <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, flexWrap: "wrap" }}>
             {ETAPAS.map((l, i) => (
               <span key={l} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
@@ -541,7 +197,24 @@ export function TkWizard({ modeloId, onClose }: { modeloId: number | null; onClo
                   ))}
                 </select>
               </label>
-              <TkProjFields v={v} set={set} />
+              <div>
+                <TkSeg<Destino>
+                  options={[
+                    { id: "novo", label: "Novo caso" },
+                    { id: "existente", label: "Caso existente" },
+                  ]}
+                  value={destino}
+                  onChange={trocarDestino}
+                />
+              </div>
+              {destino === "novo" ? (
+                <TkCasoFields v={v} set={set} />
+              ) : (
+                <div>
+                  <span className="label">Caso</span>
+                  <TkCasoPicker variant="field" value={casoId} onChange={escolherCaso} semCaso={false} placeholder="Escolha o caso" />
+                </div>
+              )}
             </div>
           )}
           {passo === 1 && (
@@ -551,11 +224,11 @@ export function TkWizard({ modeloId, onClose }: { modeloId: number | null; onClo
                   Quantidade de grupos
                 </span>
                 <div style={{ display: "inline-flex", alignItems: "center", border: "1px solid var(--border-strong)", borderRadius: "var(--r-sm)" }}>
-                  <TkIconBtn icon="minus" title="Menos" onClick={() => setGrupos((g) => ajustarGrupos(g, g.length - 1, m, hoje))} />
+                  <TkIconBtn icon="minus" title="Menos" onClick={() => setGrupos((g) => ajustarGrupos(g, g.length - 1, m, hoje, gruposExistentes))} />
                   <span className="tnum" style={{ width: 28, textAlign: "center", fontSize: 14, fontWeight: 500 }}>
                     {grupos.length}
                   </span>
-                  <TkIconBtn icon="plus" title="Mais" onClick={() => setGrupos((g) => ajustarGrupos(g, g.length + 1, m, hoje))} />
+                  <TkIconBtn icon="plus" title="Mais" onClick={() => setGrupos((g) => ajustarGrupos(g, g.length + 1, m, hoje, gruposExistentes))} />
                 </div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 150px", gap: "6px 10px", alignItems: "center" }}>
@@ -617,8 +290,9 @@ export function TkWizard({ modeloId, onClose }: { modeloId: number | null; onClo
               ))}
               <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12, display: "flex", flexDirection: "column", gap: 4 }}>
                 <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 500 }}>
-                  <TkDot color={v.cor} />
-                  {v.nomeCurto} <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>{v.nome}</span>
+                  <TkDot color={destino === "novo" ? v.cor : (alvo?.cor ?? "var(--text-subtle)")} />
+                  {destino === "novo" ? v.nomeCurto : alvo?.nomeCurto}{" "}
+                  <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>{destino === "novo" ? v.nome : alvo?.nome}</span>
                 </span>
                 <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
                   {`${resumo.grupos} ${resumo.grupos === 1 ? "grupo" : "grupos"} · ${resumo.tarefas} tarefas · ${resumo.ligacoes} ligações`}
@@ -644,7 +318,7 @@ export function TkWizard({ modeloId, onClose }: { modeloId: number | null; onClo
             </button>
           ) : (
             <button type="button" className="btn btn-primary btn-sm" disabled={salvando} onClick={() => void criar()}>
-              Criar projeto
+              {destino === "novo" ? "Criar caso" : "Aplicar modelo"}
             </button>
           )}
         </div>
@@ -699,10 +373,10 @@ export function TkModeloEditor({ modelo, onClose }: { modelo: ModeloView | null;
     }
     try {
       const r = modelo
-        ? await apiSend<{ acaoId: string }>(`/api/projetos/modelos/${modelo.id}`, "PATCH", corpo)
-        : await apiSend<{ acaoId: string }>("/api/projetos/modelos", "POST", corpo)
+        ? await apiSend<{ result: { acaoId: string } }>(`/api/tarefas/modelos/${modelo.id}`, "PATCH", corpo)
+        : await apiSend<{ result: { acaoId: string } }>("/api/tarefas/modelos", "POST", corpo)
       await act.recarregar()
-      act.avisar({ msg: modelo ? `Modelo salvo: ${corpo.nome}` : `Modelo criado: ${corpo.nome}`, acaoId: r?.acaoId ?? null })
+      act.avisar({ msg: modelo ? `Modelo salvo: ${corpo.nome}` : `Modelo criado: ${corpo.nome}`, acaoId: r?.result?.acaoId ?? null })
       onClose()
     } catch (e) {
       act.erro(e)
@@ -713,9 +387,9 @@ export function TkModeloEditor({ modelo, onClose }: { modelo: ModeloView | null;
   const excluir = async () => {
     if (!modelo) return
     try {
-      const r = await apiSend<{ acaoId: string }>(`/api/projetos/modelos/${modelo.id}`, "DELETE")
+      const r = await apiSend<{ result: { acaoId: string } }>(`/api/tarefas/modelos/${modelo.id}`, "DELETE")
       await act.recarregar()
-      act.avisar({ msg: `Modelo excluído: ${modelo.nome}`, acaoId: r?.acaoId ?? null })
+      act.avisar({ msg: `Modelo excluído: ${modelo.nome}`, acaoId: r?.result?.acaoId ?? null })
       onClose()
     } catch (e) {
       act.erro(e)
