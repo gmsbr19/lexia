@@ -14,8 +14,8 @@ import { documentosTools } from "./tools/documentos"
 import { financeiroTools } from "./tools/financeiro"
 import { navegacaoTools } from "./tools/navegacao"
 import { perguntarTools } from "./tools/perguntar"
+import { modelosTools } from "./tools/modelos"
 import { processosTools } from "./tools/processos"
-import { projetosTools } from "./tools/projetos"
 import { tarefasTools } from "./tools/tarefas"
 
 export const TOOLS: AgentTool[] = [
@@ -25,7 +25,7 @@ export const TOOLS: AgentTool[] = [
   ...clientesTools,
   ...casosTools,
   ...tarefasTools,
-  ...projetosTools,
+  ...modelosTools,
   ...agendaTools,
   ...comercialTools,
   ...processosTools,

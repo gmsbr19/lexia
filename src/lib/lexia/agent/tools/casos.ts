@@ -1,16 +1,20 @@
-// Casos tools — list/detalhe (readonly) + criar/editar/excluir (confirmation-gated).
-// Sempre disponíveis (independem do módulo Processos). Caso ≠ processo: nº CNJ,
-// tribunal e vara são do PROCESSO (tools/processos.ts), nunca do caso.
+// Casos tools — list/detalhe/tarefas do caso (readonly) + criar/editar/excluir
+// (confirmation-gated). Sempre disponíveis (independem do módulo Processos). Caso
+// ≠ processo: nº CNJ, tribunal e vara são do PROCESSO (tools/processos.ts). O caso
+// é também o "projeto" do quadro de Tarefas (nome curto, prazo final, descrição).
 import { z } from "zod"
 import { createCaso, deleteCaso, updateCaso } from "@/lib/casos/mutations"
 import { getCasoDetail } from "@/lib/casos/queries"
 import { getCasos } from "@/lib/finance/queries"
 import { prisma } from "@/lib/db"
-import { resolveUserId, veTudo } from "@/lib/processos/rbac"
+import { podeAcessarCaso, resolveUserId, veTudo } from "@/lib/processos/rbac"
+import { getTarefas } from "@/lib/tarefas/queries"
+import { hojeSP, indexar, motivosRisco, vencida } from "@/lib/tarefas/regras"
+import { statusLabel } from "@/lib/tarefas/types"
 import { idOpt, idReq } from "@/lib/validation"
 import { verFinanceiro } from "@/lib/users/types"
 import type { CasoDetail } from "@/lib/casos/types"
-import { diffRow, nomeCaso, nomeCliente, nomeUsuario } from "../confirmar"
+import { dataBr, diffRow, nomeCaso, nomeCliente, nomeUsuario } from "../confirmar"
 import { defineTool } from "../types"
 import { cap, limite } from "./shared"
 
@@ -23,6 +27,14 @@ async function nomeContrato(id: number): Promise<string> {
   const c = await prisma.contrato.findUnique({ where: { id }, select: { titulo: true, dataFechamento: true } })
   if (!c) return `Contrato #${id}`
   return c.titulo ?? `Contrato de ${c.dataFechamento.toISOString().slice(0, 10).split("-").reverse().join("/")}`
+}
+
+const dataISO = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "use o formato YYYY-MM-DD")
+// Etiqueta do caso no quadro de Tarefas
+const camposQuadro = {
+  nomeCurto: z.string().max(24).optional().describe("Nome curto que aparece nos cartões do quadro (ex.: 'Alfa')"),
+  prazo: dataISO.optional().describe("Prazo final do trabalho (opcional)"),
+  descricao: z.string().max(4000).optional(),
 }
 
 export const casosTools = [
@@ -48,6 +60,44 @@ export const casosTools = [
     },
   }),
   defineTool({
+    name: "tarefas_do_caso",
+    kind: "readonly",
+    description:
+      "As tarefas de um caso no quadro (status, prazo, prazo fatal, vencida, responsável, grupo, anteriores, em risco) e os grupos. " +
+      "Use antes de editar/ligar tarefas de um caso ou para 'como está o caso X?'.",
+    schema: z.object({ id: idReq.describe("Id do caso (via buscar/listar_casos)") }),
+    run: async (ctx, { id }) => {
+      if (!(await podeAcessarCaso(ctx.user, id))) return { erro: "Caso não encontrado" }
+      const [c, tarefas] = await Promise.all([
+        prisma.caso.findFirst({ where: { id, excluidoEm: null }, select: { id: true, titulo: true, nomeCurto: true, prazo: true, descricao: true } }),
+        getTarefas({ casoId: id }),
+      ])
+      if (!c) return { erro: "Caso não encontrado" }
+      const hoje = hojeSP()
+      const map = indexar(tarefas)
+      return {
+        id: c.id,
+        titulo: c.titulo,
+        nomeCurto: c.nomeCurto,
+        prazo: c.prazo?.toISOString().slice(0, 10) ?? null,
+        descricao: c.descricao,
+        grupos: [...new Set(tarefas.map((t) => t.grupo).filter(Boolean))],
+        tarefas: tarefas.map((t) => ({
+          id: t.id,
+          titulo: t.titulo,
+          status: statusLabel(t.status),
+          prazo: t.prazo,
+          prazoFatal: t.prazoFatal,
+          vencida: vencida(t, hoje),
+          grupo: t.grupo,
+          responsavelId: t.responsavelId,
+          anteriores: t.anteriores,
+          emRisco: motivosRisco(t, map, hoje).length > 0,
+        })),
+      }
+    },
+  }),
+  defineTool({
     name: "criar_caso",
     kind: "mutation",
     roles: ["socio", "advogado"],
@@ -62,6 +112,7 @@ export const casosTools = [
       clientePrincipalId: idOpt.describe("Cliente principal (id via buscar)"),
       contratoId: idOpt.describe("Contrato do mesmo cliente (id via listar_contratos)"),
       responsavelId: idOpt.describe("Advogado responsável (id)"),
+      ...camposQuadro,
     }),
     resumo: (i) => `Criar caso: ${i.titulo}`,
     montarConfirmacao: async (_ctx, i) => {
@@ -71,6 +122,8 @@ export const casosTools = [
       if (i.clientePrincipalId) det.push({ label: "Cliente", valor: await nomeCliente(i.clientePrincipalId) })
       if (i.contratoId) det.push({ label: "Contrato", valor: await nomeContrato(i.contratoId) })
       if (i.responsavelId) det.push({ label: "Responsável", valor: await nomeUsuario(i.responsavelId) })
+      if (i.nomeCurto) det.push({ label: "Nome curto", valor: i.nomeCurto })
+      if (i.prazo) det.push({ label: "Prazo final", valor: dataBr(i.prazo) })
       return { resumo: `Criar caso: ${i.titulo}`, detalhes: det }
     },
     run: async (ctx, i) =>
@@ -80,6 +133,9 @@ export const casosTools = [
         area: i.area,
         clientePrincipalId: i.clientePrincipalId ?? undefined,
         contratoId: i.contratoId ?? undefined,
+        nomeCurto: i.nomeCurto,
+        prazo: i.prazo,
+        descricao: i.descricao,
         // advogado sem responsável definido vira o responsável (senão perde o acesso ao caso)
         responsavelUserId:
           i.responsavelId ?? (veTudo(ctx.user.role) ? undefined : ((await resolveUserId(ctx.user.email)) ?? undefined)),
@@ -91,7 +147,8 @@ export const casosTools = [
     roles: ["socio", "advogado"],
     description:
       "Edita um caso (id via buscar). Envie só o que muda: titulo, tipo, status (Ativo/Suspenso/Arquivado), área, " +
-      "clientePrincipalId, contratoId (contrato do MESMO cliente; semContrato=true solta o caso do contrato) e responsavelId.",
+      "clientePrincipalId, contratoId (contrato do MESMO cliente; semContrato=true solta o caso do contrato), responsavelId " +
+      "e a etiqueta no quadro de Tarefas (nomeCurto, prazo final, descricao). Arquivar = status 'Arquivado'.",
     schema: z.object({
       id: idReq,
       titulo: z.string().min(2).max(200).optional(),
@@ -102,6 +159,7 @@ export const casosTools = [
       contratoId: idOpt,
       semContrato: z.boolean().optional().describe("true = desvincula o caso do contrato atual"),
       responsavelId: idOpt,
+      ...camposQuadro,
     }),
     resumo: (i) => `Editar caso #${i.id}`,
     montarConfirmacao: async (_ctx, i) => {
@@ -119,6 +177,9 @@ export const casosTools = [
             ? diffRow("Contrato", await nomeContrato(i.contratoId), antes?.contrato?.titulo ?? undefined)
             : null,
         i.responsavelId ? diffRow("Responsável", await nomeUsuario(i.responsavelId), antes?.responsavelUser ?? undefined) : null,
+        diffRow("Nome curto", i.nomeCurto, antes?.nomeCurto ?? undefined),
+        i.prazo ? diffRow("Prazo final", dataBr(i.prazo), antes?.prazo ? dataBr(antes.prazo) : undefined) : null,
+        i.descricao !== undefined ? { label: "Descrição", valor: i.descricao || "— sem descrição —" } : null,
       ].filter((d): d is NonNullable<typeof d> => d != null)
       return { resumo: "Editar caso", detalhes: det }
     },
@@ -131,6 +192,9 @@ export const casosTools = [
         clientePrincipalId: i.clientePrincipalId,
         contratoId: i.semContrato ? null : i.contratoId,
         responsavelUserId: i.responsavelId,
+        nomeCurto: i.nomeCurto,
+        prazo: i.prazo,
+        descricao: i.descricao,
       }),
   }),
   defineTool({
