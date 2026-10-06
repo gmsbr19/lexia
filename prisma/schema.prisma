@@ -193,6 +193,10 @@ model ClienteAnotacao {
   @@index([clienteId])
 }
 
+// O Caso é a matéria do cliente E o "projeto" do quadro de Tarefas (mesma
+// entidade desde a unificação de out/2026 — o antigo model Projeto está DORMENTE).
+// `nomeCurto` + `cor` são a etiqueta do caso nos cartões (sem eles: título e cor da
+// área); `prazo` é o prazo final do trabalho; arquivar = status "Arquivado".
 model Caso {
   id                 Int               @id @default(autoincrement())
   astreaId           String            @unique
@@ -215,6 +219,12 @@ model Caso {
   dataCriacao        DateTime?
   ultimaMovimentacao DateTime?
   excluidoEm         DateTime? // soft-delete marker (legal data is never physically removed)
+  nomeCurto          String? // etiqueta curta no quadro de Tarefas (≤24); sem ela, o título
+  cor                String? // hex (uma das 6 cores do quadro); sem ela, a cor da área
+  descricao          String?
+  prazo              DateTime? // prazo final do trabalho (local noon) — opcional
+  modeloOrigemId     Int? // modelo de tarefas a partir do qual o caso foi montado
+  modeloOrigem       ProjetoModelo?    @relation(fields: [modeloOrigemId], references: [id])
   // O contrato (documento assinado) que este caso pertence. Nullable: um caso pode
   // existir sem contrato vinculado. Um contrato pode reunir vários casos (ex.: um
   // condomínio com assessoria mensal + uma ação de obrigação de fazer).
@@ -228,7 +238,7 @@ model Caso {
   documentos         Documento[]
   processos          Processo[]
   anotacoes          Anotacao[]
-  projetos           Projeto[]
+  projetos           Projeto[] // DORMENTE: registro da conversão Projeto → Caso
 
   @@index([status])
   @@index([tipo])
@@ -607,21 +617,15 @@ model OportunidadeAtividade {
   @@index([ocorreuEm])
 }
 
-// ── Tarefas (operator-entered task manager) ──────────────────────────────────
-// A task carries TWO distinct dates kept visually separate everywhere:
-//   data  = quando fazer (scheduled day) + optional `hora` (HH:MM block)
-//   prazo = limite máximo (deadline) — drives the urgency color.
-// `projeto` is a static practice-area key (see src/lib/tarefas/types.ts PROJECTS,
-// NOT a Caso). `responsavel` is a sócio Conta; the vínculo links to a real Caso
-// OR Cliente (mutually exclusive). subtasks / dor / dod are JSON arrays stored as
-// TEXT (parsed in the query layer) — no Json scalar, consistent with the schema.
+// ── Tarefas ──────────────────────────────────────────────────────────────────
 // Tarefa do quadro único do escritório (redesign "Tarefas"). UMA data só: o
 // `prazo` (obrigatório — sem prazo informado vale a sexta da semana de criação,
 // ver src/lib/tarefas/regras.ts `prazoPadrao`); `prazoFatal` é um marcador sobre o
 // mesmo prazo. Atraso = prazo < hoje (America/Sao_Paulo) e status ≠ done — regra
-// única em regras.ts. `grupo` é uma etiqueta livre DENTRO do projeto (não é
-// hierarquia; zera ao trocar de projeto). As ligações "só começa depois de" vivem
-// em TarefaLigacao; o histórico legível em TarefaHistorico (gravado pelo backend).
+// única em regras.ts. O "projeto" do quadro é o CASO (`casoId`); `grupo` é uma
+// etiqueta livre DENTRO do caso (não é hierarquia; zera ao trocar de caso). As
+// ligações "só começa depois de" vivem em TarefaLigacao; o histórico legível em
+// TarefaHistorico (gravado pelo backend).
 model Tarefa {
   id              Int                @id @default(autoincrement())
   astreaId        String?            @unique // "app-tarefa-<uuid>"; Tarefa is never imported from Astrea
@@ -630,7 +634,7 @@ model Tarefa {
   done            Boolean            @default(false) // espelho sincronizado de status === 'done'
   prazo           DateTime // data-limite (date-only, gravada ao meio-dia local) — OBRIGATÓRIA
   prazoFatal      Boolean            @default(false) // prazo legal/processual (nunca deslocado em cadeia)
-  grupo           String? // etiqueta livre dentro do projeto (ex.: "Protocolo 01 · 1º RI Taubaté")
+  grupo           String? // etiqueta livre dentro do caso (ex.: "Protocolo 01 · 1º RI Taubaté")
   aguardandoTexto String? // terceiro externo aguardado (só com status 'wait')
   notes           String? // descrição (texto livre)
   checklist       String             @default("[]") // JSON: [{ id, texto, marcado }] (ordem = posição)
@@ -641,15 +645,15 @@ model Tarefa {
   responsavel     User?              @relation(fields: [responsavelId], references: [id])
   criadoPorId     Int? // quem criou a tarefa; null em tarefas antigas
   criadoPor       User?              @relation("TarefaCriadoPor", fields: [criadoPorId], references: [id])
-  casoId          Int? // vínculos legados usados por Casos/Processos/Comercial (não aparecem no quadro)
+  casoId          Int? // o caso da tarefa no quadro; null = "Sem caso"
   caso            Caso?              @relation(fields: [casoId], references: [id])
   processoId      Int?
   processo        Processo?          @relation(fields: [processoId], references: [id])
-  clienteId       Int? // cliente PRÓPRIO; o efetivo é projeto.clienteId ?? clienteId (regras.ts)
+  clienteId       Int? // cliente PRÓPRIO; o efetivo é caso.clientePrincipalId ?? clienteId (regras.ts)
   cliente         Cliente?           @relation(fields: [clienteId], references: [id])
   leadId          Int? // oportunidade vinculada (Comercial)
   lead            Lead?              @relation(fields: [leadId], references: [id])
-  projetoId       Int? // null = "Sem projeto"
+  projetoId       Int? // DORMENTE (unificação Projeto → Caso): nenhum código lê nem grava
   projetoRef      Projeto?           @relation(fields: [projetoId], references: [id])
   recorrenteDeId  Int? // liga a instância GERADA à tarefa que a originou (guarda de idempotência)
   recorrenteDe    Tarefa?            @relation("TarefaRecorrencia", fields: [recorrenteDeId], references: [id], onDelete: SetNull)
@@ -668,6 +672,7 @@ model Tarefa {
   @@index([responsavelId])
   @@index([criadoPorId])
   @@index([prazo])
+  @@index([casoId])
   @@index([processoId])
   @@index([projetoId])
   @@index([leadId])
@@ -676,8 +681,8 @@ model Tarefa {
 }
 
 // "A seguinte só começa depois que a anterior terminar" — único tipo de ligação.
-// Só dentro do mesmo projeto, sem ciclos (validado em src/lib/tarefas/mutations.ts).
-// Trocar a tarefa de projeto remove todas as ligações dela.
+// Só dentro do mesmo caso, sem ciclos (validado em src/lib/tarefas/mutations.ts).
+// Trocar a tarefa de caso remove todas as ligações dela.
 model TarefaLigacao {
   anteriorId Int
   anterior   Tarefa   @relation("LigacaoAnterior", fields: [anteriorId], references: [id], onDelete: Cascade)
@@ -1302,13 +1307,12 @@ model ExecucaoCaptura {
   @@index([status])
 }
 
-// ── Projetos (filtro do quadro único de Tarefas) ─────────────────────────────
-// NÃO existe quadro por projeto — projeto é filtro. `nomeCurto` acompanha sempre a
-// cor (bolinha + nome) nos cartões; `nome` é o nome completo. Se o projeto tem
-// cliente, TODAS as tarefas dele ficam vinculadas a esse cliente (cliente efetivo =
-// projeto.clienteId ?? tarefa.clienteId — src/lib/tarefas/regras.ts). `area` guarda
-// a CHAVE de AreaDireito (exibida por extenso). Arquivar = `arquivadoEm`.
-// Soft-delete `excluidoEm`: a leitura trata um projeto excluído como "Sem projeto".
+// ── Projetos — DORMENTE ──────────────────────────────────────────────────────
+// Unificado ao Caso (migração 20261006120000_casos_unificam_projetos): cada projeto
+// vivo virou (ou foi mesclado a) um Caso e as tarefas passaram a `Tarefa.casoId`.
+// Nenhum código lê nem grava esta tabela, EXCETO `casoId`, que guarda o caso de
+// destino da conversão (redirects de /projetos/<id> e ?projeto=). Será removida
+// numa migração futura.
 model Projeto {
   id             Int            @id @default(autoincrement())
   chave          String?        @unique // slug estável p/ seed; null em projetos do usuário
@@ -1320,7 +1324,7 @@ model Projeto {
   prazo          DateTime? // prazo final (local noon) — projeto pode não ter
   responsavelId  Int?
   responsavel    User?          @relation("ProjetoResponsavel", fields: [responsavelId], references: [id])
-  casoId         Int? // vínculo legado (não exibido no módulo)
+  casoId         Int? // caso de destino da conversão Projeto → Caso
   caso           Caso?          @relation(fields: [casoId], references: [id])
   clienteId      Int?
   cliente        Cliente?       @relation(fields: [clienteId], references: [id])
@@ -1340,10 +1344,11 @@ model Projeto {
   @@index([excluidoEm])
 }
 
-// Modelo de projeto: gera 1 Projeto + (grupos × passos) tarefas + as ligações do
-// modelo dentro de cada grupo. Prazo do passo = prazo do grupo − diasAntes.
-// `papeis` = JSON [{ id, rotulo, padraoUsuarioId }]; o responsável de cada papel é
-// escolhido no assistente. Editável por sócio/admin.
+// Modelo de tarefas: aplicado a um caso (novo ou existente), gera (grupos × passos)
+// tarefas + as ligações do modelo dentro de cada grupo. Prazo do passo = prazo do
+// grupo − diasAntes. `papeis` = JSON [{ id, rotulo, padraoUsuarioId }]; o
+// responsável de cada papel é escolhido no assistente. Editável por sócio/admin.
+// (Nome da tabela mantido por compatibilidade.)
 model ProjetoModelo {
   id           Int                  @id @default(autoincrement())
   chave        String?              @unique // slug p/ seed idempotente
@@ -1355,7 +1360,8 @@ model ProjetoModelo {
   ordem        Int                  @default(0)
   excluidoEm   DateTime?
   passos       ProjetoModeloPasso[]
-  projetos     Projeto[]
+  projetos     Projeto[] // DORMENTE
+  casos        Caso[]
   createdAt    DateTime             @default(now())
   updatedAt    DateTime             @updatedAt
 
@@ -1383,9 +1389,9 @@ model ProjetoModeloPasso {
 }
 
 // ── Áreas do Direito (taxonomia dinâmica, gerenciável pelo admin) ─────────────
-// Entidades que referenciam uma área (Projeto, ProjetoTemplate, Caso, Lead,
-// Campanha) guardam a CHAVE (slug) como String? — sem FK rígida, preservando
-// o histórico quando uma área é arquivada (soft-delete via excluidoEm).
+// Entidades que referenciam uma área (Caso, ProjetoModelo, Lead, Campanha) guardam
+// a CHAVE (slug) como String? — sem FK rígida, preservando o histórico quando uma
+// área é arquivada (soft-delete via excluidoEm).
 model AreaDireito {
   id         Int       @id @default(autoincrement())
   chave      String    @unique // slug estável (ex.: 'trab', 'soc', 'trib')
