@@ -1,15 +1,15 @@
 "use client"
 
-// Contexto do módulo Tarefas: a carga (tarefas, projetos, pessoas…), os índices
+// Contexto do módulo Tarefas: a carga (tarefas, casos, pessoas…), os índices
 // derivados, quem está vendo e as AÇÕES (cada uma espelha um endpoint e mostra o
-// aviso com "Desfazer"). Montado por TarefasApp.
+// aviso com "Desfazer"). O CASO é o "projeto" do quadro. Montado por TarefasApp.
 import { createContext, useContext } from "react"
-import type { ChecklistItem, IdNome, ModeloView, ProjetoRow, TaskRow, TaskStatus, TeamMember } from "@/lib/tarefas/types"
-import type { GrupoWizard } from "@/lib/projetos/modelo"
+import type { CasoQuadro, ChecklistItem, IdNome, ModeloView, TaskRow, TaskStatus, TeamMember } from "@/lib/tarefas/types"
+import type { GrupoWizard } from "@/lib/modelos/modelo"
 
 export interface NovaTarefaUI {
   titulo: string
-  projetoId: number | null
+  casoId: number | null
   grupo?: string | null
   responsavelId: number | null
   clienteId: number | null
@@ -17,9 +17,10 @@ export interface NovaTarefaUI {
   prazoFatal: boolean
 }
 
-export interface ProjetoForm {
+/** "Novo caso…" pelo quadro (o cadastro completo do caso fica em /casos). */
+export interface CasoQuadroForm {
   nomeCurto: string
-  nome: string
+  nome: string // título do caso
   clienteId: number | null
   area: string | null
   responsavelId: number | null
@@ -31,7 +32,7 @@ export interface ProjetoForm {
 export interface PatchTarefaUI {
   titulo?: string
   descricao?: string | null
-  projetoId?: number | null
+  casoId?: number | null
   grupo?: string | null
   responsavelId?: number | null
   clienteId?: number | null
@@ -61,16 +62,16 @@ export interface Acoes {
   duplicar: (id: number, abrir?: boolean) => void
   novaTarefa: () => void
   criar: (n: NovaTarefaUI) => Promise<boolean>
-  criarProjeto: (v: ProjetoForm) => Promise<number | null>
-  editarProjeto: (id: number, v: Partial<ProjetoForm> & { arquivado?: boolean }, msg?: string) => Promise<boolean>
-  excluirProjeto: (id: number) => void
-  criarDeModelo: (
+  criarCaso: (v: CasoQuadroForm) => Promise<number | null>
+  /** Aplica um modelo a um caso NOVO (`caso`) ou EXISTENTE (`casoId`); devolve o id do caso. */
+  usarModelo: (
     modeloId: number,
-    v: ProjetoForm,
+    alvo: { caso: CasoQuadroForm } | { casoId: number },
     grupos: GrupoWizard[],
     responsaveis: Record<string, number | null>,
   ) => Promise<number | null>
-  abrirProjeto: (id: number) => void
+  /** Mostra o quadro filtrado por este caso. */
+  abrirCaso: (id: number) => void
   /** Nova ordem manual (de quem está vendo) para uma lista de cartões; liga o "Ordenar: Manual". */
   reordenar: (ids: number[]) => void
   recarregar: () => Promise<void>
@@ -82,20 +83,25 @@ export interface TkCtxValue {
   tarefas: TaskRow[]
   map: Map<number, TaskRow>
   seguintes: Map<number, number[]>
-  projetos: ProjetoRow[]
-  projetosAtivos: ProjetoRow[]
-  projeto: (id: number | null) => ProjetoRow | null
+  casos: CasoQuadro[]
+  /** Casos que podem receber tarefas: não arquivados e acessíveis a quem está vendo. */
+  casosAtivos: CasoQuadro[]
+  /** Casos com alguma tarefa (filtros, raias). */
+  casosComTarefas: CasoQuadro[]
+  caso: (id: number | null) => CasoQuadro | null
   pessoas: TeamMember[]
   pessoa: (id: number | null) => TeamMember | null
   nomePessoa: (id: number | null) => string
   clientes: IdNome[]
   cliente: (id: number | null) => IdNome | null
-  clienteDoProjeto: (projetoId: number) => number | null
+  clienteDoCaso: (casoId: number) => number | null
+  /** Quem está vendo pode abrir a página deste caso? */
+  podeAbrirCaso: (id: number | null) => boolean
   modelos: ModeloView[]
   hoje: string
   meId: number | null
   gestao: boolean
-  podeProjeto: boolean
+  podeCriarCaso: boolean
   podeModelo: boolean
   mobile: boolean
   act: Acoes

@@ -4,12 +4,14 @@
 // janela ~1040px (vidro do app) em duas colunas. Topo: status (pílula com
 // menu), "…" e fechar. Esquerda: círculo de concluir + título; ações
 // (Checklist, Anexo, Ligação); campos em pílulas com rótulo (Responsável,
-// Projeto, Grupo, Prazo, Repetir, Cliente); seções com ícone (Descrição,
+// Caso, Grupo, Prazo, Repetir, Cliente — caso e cliente abrem as suas páginas);
+// seções com ícone (Descrição,
 // Checklist, Anexos, Ligações). Direita: "Comentários e atividade" — os
 // comentários sempre; o histórico entra com "Mostrar detalhes". No celular:
 // tela cheia, uma coluna só.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { createPortal } from "react-dom"
+import { useRouter } from "next/navigation"
 import { apiSend } from "@/lib/client/api"
 import { normalizar } from "@/lib/text"
 import {
@@ -27,8 +29,8 @@ import { segmentosComentario, serializeMencoes, type ComentarioRow, type MencaoP
 import { STATUS, statusLabel, type AnexoRow, type HistoricoRow, type TaskRow, type TaskStatus } from "@/lib/tarefas/types"
 import { Icon, type TfIconName } from "./tf-icons"
 import { useTk } from "./tk-context"
-import { TkClientPicker, TkDatePop, TkGrupoDialog, TkRecurMenu, useGruposDoProjeto, useOpcoesProjeto, type OpcaoMenu } from "./tk-pickers"
-import { TkProjectForm } from "./tk-projects"
+import { TkCasoForm } from "./tk-caso-form"
+import { TkCasoLista, TkClientPicker, TkDatePop, TkGrupoDialog, TkRecurMenu, useGruposDoCaso } from "./tk-pickers"
 import { TkAvatar, TkDialog, TkEspera, TkIconBtn, TkMenuItem, TkMenuLabel, TkMenuSep, TkPop, useEsc, usePop } from "./tk-ui"
 import { ELEVACAO_JANELA, TK_JANELA } from "./tk-glass"
 
@@ -143,59 +145,63 @@ function TkPessoaCampo({ t }: { t: TaskRow }) {
   )
 }
 
-/** Projeto como etiqueta colorida (a cor do projeto = a etiqueta do Trello). */
-function TkProjetoCampo({ t, opcoes }: { t: TaskRow; opcoes: OpcaoMenu<number | null>[] }) {
-  const { projeto, act, podeProjeto, portal } = useTk()
-  const p = projeto(t.projetoId)
+/** Caso como etiqueta colorida (a cor do caso = a etiqueta do Trello) + atalho para a página do caso. */
+function TkCasoCampo({ t }: { t: TaskRow }) {
+  const { caso, act, podeCriarCaso, podeAbrirCaso, portal } = useTk()
+  const router = useRouter()
+  const c = caso(t.casoId)
   const pop = usePop()
   const [novo, setNovo] = useState(false)
+  const escolher = (id: number | null) => {
+    pop.close()
+    if (id !== t.casoId) act.atualizar(t.id, { casoId: id })
+  }
   return (
-    <span style={{ display: "inline-flex", minWidth: 0 }}>
-      {p ? (
-        <button type="button" className="tk-label" style={{ background: p.cor }} title={p.nome} onClick={pop.toggle}>
-          <span>{p.nomeCurto}</span>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 2, minWidth: 0, maxWidth: "100%" }}>
+      {c ? (
+        <button type="button" className="tk-label" style={{ background: c.cor, minWidth: 0 }} title={c.nome} onClick={pop.toggle}>
+          <span>{c.nomeCurto}</span>
         </button>
       ) : (
-        <button type="button" className="tk-fadd" aria-label="Projeto" title="Projeto" onClick={pop.toggle}>
+        <button type="button" className="tk-fadd" aria-label="Caso" title="Caso" onClick={pop.toggle}>
           <Icon name="plus" size={16} />
         </button>
       )}
-      <TkPop open={pop.open} onClose={pop.close} anchor={pop.anchor} width={240}>
-        {opcoes.map((o) => (
-          <TkMenuItem
-            key={String(o.id)}
-            dot={o.dot}
-            checked={o.id === t.projetoId}
-            onClick={() => {
-              pop.close()
-              if (o.id !== t.projetoId) act.atualizar(t.id, { projetoId: o.id })
-            }}
-          >
-            {o.label}
-          </TkMenuItem>
-        ))}
-        {podeProjeto && (
-          <>
-            <TkMenuSep />
-            <TkMenuItem
-              icon="plus"
-              onClick={() => {
-                pop.close()
-                setNovo(true)
-              }}
-            >
-              Novo projeto…
-            </TkMenuItem>
-          </>
+      {c && podeAbrirCaso(c.id) && <TkIconBtn icon="externalLink" title="Abrir o caso" size={14} onClick={() => router.push(`/casos/${c.id}`)} />}
+      <TkPop open={pop.open} onClose={pop.close} anchor={pop.anchor} width={320}>
+        {pop.open && (
+          <TkCasoLista
+            value={t.casoId}
+            onPick={escolher}
+            acao={
+              podeCriarCaso
+                ? {
+                    label: "Novo caso…",
+                    onClick: () => {
+                      pop.close()
+                      setNovo(true)
+                    },
+                  }
+                : undefined
+            }
+          />
         )}
       </TkPop>
-      {novo &&
-        portal &&
-        createPortal(
-          <TkProjectForm projeto={null} onClose={() => setNovo(false)} onCriado={(id) => act.atualizar(t.id, { projetoId: id })} />,
-          portal,
-        )}
+      {novo && portal && createPortal(<TkCasoForm onClose={() => setNovo(false)} onCriado={(id) => act.atualizar(t.id, { casoId: id })} />, portal)}
     </span>
+  )
+}
+
+/** Cliente da tarefa + atalho para a ficha do contato. */
+function TkClienteCampo({ t }: { t: TaskRow }) {
+  const { act, clienteDoCaso } = useTk()
+  const router = useRouter()
+  const ce = clienteEfetivo(t, clienteDoCaso)
+  return (
+    <>
+      <TkClientPicker chip value={ce?.id ?? null} herdado={ce?.herdado} onChange={(v) => act.atualizar(t.id, { clienteId: v })} />
+      {ce && <TkIconBtn icon="externalLink" title="Abrir o contato" size={14} onClick={() => router.push(`/contatos/${ce.id}`)} />}
+    </>
   )
 }
 
@@ -203,7 +209,7 @@ function TkGrupoMenu({ t }: { t: TaskRow }) {
   const { act } = useTk()
   const pop = usePop()
   const [novo, setNovo] = useState(false)
-  const grupos = useGruposDoProjeto(t.projetoId)
+  const grupos = useGruposDoCaso(t.casoId)
   const escolher = (g: string | null) => {
     pop.close()
     if (g !== t.grupo) act.atualizar(t.id, { grupo: g })
@@ -276,11 +282,11 @@ function TkLinkPicker({ t, acao }: { t: TaskRow; acao?: boolean }) {
   const { tarefas, act } = useTk()
   const pop = usePop()
   const [q, setQ] = useState("")
-  if (t.projetoId == null) return null
+  if (t.casoId == null) return null
   const nq = normalizar(q)
   const opts = tarefas.filter(
     (x) =>
-      x.projetoId === t.projetoId &&
+      x.casoId === t.casoId &&
       x.id !== t.id &&
       !t.anteriores.includes(x.id) &&
       normalizar(`${x.titulo} ${x.grupo ?? ""}`).includes(nq),
@@ -816,7 +822,7 @@ function useDetalhe(id: number, versao: unknown) {
 
 // ── o detalhe ────────────────────────────────────────────────────────────────
 export function TkDetail({ id, onClose }: { id: number; onClose: () => void }) {
-  const { map, seguintes, act, hoje, nomePessoa, clienteDoProjeto, projeto, projetosAtivos, mobile } = useTk()
+  const { map, seguintes, act, hoje, nomePessoa, mobile } = useTk()
   const t = map.get(id)
   const [titulo, setTitulo] = useState(t?.titulo ?? "")
   // Ressincroniza o título quando ele muda fora daqui (Desfazer, recarga).
@@ -828,7 +834,6 @@ export function TkDetail({ id, onClose }: { id: number; onClose: () => void }) {
   const [addItem, setAddItem] = useState(false)
   const mais = usePop()
   const det = useDetalhe(id, t)
-  const opcoesProjetoBase = useOpcoesProjeto()
   const an = useAnexos(id, det.recarregar)
   useEsc(onClose, !mobile)
 
@@ -839,12 +844,6 @@ export function TkDetail({ id, onClose }: { id: number; onClose: () => void }) {
   const risco = motivosRisco(t, map, hoje)
   const conflitos = conflitosPrazo(t, map)
   const late = vencida(t, hoje)
-  const ce = clienteEfetivo(t, clienteDoProjeto)
-  const projAtual = projeto(t.projetoId)
-  const opcoesProjeto =
-    projAtual && !projetosAtivos.some((p) => p.id === projAtual.id)
-      ? [{ id: projAtual.id as number | null, label: projAtual.nomeCurto, dot: projAtual.cor }, ...opcoesProjetoBase]
-      : opcoesProjetoBase
   const commitTitulo = () => {
     const v = titulo.trim()
     if (v && v !== t.titulo) act.atualizar(t.id, { titulo: v })
@@ -978,14 +977,14 @@ export function TkDetail({ id, onClose }: { id: number; onClose: () => void }) {
           <TkCampo label="Repetir">
             <TkRecurMenu chip value={t.recur} prazo={t.prazo} onChange={(v) => act.atualizar(t.id, { recur: v })} />
           </TkCampo>
-          <TkCampo label="Projeto">
-            <TkProjetoCampo t={t} opcoes={opcoesProjeto} />
+          <TkCampo label="Caso">
+            <TkCasoCampo t={t} />
           </TkCampo>
           <TkCampo label="Grupo">
-            {t.projetoId != null ? <TkGrupoMenu t={t} /> : <span className="tk-fchip ro muted">—</span>}
+            {t.casoId != null ? <TkGrupoMenu t={t} /> : <span className="tk-fchip ro muted">—</span>}
           </TkCampo>
           <TkCampo label="Cliente">
-            <TkClientPicker chip value={ce?.id ?? null} herdado={ce?.herdado} onChange={(v) => act.atualizar(t.id, { clienteId: v })} />
+            <TkClienteCampo t={t} />
           </TkCampo>
         </div>
       </div>
@@ -1009,7 +1008,7 @@ export function TkDetail({ id, onClose }: { id: number; onClose: () => void }) {
       <TkChecklist t={t} adding={addItem} setAdding={setAddItem} />
       <TkAnexos anexos={det.anexos} an={an} />
 
-      {t.projetoId != null && (anteriores.length > 0 || proximas.length > 0) && (
+      {t.casoId != null && (anteriores.length > 0 || proximas.length > 0) && (
         <TkSecao icon="link2" titulo="Ligações">
           <div className="tk-links2">
             <div className="tk-links2-col">

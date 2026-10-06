@@ -1,6 +1,6 @@
 "use client"
 
-// Tarefas — visão Fluxo de UM projeto: uma faixa por grupo, cartões compactos na
+// Tarefas — visão Fluxo de UM caso: uma faixa por grupo, cartões compactos na
 // ordem das ligações (não é Gantt), setas curvas inclusive entre faixas.
 // Arrastar a alça "Ligar" de um cartão até outro cria "o alvo só começa depois
 // desta"; clicar numa seta → "Remover". Celular: lista vertical por grupo.
@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { criariaCiclo, cadeia, rotuloPrazo, selo, vencida } from "@/lib/tarefas/regras"
 import { FLUXO, layoutFluxo, listaFluxo, type TomSeta } from "@/lib/tarefas/fluxo"
-import { statusLabel, type ProjetoRow, type TaskRow } from "@/lib/tarefas/types"
+import { statusLabel, type CasoQuadro, type TaskRow } from "@/lib/tarefas/types"
 import { Icon, type TfIconName } from "./tf-icons"
 import { useTk } from "./tk-context"
 import { TkMenuItem, TkPerson, TkProgress, TOM_SELO } from "./tk-ui"
@@ -126,7 +126,7 @@ const curva = (x1: number, y1: number, x2: number, y2: number) => {
   return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`
 }
 
-export function TkFlowView({ projeto }: { projeto: ProjetoRow }) {
+export function TkFlowView({ caso }: { caso: CasoQuadro }) {
   const { tarefas, map, seguintes, hoje, act, mobile, openTask, portal } = useTk()
   const [hover, setHover] = useState<number | null>(null)
   const [arrasto, setArrasto] = useState<Arrasto | null>(null)
@@ -136,8 +136,8 @@ export function TkFlowView({ projeto }: { projeto: ProjetoRow }) {
   // Soltar a alça "Ligar" sobre o próprio cartão gera um click nele — não abre o detalhe.
   const acabouDeArrastar = useRef(false)
 
-  const doProjeto = useMemo(() => tarefas.filter((t) => t.projetoId === projeto.id), [tarefas, projeto.id])
-  const layout = useMemo(() => layoutFluxo(doProjeto, hoje), [doProjeto, hoje])
+  const doCaso = useMemo(() => tarefas.filter((t) => t.casoId === caso.id), [tarefas, caso.id])
+  const layout = useMemo(() => layoutFluxo(doCaso, hoje), [doCaso, hoje])
   const chain = useMemo(() => (hover != null && !arrasto ? cadeia(hover, map, seguintes) : new Set<number>()), [hover, arrasto, map, seguintes])
 
   const local = (cx: number, cy: number) => {
@@ -186,7 +186,7 @@ export function TkFlowView({ projeto }: { projeto: ProjetoRow }) {
     }
   }, [menuSeta])
 
-  if (mobile) return <TkFlowList projeto={projeto} />
+  if (mobile) return <TkFlowList caso={caso} />
 
   const { pos, faixas, setas, W, H } = layout
   const largura = Math.max(W, 600)
@@ -254,7 +254,7 @@ export function TkFlowView({ projeto }: { projeto: ProjetoRow }) {
               )
             })()}
         </svg>
-        {doProjeto.map((t) => {
+        {doCaso.map((t) => {
           const p = pos.get(t.id)
           if (!p) return null
           return (
@@ -316,9 +316,9 @@ export function TkFlowView({ projeto }: { projeto: ProjetoRow }) {
 }
 
 /** Celular: lista vertical por grupo, na ordem das ligações; sem arrastar. */
-export function TkFlowList({ projeto }: { projeto: ProjetoRow }) {
+export function TkFlowList({ caso }: { caso: CasoQuadro }) {
   const { tarefas, map, hoje, openTask, nomePessoa } = useTk()
-  const grupos = listaFluxo(tarefas.filter((t) => t.projetoId === projeto.id))
+  const grupos = listaFluxo(tarefas.filter((t) => t.casoId === caso.id))
   if (!grupos.length) return <div style={{ fontSize: 14, color: "var(--text-muted)", padding: "8px 0" }}>Nenhuma tarefa</div>
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>

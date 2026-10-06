@@ -3,9 +3,10 @@
 // Tarefas — Quadro no celular: cabeçalho em vidro ("Quadro" + Nova tarefa),
 // linha-resumo, Minhas | Equipe + Filtrar, abas de status roláveis com contador,
 // lista de cartões do status (botão "…" sempre visível; sem arrastar) e a barra
-// inferior (Quadro · Projetos · Equipe). Fluxo = lista vertical por grupo.
+// inferior (Quadro · Modelos · Equipe). Fluxo = lista vertical por grupo.
 import { useState } from "react"
-import { ROTULO_PRAZO, SEM_PROJETO, noEscopo, ordenar, visiveis, type Filtros, type FiltroPrazo } from "@/lib/tarefas/filtros"
+import { buscarCasos } from "@/lib/tarefas/casos-quadro"
+import { ROTULO_PRAZO, SEM_CASO, noEscopo, ordenar, visiveis, type Filtros, type FiltroPrazo } from "@/lib/tarefas/filtros"
 import { STATUS, type TaskStatus } from "@/lib/tarefas/types"
 import { Icon, type TfIconName } from "./tf-icons"
 import { TkSummary, useOrdenacao, type SetFiltros } from "./tk-board"
@@ -14,7 +15,7 @@ import { useTk } from "./tk-context"
 import { TkFlowList } from "./tk-flow"
 import { TkMenuItem, TkMenuLabel, TkMenuSep, TkPop, TkSeg, usePop } from "./tk-ui"
 
-export type Pagina = "board" | "projects" | "team"
+export type Pagina = "board" | "modelos" | "team"
 
 const VAZIO: Record<TaskStatus, string> = {
   todo: "Nada a fazer",
@@ -24,17 +25,19 @@ const VAZIO: Record<TaskStatus, string> = {
 }
 
 export function TkMobileBoard({ F, setF, limpar }: { F: Filtros; setF: SetFiltros; limpar: () => void }) {
-  const { tarefas, meId, hoje, gestao, projetosAtivos, projeto, act } = useTk()
+  const { tarefas, meId, hoje, gestao, casosComTarefas, caso, cliente, act } = useTk()
   const ord = useOrdenacao()
   const [aba, setAba] = useState<TaskStatus>("todo")
+  const [qCaso, setQCaso] = useState("")
   const pf = usePop()
   const esc = noEscopo(tarefas, F, meId)
   const vis = visiveis(tarefas, F, meId, hoje)
-  const single = F.projetos.length === 1 && F.projetos[0] !== SEM_PROJETO ? projeto(F.projetos[0]) : null
+  const single = F.casos.length === 1 && F.casos[0] !== SEM_CASO ? caso(F.casos[0]) : null
   const lista = ordenar(vis.filter((t) => t.status === aba), F.ordenar, ord, F.direcao)
-  const nFiltros = F.projetos.length + (F.responsavel != null ? 1 : 0) + (F.prazo ? 1 : 0)
+  const nFiltros = F.casos.length + (F.responsavel != null ? 1 : 0) + (F.prazo ? 1 : 0)
   const fluxo = F.visao === "flow" && single
-  const toggleProj = (id: number) => setF({ projetos: F.projetos.includes(id) ? F.projetos.filter((x) => x !== id) : [...F.projetos, id] })
+  const toggleCaso = (id: number) => setF({ casos: F.casos.includes(id) ? F.casos.filter((x) => x !== id) : [...F.casos, id] })
+  const opcoesCaso = buscarCasos(casosComTarefas, qCaso, (id) => cliente(id)?.nome, 30)
 
   return (
     <div style={{ flex: 1, minHeight: 0, overflowY: "auto", position: "relative" }}>
@@ -68,12 +71,18 @@ export function TkMobileBoard({ F, setF, limpar }: { F: Filtros; setF: SetFiltro
             </button>
           </span>
           <TkPop open={pf.open} onClose={pf.close} anchor={pf.anchor} align="right" width={260}>
-            <TkMenuLabel>Projeto</TkMenuLabel>
-            {projetosAtivos.map((p) => (
-              <TkMenuItem key={p.id} dot={p.cor} checked={F.projetos.includes(p.id)} onClick={() => toggleProj(p.id)}>
-                {p.nomeCurto}
+            <TkMenuLabel>Caso</TkMenuLabel>
+            <input className="input" placeholder="Buscar caso" aria-label="Buscar caso" value={qCaso} onChange={(e) => setQCaso(e.target.value)} style={{ marginBottom: 3 }} />
+            <div style={{ maxHeight: 220, overflowY: "auto", display: "flex", flexDirection: "column", gap: 1 }}>
+              {opcoesCaso.map((c) => (
+                <TkMenuItem key={c.id} dot={c.cor} checked={F.casos.includes(c.id)} onClick={() => toggleCaso(c.id)}>
+                  {c.nomeCurto}
+                </TkMenuItem>
+              ))}
+              <TkMenuItem dot="var(--text-subtle)" checked={F.casos.includes(SEM_CASO)} onClick={() => toggleCaso(SEM_CASO)}>
+                Sem caso
               </TkMenuItem>
-            ))}
+            </div>
             <TkMenuSep />
             <TkMenuLabel>Prazo</TkMenuLabel>
             {(["late", "week", "fatal"] as FiltroPrazo[]).map((k) => (
@@ -117,11 +126,11 @@ export function TkMobileBoard({ F, setF, limpar }: { F: Filtros; setF: SetFiltro
       </div>
       <div style={{ padding: "12px 16px 24px", display: "flex", flexDirection: "column", gap: 8 }}>
         {fluxo && single ? (
-          <TkFlowList projeto={single} />
+          <TkFlowList caso={single} />
         ) : (
           <>
             {lista.map((t) => (
-              <TkCard key={t.id} t={t} arrastavel={false} mostrarProjeto={!single} naColunaAguardando={aba === "wait"} />
+              <TkCard key={t.id} t={t} arrastavel={false} mostrarCaso={!single} naColunaAguardando={aba === "wait"} />
             ))}
             {!lista.length && <div style={{ fontSize: 14, color: "var(--text-muted)", padding: "8px 0" }}>{VAZIO[aba]}</div>}
           </>
@@ -135,7 +144,7 @@ export function TkMobileNav({ pagina, ir }: { pagina: Pagina; ir: (p: Pagina) =>
   const { gestao } = useTk()
   const itens: [Pagina, TfIconName, string][] = [
     ["board", "kanban", "Quadro"],
-    ["projects", "folder", "Projetos"],
+    ["modelos", "layers", "Modelos"],
     ...(gestao ? ([["team", "users", "Equipe"]] as [Pagina, TfIconName, string][]) : []),
   ]
   return (

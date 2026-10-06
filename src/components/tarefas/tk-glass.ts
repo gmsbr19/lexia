@@ -4,7 +4,7 @@
 import { glassElevation } from "@/styles/glass"
 import { lexGlass, lexGlassStrong } from "@/styles/glass.css"
 
-/** Janela (detalhe, nova tarefa, projeto, modelo, assistente, confirmação). */
+/** Janela (detalhe, nova tarefa, caso, modelo, assistente, confirmação). */
 export const TK_JANELA = `${lexGlass} tk-panel`
 export const ELEVACAO_JANELA = glassElevation("0 40px 100px rgba(2,13,37,0.42), 0 12px 32px rgba(2,13,37,0.24)")
 

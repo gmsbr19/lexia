@@ -1,5 +1,5 @@
 /* LexIA · Tarefas (redesign) — folha global do módulo, importada nas páginas
- * /tarefas e /projetos. Tudo escopado em .tk-scope. Usa SÓ os tokens do app
+ * /tarefas. Tudo escopado em .tk-scope. Usa SÓ os tokens do app
  * (theme.css.ts / .crm-scope): cores, raios 6/8/10/14, Inter 400/500.
  *
  * VIDRO: janelas, menus e o aviso usam as classes do APP (`lexGlass` /
@@ -224,7 +224,7 @@
 .tk-portal .tk-toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 1300; width: min(480px, calc(100% - 32px)); padding: 8px 8px 8px 16px; animation: tkToast .2s var(--ease) both; }
 @keyframes tkToast { from { opacity: 0; transform: translate(-50%, 8px) } to { opacity: 1; transform: translate(-50%, 0) } }
 
-/* ── projetos / equipe ── */
+/* ── tabelas (equipe) ── */
 .tk-scope .tk-prow { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.4fr) 110px 90px 140px 70px; align-items: center; gap: 14px; min-height: 52px; padding: 6px 8px; border-bottom: 1px solid var(--border); cursor: pointer; outline: none; }
 .tk-scope .tk-row-hover:hover { background: var(--surface-hover); }
 .tk-scope .tk-row-hover:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }

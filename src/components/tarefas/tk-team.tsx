@@ -1,14 +1,14 @@
 "use client"
 
 // Tarefas — Equipe (só gestão): Vencidas · Concluídas no prazo (30 dias) ·
-// Projetos ativos; "Precisa de atenção" (vencidas, em risco, prazos fatais em até
+// Casos ativos; "Precisa de atenção" (vencidas, em risco, prazos fatais em até
 // 5 dias); carga por pessoa (nome clicável abre o Quadro filtrado pela pessoa).
 // Mesmo cálculo puro de GET /api/tarefas/equipe (equipe.ts).
 import { useMemo } from "react"
 import { painelEquipe, type TipoAtencao } from "@/lib/tarefas/equipe"
 import { Icon, type TfIconName } from "./tf-icons"
 import { useTk } from "./tk-context"
-import { TkPerson, TkProjTag } from "./tk-ui"
+import { TkCasoTag, TkPerson } from "./tk-ui"
 
 const TOM: Record<TipoAtencao, { cor: string; icon: TfIconName }> = {
   late: { cor: "var(--crit)", icon: "alertCircle" },
@@ -29,8 +29,8 @@ function Kpi({ label, valor, sub, cor }: { label: string; valor: string | number
 }
 
 export function TkTeamPage({ onAbrirPessoa }: { onAbrirPessoa: (id: number) => void }) {
-  const { tarefas, projetos, pessoas, hoje, map, openTask } = useTk()
-  const p = useMemo(() => painelEquipe(tarefas, projetos, pessoas, hoje), [tarefas, projetos, pessoas, hoje])
+  const { tarefas, casos, pessoas, hoje, map, openTask } = useTk()
+  const p = useMemo(() => painelEquipe(tarefas, casos, pessoas, hoje), [tarefas, casos, pessoas, hoje])
   const max = Math.max(1, ...p.carga.map((c) => c.abertas))
   return (
     <main className="tk-main">
@@ -45,7 +45,7 @@ export function TkTeamPage({ onAbrirPessoa }: { onAbrirPessoa: (id: number) => v
             valor={p.noPrazo.pct == null ? "—" : `${p.noPrazo.pct}%`}
             sub={`${p.noPrazo.feitas} de ${p.noPrazo.total}`}
           />
-          <Kpi label="Projetos ativos" valor={p.projetosAtivos} />
+          <Kpi label="Casos ativos" valor={p.casosAtivos} />
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 12, alignItems: "start" }}>
           <section className="card" style={{ padding: "12px 16px 8px" }}>
@@ -72,7 +72,7 @@ export function TkTeamPage({ onAbrirPessoa }: { onAbrirPessoa: (id: number) => v
                   <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
                     <span style={{ fontSize: 14, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.titulo}</span>
                     <span style={{ display: "flex", minWidth: 0 }}>
-                      <TkProjTag projetoId={t.projetoId} grupo={t.grupo} />
+                      <TkCasoTag casoId={t.casoId} grupo={t.grupo} />
                     </span>
                   </div>
                   <span style={{ fontSize: 12, fontWeight: 500, color: TOM[tipo].cor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={texto}>

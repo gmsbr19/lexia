@@ -21,25 +21,28 @@ export function TkDot({ color, size = 8 }: { color: string; size?: number }) {
   )
 }
 
-/** "● Alfa · Protocolo 02 · 1º RI Taubaté" — uma linha; só o grupo trunca. */
-export function TkProjTag({
-  projetoId,
+/** "● Alfa · Protocolo 02 · 1º RI Taubaté" — uma linha; etiqueta e grupo truncam. */
+export function TkCasoTag({
+  casoId,
   grupo,
   strong,
   size = 12,
 }: {
-  projetoId: number | null
+  casoId: number | null
   grupo?: string | null
   strong?: boolean
   size?: number
 }) {
-  const { projeto } = useTk()
-  const p = projeto(projetoId)
+  const { caso } = useTk()
+  const c = caso(casoId)
   return (
     <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, fontSize: size, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
-      <TkDot color={p ? p.cor : "var(--text-subtle)"} />
-      <span style={{ fontWeight: 500, color: strong ? "var(--text)" : "var(--text-muted)", flexShrink: 0 }}>
-        {p ? p.nomeCurto : "Sem projeto"}
+      <TkDot color={c ? c.cor : "var(--text-subtle)"} />
+      <span
+        title={c?.nome}
+        style={{ fontWeight: 500, color: strong ? "var(--text)" : "var(--text-muted)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", flexShrink: grupo ? 0 : 1, maxWidth: grupo ? "60%" : undefined }}
+      >
+        {c ? c.nomeCurto : "Sem caso"}
       </span>
       {grupo && (
         <span title={grupo} style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
