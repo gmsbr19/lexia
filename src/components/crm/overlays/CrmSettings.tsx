@@ -1074,7 +1074,7 @@ export function CrmSettings({
     }
 
     const del = async (a: AreaComUsoResult) => {
-      if (!window.confirm(`Excluir área "${a.nome}"? Projetos e casos existentes mantêm o vínculo.`)) return
+      if (!window.confirm(`Excluir área "${a.nome}"? Casos e leads existentes mantêm o vínculo.`)) return
       try {
         await deleteAreaAdmin(a.id)
         toast("Área excluída")
@@ -1092,7 +1092,7 @@ export function CrmSettings({
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
           <div>
             <SectionTitle>Áreas do Direito</SectionTitle>
-            <SectionSub>Taxonomia de áreas compartilhada por Projetos, Casos, Leads e Campanhas.</SectionSub>
+            <SectionSub>Taxonomia de áreas compartilhada por Casos, Modelos de tarefas, Leads e Campanhas.</SectionSub>
           </div>
           {!editing && (
             <button className="btn btn-primary" onClick={openNew} style={{ height: 32, fontSize: 12 }}>
@@ -1142,11 +1142,10 @@ export function CrmSettings({
                   <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 8, fontFamily: "var(--font-mono)" }}>{a.chave}</span>
                 </span>
                 <div style={{ display: "flex", gap: 14, fontSize: 11, color: "var(--text-subtle)" }}>
-                  {a.projetos > 0 && <span title="Projetos">{a.projetos}p</span>}
                   {a.casos > 0 && <span title="Casos">{a.casos}c</span>}
                   {a.leads > 0 && <span title="Leads">{a.leads}l</span>}
                   {a.campanhas > 0 && <span title="Campanhas">{a.campanhas}cam</span>}
-                  {a.projetos + a.casos + a.leads + a.campanhas === 0 && <span>sem uso</span>}
+                  {a.casos + a.leads + a.campanhas === 0 && <span>sem uso</span>}
                 </div>
                 {!a.ativo && <CrmBadge tone="neutral">Inativo</CrmBadge>}
                 <button className="btn btn-ghost" onClick={() => openEdit(a)} style={{ height: 28, fontSize: 12, padding: "0 10px" }}><Icon name="edit" size={13} /></button>

@@ -280,7 +280,15 @@ async function resolveRefs(dir: "in" | "out", cat?: string | null, party?: strin
   }
   let casoId: number | null = null
   if (dir === "in" && caso?.trim()) {
-    casoId = (await prisma.caso.findFirst({ where: { titulo: caso.trim(), excluidoEm: null }, select: { id: true } }))?.id ?? null
+    // Títulos podem se repetir (ex.: casos vindos do quadro de Tarefas): o caso do
+    // MESMO cliente tem preferência; sem cliente resolvido, o mais recente.
+    const doCliente = clienteId
+      ? await prisma.caso.findFirst({ where: { titulo: caso.trim(), excluidoEm: null, clientePrincipalId: clienteId }, select: { id: true } })
+      : null
+    casoId =
+      doCliente?.id ??
+      (await prisma.caso.findFirst({ where: { titulo: caso.trim(), excluidoEm: null }, orderBy: { id: "desc" }, select: { id: true } }))?.id ??
+      null
   }
   return { categoriaId, clienteId, pagoPara, casoId }
 }

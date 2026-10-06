@@ -16,13 +16,12 @@ export async function getAreasComUso(): Promise<AreaComUso[]> {
   const areas = await getAreas()
   const counts = await Promise.all(
     areas.map(async (a) => {
-      const [projetos, casos, leads, campanhas] = await Promise.all([
-        prisma.projeto.count({ where: { area: a.chave, excluidoEm: null } }),
+      const [casos, leads, campanhas] = await Promise.all([
         prisma.caso.count({ where: { area: a.chave, excluidoEm: null } }),
         prisma.lead.count({ where: { area: a.chave } }),
         prisma.campanha.count({ where: { area: a.chave } }),
       ])
-      return { ...a, projetos, casos, leads, campanhas }
+      return { ...a, casos, leads, campanhas }
     }),
   )
   return counts

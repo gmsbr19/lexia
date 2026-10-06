@@ -96,7 +96,7 @@ export async function listTarefasAgendadas(de?: string, ate?: string): Promise<A
       responsavelId: true,
       casoId: true,
       clienteId: true,
-      caso: { select: { titulo: true } },
+      caso: { select: { titulo: true, excluidoEm: true } },
       cliente: { select: { nome: true } },
     },
     orderBy: [{ prazo: "asc" }, { id: "asc" }],
@@ -110,8 +110,9 @@ export async function listTarefasAgendadas(de?: string, ate?: string): Promise<A
     status: r.status,
     prazoFatal: r.prazoFatal,
     responsavelId: r.responsavelId,
-    casoId: r.casoId,
-    caso: r.caso?.titulo ?? null,
+    // caso excluído (soft-delete) não aparece — a tarefa fica "Sem caso"
+    casoId: r.caso && !r.caso.excluidoEm ? r.casoId : null,
+    caso: r.caso && !r.caso.excluidoEm ? r.caso.titulo : null,
     clienteId: r.clienteId,
     cliente: r.cliente?.nome ?? null,
   }))

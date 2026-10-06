@@ -104,15 +104,15 @@ export async function getClienteDetail(id: number): Promise<ClienteDetail | null
       orderBy: { titulo: "asc" },
     }),
     prisma.tarefa.findMany({
-      // cliente efetivo (regras.ts clienteEfetivo): o do projeto vivo, se houver;
-      // senão o próprio da tarefa. Uma tarefa com cliente próprio X num projeto do
+      // cliente efetivo (regras.ts clienteEfetivo): o do caso vivo, se houver;
+      // senão o próprio da tarefa. Uma tarefa com cliente próprio X num caso do
       // cliente Y pertence a Y — não aparece na ficha de X.
       where: {
         OR: [
-          { projetoRef: { clienteId: id, excluidoEm: null } },
+          { caso: { clientePrincipalId: id, excluidoEm: null } },
           {
             clienteId: id,
-            OR: [{ projetoId: null }, { projetoRef: { clienteId: null } }, { projetoRef: { excluidoEm: { not: null } } }],
+            OR: [{ casoId: null }, { caso: { clientePrincipalId: null } }, { caso: { excluidoEm: { not: null } } }],
           },
         ],
       },

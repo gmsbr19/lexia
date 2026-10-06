@@ -16,7 +16,6 @@ export interface AreaView {
 
 /** Inclui contagens de uso por módulo (para o painel admin). */
 export interface AreaComUso extends AreaView {
-  projetos: number
   casos: number
   leads: number
   campanhas: number
