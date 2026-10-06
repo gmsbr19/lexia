@@ -25,6 +25,34 @@ export function makeDefaultState(schema: Pick<VgSchema, "cols">): VgState {
     frozen: false, density: "comfortable", mode: "tabela",
   };
 }
+/**
+ * Visão salva × schema atual: colunas criadas DEPOIS que a visão foi salva entram
+ * no fim da ordem (ocultas se não forem padrão) e colunas que não existem mais
+ * saem — senão uma coluna nova nunca apareceria (nem no painel Colunas).
+ */
+function alinharEstado(s: VgState, schema: Pick<VgSchema, "cols">): VgState {
+  const keys = new Set(schema.cols.map((c) => c.key));
+  const order = s.order.filter((k) => keys.has(k));
+  const novas = schema.cols.filter((c) => !order.includes(c.key));
+  return {
+    ...s,
+    order: [...order, ...novas.map((c) => c.key)],
+    hidden: [...s.hidden.filter((k) => keys.has(k)), ...novas.filter((c) => c.def === false).map((c) => c.key)],
+  };
+}
+
+/** Store inicial: o salvo (alinhado ao schema) + sementes novas ainda não oferecidas. */
+function montarStore(initial: VgGridStore | null, seeds: VgSavedView[], schema: Pick<VgSchema, "cols">): { store: VgGridStore; mudou: boolean } {
+  const seedIds = seeds.map((v) => v.id);
+  if (!initial || !initial.views.length) return { store: { activeId: seeds[0].id, views: seeds, seedsVistos: seedIds }, mudou: false };
+  const vistos = new Set(initial.seedsVistos ?? initial.views.map((v) => v.id));
+  const novas = seeds.filter((v) => !vistos.has(v.id) && !initial.views.some((x) => x.id === v.id));
+  const views = [...initial.views, ...novas].map((v) => ({ ...v, state: alinharEstado(v.state, schema) }));
+  const seedsVistos = [...new Set([...(initial.seedsVistos ?? []), ...seedIds])];
+  const mudou = novas.length > 0 || (initial.seedsVistos ?? []).length !== seedsVistos.length;
+  return { store: { ...initial, views, seedsVistos }, mudou };
+}
+
 function ruleNode(col: string, op: string) {
   return { type: "rule" as const, id: vgUid(), col, op, value: "", value2: "", values: [] as string[] };
 }
@@ -54,8 +82,8 @@ export function ViewGrid({
   schema, rows, searchKeys, initialStore, seedViews, onStoreChange, onRowClick, rowActions,
   selectable, bulkFields, onBulkApply, onBulkDelete, toolbarExtra, csvName, kanbanRender, loading, inject,
 }: ViewGridProps) {
-  const [store, setStore] = React.useState<VgGridStore>(() =>
-    initialStore && initialStore.views.length ? initialStore : { activeId: seedViews[0].id, views: seedViews });
+  const [inicio] = React.useState(() => montarStore(initialStore, seedViews, schema));
+  const [store, setStore] = React.useState<VgGridStore>(inicio.store);
 
   const activeView = store.views.find((v) => v.id === store.activeId) || store.views[0];
   const [work, setWorkState] = React.useState<VgState>(() => clone(activeView.state));
@@ -70,12 +98,16 @@ export function ViewGrid({
   const setWork = (patch: Partial<VgState>) => setWorkState((w) => ({ ...w, ...patch }));
   const setWidth = (key: string, w: number) => setWidths((s) => ({ ...s, [key]: w }));
 
-  // persiste o store (o chamador aplica o debounce); pula a montagem inicial
+  // persiste o store (o chamador aplica o debounce); pula a montagem inicial —
+  // a não ser que o store salvo tenha ganhado sementes novas (grava uma vez).
   const mounted = React.useRef(false);
   React.useEffect(() => {
-    if (!mounted.current) { mounted.current = true; return; }
+    if (!mounted.current) {
+      mounted.current = true;
+      if (!inicio.mudou) return;
+    }
     onStoreChange(store);
-  }, [store, onStoreChange]);
+  }, [store, onStoreChange, inicio.mudou]);
 
   const filtersRef = React.useRef<HTMLButtonElement>(null);
   const sortRef = React.useRef<HTMLButtonElement>(null);

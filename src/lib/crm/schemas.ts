@@ -55,6 +55,7 @@ const viewSchema = z.object({
 const gridStoreSchema = z.object({
   activeId: z.string().max(60),
   views: z.array(viewSchema).min(1).max(40),
+  seedsVistos: z.array(z.string().max(60)).max(60).optional(),
 });
 
 export const crmViewPrefsSchema = z
