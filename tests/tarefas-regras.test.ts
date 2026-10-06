@@ -33,7 +33,7 @@ import {
 import { FILTROS_PADRAO, lerPreferencias, noEscopo, ordenar, posicaoDepois, reposicionar, visiveis } from "@/lib/tarefas/filtros"
 import { painelEquipe } from "@/lib/tarefas/equipe"
 import { layoutFluxo, listaFluxo, profundidades } from "@/lib/tarefas/fluxo"
-import type { ProjetoRow, TaskRow, TeamMember } from "@/lib/tarefas/types"
+import type { CasoQuadro, TaskRow, TeamMember } from "@/lib/tarefas/types"
 
 const HOJE = "2026-09-23" // quarta
 const d = (n: number) => addDays(HOJE, n)
@@ -60,7 +60,7 @@ function t(p: Partial<TaskRow> & { due: number; st: TaskRow["status"]; doneAt?: 
     status: st,
     prazo: d(due),
     prazoFatal: false,
-    projetoId: null,
+    casoId: null,
     grupo: null,
     clienteId: null,
     responsavelId: null,
@@ -78,34 +78,34 @@ function t(p: Partial<TaskRow> & { due: number; st: TaskRow["status"]; doneAt?: 
 }
 
 // ── seed do protótipo (ids fixos) ──
-const a1 = t({ id: 1, titulo: "Reunir documentação", projetoId: ALFA, grupo: G1, responsavelId: ED, due: -3, st: "done", doneAt: -4 })
-const a2 = t({ id: 2, titulo: "Solicitar ITBI", projetoId: ALFA, grupo: G1, responsavelId: LE, due: 2, st: "doing", anteriores: [1] })
-const a3 = t({ id: 3, titulo: "Protocolar remessa", projetoId: ALFA, grupo: G1, responsavelId: LE, due: 6, st: "wait", anteriores: [2] })
-const a4 = t({ id: 4, titulo: "Reunir documentação", projetoId: ALFA, grupo: G2, responsavelId: ED, due: -5, st: "done", doneAt: -6 })
-const a5 = t({ id: 5, titulo: "Emitir guia de ITBI", projetoId: ALFA, grupo: G2, responsavelId: LE, due: 5, st: "wait", aguardandoTexto: "Prefeitura — ITBI", anteriores: [4] })
-const a6 = t({ id: 6, titulo: "Conferir certidões", projetoId: ALFA, grupo: G2, responsavelId: ED, due: -2, st: "todo", anteriores: [4] })
-const a7 = t({ id: 7, titulo: "Protocolar remessa", projetoId: ALFA, grupo: G2, responsavelId: LE, due: 8, st: "wait", anteriores: [5, 6] })
-const a8 = t({ id: 8, titulo: "Reunir documentação", projetoId: ALFA, grupo: G3, responsavelId: ED, due: 9, st: "todo" })
-const a9 = t({ id: 9, titulo: "Solicitar ITBI", projetoId: ALFA, grupo: G3, responsavelId: LE, due: 14, st: "wait", anteriores: [8] })
-const a10 = t({ id: 10, titulo: "Protocolar remessa", projetoId: ALFA, grupo: G3, responsavelId: null, due: 13, st: "wait", anteriores: [9] })
-const a11 = t({ id: 11, titulo: "Reunir documentação", projetoId: ALFA, grupo: G4, responsavelId: ED, due: 12, st: "todo" })
-const a12 = t({ id: 12, titulo: "Solicitar ITBI", projetoId: ALFA, grupo: G4, responsavelId: LE, due: 17, st: "wait", anteriores: [11] })
-const a13 = t({ id: 13, titulo: "Protocolar remessa", projetoId: ALFA, grupo: G4, responsavelId: LE, due: 22, st: "wait", anteriores: [12, 10] })
-const b1 = t({ id: 21, titulo: "Enviar minuta", projetoId: BETA, responsavelId: LE, due: -1, st: "todo" })
-const b2 = t({ id: 22, titulo: "Calcular ITBI", projetoId: BETA, responsavelId: TH, due: 3, st: "todo" })
-const b3 = t({ id: 23, titulo: "Colher assinaturas", projetoId: BETA, responsavelId: LE, due: 12, st: "wait", aguardandoTexto: "Cliente — assinaturas" })
-const b4 = t({ id: 24, titulo: "Levantar matrículas", projetoId: BETA, responsavelId: ED, due: -3, st: "done", doneAt: -2 })
-const g1 = t({ id: 31, titulo: "Revisar contrato social", projetoId: GAMA, responsavelId: TH, due: 0, st: "doing" })
-const g2 = t({ id: 32, titulo: "Montar planilha", projetoId: GAMA, responsavelId: ED, due: 8, st: "todo" })
-const g3 = t({ id: 33, titulo: "Reunião inicial", projetoId: GAMA, responsavelId: TH, due: -1, st: "done", doneAt: -1 })
-const d1 = t({ id: 41, titulo: "Solicitar matrículas", projetoId: DELTA, responsavelId: ED, due: 1, st: "todo" })
-const d2 = t({ id: 42, titulo: "Minuta de laudo", projetoId: DELTA, responsavelId: LE, due: 15, st: "doing" })
-const d3 = t({ id: 43, titulo: "Aprovar laudo", projetoId: DELTA, responsavelId: TH, due: 20, st: "wait", anteriores: [42] })
-const o1 = t({ id: 51, titulo: "Protocolar contestação", projetoId: OMEGA, responsavelId: LE, due: 2, prazoFatal: true, st: "doing" })
-const o2 = t({ id: 52, titulo: "Conferir publicações", projetoId: OMEGA, responsavelId: ED, due: 7, st: "todo" })
-const o3 = t({ id: 53, titulo: "Juntar procuração", projetoId: OMEGA, responsavelId: ED, due: -4, st: "done", doneAt: -3 })
-const o4 = t({ id: 54, titulo: "Preparar audiência", projetoId: OMEGA, responsavelId: LE, due: 16, st: "todo" })
-const o5 = t({ id: 55, titulo: "Cadastrar processo", projetoId: OMEGA, responsavelId: ED, due: -16, st: "done", doneAt: -15 })
+const a1 = t({ id: 1, titulo: "Reunir documentação", casoId: ALFA, grupo: G1, responsavelId: ED, due: -3, st: "done", doneAt: -4 })
+const a2 = t({ id: 2, titulo: "Solicitar ITBI", casoId: ALFA, grupo: G1, responsavelId: LE, due: 2, st: "doing", anteriores: [1] })
+const a3 = t({ id: 3, titulo: "Protocolar remessa", casoId: ALFA, grupo: G1, responsavelId: LE, due: 6, st: "wait", anteriores: [2] })
+const a4 = t({ id: 4, titulo: "Reunir documentação", casoId: ALFA, grupo: G2, responsavelId: ED, due: -5, st: "done", doneAt: -6 })
+const a5 = t({ id: 5, titulo: "Emitir guia de ITBI", casoId: ALFA, grupo: G2, responsavelId: LE, due: 5, st: "wait", aguardandoTexto: "Prefeitura — ITBI", anteriores: [4] })
+const a6 = t({ id: 6, titulo: "Conferir certidões", casoId: ALFA, grupo: G2, responsavelId: ED, due: -2, st: "todo", anteriores: [4] })
+const a7 = t({ id: 7, titulo: "Protocolar remessa", casoId: ALFA, grupo: G2, responsavelId: LE, due: 8, st: "wait", anteriores: [5, 6] })
+const a8 = t({ id: 8, titulo: "Reunir documentação", casoId: ALFA, grupo: G3, responsavelId: ED, due: 9, st: "todo" })
+const a9 = t({ id: 9, titulo: "Solicitar ITBI", casoId: ALFA, grupo: G3, responsavelId: LE, due: 14, st: "wait", anteriores: [8] })
+const a10 = t({ id: 10, titulo: "Protocolar remessa", casoId: ALFA, grupo: G3, responsavelId: null, due: 13, st: "wait", anteriores: [9] })
+const a11 = t({ id: 11, titulo: "Reunir documentação", casoId: ALFA, grupo: G4, responsavelId: ED, due: 12, st: "todo" })
+const a12 = t({ id: 12, titulo: "Solicitar ITBI", casoId: ALFA, grupo: G4, responsavelId: LE, due: 17, st: "wait", anteriores: [11] })
+const a13 = t({ id: 13, titulo: "Protocolar remessa", casoId: ALFA, grupo: G4, responsavelId: LE, due: 22, st: "wait", anteriores: [12, 10] })
+const b1 = t({ id: 21, titulo: "Enviar minuta", casoId: BETA, responsavelId: LE, due: -1, st: "todo" })
+const b2 = t({ id: 22, titulo: "Calcular ITBI", casoId: BETA, responsavelId: TH, due: 3, st: "todo" })
+const b3 = t({ id: 23, titulo: "Colher assinaturas", casoId: BETA, responsavelId: LE, due: 12, st: "wait", aguardandoTexto: "Cliente — assinaturas" })
+const b4 = t({ id: 24, titulo: "Levantar matrículas", casoId: BETA, responsavelId: ED, due: -3, st: "done", doneAt: -2 })
+const g1 = t({ id: 31, titulo: "Revisar contrato social", casoId: GAMA, responsavelId: TH, due: 0, st: "doing" })
+const g2 = t({ id: 32, titulo: "Montar planilha", casoId: GAMA, responsavelId: ED, due: 8, st: "todo" })
+const g3 = t({ id: 33, titulo: "Reunião inicial", casoId: GAMA, responsavelId: TH, due: -1, st: "done", doneAt: -1 })
+const d1 = t({ id: 41, titulo: "Solicitar matrículas", casoId: DELTA, responsavelId: ED, due: 1, st: "todo" })
+const d2 = t({ id: 42, titulo: "Minuta de laudo", casoId: DELTA, responsavelId: LE, due: 15, st: "doing" })
+const d3 = t({ id: 43, titulo: "Aprovar laudo", casoId: DELTA, responsavelId: TH, due: 20, st: "wait", anteriores: [42] })
+const o1 = t({ id: 51, titulo: "Protocolar contestação", casoId: OMEGA, responsavelId: LE, due: 2, prazoFatal: true, st: "doing" })
+const o2 = t({ id: 52, titulo: "Conferir publicações", casoId: OMEGA, responsavelId: ED, due: 7, st: "todo" })
+const o3 = t({ id: 53, titulo: "Juntar procuração", casoId: OMEGA, responsavelId: ED, due: -4, st: "done", doneAt: -3 })
+const o4 = t({ id: 54, titulo: "Preparar audiência", casoId: OMEGA, responsavelId: LE, due: 16, st: "todo" })
+const o5 = t({ id: 55, titulo: "Cadastrar processo", casoId: OMEGA, responsavelId: ED, due: -16, st: "done", doneAt: -15 })
 const n1 = t({ id: 61, titulo: "Renovar certificado", responsavelId: TH, due: 11, st: "todo" })
 const n2 = t({ id: 62, titulo: "Enviar proposta de honorários", clienteId: 7, responsavelId: TH, due: 9, st: "todo" })
 
@@ -188,10 +188,10 @@ describe("cadeia, risco, conflito, aguardando", () => {
     expect(selo(a1, MAP, HOJE, nome)).toBeNull()
   })
   it("rótulo do aguardando: 1 anterior → Título (Pessoa); várias → N passos", () => {
-    const x = t({ due: 30, st: "wait", anteriores: [5, 6], projetoId: ALFA })
+    const x = t({ due: 30, st: "wait", anteriores: [5, 6], casoId: ALFA })
     const m = indexar([...SEED, x])
     expect(aguardandoRotulo(x, m, nome)).toBe("2 passos")
-    const semResp = t({ due: 30, st: "wait", anteriores: [10], projetoId: ALFA })
+    const semResp = t({ due: 30, st: "wait", anteriores: [10], casoId: ALFA })
     expect(aguardandoRotulo(semResp, indexar([...SEED, semResp]), nome)).toBe("Protocolar remessa (sem responsável)")
   })
   it("conflito de prazo: anterior pendente vence depois desta", () => {
@@ -236,18 +236,18 @@ describe("fluxo de status", () => {
     expect(statusAoDesligar({ status: "wait", aguardandoTexto: null }, 1)).toBe("wait")
   })
   it("ajuste em cadeia nunca toca prazo fatal", () => {
-    const x1 = t({ id: 901, due: 5, st: "todo", projetoId: 99 })
-    const x2 = t({ id: 902, due: 8, st: "wait", projetoId: 99, anteriores: [901] })
-    const x3 = t({ id: 903, due: 10, st: "wait", projetoId: 99, anteriores: [902], prazoFatal: true })
-    const x4 = t({ id: 904, due: 12, st: "done", projetoId: 99, anteriores: [902] })
+    const x1 = t({ id: 901, due: 5, st: "todo", casoId: 99 })
+    const x2 = t({ id: 902, due: 8, st: "wait", casoId: 99, anteriores: [901] })
+    const x3 = t({ id: 903, due: 10, st: "wait", casoId: 99, anteriores: [902], prazoFatal: true })
+    const x4 = t({ id: 904, due: 12, st: "done", casoId: 99, anteriores: [902] })
     const r = deslocamentoCadeia(901, d(8), [x1, x2, x3, x4])
     expect(r).toEqual({ delta: 3, moveis: [902], fatais: 1 })
   })
-  it("cliente efetivo: o do projeto (herdado) vence o próprio", () => {
-    const doProjeto = (id: number) => (id === ALFA ? 1 : null)
-    expect(clienteEfetivo({ projetoId: ALFA, clienteId: 5 }, doProjeto)).toEqual({ id: 1, herdado: true })
-    expect(clienteEfetivo({ projetoId: BETA, clienteId: 5 }, doProjeto)).toEqual({ id: 5, herdado: false })
-    expect(clienteEfetivo({ projetoId: null, clienteId: null }, doProjeto)).toBeNull()
+  it("cliente efetivo: o do caso (herdado) vence o próprio", () => {
+    const doCaso = (id: number) => (id === ALFA ? 1 : null)
+    expect(clienteEfetivo({ casoId: ALFA, clienteId: 5 }, doCaso)).toEqual({ id: 1, herdado: true })
+    expect(clienteEfetivo({ casoId: BETA, clienteId: 5 }, doCaso)).toEqual({ id: 5, herdado: false })
+    expect(clienteEfetivo({ casoId: null, clienteId: null }, doCaso)).toBeNull()
   })
 })
 
@@ -264,11 +264,11 @@ describe("filtros do quadro", () => {
     const fatal = { ...FILTROS_PADRAO, prazo: "fatal" as const }
     expect(visiveis(SEED, fatal, TH, HOJE).map((x) => x.id)).toEqual([51])
   })
-  it("projeto 0 = Sem projeto", () => {
-    const f = { ...FILTROS_PADRAO, projetos: [0] }
+  it("caso 0 = Sem caso", () => {
+    const f = { ...FILTROS_PADRAO, casos: [0] }
     expect(noEscopo(SEED, f, TH).map((x) => x.id)).toEqual([61, 62])
   })
-  const ctx = { ordemProjeto: () => 0, nomePessoa: nome }
+  const ctx = { ordemCaso: () => 0, nomePessoa: nome }
   it("ordenar por prazo e por responsável (sem responsável por último)", () => {
     const ord = ordenar([a3, a10, a2], "due", ctx)
     expect(ord.map((x) => x.id)).toEqual([2, 3, 10])
@@ -319,12 +319,14 @@ describe("ordem manual e preferências", () => {
     expect(lerPreferencias("{lixo")).toEqual({ ordenar: "due", direcao: "asc", agrupar: "none" })
     expect(lerPreferencias({ ordenar: "x", direcao: "y", agrupar: 1 })).toEqual({ ordenar: "due", direcao: "asc", agrupar: "none" })
     expect(lerPreferencias(null)).toEqual({ ordenar: "due", direcao: "asc", agrupar: "none" })
+    // visão salva antes da unificação Projeto → Caso: "proj" vira "caso"
+    expect(lerPreferencias({ ordenar: "proj", direcao: "desc", agrupar: "proj" })).toEqual({ ordenar: "caso", direcao: "desc", agrupar: "caso" })
   })
 })
 
 describe("painel da Equipe", () => {
   const pessoas: TeamMember[] = [TH, LE, ED].map((id) => ({ id, nome: NOMES[id], first: NOMES[id], initials: "", color: "", role: "" }))
-  const projetos: ProjetoRow[] = [ALFA, BETA, GAMA, DELTA, OMEGA].map((id) => ({
+  const casos: CasoQuadro[] = [ALFA, BETA, GAMA, DELTA, OMEGA].map((id) => ({
     id,
     nomeCurto: String(id),
     nome: String(id),
@@ -334,13 +336,13 @@ describe("painel da Equipe", () => {
     responsavelId: null,
     prazo: null,
     descricao: null,
-    arquivadoEm: null,
+    arquivado: false,
     modeloOrigemId: null,
   }))
   it("indicadores, atenção e carga", () => {
-    const p = painelEquipe(SEED, projetos, pessoas, HOJE)
+    const p = painelEquipe(SEED, casos, pessoas, HOJE)
     expect(p.vencidas).toBe(2)
-    expect(p.projetosAtivos).toBe(5)
+    expect(p.casosAtivos).toBe(5)
     expect(p.noPrazo).toEqual({ feitas: 3, total: 6, pct: 50 }) // b4, o3 e o5 foram entregues depois do prazo
     // atenção: vencidas primeiro, depois prazo fatal em até 5 dias, depois em risco
     expect(p.atencao.map((i) => `${i.tipo}:${i.tarefaId}`)).toEqual(["late:6", "late:21", "fatal:51", "risk:7"])
@@ -349,7 +351,7 @@ describe("painel da Equipe", () => {
 })
 
 describe("fluxo", () => {
-  const alfa = SEED.filter((x) => x.projetoId === ALFA)
+  const alfa = SEED.filter((x) => x.casoId === ALFA)
   it("profundidade = ordem das ligações", () => {
     const p = profundidades(alfa)
     expect([p.get(1), p.get(2), p.get(3)]).toEqual([0, 1, 2])

@@ -284,23 +284,19 @@ describe("registry — deterministic, valid tool schemas", () => {
     expect(toApiTools("admin").length).toBe(on.size)
   })
 
-  it("expõe as tools de projetos e gateia a escrita (sócio/advogado), mantendo a leitura aberta", () => {
+  it("modelos e montagem de caso: leitura aberta, escrita só sócio/advogado", () => {
     const nomes = (role: string) => new Set(toApiTools(role).map((t) => t.name))
     // leitura disponível para todos (inclusive estagiário/staff)
     for (const role of ["estagiario", "staff", "advogado", "socio", "admin"]) {
-      expect(nomes(role).has("listar_projetos"), role).toBe(true)
-      expect(nomes(role).has("detalhe_projeto"), role).toBe(true)
-      expect(nomes(role).has("listar_modelos_projeto"), role).toBe(true)
+      expect(nomes(role).has("listar_modelos"), role).toBe(true)
+      expect(nomes(role).has("tarefas_do_caso"), role).toBe(true)
     }
-    // criar/editar/excluir projeto + criar de modelo + estrutura: só sócio/advogado (+ admin implícito)
-    const ESCRITA = [
-      "criar_projeto",
-      "criar_estrutura_projeto",
-      "criar_projeto_de_modelo",
-      "editar_projeto",
-      "excluir_projeto",
-    ]
-    for (const n of ESCRITA) {
+    // as tools de projeto não existem mais (Projeto foi unificado ao Caso)
+    for (const n of ["listar_projetos", "detalhe_projeto", "criar_projeto", "editar_projeto", "excluir_projeto"]) {
+      expect(TOOLS_BY_NAME.has(n), n).toBe(false)
+    }
+    // aplicar modelo + montar estrutura: só sócio/advogado (+ admin implícito)
+    for (const n of ["aplicar_modelo", "criar_estrutura_caso"]) {
       expect(nomes("estagiario").has(n)).toBe(false)
       expect(nomes("staff").has(n)).toBe(false)
       expect(nomes("financeiro").has(n)).toBe(false)
@@ -322,22 +318,22 @@ describe("registry — deterministic, valid tool schemas", () => {
 
 describe("deveAutoExecutar — política do modo automático (sem confirmar cada criação)", () => {
   it("auto ligado + modo agente: TODA criação/edição executa sem confirmação (várias por vez)", () => {
-    for (const n of ["criar_projeto", "criar_estrutura_projeto", "criar_projeto_de_modelo", "criar_tarefa", "criar_tarefas_lote", "editar_projeto", "concluir_tarefa", "ligar_tarefas"]) {
+    for (const n of ["criar_caso", "criar_estrutura_caso", "aplicar_modelo", "criar_tarefa", "criar_tarefas_lote", "editar_caso", "concluir_tarefa", "ligar_tarefas"]) {
       expect(deveAutoExecutar(true, "agente", n), n).toBe(true)
     }
   })
 
   it("auto DESLIGADO: sempre pede confirmação", () => {
-    expect(deveAutoExecutar(false, "agente", "criar_projeto")).toBe(false)
+    expect(deveAutoExecutar(false, "agente", "criar_caso")).toBe(false)
     expect(deveAutoExecutar(undefined, "agente", "criar_tarefa")).toBe(false)
   })
 
   it("modo plano: confirma mesmo com auto ligado (prometeu aprovação)", () => {
-    expect(deveAutoExecutar(true, "plano", "criar_projeto")).toBe(false)
+    expect(deveAutoExecutar(true, "plano", "criar_caso")).toBe(false)
   })
 
   it("ações destrutivas (excluir/anonimizar) confirmam mesmo com auto ligado", () => {
-    expect(deveAutoExecutar(true, "agente", "excluir_projeto")).toBe(false)
+    expect(deveAutoExecutar(true, "agente", "excluir_caso")).toBe(false)
     expect(deveAutoExecutar(true, "agente", "excluir_tarefa")).toBe(false)
     expect(deveAutoExecutar(true, "agente", "anonimizar_cliente")).toBe(false)
   })

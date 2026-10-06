@@ -1,7 +1,7 @@
-// Modelos de projeto (src/lib/projetos/modelo.ts): instanciação por grupos ×
+// Modelos de tarefas (src/lib/modelos/modelo.ts): instanciação por grupos ×
 // passos, prazos relativos, ligações dentro do grupo e validação de ciclo.
 import { describe, expect, it } from "vitest"
-import { ajustarGrupos, cicloNoModelo, gruposPadrao, instanciarModelo, resumoModelo, textoDiasAntes, type ModeloBase } from "@/lib/projetos/modelo"
+import { ajustarGrupos, cicloNoModelo, gruposPadrao, instanciarModelo, resumoModelo, textoDiasAntes, type ModeloBase } from "@/lib/modelos/modelo"
 
 const INTEG: ModeloBase = {
   palavraGrupo: "Protocolo",
@@ -54,5 +54,13 @@ describe("modelos de projeto", () => {
       ...INTEG.passos.slice(1),
     ]
     expect(cicloNoModelo(ciclo)).not.toBeNull()
+  })
+})
+
+describe("aplicar a um caso que já tem grupos", () => {
+  it("a numeração continua depois dos grupos existentes", () => {
+    const g = gruposPadrao(INTEG, 2, "2026-09-23", 2)
+    expect(g.map((x) => x.nome)).toEqual(["Protocolo 03 · 1º RI Taubaté", "Protocolo 04 · 1º RI Taubaté"])
+    expect(ajustarGrupos(g, 3, INTEG, "2026-09-23", 2)[2].nome).toBe("Protocolo 05 · 1º RI Taubaté")
   })
 })
