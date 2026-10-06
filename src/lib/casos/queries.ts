@@ -9,6 +9,7 @@ import type { HonorarioRow, LancamentoRow } from "@/lib/finance/types"
 import { lancamentoToHonorarioRow } from "@/lib/finance/honorario-map"
 import { scopeCasoWhere } from "@/lib/processos/rbac"
 import type { ProcessoMini, ProcessoStatus } from "@/lib/processos/types"
+import { hojeSP } from "@/lib/tarefas/regras"
 import type { CasoDetail, CasoDocumentoRow, CasoListRow, CasoPageRow, CasoTarefaRow } from "./types"
 
 const isoDate = (d: Date | null): string | null => (d ? d.toISOString().slice(0, 10) : null)
@@ -98,6 +99,11 @@ export async function getCasoDetail(id: number): Promise<CasoDetail | null> {
       contrato: { select: { id: true, titulo: true, dataFechamento: true, excluidoEm: true } },
       dataCriacao: true,
       ultimaMovimentacao: true,
+      nomeCurto: true,
+      cor: true,
+      prazo: true,
+      descricao: true,
+      modeloOrigemId: true,
       responsaveis: {
         select: { contaId: true, percentual: true, conta: { select: { nome: true, titular: true, ordem: true } } },
       },
@@ -272,6 +278,11 @@ export async function getCasoDetail(id: number): Promise<CasoDetail | null> {
         : null,
     dataCriacao: isoDate(caso.dataCriacao),
     ultimaMovimentacao: isoDate(caso.ultimaMovimentacao),
+    nomeCurto: caso.nomeCurto,
+    cor: caso.cor,
+    prazo: isoDate(caso.prazo),
+    descricao: caso.descricao,
+    modeloOrigemId: caso.modeloOrigemId,
     responsaveis: caso.responsaveis
       .slice()
       .sort((a, b) => a.conta.ordem - b.conta.ordem)
@@ -297,11 +308,24 @@ export async function getCasoDetail(id: number): Promise<CasoDetail | null> {
 
 /**
  * Lista da página /casos — escopada por papel (advogado vê só os seus, mesma
- * regra do detalhe). Uma consulta: identidade + contrato + contagem de processos
- * + soma dos honorários (fee-lançamentos). `verFin=false` zera os valores.
+ * regra do detalhe). Identidade + contrato + contagem de processos + soma dos
+ * honorários (fee-lançamentos) + o andamento das tarefas do caso (o caso é o
+ * "projeto" do quadro). `verFin=false` zera os valores.
  */
 export async function listCasosPagina(user: SessionUser, verFin: boolean): Promise<CasoPageRow[]> {
   const scope = await scopeCasoWhere(user)
+  const hoje = hojeSP()
+  const tarefasPorCaso = new Map<number, { total: number; feitas: number; vencidas: number }>()
+  for (const t of await prisma.tarefa.findMany({
+    where: { casoId: { not: null } },
+    select: { casoId: true, status: true, prazo: true },
+  })) {
+    const c = tarefasPorCaso.get(t.casoId!) ?? { total: 0, feitas: 0, vencidas: 0 }
+    c.total++
+    if (t.status === "done") c.feitas++
+    else if (t.prazo.toISOString().slice(0, 10) < hoje) c.vencidas++
+    tarefasPorCaso.set(t.casoId!, c)
+  }
   const rows = await prisma.caso.findMany({
     where: { AND: [scope, { excluidoEm: null }] },
     select: {
@@ -319,6 +343,8 @@ export async function listCasosPagina(user: SessionUser, verFin: boolean): Promi
       contrato: { select: { titulo: true, dataFechamento: true, excluidoEm: true } },
       dataCriacao: true,
       ultimaMovimentacao: true,
+      nomeCurto: true,
+      prazo: true,
       _count: { select: { processos: { where: { excluidoEm: null } } } },
       lancamentos: { where: { tipo: "entrada", subTipo: "honorario", isAnomalia: false }, select: { valorCents: true, status: true } },
     },
@@ -328,9 +354,16 @@ export async function listCasosPagina(user: SessionUser, verFin: boolean): Promi
     const recebido = fees.filter((l) => l.status === "feito").reduce((a, l) => a + Math.abs(l.valorCents), 0)
     const total = fees.reduce((a, l) => a + Math.abs(l.valorCents), 0)
     const contratoVivo = r.contrato && !r.contrato.excluidoEm ? r.contrato : null
+    const tar = tarefasPorCaso.get(r.id) ?? { total: 0, feitas: 0, vencidas: 0 }
     return {
       id: r.id,
       titulo: r.titulo,
+      nomeCurto: r.nomeCurto,
+      prazo: isoDate(r.prazo),
+      tarefasTotal: tar.total,
+      tarefasFeitas: tar.feitas,
+      tarefasAbertas: tar.total - tar.feitas,
+      tarefasVencidas: tar.vencidas,
       tipo: r.tipo as CasoPageRow["tipo"],
       area: r.area,
       status: r.status,

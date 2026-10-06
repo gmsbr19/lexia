@@ -48,6 +48,12 @@ export interface CasoFinanceiro {
 export interface CasoPageRow {
   id: number
   titulo: string
+  nomeCurto: string | null // etiqueta no quadro de Tarefas
+  prazo: string | null // prazo final do trabalho (ISO date)
+  tarefasTotal: number
+  tarefasFeitas: number
+  tarefasAbertas: number
+  tarefasVencidas: number
   tipo: CasoTipo
   area: string | null
   status: string | null
@@ -86,6 +92,12 @@ export interface CasoDetail {
   contrato: CasoContratoInfo | null
   dataCriacao: string | null // ISO date
   ultimaMovimentacao: string | null // ISO date
+  // etiqueta no quadro de Tarefas (o caso é o "projeto" do quadro)
+  nomeCurto: string | null
+  cor: string | null
+  prazo: string | null // ISO date
+  descricao: string | null
+  modeloOrigemId: number | null
   // rateio entre sócios
   responsaveis: CasoResponsavelInfo[]
   financeiro: CasoFinanceiro

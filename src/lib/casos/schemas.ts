@@ -17,6 +17,17 @@ export const casoPatchSchema = z.object({
   clientePrincipalId: idOpt,
   /** Contrato (documento assinado) do MESMO cliente; null = sem contrato. */
   contratoId: idOpt,
+  // Etiqueta do caso no quadro de Tarefas
+  nomeCurto: z.string().max(24).nullish(),
+  cor: z
+    .string()
+    .regex(/^#[0-9A-Fa-f]{6}$/)
+    .nullish(),
+  prazo: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullish(),
+  descricao: z.string().max(4000).nullish(),
 })
 
 export const casoCreateSchema = casoPatchSchema.extend({

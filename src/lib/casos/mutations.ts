@@ -1,12 +1,17 @@
 // Casos — write layer. SERVER ONLY. Covers the caso's identity (título, cliente,
-// contrato, tipo, área, status, responsável) + create / bulk / soft-delete. The
-// rateio entre sócios has its own mutation (finance setCasoResponsaveis). Dados
-// de processo (nº/tribunal/vara/…) NÃO moram mais aqui — ver lib/casos/legado.ts.
+// contrato, tipo, área, status, responsável), the board label (nome curto, cor,
+// prazo, descrição — o caso é o "projeto" do quadro de Tarefas) + create / bulk /
+// soft-delete. The rateio entre sócios has its own mutation (finance
+// setCasoResponsaveis). Dados de processo (nº/tribunal/vara/…) NÃO moram mais
+// aqui — ver lib/casos/legado.ts.
 import { randomUUID } from "node:crypto"
 import type { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/db"
 import { UserError } from "@/lib/errors"
+import { isValidISO } from "@/lib/datas/util"
 import { casoStatusCanonico } from "./status"
+
+type Db = Prisma.TransactionClient
 
 function reqStr(v: unknown, name: string): string {
   if (typeof v !== "string" || !v.trim()) throw new UserError(`${name} obrigatório`)
@@ -32,6 +37,21 @@ export interface CasoPatch {
   responsavelUserId?: number | null
   clientePrincipalId?: number | null
   contratoId?: number | null
+  // etiqueta no quadro de Tarefas
+  nomeCurto?: string | null // ≤24
+  cor?: string | null // hex
+  prazo?: string | null // "YYYY-MM-DD"
+  descricao?: string | null
+}
+
+const HEX = /^#[0-9A-Fa-f]{6}$/
+
+/** "YYYY-MM-DD" → meio-dia UTC (date-only, igual às datas de Tarefas). */
+function optPrazo(v: unknown): Date | null {
+  if (v === null || v === undefined || v === "") return null
+  if (typeof v !== "string" || !isValidISO(v)) throw new UserError("Prazo inválido")
+  const [y, m, d] = v.split("-").map(Number)
+  return new Date(Date.UTC(y, m - 1, d, 12, 0, 0))
 }
 
 function applyCasoFields(data: Prisma.CasoUncheckedUpdateInput, patch: CasoPatch): void {
@@ -43,6 +63,26 @@ function applyCasoFields(data: Prisma.CasoUncheckedUpdateInput, patch: CasoPatch
   if (patch.responsavelUserId !== undefined) data.responsavelUserId = optInt(patch.responsavelUserId, "responsável")
   if (patch.clientePrincipalId !== undefined) data.clientePrincipalId = optInt(patch.clientePrincipalId, "cliente")
   if (patch.contratoId !== undefined) data.contratoId = optInt(patch.contratoId, "contrato")
+  if (patch.nomeCurto !== undefined) data.nomeCurto = optStr(patch.nomeCurto)?.slice(0, 24) ?? null
+  if (patch.cor !== undefined) {
+    const c = optStr(patch.cor)
+    if (c != null && !HEX.test(c)) throw new UserError("Cor inválida")
+    data.cor = c
+  }
+  if (patch.prazo !== undefined) data.prazo = optPrazo(patch.prazo)
+  if (patch.descricao !== undefined) data.descricao = optStr(patch.descricao)?.slice(0, 4000) ?? null
+}
+
+/**
+ * Quem cria um caso sem escolher responsável e não vê todos os casos (advogado)
+ * vira o responsável — senão perderia o acesso ao caso que acabou de criar.
+ */
+export function comResponsavelPadrao<T extends { responsavelUserId?: number | null }>(
+  input: T,
+  quem: { userId: number | null; veTudo: boolean },
+): T {
+  if (input.responsavelUserId != null || quem.veTudo || quem.userId == null) return input
+  return { ...input, responsavelUserId: quem.userId }
 }
 
 /**
@@ -51,9 +91,9 @@ function applyCasoFields(data: Prisma.CasoUncheckedUpdateInput, patch: CasoPatch
  * trocar o cliente de um caso que está no contrato de outro cliente exige soltar
  * (ou trocar) o contrato na mesma edição.
  */
-async function assertContratoDoCliente(clienteId: number | null, contratoId: number | null): Promise<void> {
+async function assertContratoDoCliente(clienteId: number | null, contratoId: number | null, db: Db = prisma): Promise<void> {
   if (contratoId == null) return
-  const contrato = await prisma.contrato.findFirst({
+  const contrato = await db.contrato.findFirst({
     where: { id: contratoId, excluidoEm: null },
     select: { titulo: true, clienteId: true },
   })
@@ -83,20 +123,27 @@ export async function updateCaso(id: number, patch: CasoPatch) {
 
 export interface CasoCreate extends CasoPatch {
   titulo: string
+  modeloOrigemId?: number | null // caso montado a partir de um modelo de tarefas
 }
 
-/** Create a caso from scratch (app-created → synthetic astreaId so re-imports don't clobber). */
-export async function createCaso(input: CasoCreate) {
+/** Create a caso inside a transaction (app-created → synthetic astreaId so re-imports don't clobber). */
+export async function criarCasoTx(db: Db, input: CasoCreate) {
   const data: Prisma.CasoUncheckedCreateInput = {
     astreaId: `app-caso-${randomUUID()}`,
     titulo: reqStr(input.titulo, "título"),
     tipo: input.tipo === "litigio" ? "litigio" : "consultivo",
     status: casoStatusCanonico(input.status),
     dataCriacao: new Date(),
+    modeloOrigemId: optInt(input.modeloOrigemId ?? null, "modelo"),
   }
   applyCasoFields(data as Prisma.CasoUncheckedUpdateInput, { ...input, titulo: undefined, tipo: undefined, status: undefined })
-  await assertContratoDoCliente(input.clientePrincipalId ?? null, input.contratoId ?? null)
-  return prisma.caso.create({ data })
+  await assertContratoDoCliente(input.clientePrincipalId ?? null, input.contratoId ?? null, db)
+  return db.caso.create({ data })
+}
+
+/** Create a caso from scratch. */
+export async function createCaso(input: CasoCreate) {
+  return prisma.$transaction((tx) => criarCasoTx(tx, input))
 }
 
 export interface CasosLote {
@@ -130,30 +177,32 @@ export async function bulkUpdateCasos(input: CasosLote, scope: Prisma.CasoWhereI
  * processos and their pending children (prazos/andamentos/publicações/anotações)
  * and cancels its agenda events — so nothing it owned keeps surfacing (e.g. a prazo
  * on the Início) or 404s afterwards. Financial rows (honorários/lançamentos) are
- * kept for accounting. One transaction so a partial delete can't leak orphans.
+ * kept for accounting. Its tasks stay and read as "Sem caso" on the board (every
+ * task read filters caso.excluidoEm). Runs inside the caller's transaction.
  */
-export async function deleteCaso(id: number) {
-  const existing = await prisma.caso.findFirst({ where: { id, excluidoEm: null }, select: { id: true } })
+export async function excluirCasoTx(db: Db, id: number, now: Date) {
+  const existing = await db.caso.findFirst({ where: { id, excluidoEm: null }, select: { id: true } })
   if (!existing) throw new UserError("Caso não encontrado")
-  const now = new Date()
-  const procs = await prisma.processo.findMany({ where: { casoId: id, excluidoEm: null }, select: { id: true, numeroCnj: true } })
+  const procs = await db.processo.findMany({ where: { casoId: id, excluidoEm: null }, select: { id: true, numeroCnj: true } })
   const procIds = procs.map((p) => p.id)
-  await prisma.$transaction([
-    prisma.prazo.updateMany({ where: { processoId: { in: procIds }, excluidoEm: null }, data: { excluidoEm: now } }),
-    prisma.andamento.updateMany({ where: { processoId: { in: procIds }, excluidoEm: null }, data: { excluidoEm: now } }),
-    prisma.publicacao.updateMany({ where: { processoId: { in: procIds }, excluidoEm: null }, data: { excluidoEm: now } }),
-    prisma.anotacao.updateMany({ where: { OR: [{ casoId: id }, { processoId: { in: procIds } }], excluidoEm: null }, data: { excluidoEm: now } }),
-    // drop the structured fee-lançamento link (re-surfaces them as "sem processo")
-    prisma.lancamento.updateMany({ where: { processoId: { in: procIds } }, data: { processoId: null } }),
-    // tombstone each processo's CNJ (frees the global @unique index) + soft-delete
-    ...procs.map((p) =>
-      prisma.processo.update({
-        where: { id: p.id },
-        data: { excluidoEm: now, numeroCnj: p.numeroCnj ? `${p.numeroCnj}#del-${p.id}` : null },
-      }),
-    ),
-    prisma.evento.updateMany({ where: { status: { not: "cancelado" }, OR: [{ casoId: id }, { processoId: { in: procIds } }] }, data: { status: "cancelado" } }),
-    prisma.caso.update({ where: { id }, data: { excluidoEm: now } }),
-  ])
+  await db.prazo.updateMany({ where: { processoId: { in: procIds }, excluidoEm: null }, data: { excluidoEm: now } })
+  await db.andamento.updateMany({ where: { processoId: { in: procIds }, excluidoEm: null }, data: { excluidoEm: now } })
+  await db.publicacao.updateMany({ where: { processoId: { in: procIds }, excluidoEm: null }, data: { excluidoEm: now } })
+  await db.anotacao.updateMany({ where: { OR: [{ casoId: id }, { processoId: { in: procIds } }], excluidoEm: null }, data: { excluidoEm: now } })
+  // drop the structured fee-lançamento link (re-surfaces them as "sem processo")
+  await db.lancamento.updateMany({ where: { processoId: { in: procIds } }, data: { processoId: null } })
+  // tombstone each processo's CNJ (frees the global @unique index) + soft-delete
+  for (const p of procs) {
+    await db.processo.update({
+      where: { id: p.id },
+      data: { excluidoEm: now, numeroCnj: p.numeroCnj ? `${p.numeroCnj}#del-${p.id}` : null },
+    })
+  }
+  await db.evento.updateMany({ where: { status: { not: "cancelado" }, OR: [{ casoId: id }, { processoId: { in: procIds } }] }, data: { status: "cancelado" } })
+  await db.caso.update({ where: { id }, data: { excluidoEm: now } })
   return { id }
+}
+
+export async function deleteCaso(id: number) {
+  return prisma.$transaction((tx) => excluirCasoTx(tx, id, new Date()), { timeout: 20_000, maxWait: 10_000 })
 }
