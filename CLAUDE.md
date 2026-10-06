@@ -59,11 +59,13 @@ LexIA AI assistant, and a real-time Notifications system.
   first-class (1 caso→N), pure tested prazo engine (CPC dias úteis), CNJ capture
   (Comunica/DJEN + DataJud). Memories `project_casos_module`, `project_processos_module`,
   `project_captura_cnj`.
-- **Tarefas & Projetos (redesign, Sep/2026)**: UM quadro único do escritório (Quadro | Lista |
-  Fluxo; Projetos; Equipe só gestão), UMA data (prazo obrigatório; padrão = sexta), prazo fatal,
-  grupos livres, ligações "só começa depois de", histórico, anexos, "Desfazer" (TarefaAcao).
-  Regras ÚNICAS em `lib/tarefas/regras.ts` (servidor + cliente). UI `components/tarefas/tk-*.tsx`
-  + `TarefasApp.tsx` + `tk.css`. Memory `project_tarefas_redesign`.
+- **Tarefas (redesign, Sep/2026; Projeto→Caso, Out/2026)**: UM quadro único do escritório (Quadro |
+  Lista | Fluxo; Modelos; Equipe só gestão), UMA data (prazo obrigatório; padrão = sexta), prazo
+  fatal, grupos livres, ligações "só começa depois de", histórico, anexos, "Desfazer" (TarefaAcao).
+  O "projeto" do quadro É O CASO (`Tarefa.casoId`; `Projeto`/`Tarefa.projetoId` DORMENTES). Regras
+  ÚNICAS em `lib/tarefas/regras.ts` + `casos-quadro.ts` (servidor + cliente). UI
+  `components/tarefas/tk-*.tsx` + `TarefasApp.tsx` + `tk.css`. Memories `project_tarefas_redesign`,
+  `project_caso_projeto_unificado`.
 - **Início**: greeting + AI BriefingCard + OfficeDashboard. Memory
   `project_inicio_dashboard`.
 - **LexIA**: agentic assistant over the Anthropic API (`lib/lexia/agent/*`:
@@ -151,6 +153,43 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **Projeto ⇒ Caso — UNIFICAÇÃO (Parte A de 2; this session, tsc 0 novos erros — só o `cm-meta` PRÉ-EXISTENTE —,
+  858/859 testes — só a `notificacoes-links` PRÉ-EXISTENTE; +14 novos em `tests/casos-quadro.test.ts`/`modelos.test.ts`/
+  `lexia-agent.test.ts` —, eslint sem achados novos; migração `20261006120000_casos_unificam_projetos` ESCRITA À MÃO e
+  VALIDADA em PGlite (23 cenários + `migrate diff` vazio) — NÃO aplicada em banco real).** Pedido de origem: "informações
+  fixadas" (know-how do cliente/caso visível nas tarefas — Parte B, ainda NÃO feita). Ao detalhar, o usuário disse que
+  **cada Projeto de Tarefas é um Caso do cliente — mesma entidade** e escolheu unificar. **Decisões do usuário:** baldes
+  por área (`Projeto.chave 'area-%'`) somem (tarefas → "Sem caso"); todo outro projeto vivo vira caso (mesmo sem cliente →
+  visão "Sem cliente"); UMA lista só (`/casos`); Tarefas fica Quadro · Modelos · Equipe. **Modelo:** `Caso` += `nomeCurto`,
+  `cor`, `descricao`, `prazo`, `modeloOrigemId` (FK ProjetoModelo); `Tarefa.casoId` vira o vínculo do quadro (+índice);
+  `Projeto` e `Tarefa.projetoId` DORMENTES (nenhum código lê/grava, exceto `Projeto.casoId` = registro da conversão p/ os
+  redirects). **Migração:** purga `TarefaAcao`; classifica cada projeto (balde/excluído/mesclar/criar — "mesclar" = já
+  apontava p/ caso vivo OU 1 caso vivo com mesmo cliente+título); mescla só campos vazios (cliente só se o contrato do caso
+  não for de outro cliente); cria casos `app-caso-proj-<id>` (Arquivado se arquivado); histórico quando o `casoId` legado da
+  tarefa é sobrescrito; tarefa de processo sem caso herda o do processo. **Backend:** `lib/casos/mutations.ts` ganhou
+  `criarCasoTx`/`excluirCasoTx`/`comResponsavelPadrao` + campos do quadro; `lib/tarefas/*` inteiro em caso (`TaskRow.casoId`,
+  `CasoQuadro` com etiqueta/cor RESOLVIDAS no servidor — `apresentarCaso` em `casos-quadro.ts` —, `casosAcessiveis`,
+  `SEM_CASO`, ordenar/agrupar `"caso"` com apelido `"proj"`, lock por caso, `MSG_CASOS`); **vincular tarefa a caso exige
+  `podeAcessarCaso`** (advogado/estagiário só os seus — senão "ter tarefa no caso" viraria atalho de acesso); **Desfazer de
+  caso criado no quadro = soft-delete via `excluirCasoTx`, recusado se o caso já tem processo/lançamento/contrato/documento**.
+  `lib/projetos/*` → `lib/modelos/*` (`usarModelo` p/ caso NOVO ou EXISTENTE, `montarEstruturaCaso`, `gruposPadrao(...,
+  inicio)`); novo `lib/tarefas/casos.ts` ("Novo caso…" rápido). Rotas: `/api/projetos/**` REMOVIDAS → `POST
+  /api/tarefas/casos`, `/api/tarefas/modelos[/id]`, `POST /api/tarefas/modelos/[id]/usar`. Ficha do cliente, mesclagem de
+  clientes, contagem de áreas, agenda, relatório, sugestão de IA, `resolveRefs` (título de caso → prefere o do mesmo
+  cliente) ajustados. **UI Tarefas:** "Projeto"→"Caso" em tudo; seletores de caso COM BUSCA (`TkCasoLista`/`TkCasoPicker`,
+  60 itens, por etiqueta/título/cliente); `TkCasoHeader` com links p/ contato e "Abrir o caso"; detalhe com ícones de abrir
+  caso/contato; `tk-projects.tsx` → `tk-modelos.tsx` (página Modelos + assistente "Novo caso | Caso existente" + editor —
+  corrigido de quebra o `acaoId` do editor que nunca chegava ao "Desfazer") e `tk-caso-form.tsx`; `/projetos` → `/casos`,
+  `/projetos/<id>` e `?projeto=` → `/tarefas?caso=<id>`. **`/casos`:** colunas Progresso/Tarefas abertas/Vencidas/Prazo
+  final, visões "Com tarefas em andamento" e "Arquivados", botão "A partir de modelo"; página do caso com "Abrir no quadro",
+  prazo/descrição e aviso de que as tarefas ficam "Sem caso"; formulário com nome curto/prazo/cor/descrição. **ViewGrid
+  (genérico):** visões salvas agora ganham colunas novas do schema (antes ficavam invisíveis até no painel Colunas) e
+  sementes novas aparecem uma vez (`seedsVistos`). **LexIA:** tools de projeto removidas → `tools/modelos.ts`
+  (`listar_modelos`, `aplicar_modelo`, `criar_estrutura_caso`) + `tarefas_do_caso`; `criar_caso`/`editar_caso` com
+  nomeCurto/prazo/descricao; prompt (CORE — invalida o cache 1×). Seed `db:seed:modelos` (`db:seed:projetos` = apelido).
+  **User action (REQUIRED — lock do Prisma no Windows):** parar `next dev` → `npx prisma migrate deploy` → `npx prisma
+  generate` → `npm run dev`. Em produção a migração roda no boot. Conferir casos criados: `SELECT id, titulo FROM "Caso"
+  WHERE "astreaId" LIKE 'app-caso-proj-%'`. **Parte B (informações fixadas) começa depois da conferência visual.**
 - **Casos — módulo próprio, separado de Processos (this session, tsc 0 novos erros — só o `cm-meta`
   PRÉ-EXISTENTE —, 848/849 testes — só a `notificacoes-links` PRÉ-EXISTENTE; +13 novos em
   `tests/casos-legado.test.ts` —, eslint limpo nos arquivos novos/reescritos, SEM migração).** Pedido: acessar/criar/
