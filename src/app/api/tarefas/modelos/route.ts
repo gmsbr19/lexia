@@ -1,11 +1,11 @@
-// GET  /api/projetos/modelos — modelos de projeto (papéis + passos).
-// POST /api/projetos/modelos — novo modelo (só sócio; admin passa). Reversível pelo "Desfazer".
+// GET  /api/tarefas/modelos — modelos de tarefas (papéis + passos).
+// POST /api/tarefas/modelos — novo modelo (só sócio; admin passa). Reversível pelo "Desfazer".
 import { NextResponse } from "next/server"
 import { guardRequest } from "@/lib/auth/session"
 import { readJson } from "@/lib/finance/api"
-import { criarModelo } from "@/lib/projetos/mutations"
-import { modeloSchema } from "@/lib/projetos/schemas"
-import { ROLES_MODELO } from "@/lib/projetos/types"
+import { criarModelo } from "@/lib/modelos/mutations"
+import { modeloSchema } from "@/lib/modelos/schemas"
+import { ROLES_MODELO } from "@/lib/modelos/types"
 import { getModelos } from "@/lib/tarefas/queries"
 import { mutacaoTarefa } from "@/lib/tarefas/rota"
 import { parseBody } from "@/lib/validation"

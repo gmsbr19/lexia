@@ -1,10 +1,10 @@
-// GET  /api/tarefas — carga única do módulo (tarefas + projetos + equipe + clientes
+// GET  /api/tarefas — carga única do módulo (tarefas + casos + equipe + clientes
 //      + modelos + "hoje" no fuso do escritório). `?derivados=1` acrescenta a cada
 //      tarefa os campos calculados pelas regras únicas (vencida, faixa, em risco,
 //      conflito, aguardando) — a mesma implementação que o quadro usa.
 // POST /api/tarefas — cria (prazo padrão = sexta da semana; responsável padrão = quem cria).
 import { NextResponse } from "next/server"
-import { guardRequest } from "@/lib/auth/session"
+import { guardRequest, requireUser } from "@/lib/auth/session"
 import { readJson } from "@/lib/finance/api"
 import { criarTarefa } from "@/lib/tarefas/mutations"
 import { getTarefasBoard } from "@/lib/tarefas/queries"
@@ -26,7 +26,7 @@ export const dynamic = "force-dynamic"
 export async function GET(req: Request) {
   const denied = await guardRequest()
   if (denied) return denied
-  const board = await getTarefasBoard()
+  const board = await getTarefasBoard(await requireUser())
   if (new URL(req.url).searchParams.get("derivados") !== "1") return NextResponse.json(board)
 
   const map = indexar(board.tarefas)
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
     return criarTarefa(
       {
         titulo: b.titulo,
-        projetoId: b.projetoId,
+        casoId: b.casoId,
         grupo: b.grupo,
         // ausente no corpo → quem cria; null explícito → sem responsável
         responsavelId: "responsavelId" in body ? (b.responsavelId ?? null) : undefined,
@@ -66,7 +66,6 @@ export async function POST(req: Request) {
         descricao: b.descricao,
         checklist: b.checklist,
         recur: b.recur,
-        casoId: b.casoId,
         processoId: b.processoId,
         leadId: b.leadId,
       },

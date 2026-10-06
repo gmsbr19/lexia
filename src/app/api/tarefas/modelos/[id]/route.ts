@@ -1,10 +1,10 @@
-// PATCH  /api/projetos/modelos/[id] — substitui nome/papéis/passos do modelo.
-// DELETE /api/projetos/modelos/[id] — exclui (soft). Só sócio (admin passa).
+// PATCH  /api/tarefas/modelos/[id] — substitui nome/papéis/passos do modelo.
+// DELETE /api/tarefas/modelos/[id] — exclui (soft). Só sócio (admin passa).
 // Ambos reversíveis pelo "Desfazer".
 import { parseId, readJson, type RouteCtx } from "@/lib/finance/api"
-import { atualizarModelo, excluirModelo } from "@/lib/projetos/mutations"
-import { modeloSchema } from "@/lib/projetos/schemas"
-import { ROLES_MODELO } from "@/lib/projetos/types"
+import { atualizarModelo, excluirModelo } from "@/lib/modelos/mutations"
+import { modeloSchema } from "@/lib/modelos/schemas"
+import { ROLES_MODELO } from "@/lib/modelos/types"
 import { mutacaoTarefa } from "@/lib/tarefas/rota"
 import { parseBody } from "@/lib/validation"
 
