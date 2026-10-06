@@ -44,7 +44,7 @@ export interface TarefaLinha {
   id: number
   titulo: string
   prazoISO: string
-  contexto?: string | null // cliente ou projeto
+  contexto?: string | null // cliente ou caso
   responsavelNome?: string | null // usado só na seção de equipe
 }
 
@@ -225,7 +225,7 @@ export async function enviarRelatoriosDiarios(opts?: EnviarRelatoriosOpts): Prom
       prazo: true,
       responsavel: { select: { email: true } },
       cliente: { select: { nome: true } },
-      projetoRef: { select: { nome: true } },
+      caso: { select: { titulo: true, excluidoEm: true } },
     },
   })
   const porEmail = new Map<string, TarefaLinha[]>()
@@ -236,7 +236,7 @@ export async function enviarRelatoriosDiarios(opts?: EnviarRelatoriosOpts): Prom
       id: t.id,
       titulo: t.titulo,
       prazoISO: toISODate(t.prazo),
-      contexto: t.cliente?.nome ?? t.projetoRef?.nome ?? null,
+      contexto: t.cliente?.nome ?? (t.caso && !t.caso.excluidoEm ? t.caso.titulo : null),
     }
     const arr = porEmail.get(email)
     if (arr) arr.push(linha)
@@ -255,14 +255,14 @@ export async function enviarRelatoriosDiarios(opts?: EnviarRelatoriosOpts): Prom
         prazo: true,
         responsavel: { select: { nome: true } },
         cliente: { select: { nome: true } },
-        projetoRef: { select: { nome: true } },
+        caso: { select: { titulo: true, excluidoEm: true } },
       },
     })
     equipe = atrasadasEquipe.map((t) => ({
         id: t.id,
         titulo: t.titulo,
         prazoISO: toISODate(t.prazo),
-        contexto: t.cliente?.nome ?? t.projetoRef?.nome ?? null,
+        contexto: t.cliente?.nome ?? (t.caso && !t.caso.excluidoEm ? t.caso.titulo : null),
         responsavelNome: t.responsavel?.nome ?? null,
       }))
   }

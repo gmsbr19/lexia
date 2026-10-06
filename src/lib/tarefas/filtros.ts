@@ -8,17 +8,17 @@ import type { TaskRow } from "./types"
 
 export type Escopo = "mine" | "team"
 export type FiltroPrazo = "late" | "today" | "week" | "fatal"
-export type Ordenacao = "manual" | "due" | "proj" | "owner"
+export type Ordenacao = "manual" | "due" | "caso" | "owner"
 export type Direcao = "asc" | "desc"
-export type Agrupamento = "none" | "proj" | "owner" | "group"
+export type Agrupamento = "none" | "caso" | "owner" | "group"
 export type Visao = "board" | "list" | "flow"
 
-/** Chave de "Sem projeto" na multisseleção de projetos. */
-export const SEM_PROJETO = 0
+/** Chave de "Sem caso" na multisseleção de casos. */
+export const SEM_CASO = 0
 
 export interface Filtros {
   escopo: Escopo
-  projetos: number[] // ids (SEM_PROJETO = sem projeto)
+  casos: number[] // ids (SEM_CASO = sem caso)
   responsavel: number | null // só vale em "Equipe"
   prazo: FiltroPrazo | null
   ordenar: Ordenacao
@@ -29,7 +29,7 @@ export interface Filtros {
 
 export const FILTROS_PADRAO: Filtros = {
   escopo: "team",
-  projetos: [],
+  casos: [],
   responsavel: null,
   prazo: null,
   ordenar: "due",
@@ -41,8 +41,10 @@ export const FILTROS_PADRAO: Filtros = {
 /** O que fica salvo por pessoa: como ela gosta de ver o quadro. */
 export type PrefsQuadro = Pick<Filtros, "ordenar" | "direcao" | "agrupar">
 
-const ORDENACOES: Ordenacao[] = ["manual", "due", "proj", "owner"]
-const AGRUPAMENTOS: Agrupamento[] = ["none", "proj", "owner", "group"]
+const ORDENACOES: Ordenacao[] = ["manual", "due", "caso", "owner"]
+const AGRUPAMENTOS: Agrupamento[] = ["none", "caso", "owner", "group"]
+// Antes da unificação Projeto → Caso a visão salva usava "proj".
+const apelido = (v: unknown) => (v === "proj" ? "caso" : v)
 
 /** JSON salvo (ou qualquer coisa) → preferências válidas; o que não reconhece vira o padrão. */
 export function lerPreferencias(raw: unknown): PrefsQuadro {
@@ -53,10 +55,12 @@ export function lerPreferencias(raw: unknown): PrefsQuadro {
       if (v && typeof v === "object") o = v as Record<string, unknown>
     } catch {}
   } else if (raw && typeof raw === "object") o = raw as Record<string, unknown>
+  const ordenar = apelido(o.ordenar)
+  const agrupar = apelido(o.agrupar)
   return {
-    ordenar: ORDENACOES.includes(o.ordenar as Ordenacao) ? (o.ordenar as Ordenacao) : FILTROS_PADRAO.ordenar,
+    ordenar: ORDENACOES.includes(ordenar as Ordenacao) ? (ordenar as Ordenacao) : FILTROS_PADRAO.ordenar,
     direcao: o.direcao === "desc" ? "desc" : "asc",
-    agrupar: AGRUPAMENTOS.includes(o.agrupar as Agrupamento) ? (o.agrupar as Agrupamento) : FILTROS_PADRAO.agrupar,
+    agrupar: AGRUPAMENTOS.includes(agrupar as Agrupamento) ? (agrupar as Agrupamento) : FILTROS_PADRAO.agrupar,
   }
 }
 
@@ -67,11 +71,11 @@ export const ROTULO_PRAZO: Record<FiltroPrazo, string> = {
   fatal: "Prazo fatal",
 }
 
-/** Escopo (Minhas/Equipe) + projetos + responsável — base da linha-resumo. */
+/** Escopo (Minhas/Equipe) + casos + responsável — base da linha-resumo. */
 export function noEscopo(tarefas: TaskRow[], f: Filtros, meId: number | null): TaskRow[] {
   return tarefas.filter((t) => {
     if (f.escopo === "mine" && t.responsavelId !== meId) return false
-    if (f.projetos.length && !f.projetos.includes(t.projetoId ?? SEM_PROJETO)) return false
+    if (f.casos.length && !f.casos.includes(t.casoId ?? SEM_CASO)) return false
     if (f.escopo === "team" && f.responsavel != null && t.responsavelId !== f.responsavel) return false
     return true
   })
@@ -94,20 +98,20 @@ export function visiveis(tarefas: TaskRow[], f: Filtros, meId: number | null, ho
 }
 
 export interface CtxOrdenacao {
-  ordemProjeto: (id: number | null) => number
+  ordemCaso: (id: number | null) => number
   nomePessoa: (id: number | null) => string
   /** Posição manual DESTA pessoa; sem posição = vai para o fim, por prazo. */
   ordemManual?: (id: number) => number | undefined
 }
 
 /**
- * Ordenação: manual · prazo (padrão) · projeto · responsável, cada uma crescente
+ * Ordenação: manual · prazo (padrão) · caso · responsável, cada uma crescente
  * ou decrescente (manual não tem direção). Concluídas pelo prazo: mais recente
- * primeiro no crescente. "Sem projeto" / "Sem responsável" ficam sempre no fim.
+ * primeiro no crescente. "Sem caso" / "Sem responsável" ficam sempre no fim.
  * Empates: prazo crescente, depois id.
  */
 export function ordenar(lista: TaskRow[], por: Ordenacao, ctx: CtxOrdenacao, direcao: Direcao = "asc"): TaskRow[] {
-  const { ordemProjeto, nomePessoa, ordemManual } = ctx
+  const { ordemCaso, nomePessoa, ordemManual } = ctx
   const k = direcao === "desc" ? -1 : 1
   const chave = (t: TaskRow) => (t.status === "done" ? `~${t.concluidaEm ?? ""}` : t.prazo)
   const porPrazo = (a: TaskRow, b: TaskRow) => {
@@ -125,10 +129,10 @@ export function ordenar(lista: TaskRow[], por: Ordenacao, ctx: CtxOrdenacao, dir
       return desempate(a, b)
     },
     due: (a, b) => k * porPrazo(a, b) || a.id - b.id,
-    proj: (a, b) => {
-      const pa = ordemProjeto(a.projetoId)
-      const pb = ordemProjeto(b.projetoId)
-      if ((a.projetoId == null) !== (b.projetoId == null)) return a.projetoId == null ? 1 : -1
+    caso: (a, b) => {
+      const pa = ordemCaso(a.casoId)
+      const pb = ordemCaso(b.casoId)
+      if ((a.casoId == null) !== (b.casoId == null)) return a.casoId == null ? 1 : -1
       return k * (pa - pb) || desempate(a, b)
     },
     owner: (a, b) => {

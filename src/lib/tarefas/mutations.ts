@@ -13,6 +13,7 @@ import { UserError } from "@/lib/errors"
 import { addDays, isValidISO } from "@/lib/datas/util"
 import { parseRecur, proximaOcorrencia } from "@/lib/datas/recorrencia"
 import { notificarSuaVez, notificarTarefaAtribuida, notificarTarefaConcluida } from "@/lib/notificacoes/triggers"
+import { podeAcessarCaso } from "@/lib/processos/rbac"
 import { RegistroAcao } from "./acoes"
 import { fromDate, optId, optStr, parseArr, reqStr, toDate } from "./_input"
 import { posicaoDepois } from "./filtros"
@@ -43,13 +44,26 @@ export interface Ator {
   id: number | null
   email: string | null
   nome: string // primeiro nome ("Concluída por Thiago")
+  role?: string | null // papel (escopo de casos); ausente = ação do sistema
 }
 
 export async function resolverAtor(email?: string | null): Promise<Ator> {
-  if (!email) return { id: null, email: null, nome: "LexIA" }
-  const u = await prisma.user.findUnique({ where: { email }, select: { id: true, nome: true } })
-  return { id: u?.id ?? null, email, nome: u?.nome.trim().split(/\s+/)[0] ?? email }
+  if (!email) return { id: null, email: null, nome: "LexIA", role: null }
+  const u = await prisma.user.findUnique({ where: { email }, select: { id: true, nome: true, role: true } })
+  return { id: u?.id ?? null, email, nome: u?.nome.trim().split(/\s+/)[0] ?? email, role: u?.role ?? "estagiario" }
 }
+
+/**
+ * Vincular uma tarefa a um caso exige poder ACESSAR o caso (advogado/estagiário
+ * só os seus) — senão "ter tarefa no caso" viraria um atalho de acesso a ele.
+ * Ações do sistema (sem e-mail) passam.
+ */
+export async function podeVincularCaso(ator: Ator, casoId: number): Promise<boolean> {
+  if (!ator.email) return true
+  return podeAcessarCaso({ email: ator.email, nome: ator.nome, role: ator.role ?? "estagiario" }, casoId)
+}
+
+export const MSG_SEM_ACESSO_CASO = "Você não tem acesso a esse caso."
 
 // ── helpers internos ─────────────────────────────────────────────────────────
 const GRAFO_SELECT = {
@@ -61,8 +75,8 @@ const GRAFO_SELECT = {
   grupo: true,
   responsavelId: true,
   aguardandoTexto: true,
-  projetoId: true,
-  projetoRef: { select: { excluidoEm: true } },
+  casoId: true,
+  caso: { select: { excluidoEm: true } },
   anteriores: { select: { anteriorId: true } },
 } satisfies Prisma.TarefaSelect
 
@@ -75,7 +89,7 @@ export interface NoGrafo {
   grupo: string | null
   responsavelId: number | null
   aguardandoTexto: string | null
-  projetoId: number | null
+  casoId: number | null
   anteriores: number[]
 }
 
@@ -89,27 +103,27 @@ function toNo(r: Prisma.TarefaGetPayload<{ select: typeof GRAFO_SELECT }>): NoGr
     grupo: r.grupo,
     responsavelId: r.responsavelId,
     aguardandoTexto: r.aguardandoTexto,
-    // projeto excluído (soft-delete) conta como "Sem projeto" — igual à leitura do quadro
-    projetoId: r.projetoId != null && r.projetoRef && !r.projetoRef.excluidoEm ? r.projetoId : null,
+    // caso excluído (soft-delete) conta como "Sem caso" — igual à leitura do quadro
+    casoId: r.casoId != null && r.caso && !r.caso.excluidoEm ? r.casoId : null,
     anteriores: r.anteriores.map((a) => a.anteriorId),
   }
 }
 
-// Namespace do advisory lock por projeto (pg_advisory_xact_lock(ns, projetoId)).
+// Namespace do advisory lock por caso (pg_advisory_xact_lock(ns, casoId)).
 const LOCK_GRAFO = 7_331
 
 /**
  * As tarefas que podem estar ligadas às `ids` (ligações só existem dentro do
- * projeto). ANTES de ler, trava o(s) projeto(s) até o fim da transação: duas
- * conclusões/ligações simultâneas no mesmo projeto são serializadas e a segunda
+ * caso). ANTES de ler, trava o(s) caso(s) até o fim da transação: duas
+ * conclusões/ligações simultâneas no mesmo caso são serializadas e a segunda
  * enxerga o estado já gravado pela primeira (sem liberação perdida, sem ciclo).
  */
 async function grafo(tx: Tx, ids: number[]): Promise<NoGrafo[]> {
-  const base = await tx.tarefa.findMany({ where: { id: { in: ids } }, select: { projetoId: true } })
-  const projetos = [...new Set(base.map((b) => b.projetoId).filter((p): p is number => p != null))].sort((a, b) => a - b)
-  for (const p of projetos) await tx.$executeRaw`SELECT pg_advisory_xact_lock(${LOCK_GRAFO}::int, ${p}::int)`
+  const base = await tx.tarefa.findMany({ where: { id: { in: ids } }, select: { casoId: true } })
+  const casos = [...new Set(base.map((b) => b.casoId).filter((c): c is number => c != null))].sort((a, b) => a - b)
+  for (const c of casos) await tx.$executeRaw`SELECT pg_advisory_xact_lock(${LOCK_GRAFO}::int, ${c}::int)`
   const rows = await tx.tarefa.findMany({
-    where: { OR: [{ id: { in: ids } }, ...(projetos.length ? [{ projetoId: { in: projetos } }] : [])] },
+    where: { OR: [{ id: { in: ids } }, ...(casos.length ? [{ casoId: { in: casos } }] : [])] },
     select: GRAFO_SELECT,
   })
   return rows.map(toNo)
@@ -130,14 +144,22 @@ async function nomesUsuarios(tx: Tx): Promise<(id: number | null) => string> {
   return (id) => (id == null ? "sem responsável" : (m.get(id) ?? "sem responsável"))
 }
 
-async function projetoVivo(tx: Tx, id: number | null | undefined) {
+/** Caso vivo (não excluído) → etiqueta + cliente; erro se não existir. */
+export async function casoVivo(tx: Tx, id: number | null | undefined) {
   if (id == null) return null
-  const p = await tx.projeto.findFirst({
+  const c = await tx.caso.findFirst({
     where: { id, excluidoEm: null },
-    select: { id: true, nomeCurto: true, clienteId: true },
+    select: { id: true, titulo: true, nomeCurto: true, clientePrincipalId: true },
   })
-  if (!p) throw new UserError("Projeto não encontrado")
-  return p
+  if (!c) throw new UserError("Caso não encontrado")
+  return { id: c.id, curto: c.nomeCurto?.trim() || c.titulo, clienteId: c.clientePrincipalId }
+}
+
+/** O caso de um processo (tarefa de processo sem caso herda o dele). */
+async function casoDoProcesso(tx: Tx, processoId: number | null): Promise<number | null> {
+  if (processoId == null) return null
+  const p = await tx.processo.findFirst({ where: { id: processoId, excluidoEm: null }, select: { casoId: true } })
+  return p?.casoId ?? null
 }
 
 async function validarUsuario(tx: Tx, id: number | null): Promise<number | null> {
@@ -170,7 +192,7 @@ function checklistDe(raw: string): ChecklistItem[] {
 // ── criar ────────────────────────────────────────────────────────────────────
 export interface NovaTarefa {
   titulo: string
-  projetoId?: number | null
+  casoId?: number | null // o caso ("projeto") da tarefa; tarefa de processo sem caso herda o do processo
   grupo?: string | null
   /** ausente = quem cria; null = sem responsável */
   responsavelId?: number | null
@@ -180,7 +202,6 @@ export interface NovaTarefa {
   descricao?: string | null
   checklist?: string[]
   recur?: string | null
-  casoId?: number | null
   processoId?: number | null
   leadId?: number | null
   status?: TaskStatus
@@ -188,11 +209,20 @@ export interface NovaTarefa {
   recorrenteDeId?: number | null
 }
 
-async function inserir(tx: Tx, reg: RegistroAcao, ator: Ator, n: NovaTarefa, hoje: string) {
-  const projeto = await projetoVivo(tx, optId(n.projetoId))
+/**
+ * `verificarAcesso`: o caso foi ESCOLHIDO por quem cria (tela/LexIA) → exige acesso.
+ * Cópias, repetições e itens do checklist herdam o caso da original sem checar.
+ */
+async function inserir(tx: Tx, reg: RegistroAcao, ator: Ator, n: NovaTarefa, hoje: string, verificarAcesso = false) {
+  const processoId = optId(n.processoId)
+  const casoEscolhido = optId(n.casoId)
+  if (verificarAcesso && casoEscolhido != null && !(await podeVincularCaso(ator, casoEscolhido))) {
+    throw new UserError(MSG_SEM_ACESSO_CASO)
+  }
+  const caso = await casoVivo(tx, casoEscolhido ?? (await casoDoProcesso(tx, processoId)))
   const prazo = n.prazo && isValidISO(n.prazo) ? n.prazo : prazoPadrao(hoje)
   const responsavelId = n.responsavelId === undefined ? ator.id : await validarUsuario(tx, optId(n.responsavelId))
-  const cliente = projeto?.clienteId ? null : await validarCliente(tx, optId(n.clienteId))
+  const cliente = caso?.clienteId ? null : await validarCliente(tx, optId(n.clienteId))
   const t = await tx.tarefa.create({
     data: {
       astreaId: `app-tarefa-${randomUUID()}`,
@@ -201,7 +231,7 @@ async function inserir(tx: Tx, reg: RegistroAcao, ator: Ator, n: NovaTarefa, hoj
       done: false,
       prazo: toDate(prazo)!,
       prazoFatal: !!n.prazoFatal,
-      grupo: projeto ? optStr(n.grupo) : null,
+      grupo: caso ? optStr(n.grupo) : null,
       notes: optStr(n.descricao),
       checklist: JSON.stringify((n.checklist ?? []).filter((c) => c.trim()).map(novoItem)),
       recur: recurValida(n.recur),
@@ -209,10 +239,9 @@ async function inserir(tx: Tx, reg: RegistroAcao, ator: Ator, n: NovaTarefa, hoj
       geradoPorApp: true,
       responsavelId,
       criadoPorId: ator.id,
-      projetoId: projeto?.id ?? null,
+      casoId: caso?.id ?? null,
       clienteId: cliente?.id ?? null,
-      casoId: optId(n.casoId),
-      processoId: optId(n.processoId),
+      processoId,
       leadId: optId(n.leadId),
       recorrenteDeId: optId(n.recorrenteDeId),
     },
@@ -226,7 +255,7 @@ export async function criarTarefa(n: NovaTarefa, ator: Ator) {
   const hoje = hojeSP()
   const r = await prisma.$transaction(async (tx) => {
     const reg = new RegistroAcao(tx, ator.id)
-    const t = await inserir(tx, reg, ator, n, hoje)
+    const t = await inserir(tx, reg, ator, n, hoje, true)
     await historico(tx, reg, ator, [{ tarefaId: t.id, texto: "Tarefa criada" }])
     return { t, acaoId: await reg.salvar(`Criada: ${t.titulo}`) }
   }, TX_OPTS)
@@ -249,7 +278,7 @@ export async function criarTarefas(lista: NovaTarefa[], ator: Ator) {
   return prisma.$transaction(async (tx) => {
     const reg = new RegistroAcao(tx, ator.id)
     const ids: number[] = []
-    for (const n of lista) ids.push((await inserir(tx, reg, ator, n, hoje)).id)
+    for (const n of lista) ids.push((await inserir(tx, reg, ator, n, hoje, true)).id)
     await historico(tx, reg, ator, ids.map((id) => ({ tarefaId: id, texto: "Tarefa criada" })))
     return { ids, acaoId: await reg.salvar(`${ids.length} tarefas criadas`) }
   }, TX_OPTS)
@@ -257,7 +286,7 @@ export async function criarTarefas(lista: NovaTarefa[], ator: Ator) {
 
 // ── duplicar ─────────────────────────────────────────────────────────────────
 /**
- * "Duplicar": nova tarefa com os mesmos dados — projeto, grupo, responsável,
+ * "Duplicar": nova tarefa com os mesmos dados — caso, grupo, responsável,
  * cliente, prazo, prazo fatal, descrição, checklist (desmarcado), repetição e
  * vínculos — e as mesmas "só começa depois de" (as que ELA libera, não: isso
  * mudaria outras tarefas). Nasce "a fazer", ou "aguardando" se alguma anterior
@@ -267,16 +296,16 @@ export async function criarTarefas(lista: NovaTarefa[], ator: Ator) {
 export async function duplicarTarefa(id: number, ator: Ator) {
   const hoje = hojeSP()
   const r = await prisma.$transaction(async (tx) => {
-    const nos = await grafo(tx, [id]) // trava o projeto: as ligações copiadas refletem o estado atual
+    const nos = await grafo(tx, [id]) // trava o caso: as ligações copiadas refletem o estado atual
     const map = indexar(nos)
     const o = map.get(id)
     const t = await tx.tarefa.findUnique({ where: { id } })
     if (!o || !t) throw new UserError("Tarefa não encontrada")
-    // ligações só existem dentro de um projeto (vivo); a cópia só RECEBE ligações → nunca forma ciclo
+    // ligações só existem dentro de um caso (vivo); a cópia só RECEBE ligações → nunca forma ciclo
     const anteriores =
-      o.projetoId == null
+      o.casoId == null
         ? []
-        : o.anteriores.map((a) => map.get(a)).filter((a): a is NoGrafo => !!a && a.projetoId === o.projetoId)
+        : o.anteriores.map((a) => map.get(a)).filter((a): a is NoGrafo => !!a && a.casoId === o.casoId)
     const reg = new RegistroAcao(tx, ator.id)
     const nova = await inserir(
       tx,
@@ -284,7 +313,7 @@ export async function duplicarTarefa(id: number, ator: Ator) {
       ator,
       {
         titulo: tituloCopia(t.titulo),
-        projetoId: o.projetoId,
+        casoId: o.casoId,
         grupo: t.grupo,
         responsavelId: t.responsavelId,
         clienteId: t.clienteId,
@@ -293,7 +322,6 @@ export async function duplicarTarefa(id: number, ator: Ator) {
         descricao: t.notes,
         checklist: checklistDe(t.checklist).map((c) => c.texto),
         recur: t.recur,
-        casoId: t.casoId,
         processoId: t.processoId,
         leadId: t.leadId,
         status: anteriores.some((a) => a.status !== "done") ? "wait" : "todo",
@@ -333,7 +361,7 @@ export async function duplicarTarefa(id: number, ator: Ator) {
 export interface TarefaPatch {
   titulo?: string
   descricao?: string | null
-  projetoId?: number | null
+  casoId?: number | null
   grupo?: string | null
   responsavelId?: number | null
   clienteId?: number | null
@@ -348,7 +376,7 @@ export async function atualizarTarefa(id: number, patch: TarefaPatch, ator: Ator
       select: {
         titulo: true,
         notes: true,
-        projetoId: true,
+        casoId: true,
         grupo: true,
         responsavelId: true,
         clienteId: true,
@@ -357,12 +385,12 @@ export async function atualizarTarefa(id: number, patch: TarefaPatch, ator: Ator
         status: true,
         aguardandoTexto: true,
         prazo: true,
-        projetoRef: { select: { excluidoEm: true } },
+        caso: { select: { excluidoEm: true } },
       },
     })
     if (!antes) throw new UserError("Tarefa não encontrada")
-    // projeto excluído (soft-delete) conta como "Sem projeto"
-    const projetoVivoAntes = antes.projetoId != null && antes.projetoRef && !antes.projetoRef.excluidoEm ? antes.projetoId : null
+    // caso excluído (soft-delete) conta como "Sem caso"
+    const casoVivoAntes = antes.casoId != null && antes.caso && !antes.caso.excluidoEm ? antes.casoId : null
     const reg = new RegistroAcao(tx, ator.id)
     await reg.guardarTarefas([id])
     const data: Prisma.TarefaUncheckedUpdateInput = {}
@@ -405,17 +433,19 @@ export async function atualizarTarefa(id: number, patch: TarefaPatch, ator: Ator
       }
     }
 
-    // Projeto: trocar remove TODAS as ligações da tarefa e zera o grupo.
-    let projetoEfetivo = projetoVivoAntes
-    let clienteDoProjeto: number | null = null
-    if (patch.projetoId !== undefined && optId(patch.projetoId) !== projetoVivoAntes) {
-      const novo = await projetoVivo(tx, optId(patch.projetoId))
-      projetoEfetivo = novo?.id ?? null
-      clienteDoProjeto = novo?.clienteId ?? null
-      data.projetoId = projetoEfetivo
+    // Caso: trocar remove TODAS as ligações da tarefa e zera o grupo.
+    let casoEfetivo = casoVivoAntes
+    let clienteDoCaso: number | null = null
+    if (patch.casoId !== undefined && optId(patch.casoId) !== casoVivoAntes) {
+      const alvo = optId(patch.casoId)
+      if (alvo != null && !(await podeVincularCaso(ator, alvo))) throw new UserError(MSG_SEM_ACESSO_CASO)
+      const novo = await casoVivo(tx, alvo)
+      casoEfetivo = novo?.id ?? null
+      clienteDoCaso = novo?.clienteId ?? null
+      data.casoId = casoEfetivo
       data.grupo = null
-      if (clienteDoProjeto) data.clienteId = null // não duplica o cliente do projeto na tarefa
-      add(novo ? `Projeto: ${novo.nomeCurto}` : "Sem projeto")
+      if (clienteDoCaso) data.clienteId = null // não duplica o cliente do caso na tarefa
+      add(novo ? `Caso: ${novo.curto}` : "Sem caso")
 
       await reg.guardarLigacoes([id])
       const ligs = await tx.tarefaLigacao.findMany({
@@ -438,20 +468,20 @@ export async function atualizarTarefa(id: number, patch: TarefaPatch, ator: Ator
           add(`Ligação removida: ${antes.titulo}`, sid)
         }
       }
-    } else if (projetoEfetivo != null) {
-      const p = await tx.projeto.findUnique({ where: { id: projetoEfetivo }, select: { clienteId: true } })
-      clienteDoProjeto = p?.clienteId ?? null
+    } else if (casoEfetivo != null) {
+      const c = await tx.caso.findUnique({ where: { id: casoEfetivo }, select: { clientePrincipalId: true } })
+      clienteDoCaso = c?.clientePrincipalId ?? null
     }
 
     if (patch.grupo !== undefined && data.grupo === undefined) {
-      const v = projetoEfetivo != null ? optStr(patch.grupo) : null
+      const v = casoEfetivo != null ? optStr(patch.grupo) : null
       if (v !== antes.grupo) {
         data.grupo = v
         add(v ? `Grupo: ${v}` : "Sem grupo")
       }
     }
-    // Cliente: com cliente no projeto, o da tarefa é herdado (somente leitura).
-    if (patch.clienteId !== undefined && !clienteDoProjeto) {
+    // Cliente: com cliente no caso, o da tarefa é herdado (somente leitura).
+    if (patch.clienteId !== undefined && !clienteDoCaso) {
       const c = await validarCliente(tx, optId(patch.clienteId))
       if ((c?.id ?? null) !== antes.clienteId) {
         data.clienteId = c?.id ?? null
@@ -568,7 +598,7 @@ export interface ResultadoConclusao {
 export async function concluirTarefa(id: number, ator: Ator): Promise<ResultadoConclusao> {
   const hoje = hojeSP()
   const r = await prisma.$transaction(async (tx) => {
-    const nos = await grafo(tx, [id]) // trava o projeto antes de ler o estado
+    const nos = await grafo(tx, [id]) // trava o caso antes de ler o estado
     const t = await tx.tarefa.findUnique({ where: { id } })
     if (!t) throw new UserError("Tarefa não encontrada")
     if (t.status === "done") {
@@ -600,7 +630,7 @@ export async function concluirTarefa(id: number, ator: Ator): Promise<ResultadoC
           ator,
           {
             titulo: t.titulo,
-            projetoId: t.projetoId != null ? (await tx.projeto.findFirst({ where: { id: t.projetoId, excluidoEm: null }, select: { id: true } }))?.id ?? null : null,
+            casoId: t.casoId != null ? ((await tx.caso.findFirst({ where: { id: t.casoId, excluidoEm: null }, select: { id: true } }))?.id ?? null) : null,
             grupo: t.grupo,
             responsavelId: t.responsavelId,
             clienteId: t.clienteId,
@@ -609,7 +639,6 @@ export async function concluirTarefa(id: number, ator: Ator): Promise<ResultadoC
             descricao: t.notes,
             checklist: checklistDe(t.checklist).map((c) => c.texto),
             recur: t.recur,
-            casoId: t.casoId,
             processoId: t.processoId,
             leadId: t.leadId,
             origem: "recorrencia",
@@ -701,7 +730,7 @@ export async function excluirTarefa(id: number, ator: Ator) {
 
 // ── ligações ─────────────────────────────────────────────────────────────────
 export const MSG_CICLO = "Não é possível: as tarefas ficariam esperando uma pela outra."
-export const MSG_PROJETOS = "Ligações só entre tarefas do mesmo projeto."
+export const MSG_CASOS = "Ligações só entre tarefas do mesmo caso."
 
 export async function ligar(anteriorId: number, seguinteId: number, ator: Ator) {
   return prisma.$transaction(async (tx) => {
@@ -711,7 +740,7 @@ export async function ligar(anteriorId: number, seguinteId: number, ator: Ator) 
     const b = map.get(seguinteId)
     if (!a || !b) throw new UserError("Tarefa não encontrada")
     if (a.id === b.id) throw new UserError(MSG_CICLO)
-    if (a.projetoId == null || a.projetoId !== b.projetoId) throw new UserError(MSG_PROJETOS)
+    if (a.casoId == null || a.casoId !== b.casoId) throw new UserError(MSG_CASOS)
     if (b.anteriores.includes(a.id)) throw new UserError("Essas tarefas já estão ligadas.")
     if (criariaCiclo(a.id, b.id, map)) throw new UserError(MSG_CICLO)
     const reg = new RegistroAcao(tx, ator.id)
@@ -800,13 +829,13 @@ export function removerItem(id: number, itemId: string, ator: Ator) {
   })
 }
 
-/** "Transformar em tarefa": nova tarefa com o texto do item (mesmo projeto/grupo/responsável). */
+/** "Transformar em tarefa": nova tarefa com o texto do item (mesmo caso/grupo/responsável). */
 export async function itemParaTarefa(id: number, itemId: string, ator: Ator) {
   const hoje = hojeSP()
   return prisma.$transaction(async (tx) => {
     const t = await tx.tarefa.findUnique({
       where: { id },
-      select: { titulo: true, checklist: true, projetoId: true, grupo: true, responsavelId: true, clienteId: true, projetoRef: { select: { excluidoEm: true } } },
+      select: { titulo: true, checklist: true, casoId: true, grupo: true, responsavelId: true, clienteId: true, caso: { select: { excluidoEm: true } } },
     })
     if (!t) throw new UserError("Tarefa não encontrada")
     const itens = checklistDe(t.checklist)
@@ -814,15 +843,15 @@ export async function itemParaTarefa(id: number, itemId: string, ator: Ator) {
     if (!item) throw new UserError("Item não encontrado")
     const reg = new RegistroAcao(tx, ator.id)
     await reg.guardarTarefas([id])
-    const projetoOk = t.projetoId != null && t.projetoRef && !t.projetoRef.excluidoEm
+    const casoOk = t.casoId != null && t.caso && !t.caso.excluidoEm
     const nova = await inserir(
       tx,
       reg,
       ator,
       {
         titulo: item.texto,
-        projetoId: projetoOk ? t.projetoId : null,
-        grupo: projetoOk ? t.grupo : null,
+        casoId: casoOk ? t.casoId : null,
+        grupo: casoOk ? t.grupo : null,
         responsavelId: t.responsavelId,
         clienteId: t.clienteId,
         origem: "checklist",

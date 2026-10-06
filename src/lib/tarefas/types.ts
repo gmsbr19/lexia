@@ -1,8 +1,8 @@
 // Tarefas — string unions, taxonomias fixas e view models client-safe (sem
 // imports de Prisma). Redesign "Tarefas": um quadro único com todas as tarefas do
-// escritório; projeto é FILTRO; UMA data só (prazo, obrigatório); prazo fatal é um
-// marcador sobre o mesmo prazo; ligações "só começa depois de" entre tarefas do
-// mesmo projeto. As regras derivadas (vencida, em risco, conflito, aguardando…)
+// escritório; o CASO é o "projeto" do quadro (FILTRO); UMA data só (prazo,
+// obrigatório); prazo fatal é um marcador sobre o mesmo prazo; ligações "só começa
+// depois de" entre tarefas do mesmo caso. As regras derivadas (vencida, em risco, conflito, aguardando…)
 // vivem em ./regras.ts — implementação ÚNICA usada pelo servidor e pelo cliente.
 import type { Role } from "@/lib/auth/session"
 
@@ -23,8 +23,8 @@ export const STATUS_IDS: TaskStatus[] = STATUS.map((s) => s.id)
 export const statusLabel = (id: string): string => STATUS.find((s) => s.id === id)?.label ?? "A fazer"
 export const isStatus = (v: unknown): v is TaskStatus => typeof v === "string" && (STATUS_IDS as string[]).includes(v)
 
-// Cores de projeto (reaproveitadas do app — não são cores novas).
-export const CORES_PROJETO = ["#2E7D6B", "#5A4F9A", "#9A6B2E", "#9A2E5A", "#7A8699", "#C0492F"] as const
+// Cores de caso no quadro (reaproveitadas do app — não são cores novas).
+export const CORES_CASO = ["#2E7D6B", "#5A4F9A", "#9A6B2E", "#9A2E5A", "#7A8699", "#C0492F"] as const
 
 // "Equipe" (visão da equipe, filtro por outras pessoas, painel) só para gestão.
 export const ROLES_GESTAO: Role[] = ["socio"] // admin passa implícito
@@ -58,9 +58,9 @@ export interface TaskRow {
   status: TaskStatus
   prazo: string // "YYYY-MM-DD" (sempre presente)
   prazoFatal: boolean
-  projetoId: number | null // null = "Sem projeto" (ou projeto excluído)
+  casoId: number | null // null = "Sem caso" (ou caso excluído)
   grupo: string | null
-  clienteId: number | null // vínculo PRÓPRIO (o efetivo considera o projeto)
+  clienteId: number | null // vínculo PRÓPRIO (o efetivo considera o caso)
   responsavelId: number | null
   aguardandoTexto: string | null
   descricao: string | null
@@ -73,18 +73,21 @@ export interface TaskRow {
   nAnexos: number
 }
 
-/** Projeto como o quadro/Projetos o enxergam. */
-export interface ProjetoRow {
+/**
+ * Caso como o quadro o enxerga. `nomeCurto` e `cor` já vêm RESOLVIDOS pelo
+ * servidor (próprios do caso → título / cor da área → paleta), ver casos-quadro.ts.
+ */
+export interface CasoQuadro {
   id: number
-  nomeCurto: string
-  nome: string
-  cor: string
+  nomeCurto: string // etiqueta (resolvida)
+  nome: string // título do caso
+  cor: string // hex (resolvida)
   clienteId: number | null
   area: string | null // chave de AreaDireito
   responsavelId: number | null
   prazo: string | null // "YYYY-MM-DD"
   descricao: string | null
-  arquivadoEm: string | null // "YYYY-MM-DD"
+  arquivado: boolean // status "Arquivado"
   modeloOrigemId: number | null
 }
 
@@ -112,10 +115,12 @@ export interface ModeloView {
   passos: PassoModelo[]
 }
 
-/** Carga única que alimenta o módulo (quadro + projetos + equipe). */
+/** Carga única que alimenta o módulo (quadro + modelos + equipe). */
 export interface TarefasBoard {
   tarefas: TaskRow[]
-  projetos: ProjetoRow[] // ativos + arquivados (a tela separa)
+  casos: CasoQuadro[] // não arquivados + os arquivados citados por alguma tarefa
+  /** Casos que ESTA pessoa pode abrir/vincular; null = todos (papéis que veem tudo). */
+  casosAcessiveis: number[] | null
   pessoas: TeamMember[]
   clientes: IdNome[]
   modelos: ModeloView[]

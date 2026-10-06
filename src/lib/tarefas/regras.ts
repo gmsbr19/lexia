@@ -298,13 +298,13 @@ export function deslocamentoCadeia<T extends TarefaGrafo & Pick<TaskRow, "prazoF
   return { delta, moveis, fatais: abertas.length - moveis.length }
 }
 
-/** Cliente efetivo: o do projeto (herdado, somente leitura) ou o próprio da tarefa. */
+/** Cliente efetivo: o do caso (herdado, somente leitura) ou o próprio da tarefa. */
 export function clienteEfetivo(
-  t: Pick<TaskRow, "clienteId" | "projetoId">,
-  clienteDoProjeto: (projetoId: number) => number | null,
+  t: Pick<TaskRow, "clienteId" | "casoId">,
+  clienteDoCaso: (casoId: number) => number | null,
 ): { id: number; herdado: boolean } | null {
-  const doProjeto = t.projetoId != null ? clienteDoProjeto(t.projetoId) : null
-  if (doProjeto != null) return { id: doProjeto, herdado: true }
+  const doCaso = t.casoId != null ? clienteDoCaso(t.casoId) : null
+  if (doCaso != null) return { id: doCaso, herdado: true }
   return t.clienteId != null ? { id: t.clienteId, herdado: false } : null
 }
 
