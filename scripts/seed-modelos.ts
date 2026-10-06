@@ -1,13 +1,13 @@
-// Seed do módulo Tarefas/Projetos (redesign). Idempotente.
+// Seed do módulo Tarefas (redesign; o caso é o "projeto" do quadro). Idempotente.
 //  1) Áreas do Direito canônicas (+ normaliza Caso.area legado);
-//  2) Modelos de projeto — CREATE-ONLY por `chave` (nunca sobrescreve um modelo
+//  2) Modelos de tarefas — CREATE-ONLY por `chave` (nunca sobrescreve um modelo
 //     editado pelo sócio): "Integralização de imóveis", "Acompanhamento
 //     processual" e "Holding Patrimonial" (papéis + passos + ligações);
-//  3) `--demo`: dados de exemplo do spec (projetos Alfa…Ômega com tarefas,
+//  3) `--demo`: dados de exemplo do spec (casos Alfa…Ômega com tarefas,
 //     grupos, ligações, uma vencida em risco, prazo fatal etc.), marcados com
-//     chave "demo-*" / astreaId "app-tarefa-demo-*" / "app-cliente-demo-*".
+//     astreaId "app-caso-demo-*" / "app-tarefa-demo-*" / "app-cliente-demo-*".
 //     `--limpar-demo` remove tudo isso. Só para desenvolvimento.
-// Rode após `db:migrate` + `db:generate`: npm run db:seed:projetos [-- --demo]
+// Rode após `db:migrate` + `db:generate`: npm run db:seed:modelos [-- --demo]
 import { PrismaClient } from "@prisma/client"
 import { normalizar } from "../src/lib/text"
 import { addDays } from "../src/lib/datas/util"
@@ -196,13 +196,15 @@ async function seedModelos(): Promise<number> {
 // ── dados de exemplo (--demo) ─────────────────────────────────────────────────
 async function limparDemo(): Promise<void> {
   const t = await prisma.tarefa.deleteMany({ where: { astreaId: { startsWith: "app-tarefa-demo-" } } })
-  const p = await prisma.projeto.deleteMany({ where: { chave: { startsWith: "demo-" } } })
-  const c = await prisma.cliente.deleteMany({ where: { astreaId: { startsWith: "app-cliente-demo-" }, tarefas: { none: {} } } })
-  console.log(`Demo removida: ${t.count} tarefas, ${p.count} projetos, ${c.count} clientes.`)
+  // projetos de demo antigos (antes da unificação Projeto → Caso) também saem
+  await prisma.projeto.deleteMany({ where: { chave: { startsWith: "demo-" } } })
+  const k = await prisma.caso.deleteMany({ where: { astreaId: { startsWith: "app-caso-demo-" } } })
+  const c = await prisma.cliente.deleteMany({ where: { astreaId: { startsWith: "app-cliente-demo-" }, tarefas: { none: {} }, casos: { none: {} } } })
+  console.log(`Demo removida: ${t.count} tarefas, ${k.count} casos, ${c.count} clientes.`)
 }
 
 async function seedDemo(): Promise<void> {
-  if (await prisma.projeto.findFirst({ where: { chave: { startsWith: "demo-" } } })) {
+  if (await prisma.caso.findFirst({ where: { astreaId: { startsWith: "app-caso-demo-" } } })) {
     console.log("Demo já existe — rode com --limpar-demo antes para recriar.")
     return
   }
@@ -225,8 +227,21 @@ async function seedDemo(): Promise<void> {
     ).id
   const projeto = async (chave: string, nomeCurto: string, nome: string, clienteId: number | null, area: string, resp: number | null, prazo: number | null, cor: string, descricao: string) =>
     (
-      await prisma.projeto.create({
-        data: { chave: `demo-${chave}`, nomeCurto, nome, clienteId, area, responsavelId: resp, prazo: prazo == null ? null : d(prazo), cor, descricao },
+      await prisma.caso.create({
+        data: {
+          astreaId: `app-caso-demo-${chave}`,
+          titulo: nome,
+          tipo: chave === "omega" ? "litigio" : "consultivo",
+          status: "Ativo",
+          dataCriacao: new Date(),
+          nomeCurto,
+          clientePrincipalId: clienteId,
+          area,
+          responsavelUserId: resp,
+          prazo: prazo == null ? null : d(prazo),
+          cor,
+          descricao,
+        },
         select: { id: true },
       })
     ).id
@@ -242,7 +257,7 @@ async function seedDemo(): Promise<void> {
   interface T {
     k: string
     titulo: string
-    projetoId: number | null
+    casoId: number | null
     grupo?: string
     resp: number | null
     due: number
@@ -255,36 +270,36 @@ async function seedDemo(): Promise<void> {
     checklist?: [string, boolean][]
   }
   const tarefas: T[] = [
-    { k: "a1", titulo: "Reunir documentação", projetoId: ALFA, grupo: G(1), resp: ED, due: -3, status: "done", doneAt: -4, checklist: [["Matrículas atualizadas", true], ["Certidões negativas", true], ["Contrato social", true]] },
-    { k: "a2", titulo: "Solicitar ITBI", projetoId: ALFA, grupo: G(1), resp: LE, due: 2, status: "doing", depois: ["a1"], checklist: [["Guia emitida", true], ["Pagamento", false], ["Comprovante anexado", false]] },
-    { k: "a3", titulo: "Protocolar remessa", projetoId: ALFA, grupo: G(1), resp: LE, due: 6, status: "wait", depois: ["a2"] },
-    { k: "a4", titulo: "Reunir documentação", projetoId: ALFA, grupo: G(2), resp: ED, due: -5, status: "done", doneAt: -6 },
-    { k: "a5", titulo: "Emitir guia de ITBI", projetoId: ALFA, grupo: G(2), resp: LE, due: 5, status: "wait", espera: "Prefeitura — ITBI", depois: ["a4"] },
-    { k: "a6", titulo: "Conferir certidões", projetoId: ALFA, grupo: G(2), resp: ED, due: -2, status: "todo", depois: ["a4"], checklist: [["Certidão de ônus", true], ["Certidão de tributos", false], ["Certidão trabalhista", false]] },
-    { k: "a7", titulo: "Protocolar remessa", projetoId: ALFA, grupo: G(2), resp: LE, due: 8, status: "wait", depois: ["a5", "a6"] },
-    { k: "a8", titulo: "Reunir documentação", projetoId: ALFA, grupo: G(3), resp: ED, due: 9, status: "todo" },
-    { k: "a9", titulo: "Solicitar ITBI", projetoId: ALFA, grupo: G(3), resp: LE, due: 14, status: "wait", depois: ["a8"] },
-    { k: "a10", titulo: "Protocolar remessa", projetoId: ALFA, grupo: G(3), resp: null, due: 13, status: "wait", depois: ["a9"] },
-    { k: "a11", titulo: "Reunir documentação", projetoId: ALFA, grupo: G(4), resp: ED, due: 12, status: "todo" },
-    { k: "a12", titulo: "Solicitar ITBI", projetoId: ALFA, grupo: G(4), resp: LE, due: 17, status: "wait", depois: ["a11"] },
-    { k: "a13", titulo: "Protocolar remessa", projetoId: ALFA, grupo: G(4), resp: LE, due: 22, status: "wait", depois: ["a12", "a10"] },
-    { k: "b1", titulo: "Enviar minuta de alteração contratual", projetoId: BETA, resp: LE, due: -1, status: "todo" },
-    { k: "b2", titulo: "Calcular ITBI dos imóveis", projetoId: BETA, resp: TH, due: 3, status: "todo", checklist: [["Imóvel da Rua Direita", false], ["Imóvel da Av. Brasil", false]] },
-    { k: "b3", titulo: "Colher assinaturas dos sócios", projetoId: BETA, resp: LE, due: 12, status: "wait", espera: "Cliente — assinaturas" },
-    { k: "b4", titulo: "Levantar matrículas", projetoId: BETA, resp: ED, due: -3, status: "done", doneAt: -2 },
-    { k: "g1", titulo: "Revisar contrato social", projetoId: GAMA, resp: TH, due: 0, status: "doing" },
-    { k: "g2", titulo: "Montar planilha de imóveis rurais", projetoId: GAMA, resp: ED, due: 8, status: "todo" },
-    { k: "g3", titulo: "Reunião inicial com o cliente", projetoId: GAMA, resp: TH, due: -1, status: "done", doneAt: -1 },
-    { k: "d1", titulo: "Solicitar matrículas atualizadas", projetoId: DELTA, resp: ED, due: 1, status: "todo" },
-    { k: "d2", titulo: "Minuta de laudo de avaliação", projetoId: DELTA, resp: LE, due: 15, status: "doing" },
-    { k: "d3", titulo: "Aprovar laudo de avaliação", projetoId: DELTA, resp: TH, due: 20, status: "wait", depois: ["d2"] },
-    { k: "o1", titulo: "Protocolar contestação", projetoId: OMEGA, resp: LE, due: 2, fatal: true, status: "doing" },
-    { k: "o2", titulo: "Conferir publicações do processo", projetoId: OMEGA, resp: ED, due: 7, status: "todo" },
-    { k: "o3", titulo: "Juntar procuração", projetoId: OMEGA, resp: ED, due: -4, status: "done", doneAt: -3 },
-    { k: "o4", titulo: "Preparar audiência de conciliação", projetoId: OMEGA, resp: LE, due: 16, status: "todo" },
-    { k: "o5", titulo: "Cadastrar processo", projetoId: OMEGA, resp: ED, due: -16, status: "done", doneAt: -15 },
-    { k: "n1", titulo: "Renovar certificado digital", projetoId: null, resp: TH, due: 11, status: "todo" },
-    { k: "n2", titulo: "Enviar proposta de honorários", projetoId: null, resp: TH, due: 9, status: "todo", clienteId: HELENA },
+    { k: "a1", titulo: "Reunir documentação", casoId: ALFA, grupo: G(1), resp: ED, due: -3, status: "done", doneAt: -4, checklist: [["Matrículas atualizadas", true], ["Certidões negativas", true], ["Contrato social", true]] },
+    { k: "a2", titulo: "Solicitar ITBI", casoId: ALFA, grupo: G(1), resp: LE, due: 2, status: "doing", depois: ["a1"], checklist: [["Guia emitida", true], ["Pagamento", false], ["Comprovante anexado", false]] },
+    { k: "a3", titulo: "Protocolar remessa", casoId: ALFA, grupo: G(1), resp: LE, due: 6, status: "wait", depois: ["a2"] },
+    { k: "a4", titulo: "Reunir documentação", casoId: ALFA, grupo: G(2), resp: ED, due: -5, status: "done", doneAt: -6 },
+    { k: "a5", titulo: "Emitir guia de ITBI", casoId: ALFA, grupo: G(2), resp: LE, due: 5, status: "wait", espera: "Prefeitura — ITBI", depois: ["a4"] },
+    { k: "a6", titulo: "Conferir certidões", casoId: ALFA, grupo: G(2), resp: ED, due: -2, status: "todo", depois: ["a4"], checklist: [["Certidão de ônus", true], ["Certidão de tributos", false], ["Certidão trabalhista", false]] },
+    { k: "a7", titulo: "Protocolar remessa", casoId: ALFA, grupo: G(2), resp: LE, due: 8, status: "wait", depois: ["a5", "a6"] },
+    { k: "a8", titulo: "Reunir documentação", casoId: ALFA, grupo: G(3), resp: ED, due: 9, status: "todo" },
+    { k: "a9", titulo: "Solicitar ITBI", casoId: ALFA, grupo: G(3), resp: LE, due: 14, status: "wait", depois: ["a8"] },
+    { k: "a10", titulo: "Protocolar remessa", casoId: ALFA, grupo: G(3), resp: null, due: 13, status: "wait", depois: ["a9"] },
+    { k: "a11", titulo: "Reunir documentação", casoId: ALFA, grupo: G(4), resp: ED, due: 12, status: "todo" },
+    { k: "a12", titulo: "Solicitar ITBI", casoId: ALFA, grupo: G(4), resp: LE, due: 17, status: "wait", depois: ["a11"] },
+    { k: "a13", titulo: "Protocolar remessa", casoId: ALFA, grupo: G(4), resp: LE, due: 22, status: "wait", depois: ["a12", "a10"] },
+    { k: "b1", titulo: "Enviar minuta de alteração contratual", casoId: BETA, resp: LE, due: -1, status: "todo" },
+    { k: "b2", titulo: "Calcular ITBI dos imóveis", casoId: BETA, resp: TH, due: 3, status: "todo", checklist: [["Imóvel da Rua Direita", false], ["Imóvel da Av. Brasil", false]] },
+    { k: "b3", titulo: "Colher assinaturas dos sócios", casoId: BETA, resp: LE, due: 12, status: "wait", espera: "Cliente — assinaturas" },
+    { k: "b4", titulo: "Levantar matrículas", casoId: BETA, resp: ED, due: -3, status: "done", doneAt: -2 },
+    { k: "g1", titulo: "Revisar contrato social", casoId: GAMA, resp: TH, due: 0, status: "doing" },
+    { k: "g2", titulo: "Montar planilha de imóveis rurais", casoId: GAMA, resp: ED, due: 8, status: "todo" },
+    { k: "g3", titulo: "Reunião inicial com o cliente", casoId: GAMA, resp: TH, due: -1, status: "done", doneAt: -1 },
+    { k: "d1", titulo: "Solicitar matrículas atualizadas", casoId: DELTA, resp: ED, due: 1, status: "todo" },
+    { k: "d2", titulo: "Minuta de laudo de avaliação", casoId: DELTA, resp: LE, due: 15, status: "doing" },
+    { k: "d3", titulo: "Aprovar laudo de avaliação", casoId: DELTA, resp: TH, due: 20, status: "wait", depois: ["d2"] },
+    { k: "o1", titulo: "Protocolar contestação", casoId: OMEGA, resp: LE, due: 2, fatal: true, status: "doing" },
+    { k: "o2", titulo: "Conferir publicações do processo", casoId: OMEGA, resp: ED, due: 7, status: "todo" },
+    { k: "o3", titulo: "Juntar procuração", casoId: OMEGA, resp: ED, due: -4, status: "done", doneAt: -3 },
+    { k: "o4", titulo: "Preparar audiência de conciliação", casoId: OMEGA, resp: LE, due: 16, status: "todo" },
+    { k: "o5", titulo: "Cadastrar processo", casoId: OMEGA, resp: ED, due: -16, status: "done", doneAt: -15 },
+    { k: "n1", titulo: "Renovar certificado digital", casoId: null, resp: TH, due: 11, status: "todo" },
+    { k: "n2", titulo: "Enviar proposta de honorários", casoId: null, resp: TH, due: 9, status: "todo", clienteId: HELENA },
   ]
   const ids = new Map<string, number>()
   for (const t of tarefas) {
@@ -301,7 +316,7 @@ async function seedDemo(): Promise<void> {
         checklist: JSON.stringify((t.checklist ?? []).map(([texto, marcado], i) => ({ id: `c${i + 1}`, texto, marcado }))),
         responsavelId: t.resp,
         criadoPorId: TH,
-        projetoId: t.projetoId,
+        casoId: t.casoId,
         clienteId: t.clienteId ?? null,
         concluidoEm: t.doneAt != null ? d(t.doneAt) : null,
         origem: "manual",
@@ -313,7 +328,7 @@ async function seedDemo(): Promise<void> {
   const ligacoes = tarefas.flatMap((t) => (t.depois ?? []).map((a) => ({ anteriorId: ids.get(a)!, seguinteId: ids.get(t.k)! })))
   await prisma.tarefaLigacao.createMany({ data: ligacoes, skipDuplicates: true })
   await prisma.tarefaHistorico.createMany({ data: [...ids.values()].map((tarefaId) => ({ tarefaId, texto: "Tarefa criada", autorId: TH })) })
-  console.log(`Demo: 5 projetos, ${tarefas.length} tarefas, ${ligacoes.length} ligações.`)
+  console.log(`Demo: 5 casos, ${tarefas.length} tarefas, ${ligacoes.length} ligações.`)
 }
 
 async function main() {
@@ -324,7 +339,7 @@ async function main() {
   }
   await seedAreasDireito()
   const n = await seedModelos()
-  console.log(`Modelos de projeto: ${n} criados (os existentes não são alterados).`)
+  console.log(`Modelos de tarefas: ${n} criados (os existentes não são alterados).`)
   if (args.has("--demo")) await seedDemo()
 }
 
