@@ -1,12 +1,8 @@
-import "@/components/tarefas/tk.css"
-import { TarefasApp } from "@/components/tarefas/TarefasApp"
-import { carregarPagina } from "@/lib/tarefas/pagina"
+import { redirect } from "next/navigation"
 
-export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-// Projetos (parte do módulo Tarefas): Ativos · Arquivados · Modelos.
-export default async function Page() {
-  const carga = await carregarPagina()
-  return <TarefasApp {...carga} pagina="projects" />
+// Projetos foram unificados aos Casos: a lista agora é /casos.
+export default function Page() {
+  redirect("/casos")
 }

@@ -257,7 +257,7 @@ export function UnifiedShell({ children }: { children: ReactNode }) {
   // re-força na transição entrar/sair (ajuste durante o render, sem efeito:
   // abrir /tarefas direto já pinta recolhido, sem piscar aberta).
   const isDocEditor = pathname.startsWith("/documents/doc/")
-  const isTarefas = /^\/(tarefas|projetos)(\/|$)/.test(pathname)
+  const isTarefas = /^\/tarefas(\/|$)/.test(pathname)
   const autoRecolher = isDocEditor || isTarefas
   const [autoAnterior, setAutoAnterior] = useState(false)
   const [antesDoAuto, setAntesDoAuto] = useState<boolean | null>(null)
