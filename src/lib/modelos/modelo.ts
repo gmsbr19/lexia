@@ -1,5 +1,5 @@
-// Modelos de projeto — núcleo PURO (sem Prisma). O assistente (cliente) usa para
-// a prévia e o servidor (POST /api/projetos/de-modelo) usa para gerar de verdade:
+// Modelos de tarefas — núcleo PURO (sem Prisma). O assistente (cliente) usa para a
+// prévia e o servidor (POST /api/tarefas/modelos/[id]/usar) usa para gerar de verdade:
 // 1 tarefa por grupo × passo, prazo = prazo do grupo − diasAntes, e as ligações do
 // modelo DENTRO de cada grupo. Passos com anteriores nascem "aguardando".
 import { addDays, compareISO } from "@/lib/datas/util"
@@ -24,16 +24,20 @@ export function nomeGrupo(m: Pick<ModeloBase, "palavraGrupo" | "sufixoGrupo">, i
   return `${m.palavraGrupo} ${pad2(i + 1)}${m.sufixoGrupo}`
 }
 
-/** Grupos iniciais do assistente: prazos a cada 2 semanas a partir de hoje + 21 dias. */
-export function gruposPadrao(m: ModeloBase, n: number, hoje: string): GrupoWizard[] {
-  return Array.from({ length: n }, (_, i) => ({ nome: nomeGrupo(m, i), prazo: addDays(hoje, 21 + i * 14) }))
+/**
+ * Grupos iniciais do assistente: prazos a cada 2 semanas a partir de hoje + 21
+ * dias. `inicio` continua a numeração quando o caso já tem grupos (aplicar o
+ * modelo a um caso existente: "Protocolo 03", "Protocolo 04"…).
+ */
+export function gruposPadrao(m: ModeloBase, n: number, hoje: string, inicio = 0): GrupoWizard[] {
+  return Array.from({ length: n }, (_, i) => ({ nome: nomeGrupo(m, inicio + i), prazo: addDays(hoje, 21 + i * 14) }))
 }
 
 /** Aumenta/diminui a quantidade (1–12) preservando os grupos já editados. */
-export function ajustarGrupos(atual: GrupoWizard[], n: number, m: ModeloBase, hoje: string): GrupoWizard[] {
+export function ajustarGrupos(atual: GrupoWizard[], n: number, m: ModeloBase, hoje: string, inicio = 0): GrupoWizard[] {
   const alvo = Math.max(1, Math.min(12, n))
   if (alvo <= atual.length) return atual.slice(0, alvo)
-  return [...atual, ...gruposPadrao(m, alvo, hoje).slice(atual.length)]
+  return [...atual, ...gruposPadrao(m, alvo, hoje, inicio).slice(atual.length)]
 }
 
 export interface TarefaGerada {

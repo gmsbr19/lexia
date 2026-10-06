@@ -1,13 +1,15 @@
-// Zod dos payloads de Projetos e Modelos (borda da rota → UserError → 400).
+// Zod dos payloads de casos criados pelo quadro e dos Modelos de tarefas
+// (borda da rota → UserError → 400).
 import { z } from "zod"
 import { idOpt, idReq } from "@/lib/validation"
 
 const iso = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 const cor = z.string().regex(/^#[0-9A-Fa-f]{6}$/)
 
-export const projetoCreateSchema = z.object({
+/** "Novo caso…" do quadro (o cadastro completo do caso fica em /casos). */
+export const casoQuadroSchema = z.object({
   nomeCurto: z.string().trim().min(1).max(24),
-  nome: z.string().trim().min(1).max(200),
+  nome: z.string().trim().min(1).max(400), // título do caso
   clienteId: idOpt,
   area: z.string().max(60).nullish(),
   responsavelId: idOpt,
@@ -16,19 +18,18 @@ export const projetoCreateSchema = z.object({
   descricao: z.string().max(4000).nullish(),
 })
 
-export const projetoPatchSchema = projetoCreateSchema.partial().extend({
-  arquivado: z.boolean().optional(),
-})
-
-export const deModeloSchema = z.object({
-  modeloId: idReq,
-  projeto: projetoCreateSchema,
-  grupos: z
-    .array(z.object({ nome: z.string().trim().min(1).max(160), prazo: iso }))
-    .min(1)
-    .max(12),
-  responsaveis: z.record(z.string().max(60), idOpt).optional(),
-})
+/** Aplicar um modelo: a um caso NOVO (`caso`) ou a um caso existente (`casoId`). */
+export const usarModeloSchema = z
+  .object({
+    caso: casoQuadroSchema.optional(),
+    casoId: idReq.optional(),
+    grupos: z
+      .array(z.object({ nome: z.string().trim().min(1).max(160), prazo: iso }))
+      .min(1)
+      .max(12),
+    responsaveis: z.record(z.string().max(60), idOpt).optional(),
+  })
+  .refine((v) => (v.caso == null) !== (v.casoId == null), { message: "informe um caso novo OU um caso existente" })
 
 const passoSchema = z.object({
   chave: z.string().trim().min(1).max(40),
