@@ -38,33 +38,13 @@ export function TkModelosPage({
       <div className="tk-body" style={{ paddingTop: 4 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12, maxWidth: 1120, alignItems: "start" }}>
           {modelos.map((m) => (
-            <div key={m.id} className="card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
-              <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 500 }}>{m.nome}</div>
-                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                    {[resolveAreaLabel(areas, m.area), `${m.passos.length} passos por ${m.palavraGrupo.toLowerCase()}`].filter(Boolean).join(" · ")}
-                  </div>
-                </div>
-                {podeModelo && <TkIconBtn icon="edit" title="Editar modelo" size={14} onClick={() => onEditarModelo(m)} />}
-                {podeCriarProjeto && (
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => onAssistente(m.id)}>
-                    Usar
-                  </button>
-                )}
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", borderTop: "1px solid var(--border)" }}>
-                {m.passos.map((s) => (
-                  <div key={s.chave} style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 30, fontSize: 13, borderBottom: "1px solid var(--border)" }}>
-                    <span style={{ flex: 1, minWidth: 0 }}>{s.titulo}</span>
-                    <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{m.papeis.find((r) => r.id === s.papelId)?.rotulo ?? ""}</span>
-                    <span style={{ fontSize: 12, color: s.prazoFatal ? "var(--crit)" : "var(--text-muted)", width: 118, textAlign: "right" }}>
-                      {s.prazoFatal ? "Prazo fatal" : textoDiasAntes(s.diasAntes)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <TkModeloCard
+              key={m.id}
+              m={m}
+              area={resolveAreaLabel(areas, m.area)}
+              onEditar={podeModelo ? () => onEditarModelo(m) : undefined}
+              onUsar={podeCriarProjeto ? () => onAssistente(m.id) : undefined}
+            />
           ))}
           {podeModelo && (
             <button
@@ -81,6 +61,65 @@ export function TkModelosPage({
         </div>
       </div>
     </main>
+  )
+}
+
+// Passos à vista no cartão; o resto abre em "Mostrar todos".
+const PASSOS_VISIVEIS = 5
+
+/**
+ * Cartão do modelo: nome + área · passos por grupo, ações (editar, Usar) e a lista
+ * numerada de passos — título em cima, papel embaixo, "dias antes" à direita.
+ */
+function TkModeloCard({ m, area, onEditar, onUsar }: { m: ModeloView; area: string | null; onEditar?: () => void; onUsar?: () => void }) {
+  const [todos, setTodos] = useState(false)
+  const passos = todos ? m.passos : m.passos.slice(0, PASSOS_VISIVEIS)
+  const resto = m.passos.length - PASSOS_VISIVEIS
+  return (
+    <div className="card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 500, lineHeight: 1.3 }}>{m.nome}</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+            {[area, `${m.passos.length} passos por ${m.palavraGrupo.toLowerCase()}`].filter(Boolean).join(" · ")}
+          </div>
+        </div>
+        {onEditar && <TkIconBtn icon="edit" title="Editar modelo" size={14} onClick={onEditar} />}
+        {onUsar && (
+          <button type="button" className="btn btn-secondary btn-sm" onClick={onUsar}>
+            Usar
+          </button>
+        )}
+      </div>
+      <ol style={{ listStyle: "none", margin: 0, padding: 0, borderTop: "1px solid var(--border)" }}>
+        {passos.map((s, i) => {
+          const papel = m.papeis.find((r) => r.id === s.papelId)?.rotulo
+          return (
+            <li
+              key={s.chave}
+              style={{ display: "grid", gridTemplateColumns: "18px minmax(0, 1fr) auto", columnGap: 10, alignItems: "baseline", padding: "8px 0", borderBottom: "1px solid var(--border)" }}
+            >
+              <span className="tnum" style={{ fontSize: 12, color: "var(--text-subtle)" }}>
+                {i + 1}
+              </span>
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: "block", fontSize: 14, lineHeight: 1.35, textWrap: "pretty" }}>{s.titulo}</span>
+                {papel && <span style={{ display: "block", marginTop: 2, fontSize: 12, color: "var(--text-muted)" }}>{papel}</span>}
+              </span>
+              <span style={{ fontSize: 12, whiteSpace: "nowrap", color: s.prazoFatal ? "var(--crit)" : "var(--text-muted)" }}>
+                {s.prazoFatal ? "Prazo fatal" : textoDiasAntes(s.diasAntes)}
+              </span>
+            </li>
+          )
+        })}
+      </ol>
+      {resto > 0 && (
+        <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start", marginTop: -4 }} onClick={() => setTodos((v) => !v)}>
+          <Icon name={todos ? "chevronUp" : "chevronDown"} size={14} />
+          {todos ? "Mostrar menos" : `Mostrar todos os ${m.passos.length} passos`}
+        </button>
+      )}
+    </div>
   )
 }
 
