@@ -1,11 +1,12 @@
-// Seed do módulo Tarefas (redesign; o caso é o "projeto" do quadro). Idempotente.
+// Seed do módulo Tarefas (projeto do quadro = caso do cliente OU projeto interno). Idempotente.
 //  1) Áreas do Direito canônicas (+ normaliza Caso.area legado);
 //  2) Modelos de tarefas — CREATE-ONLY por `chave` (nunca sobrescreve um modelo
 //     editado pelo sócio): "Integralização de imóveis", "Acompanhamento
 //     processual" e "Holding Patrimonial" (papéis + passos + ligações);
 //  3) `--demo`: dados de exemplo do spec (casos Alfa…Ômega com tarefas,
-//     grupos, ligações, uma vencida em risco, prazo fatal etc.), marcados com
-//     astreaId "app-caso-demo-*" / "app-tarefa-demo-*" / "app-cliente-demo-*".
+//     grupos, ligações, uma vencida em risco, prazo fatal etc. + 2 projetos
+//     internos), marcados com astreaId "app-caso-demo-*" / "app-tarefa-demo-*" /
+//     "app-cliente-demo-*" e Projeto.chave "demo-*".
 //     `--limpar-demo` remove tudo isso. Só para desenvolvimento.
 // Rode após `db:migrate` + `db:generate`: npm run db:seed:modelos [-- --demo]
 import { PrismaClient } from "@prisma/client"
@@ -196,7 +197,7 @@ async function seedModelos(): Promise<number> {
 // ── dados de exemplo (--demo) ─────────────────────────────────────────────────
 async function limparDemo(): Promise<void> {
   const t = await prisma.tarefa.deleteMany({ where: { astreaId: { startsWith: "app-tarefa-demo-" } } })
-  // projetos de demo antigos (antes da unificação Projeto → Caso) também saem
+  // projetos internos de demo (chave "demo-…")
   await prisma.projeto.deleteMany({ where: { chave: { startsWith: "demo-" } } })
   const k = await prisma.caso.deleteMany({ where: { astreaId: { startsWith: "app-caso-demo-" } } })
   const c = await prisma.cliente.deleteMany({ where: { astreaId: { startsWith: "app-cliente-demo-" }, tarefas: { none: {} }, casos: { none: {} } } })
@@ -252,12 +253,23 @@ async function seedDemo(): Promise<void> {
   const DELTA = await projeto("delta", "Delta", "Integralização de Imóveis Delta", await cliente("delta", "Delta Empreendimentos"), "soc", LE, 60, "#9A2E5A", "Avaliação e integralização de três imóveis urbanos.")
   const OMEGA = await projeto("omega", "Ômega", "Acompanhamento Processual Ômega", await cliente("omega", "Ômega Comércio S.A."), "civ", LE, null, "#7A8699", "Ação de cobrança movida contra a Ômega Comércio na 2ª Vara Cível de São José dos Campos.")
   const HELENA = await cliente("helena", "Helena Vargas", "pf")
+  // projetos INTERNOS do escritório (não são casos de cliente)
+  const interno = async (chave: string, nomeCurto: string, nome: string, resp: number | null, prazo: number | null, cor: string, descricao: string) =>
+    (
+      await prisma.projeto.create({
+        data: { chave: `demo-${chave}`, nomeCurto, nome, responsavelId: resp, prazo: prazo == null ? null : d(prazo), cor, descricao },
+        select: { id: true },
+      })
+    ).id
+  const LEXIA = await interno("lexia", "Lexia", "Manutenção do Lexia", TH, 30, "#C0492F", "Melhorias e correções do sistema do escritório.")
+  const MARKETING = await interno("marketing", "Marketing", "Gestão de marketing", LE, null, "#5A4F9A", "Conteúdo, campanhas e redes sociais do escritório.")
 
   const G = (n: number) => `Protocolo 0${n} · 1º RI Taubaté`
   interface T {
     k: string
     titulo: string
     casoId: number | null
+    projetoId?: number
     grupo?: string
     resp: number | null
     due: number
@@ -300,6 +312,10 @@ async function seedDemo(): Promise<void> {
     { k: "o5", titulo: "Cadastrar processo", casoId: OMEGA, resp: ED, due: -16, status: "done", doneAt: -15 },
     { k: "n1", titulo: "Renovar certificado digital", casoId: null, resp: TH, due: 11, status: "todo" },
     { k: "n2", titulo: "Enviar proposta de honorários", casoId: null, resp: TH, due: 9, status: "todo", clienteId: HELENA },
+    { k: "i1", titulo: "Atualizar o módulo de Tarefas", casoId: null, projetoId: LEXIA, resp: TH, due: 4, status: "doing" },
+    { k: "i2", titulo: "Revisar permissões de acesso", casoId: null, projetoId: LEXIA, resp: ED, due: 10, status: "wait", depois: ["i1"] },
+    { k: "m1", titulo: "Planejar campanha de outubro", casoId: null, projetoId: MARKETING, resp: LE, due: 3, status: "todo" },
+    { k: "m2", titulo: "Publicar artigo no blog", casoId: null, projetoId: MARKETING, resp: ED, due: -1, status: "todo" },
   ]
   const ids = new Map<string, number>()
   for (const t of tarefas) {
@@ -317,6 +333,7 @@ async function seedDemo(): Promise<void> {
         responsavelId: t.resp,
         criadoPorId: TH,
         casoId: t.casoId,
+        projetoId: t.projetoId ?? null,
         clienteId: t.clienteId ?? null,
         concluidoEm: t.doneAt != null ? d(t.doneAt) : null,
         origem: "manual",
@@ -328,7 +345,7 @@ async function seedDemo(): Promise<void> {
   const ligacoes = tarefas.flatMap((t) => (t.depois ?? []).map((a) => ({ anteriorId: ids.get(a)!, seguinteId: ids.get(t.k)! })))
   await prisma.tarefaLigacao.createMany({ data: ligacoes, skipDuplicates: true })
   await prisma.tarefaHistorico.createMany({ data: [...ids.values()].map((tarefaId) => ({ tarefaId, texto: "Tarefa criada", autorId: TH })) })
-  console.log(`Demo: 5 casos, ${tarefas.length} tarefas, ${ligacoes.length} ligações.`)
+  console.log(`Demo: 5 casos, 2 projetos internos, ${tarefas.length} tarefas, ${ligacoes.length} ligações.`)
 }
 
 async function main() {
