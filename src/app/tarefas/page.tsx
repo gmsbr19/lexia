@@ -1,26 +1,31 @@
 import "@/components/tarefas/tk.css"
 import { redirect } from "next/navigation"
 import { TarefasApp } from "@/components/tarefas/TarefasApp"
-import { carregarPagina, casoDoProjetoAntigo, paramId } from "@/lib/tarefas/pagina"
+import { carregarPagina, destinoDoProjeto, paramId } from "@/lib/tarefas/pagina"
+import { chaveCaso, chaveInterno } from "@/lib/tarefas/projetos-quadro"
+import type { Pagina } from "@/components/tarefas/tk-mobile"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-// Quadro único de Tarefas. `?pagina=equipe` abre a Equipe (só gestão) e
-// `?pagina=modelos` os Modelos; `?caso=<id>` filtra por um caso; `?visao=lista|fluxo`;
-// `?tarefa=<id>` abre o detalhe (links da LexIA e das notificações). O antigo
-// `?projeto=<id>` (antes da unificação Projeto → Caso) redireciona para o caso.
+const PAGINAS: Record<string, Pagina> = { equipe: "team", modelos: "modelos", projetos: "projetos" }
+
+// Quadro único de Tarefas. `?pagina=projetos|modelos|equipe` abre as outras
+// páginas do módulo (Equipe só gestão); `?caso=<id>` filtra por um caso e
+// `?projeto=<id>` por um projeto interno (se ele virou caso, redireciona para o
+// caso); `?visao=lista|fluxo`; `?tarefa=<id>` abre o detalhe (links da LexIA e
+// das notificações).
 export default async function Page({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const params = await searchParams
-  const projetoAntigo = paramId(params.projeto)
-  if (projetoAntigo != null) {
-    const caso = await casoDoProjetoAntigo(projetoAntigo)
+  const projetoId = paramId(params.projeto)
+  const destino = projetoId != null ? await destinoDoProjeto(projetoId) : null
+  if (projetoId != null && destino?.tipo !== "interno") {
     const q = new URLSearchParams()
-    if (caso != null) q.set("caso", String(caso))
+    if (destino?.tipo === "caso") q.set("caso", String(destino.id))
     for (const k of ["visao", "tarefa", "pagina"]) {
       const v = params[k]
       if (typeof v === "string") q.set(k, v)
@@ -29,11 +34,13 @@ export default async function Page({
   }
   const carga = await carregarPagina()
   const visao = params.visao === "lista" ? "list" : params.visao === "fluxo" ? "flow" : null
+  const casoId = paramId(params.caso)
+  const projeto = destino?.tipo === "interno" ? chaveInterno(destino.id) : casoId != null ? chaveCaso(casoId) : null
   return (
     <TarefasApp
       {...carga}
-      pagina={params.pagina === "equipe" ? "team" : params.pagina === "modelos" ? "modelos" : "board"}
-      casoId={paramId(params.caso)}
+      pagina={(typeof params.pagina === "string" && PAGINAS[params.pagina]) || "board"}
+      projeto={projeto}
       tarefaId={paramId(params.tarefa)}
       visao={visao}
     />

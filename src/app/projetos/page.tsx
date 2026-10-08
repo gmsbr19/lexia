@@ -2,7 +2,8 @@ import { redirect } from "next/navigation"
 
 export const dynamic = "force-dynamic"
 
-// Projetos foram unificados aos Casos: a lista agora é /casos.
+// A lista de projetos (casos dos clientes + projetos internos) é a aba Projetos
+// do módulo Tarefas.
 export default function Page() {
-  redirect("/casos")
+  redirect("/tarefas?pagina=projetos")
 }

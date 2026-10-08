@@ -1,13 +1,14 @@
 import { redirect } from "next/navigation"
-import { casoDoProjetoAntigo, paramId } from "@/lib/tarefas/pagina"
+import { destinoDoProjeto, paramId } from "@/lib/tarefas/pagina"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-// Link antigo de um projeto (ex.: LexIA "/projetos/<id>"): projetos foram
-// unificados aos Casos — abre o quadro filtrado pelo caso em que ele virou.
+// Link de um projeto (ex.: LexIA "/projetos/<id>"): projeto interno → o quadro
+// filtrado por ele; projeto que virou caso → o quadro filtrado pelo caso.
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const caso = await casoDoProjetoAntigo(paramId(id))
-  redirect(caso != null ? `/tarefas?caso=${caso}` : "/tarefas")
+  const destino = await destinoDoProjeto(paramId(id))
+  if (destino?.tipo === "interno") redirect(`/tarefas?projeto=${destino.id}`)
+  redirect(destino ? `/tarefas?caso=${destino.id}` : "/tarefas?pagina=projetos")
 }
