@@ -3,8 +3,8 @@
 // Tarefas — Projetos: os casos dos clientes e os projetos internos do escritório
 // numa lista só (Ativos | Arquivados), com busca, Filtrar (Tipo · Responsável ·
 // Andamento · Prazo final) e Ordenar — no mesmo molde da linha de filtros do
-// quadro. Clicar: caso → a página do caso (/casos/<id>); projeto interno → a
-// janela de edição. O ícone do quadro abre as tarefas do projeto.
+// quadro. Clicar abre o projeto no Quadro; o "⋯" da linha leva à página do caso
+// (caso) ou à janela de edição (projeto interno).
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
@@ -23,7 +23,7 @@ import {
 import { compareISO } from "@/lib/datas/util"
 import { dataCurta } from "@/lib/tarefas/regras"
 import type { ChaveProjeto, ProjetoQuadro } from "@/lib/tarefas/types"
-import { Icon } from "./tf-icons"
+import { Icon, type TfIconName } from "./tf-icons"
 import { TkVazio } from "./tk-board"
 import { useTk } from "./tk-context"
 import { TkPropMenu, type OpcaoMenu } from "./tk-pickers"
@@ -53,6 +53,37 @@ const ROTULO_ORDEM: Record<OrdemProjetos, string> = { nome: "Nome", prazo: "Praz
 const rotulo = <T,>(ops: OpcaoMenu<T>[], v: T) => ops.find((o) => o.id === v)?.label ?? ""
 
 const CAB = { fontSize: 12, color: "var(--text-muted)" } as const
+
+interface MenuAcao {
+  icon: TfIconName
+  label: string
+  onClick: () => void
+}
+
+/** "⋯" da linha: abrir o caso / editar o projeto interno (sem ações = nada). */
+function TkMenuProjeto({ acoes }: { acoes: MenuAcao[] }) {
+  const pop = usePop()
+  if (!acoes.length) return null
+  return (
+    <>
+      <TkIconBtn icon="moreHorizontal" title="Mais ações" size={16} onClick={pop.toggle} />
+      <TkPop open={pop.open} onClose={pop.close} anchor={pop.anchor} align="right" width={200}>
+        {acoes.map((a) => (
+          <TkMenuItem
+            key={a.label}
+            icon={a.icon}
+            onClick={() => {
+              pop.close()
+              a.onClick()
+            }}
+          >
+            {a.label}
+          </TkMenuItem>
+        ))}
+      </TkPop>
+    </>
+  )
+}
 
 export function TkProjetosPage({ onNovo, onAssistente }: { onNovo: () => void; onAssistente: () => void }) {
   const { projetos, tarefas, hoje, cliente, pessoa, pessoas, meId, modelos, podeAbrirProjeto, podeCriarProjeto, act } = useTk()
@@ -95,11 +126,13 @@ export function TkProjetosPage({ onNovo, onAssistente }: { onNovo: () => void; o
     ...pessoas.map((p) => ({ id: p.id as number | null, label: p.id === meId ? `${p.nome} (eu)` : p.nome })),
   ]
 
-  const abrir = (p: ProjetoQuadro) => {
-    if (p.tipo === "caso") router.push(`/casos/${p.id}`)
-    else if (podeCriarProjeto) act.editarProjetoInterno(p.id)
-    else act.abrirProjeto(p.chave)
-  }
+  const abrir = (p: ProjetoQuadro) => act.abrirProjeto(p.chave)
+  const acoesDe = (p: ProjetoQuadro): MenuAcao[] =>
+    p.tipo === "caso"
+      ? [{ icon: "externalLink", label: "Abrir o caso", onClick: () => router.push(`/casos/${p.id}`) }]
+      : podeCriarProjeto
+        ? [{ icon: "edit", label: "Editar projeto", onClick: () => act.editarProjetoInterno(p.id) }]
+        : []
 
   return (
     <main className="tk-main">
@@ -310,7 +343,7 @@ export function TkProjetosPage({ onNovo, onAssistente }: { onNovo: () => void; o
                   className="tk-prow tk-row-hover"
                   role="button"
                   tabIndex={0}
-                  title={p.tipo === "caso" ? "Abrir o caso" : podeCriarProjeto ? "Editar o projeto" : "Abrir no quadro"}
+                  title="Abrir no quadro"
                   onClick={() => abrir(p)}
                   onKeyDown={(ev) => {
                     if (ev.key === "Enter") abrir(p)
@@ -344,8 +377,8 @@ export function TkProjetosPage({ onNovo, onAssistente }: { onNovo: () => void; o
                   >
                     {e.vencidas || "—"}
                   </span>
-                  <span style={{ display: "inline-flex", justifyContent: "flex-end" }} onClick={(ev) => ev.stopPropagation()}>
-                    <TkIconBtn icon="kanban" title="Abrir no quadro" size={15} onClick={() => act.abrirProjeto(p.chave)} />
+                  <span style={{ display: "inline-flex", justifyContent: "flex-end" }} onClick={(ev) => ev.stopPropagation()} onKeyDown={(ev) => ev.stopPropagation()}>
+                    <TkMenuProjeto acoes={acoesDe(p)} />
                   </span>
                 </div>
               )
