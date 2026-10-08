@@ -45,7 +45,7 @@ export const navegacaoTools = [
       "Leva o usuário a uma tela do app. Use quando ele pedir para 'abrir/ir para/mostrar' uma seção. " +
       "Rotas válidas: / (início), /financeiro (aceita ?tab=&mes=&periodo=&dir=&stat=&q=), /contatos, /contatos/<id>, " +
       "/casos (lista de casos), /casos/<id> (página do caso: honorários, contrato, processos; aceita ?tab=honorarios|processos|tarefas|documentos|rateio), " +
-      "/contratos (?contrato=<id>), /agenda, /tarefas (quadro; aceita ?caso=<id> p/ filtrar por caso, ?pagina=modelos|equipe), " +
+      "/contratos (?contrato=<id>), /agenda, /tarefas (quadro; aceita ?caso=<id> p/ filtrar por caso, ?projeto=<id> p/ projeto interno, ?pagina=projetos|modelos|equipe), " +
       "/comercial (?tab=), /documents, " +
       "/processos (módulo Processos; aceita ?view=painel|processos|prazos|andamentos), " +
       "/processos/<id>, /plano-acao, /lexia.",

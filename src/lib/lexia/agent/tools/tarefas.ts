@@ -21,6 +21,7 @@ import {
   resolverAtor,
   type NovaTarefa,
 } from "@/lib/tarefas/mutations"
+import { chaveCaso, chaveInterno, lerChave } from "@/lib/tarefas/projetos-quadro"
 import { getTarefasBoard } from "@/lib/tarefas/queries"
 import {
   aguardandoRotulo,
@@ -29,7 +30,7 @@ import {
   motivosRisco,
   vencida,
 } from "@/lib/tarefas/regras"
-import { statusLabel } from "@/lib/tarefas/types"
+import { statusLabel, type ChaveProjeto } from "@/lib/tarefas/types"
 import { idOpt, idReq } from "@/lib/validation"
 import { dataBr, diffRow, nomeCliente, nomeUsuario } from "../confirmar"
 import { defineTool } from "../types"
@@ -45,12 +46,21 @@ const tarefaChat = z.object({
   responsavelId: idOpt.describe("Responsável (id via listar_tarefas → pessoas). Omitido = quem pediu; null = sem responsável"),
   prazo: dataISO.optional().describe("Prazo (YYYY-MM-DD). Omitido = sexta-feira desta semana"),
   prazoFatal: z.boolean().optional().describe("true para prazo legal/processual (contestação, recurso…)"),
-  casoId: idOpt.describe("Caso da tarefa (id via listar_tarefas → casos, listar_casos ou buscar). Omitido = sem caso"),
-  grupo: z.string().max(160).optional().describe("Grupo dentro do caso (ex.: 'Protocolo 01 · 1º RI Taubaté')"),
+  casoId: idOpt.describe("Projeto = CASO de um cliente (id via listar_tarefas → projetos, listar_casos ou buscar). Não envie junto com projetoId"),
+  projetoId: idOpt.describe("Projeto = projeto INTERNO do escritório (id via listar_projetos ou listar_tarefas → projetos). Não envie junto com casoId"),
+  grupo: z.string().max(160).optional().describe("Grupo dentro do projeto (ex.: 'Protocolo 01 · 1º RI Taubaté')"),
   clienteId: idOpt.describe("Cliente (id via buscar) — ignorado se o caso já tem cliente"),
-  processoId: idOpt.describe("Vincular a um processo (id via buscar) — sem caso, a tarefa herda o caso do processo"),
+  processoId: idOpt.describe("Vincular a um processo (id via buscar) — sem projeto, a tarefa herda o caso do processo"),
   checklist: z.array(z.string().min(1).max(300)).max(30).optional().describe("Itens de checklist (opcional)"),
 })
+
+/** casoId XOR projetoId → chave do projeto no quadro (null = sem projeto). */
+export function chaveDosIds(casoId?: number | null, projetoId?: number | null): ChaveProjeto | null {
+  if (casoId != null && projetoId != null) throw new UserError("Informe casoId OU projetoId, não os dois.")
+  if (casoId != null) return chaveCaso(casoId)
+  if (projetoId != null) return chaveInterno(projetoId)
+  return null
+}
 
 function paraNova(i: z.infer<typeof tarefaChat>): NovaTarefa {
   return {
@@ -59,7 +69,7 @@ function paraNova(i: z.infer<typeof tarefaChat>): NovaTarefa {
     responsavelId: i.responsavelId === undefined ? undefined : i.responsavelId,
     prazo: i.prazo ?? null,
     prazoFatal: i.prazoFatal,
-    casoId: i.casoId ?? null,
+    projeto: chaveDosIds(i.casoId, i.projetoId),
     grupo: i.grupo ?? null,
     clienteId: i.clienteId ?? null,
     processoId: i.processoId ?? null,
@@ -68,10 +78,16 @@ function paraNova(i: z.infer<typeof tarefaChat>): NovaTarefa {
   }
 }
 
-async function nomeCaso(id?: number | null): Promise<string> {
-  if (!id) return "Sem caso"
-  const c = await prisma.caso.findUnique({ where: { id }, select: { nomeCurto: true, titulo: true } })
-  return c?.nomeCurto || c?.titulo || `caso #${id}`
+async function nomeProjeto(casoId?: number | null, projetoId?: number | null): Promise<string> {
+  if (casoId) {
+    const c = await prisma.caso.findUnique({ where: { id: casoId }, select: { nomeCurto: true, titulo: true } })
+    return c?.nomeCurto || c?.titulo || `caso #${casoId}`
+  }
+  if (projetoId) {
+    const p = await prisma.projeto.findUnique({ where: { id: projetoId }, select: { nomeCurto: true, nome: true } })
+    return p ? `${p.nomeCurto || p.nome} (interno)` : `projeto #${projetoId}`
+  }
+  return "Sem projeto"
 }
 
 async function tituloTarefa(id: number): Promise<string> {
@@ -85,13 +101,14 @@ export const tarefasTools = [
     kind: "readonly",
     description:
       "Lista as tarefas do escritório com os estados calculados pelas regras do sistema (vencida, faixa de prazo, em risco + motivo, aguardando o quê), " +
-      "e devolve 'pessoas' (id + nome — use para o responsável) e 'casos' (id + nome curto, só os com tarefas abertas). " +
-      "Filtros: status, responsavelId, casoId, prazo ('vencidas'|'hoje'|'semana'|'fatal'). Concluídas só se pedir status 'done'. " +
-      "Use para 'o que tenho para fazer?', 'o que está vencido?', 'tarefas do caso X', 'o que está travado?'.",
+      "e devolve 'pessoas' (id + nome — use para o responsável) e 'projetos' (casos dos clientes com casoId e projetos internos com projetoId — só os com tarefas abertas). " +
+      "Filtros: status, responsavelId, casoId ou projetoId, prazo ('vencidas'|'hoje'|'semana'|'fatal'). Concluídas só se pedir status 'done'. " +
+      "Use para 'o que tenho para fazer?', 'o que está vencido?', 'tarefas do caso/projeto X', 'o que está travado?'.",
     schema: z.object({
       status: STATUS.optional(),
       responsavelId: idOpt,
       casoId: idOpt,
+      projetoId: idOpt,
       prazo: z.enum(["vencidas", "hoje", "semana", "fatal"]).optional(),
       limite,
     }),
@@ -100,11 +117,16 @@ export const tarefasTools = [
       const map = indexar(b.tarefas)
       const nomes = new Map(b.pessoas.map((p) => [p.id, p.first]))
       const nome = (id: number | null) => (id == null ? "sem responsável" : (nomes.get(id) ?? "sem responsável"))
-      const casoNome = new Map(b.casos.map((c) => [c.id, c.nomeCurto]))
+      const projetoNome = new Map(b.projetos.map((p) => [p.chave, p.nomeCurto]))
+      const filtroProjeto = chaveDosIds(f.casoId, f.projetoId)
+      const ids = (k: ChaveProjeto | null) => {
+        const l = lerChave(k)
+        return { casoId: l?.tipo === "caso" ? l.id : null, projetoId: l?.tipo === "interno" ? l.id : null }
+      }
       const lista = b.tarefas.filter((t) => {
         if (f.status ? t.status !== f.status : t.status === "done") return false
         if (f.responsavelId != null && t.responsavelId !== f.responsavelId) return false
-        if (f.casoId != null && t.casoId !== f.casoId) return false
+        if (filtroProjeto != null && t.projeto !== filtroProjeto) return false
         if (f.prazo === "vencidas" && !vencida(t, b.hoje)) return false
         if (f.prazo === "hoje" && t.prazo !== b.hoje) return false
         if (f.prazo === "semana" && faixa(t, b.hoje) !== "week") return false
@@ -124,8 +146,8 @@ export const tarefasTools = [
           prazo: t.prazo,
           prazoFatal: t.prazoFatal,
           vencida: vencida(t, b.hoje),
-          caso: t.casoId != null ? (casoNome.get(t.casoId) ?? null) : null,
-          casoId: t.casoId,
+          projeto: t.projeto != null ? (projetoNome.get(t.projeto) ?? null) : null,
+          ...ids(t.projeto),
           grupo: t.grupo,
           responsavel: nome(t.responsavelId),
           responsavelId: t.responsavelId,
@@ -134,12 +156,12 @@ export const tarefasTools = [
           anteriores: t.anteriores,
         })),
         pessoas: b.pessoas.map((p) => ({ id: p.id, nome: p.nome })),
-        casos: (() => {
-          const abertos = new Set(b.tarefas.filter((t) => t.status !== "done").map((t) => t.casoId))
-          return b.casos
-            .filter((c) => !c.arquivado && abertos.has(c.id))
+        projetos: (() => {
+          const abertos = new Set(b.tarefas.filter((t) => t.status !== "done").map((t) => t.projeto))
+          return b.projetos
+            .filter((p) => !p.arquivado && abertos.has(p.chave))
             .slice(0, 60)
-            .map((c) => ({ id: c.id, nome: c.nomeCurto, titulo: c.nome }))
+            .map((p) => ({ ...ids(p.chave), interno: p.tipo === "interno", nome: p.nomeCurto, titulo: p.nome }))
         })(),
       }
     },
@@ -150,7 +172,7 @@ export const tarefasTools = [
     description:
       "Cria uma tarefa. Só o TÍTULO é obrigatório: sem prazo informado vale a sexta-feira desta semana; sem responsável, fica com quem pediu. " +
       "Nunca invente responsável nem prazo — se o usuário citar alguém, resolva o id com listar_tarefas (pessoas). " +
-      "Marque prazoFatal para prazos legais/processuais. Vincule caso/grupo/cliente quando indicado.",
+      "Marque prazoFatal para prazos legais/processuais. Vincule o projeto (casoId de um caso do cliente OU projetoId de um projeto interno), grupo e cliente quando indicado.",
     schema: tarefaChat,
     resumo: (i) => `Criar tarefa: ${i.titulo}`,
     montarConfirmacao: async (_ctx, i) => ({
@@ -159,7 +181,7 @@ export const tarefasTools = [
         { label: "Tarefa", valor: i.titulo },
         { label: "Responsável", valor: i.responsavelId === undefined ? "Você" : i.responsavelId ? await nomeUsuario(i.responsavelId) : "Sem responsável" },
         { label: "Prazo", valor: `${i.prazo ? dataBr(i.prazo) : "Sexta desta semana"}${i.prazoFatal ? " · prazo fatal" : ""}` },
-        { label: "Caso", valor: `${await nomeCaso(i.casoId)}${i.grupo ? ` · ${i.grupo}` : ""}` },
+        { label: "Projeto", valor: `${await nomeProjeto(i.casoId, i.projetoId)}${i.grupo ? ` · ${i.grupo}` : ""}` },
         ...(i.clienteId ? [{ label: "Cliente", valor: await nomeCliente(i.clienteId) }] : []),
       ],
     }),
@@ -187,7 +209,7 @@ export const tarefasTools = [
     kind: "mutation",
     description:
       "Edita uma tarefa (id via listar_tarefas). Envie só o que muda: titulo, descricao, prazo (ajustarSeguintes=true desloca as seguintes pelo mesmo número de dias — prazo fatal nunca muda), " +
-      "prazoFatal, responsavelId, casoId (trocar de caso remove as ligações e o grupo), grupo, clienteId, status ('todo'|'doing'|'wait'|'done'). " +
+      "prazoFatal, responsavelId, casoId OU projetoId (trocar de projeto remove as ligações e o grupo; semProjeto=true tira do projeto), grupo, clienteId, status ('todo'|'doing'|'wait'|'done'). " +
       "Status 'wait' sem tarefa anterior pendente exige aguardandoTexto (o terceiro aguardado, ex.: 'Prefeitura — ITBI').",
     schema: z.object({
       id: idReq.describe("Id da tarefa"),
@@ -198,6 +220,8 @@ export const tarefasTools = [
       prazoFatal: z.boolean().optional(),
       responsavelId: idOpt,
       casoId: idOpt,
+      projetoId: idOpt,
+      semProjeto: z.boolean().optional().describe("true = tirar a tarefa do projeto"),
       grupo: z.string().max(160).optional(),
       clienteId: idOpt,
       status: STATUS.optional(),
@@ -212,7 +236,9 @@ export const tarefasTools = [
         diffRow("Status", i.status ? statusLabel(i.status) : undefined, a?.status ? statusLabel(a.status) : undefined),
         diffRow("Prazo fatal", i.prazoFatal === undefined ? undefined : i.prazoFatal ? "Sim" : "Não", a ? (a.prazoFatal ? "Sim" : "Não") : undefined),
         i.responsavelId !== undefined ? { label: "Responsável", valor: i.responsavelId ? await nomeUsuario(i.responsavelId) : "Sem responsável" } : null,
-        i.casoId !== undefined ? { label: "Caso", valor: await nomeCaso(i.casoId) } : null,
+        i.casoId != null || i.projetoId != null || i.semProjeto
+          ? { label: "Projeto", valor: i.semProjeto ? "Sem projeto" : await nomeProjeto(i.casoId, i.projetoId) }
+          : null,
       ].filter((d): d is NonNullable<typeof d> => d != null)
       return { resumo: `Editar tarefa: ${a?.titulo ?? `#${i.id}`}`, detalhes: det.length ? det : undefined }
     },
@@ -223,7 +249,7 @@ export const tarefasTools = [
         descricao: i.descricao,
         prazoFatal: i.prazoFatal,
         responsavelId: i.responsavelId,
-        casoId: i.casoId,
+        projeto: i.semProjeto ? null : i.casoId != null || i.projetoId != null ? chaveDosIds(i.casoId, i.projetoId) : undefined,
         grupo: i.grupo,
         clienteId: i.clienteId,
       }
@@ -252,7 +278,7 @@ export const tarefasTools = [
     name: "ligar_tarefas",
     kind: "mutation",
     description:
-      "Cria a ligação 'a SEGUINTE só começa depois que a ANTERIOR terminar' (anteriorId → seguinteId). Só entre tarefas do MESMO caso; ciclos são recusados. " +
+      "Cria a ligação 'a SEGUINTE só começa depois que a ANTERIOR terminar' (anteriorId → seguinteId). Só entre tarefas do MESMO projeto; ciclos são recusados. " +
       "Se a seguinte estava 'a fazer' e a anterior não terminou, ela passa a 'aguardando'.",
     schema: z.object({ anteriorId: idReq, seguinteId: idReq }),
     resumo: (i) => `Ligar #${i.anteriorId} → #${i.seguinteId}`,

@@ -16,6 +16,7 @@ import { navegacaoTools } from "./tools/navegacao"
 import { perguntarTools } from "./tools/perguntar"
 import { modelosTools } from "./tools/modelos"
 import { processosTools } from "./tools/processos"
+import { projetosTools } from "./tools/projetos"
 import { tarefasTools } from "./tools/tarefas"
 
 export const TOOLS: AgentTool[] = [
@@ -26,6 +27,7 @@ export const TOOLS: AgentTool[] = [
   ...casosTools,
   ...tarefasTools,
   ...modelosTools,
+  ...projetosTools,
   ...agendaTools,
   ...comercialTools,
   ...processosTools,
