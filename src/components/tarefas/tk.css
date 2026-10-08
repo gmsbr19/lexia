@@ -231,7 +231,8 @@
 @keyframes tkToast { from { opacity: 0; transform: translate(-50%, 8px) } to { opacity: 1; transform: translate(-50%, 0) } }
 
 /* ── tabelas (equipe) ── */
-.tk-scope .tk-prow { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.4fr) 110px 90px 140px 70px; align-items: center; gap: 14px; min-height: 52px; padding: 6px 8px; border-bottom: 1px solid var(--border); cursor: pointer; outline: none; }
+/* lista de projetos: Projeto · Cliente · Responsável · Prazo final · Progresso · Abertas · Vencidas · quadro */
+.tk-scope .tk-prow { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.4fr) 110px 96px 128px 64px 64px 32px; align-items: center; gap: 14px; min-height: 52px; padding: 6px 8px; border-bottom: 1px solid var(--border); cursor: pointer; outline: none; }
 .tk-scope .tk-row-hover:hover { background: var(--surface-hover); }
 .tk-scope .tk-row-hover:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
 .tk-scope .tk-arow { display: grid; grid-template-columns: 16px minmax(0, 1.6fr) minmax(0, 1.3fr) 90px; align-items: center; gap: 10px; min-height: 48px; padding: 4px 6px; margin: 0 -6px; border-radius: var(--r-sm); cursor: pointer; outline: none; }
@@ -258,6 +259,8 @@
 /* ── celular ── */
 .tk-scope .tk-mobile { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
 .tk-scope .tk-mobile .tk-props { width: auto; border-left: none; background: none; padding: 0; overflow: visible; }
+.tk-scope .tk-mobile .tk-prow { grid-template-columns: minmax(0, 1fr) 96px 32px; gap: 10px; }
+.tk-scope .tk-mobile .tk-pcol { display: none; }
 .tk-scope .tk-mtabs { display: flex; gap: 6px; overflow-x: auto; margin: 0 -16px; padding: 0 16px; scrollbar-width: none; }
 .tk-scope .tk-mtabs::-webkit-scrollbar { display: none; }
 .tk-scope .tk-mtabs button { flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--r-xs); background: transparent; color: var(--text-muted); font: 500 12px var(--font-sans); cursor: pointer; }

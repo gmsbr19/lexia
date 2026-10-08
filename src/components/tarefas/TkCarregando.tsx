@@ -20,7 +20,7 @@ export function TkCarregando({ titulo = "Quadro" }: { titulo?: string }) {
       <aside className="tk-side" aria-hidden>
         <div className="tk-side-head">Tarefas</div>
         <div className="skeleton" style={{ height: 34, marginBottom: 10 }} />
-        {[0, 1, 2].map((i) => (
+        {[0, 1, 2, 3].map((i) => (
           <div key={i} className="skeleton" style={{ height: 14, margin: "10px 10px", width: "60%" }} />
         ))}
       </aside>

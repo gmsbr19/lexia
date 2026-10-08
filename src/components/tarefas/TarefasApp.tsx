@@ -7,8 +7,8 @@
 // prazos seguintes? / Quem cuida do próximo passo?) e o aviso (toast).
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import { apiSend } from "@/lib/client/api"
-import { casosComTarefas as comTarefas, casosVinculaveis, podeAbrirCaso as podeAbrir } from "@/lib/tarefas/casos-quadro"
-import { FILTROS_PADRAO, SEM_CASO, reposicionar, type Filtros, type PrefsQuadro } from "@/lib/tarefas/filtros"
+import { chaveInterno, lerChave, podeAbrirProjeto as podeAbrir, projetosComTarefas as comTarefas, projetosVinculaveis } from "@/lib/tarefas/projetos-quadro"
+import { FILTROS_PADRAO, SEM_PROJETO, reposicionar, type Filtros, type PrefsQuadro } from "@/lib/tarefas/filtros"
 import {
   aguardandoRotulo,
   criariaCiclo,
@@ -26,7 +26,7 @@ import {
   statusAoLigar,
 } from "@/lib/tarefas/regras"
 import { addDays } from "@/lib/datas/util"
-import { statusLabel, type ModeloView, type TarefasBoard, type TaskRow, type TaskStatus } from "@/lib/tarefas/types"
+import { statusLabel, type ChaveProjeto, type ModeloView, type ProjetoQuadro, type TarefasBoard, type TaskRow, type TaskStatus } from "@/lib/tarefas/types"
 import { Icon, type TfIconName } from "./tf-icons"
 import { TkBoardPage } from "./tk-board"
 import { TkCtx, useTk, type Acoes, type Aviso, type PatchTarefaUI, type TkCtxValue } from "./tk-context"
@@ -34,6 +34,8 @@ import { TkDetail } from "./tk-detail"
 import { TkMobileBoard, TkMobileNav, type Pagina } from "./tk-mobile"
 import { TkNewTask } from "./tk-newtask"
 import { TkModeloEditor, TkModelosPage, TkModeloWizard } from "./tk-modelos"
+import { TkProjetoForm } from "./tk-projeto-form"
+import { TkProjetosPage } from "./tk-projetos"
 import { TkTeamPage } from "./tk-team"
 import { TkDialog, TkIconBtn } from "./tk-ui"
 import { ELEVACAO_AVISO, TK_AVISO } from "./tk-glass"
@@ -46,6 +48,7 @@ type Dialogo =
   | { kind: "nova" }
   | { kind: "wizard"; modeloId: number | null }
   | { kind: "modelo"; modelo: ModeloView | null }
+  | { kind: "projeto"; projeto: ProjetoQuadro | null } // null = novo
 
 type Resp<T> = { ok: true; result: T }
 
@@ -130,6 +133,7 @@ function TkWaitDialog({ onClose, onSave }: { onClose: () => void; onSave: (v: st
 function TkSidebar({ pagina, ir, onNova, gestao }: { pagina: Pagina; ir: (p: Pagina) => void; onNova: () => void; gestao: boolean }) {
   const itens: [Pagina, TfIconName, string][] = [
     ["board", "kanban", "Quadro"],
+    ["projetos", "folder", "Projetos"],
     ["modelos", "layers", "Modelos"],
     ...(gestao ? ([["team", "users", "Equipe"]] as [Pagina, TfIconName, string][]) : []),
   ]
@@ -163,10 +167,10 @@ export interface TarefasAppProps {
   inicial: TarefasBoard
   meId: number | null
   gestao: boolean
-  podeCriarCaso: boolean
+  podeCriarProjeto: boolean
   podeModelo: boolean
   pagina: Pagina
-  casoId?: number | null
+  projeto?: ChaveProjeto | null
   tarefaId?: number | null
   visao?: Filtros["visao"] | null
   /** Visão preferida de quem está vendo (ordenar, direção, agrupar). */
@@ -178,16 +182,16 @@ export interface TarefasAppProps {
 const msgErro = (e: unknown) => (e instanceof Error && e.message ? e.message : "Não foi possível concluir a ação")
 
 export function TarefasApp(props: TarefasAppProps) {
-  const { meId, gestao, podeCriarCaso, podeModelo } = props
+  const { meId, gestao, podeCriarProjeto, podeModelo } = props
   const [board, setBoard] = useState<TarefasBoard>(props.inicial)
-  const filtrosIniciais = (casoId: number | null | undefined, visao?: Filtros["visao"] | null): Filtros => ({
+  const filtrosIniciais = (projeto: ChaveProjeto | null | undefined, visao?: Filtros["visao"] | null): Filtros => ({
     ...FILTROS_PADRAO,
     ...props.prefs,
     escopo: gestao ? "team" : "mine",
-    casos: casoId ? [casoId] : [],
-    visao: visao && (visao !== "flow" || casoId) ? visao : "board",
+    projetos: projeto ? [projeto] : [],
+    visao: visao && (visao !== "flow" || projeto) ? visao : "board",
   })
-  const [F, setFState] = useState<Filtros>(() => filtrosIniciais(props.casoId, props.visao))
+  const [F, setFState] = useState<Filtros>(() => filtrosIniciais(props.projeto, props.visao))
   const [pagina, setPagina] = useState<Pagina>(props.pagina === "team" && !gestao ? "board" : props.pagina)
   const [openId, setOpenId] = useState<number | null>(props.tarefaId ?? null)
   const [dialogo, setDialogo] = useState<Dialogo | null>(null)
@@ -196,17 +200,17 @@ export function TarefasApp(props: TarefasAppProps) {
   const [ordemManual, setOrdemManual] = useState<Map<number, number>>(
     () => new Map(Object.entries(props.ordemManual).map(([k, v]) => [Number(k), v])),
   )
-  const [ultimoCaso, setUltimoCaso] = useState<number | null>(null)
+  const [ultimoProjeto, setUltimoProjeto] = useState<ChaveProjeto | null>(null)
   const [portal, setPortal] = useState<HTMLElement | null>(null)
   const mobile = useMobile()
   const seq = useRef(0)
 
-  const { tarefas, casos, casosAcessiveis, pessoas, clientes, modelos, hoje } = board
+  const { tarefas, projetos, casosAcessiveis, pessoas, clientes, modelos, hoje } = board
   const map = useMemo(() => indexar(tarefas), [tarefas])
   const seguintes = useMemo(() => mapaSeguintes(tarefas), [tarefas])
-  const casoMap = useMemo(() => indexar(casos), [casos])
-  const casosAtivos = useMemo(() => casosVinculaveis(casos, casosAcessiveis), [casos, casosAcessiveis])
-  const casosComTarefas = useMemo(() => comTarefas(casos, tarefas), [casos, tarefas])
+  const projetoMap = useMemo(() => new Map(projetos.map((p) => [p.chave, p])), [projetos])
+  const projetosAtivos = useMemo(() => projetosVinculaveis(projetos, casosAcessiveis), [projetos, casosAcessiveis])
+  const projetosComTarefas = useMemo(() => comTarefas(projetos, tarefas), [projetos, tarefas])
   const pessoaMap = useMemo(() => indexar(pessoas), [pessoas])
   const clienteMap = useMemo(() => indexar(clientes), [clientes])
   const nomePessoa = useCallback((id: number | null) => (id == null ? "sem responsável" : (pessoaMap.get(id)?.first ?? "sem responsável")), [pessoaMap])
@@ -234,14 +238,16 @@ export function TarefasApp(props: TarefasAppProps) {
     url.search = ""
     if (pagina === "team") url.searchParams.set("pagina", "equipe")
     if (pagina === "modelos") url.searchParams.set("pagina", "modelos")
-    if (pagina === "board" && F.casos.length === 1 && F.casos[0] !== SEM_CASO) url.searchParams.set("caso", String(F.casos[0]))
+    if (pagina === "projetos") url.searchParams.set("pagina", "projetos")
+    const unico = F.projetos.length === 1 && F.projetos[0] !== SEM_PROJETO ? lerChave(F.projetos[0]) : null
+    if (pagina === "board" && unico) url.searchParams.set(unico.tipo === "caso" ? "caso" : "projeto", String(unico.id))
     if (pagina === "board" && F.visao !== "board") url.searchParams.set("visao", F.visao === "list" ? "lista" : "fluxo")
     if (openId != null) url.searchParams.set("tarefa", String(openId))
     const alvo = url.pathname + url.search
     // `null` (e não history.state) mantém o roteador do Next sincronizado (usePathname
     // do shell, aba de rota, contexto da LexIA) sem navegar nem recarregar.
     if (alvo !== window.location.pathname + window.location.search) window.history.replaceState(null, "", alvo)
-  }, [pagina, F.casos, F.visao, openId])
+  }, [pagina, F.projetos, F.visao, openId])
 
   // ── carga ──
   // Cada recarga é uma requisição PRÓPRIA (o apiSend compartilha requisições
@@ -391,7 +397,7 @@ export function TarefasApp(props: TarefasAppProps) {
     if (p.titulo !== undefined) return "Título alterado"
     if (p.descricao !== undefined) return "Descrição alterada"
     if (p.responsavelId !== undefined) return "Responsável alterado"
-    if (p.casoId !== undefined) return p.casoId ? `Caso: ${casoMap.get(p.casoId)?.nomeCurto ?? ""}` : "Sem caso"
+    if (p.projeto !== undefined) return p.projeto ? `Projeto: ${projetoMap.get(p.projeto)?.nomeCurto ?? ""}` : "Sem projeto"
     if (p.grupo !== undefined) return "Grupo alterado"
     if (p.clienteId !== undefined) return p.clienteId ? `Cliente: ${clienteMap.get(p.clienteId)?.nome ?? ""}` : "Cliente removido"
     if (p.prazoFatal !== undefined) return p.prazoFatal ? "Marcada como prazo fatal" : "Prazo fatal removido"
@@ -413,15 +419,15 @@ export function TarefasApp(props: TarefasAppProps) {
         if (p.recur !== undefined) y.recur = p.recur
         if (p.grupo !== undefined) y.grupo = p.grupo
         if (p.clienteId !== undefined) y.clienteId = p.clienteId
-        if (p.casoId !== undefined && p.casoId !== x.casoId) {
-          y.casoId = p.casoId
+        if (p.projeto !== undefined && p.projeto !== x.projeto) {
+          y.projeto = p.projeto
           y.grupo = null
           y.anteriores = []
-          if (p.casoId != null && casoMap.get(p.casoId)?.clienteId) y.clienteId = null
+          if (p.projeto != null && projetoMap.get(p.projeto)?.clienteId) y.clienteId = null
         }
         return y
       })
-      if (p.casoId !== undefined && p.casoId !== t.casoId) n = n.map((x) => (x.anteriores.includes(id) ? { ...x, anteriores: x.anteriores.filter((a) => a !== id) } : x))
+      if (p.projeto !== undefined && p.projeto !== t.projeto) n = n.map((x) => (x.anteriores.includes(id) ? { ...x, anteriores: x.anteriores.filter((a) => a !== id) } : x))
       return n
     })
     const r = await enviar<{ acaoId: string | null }>(`/api/tarefas/${id}`, "PATCH", p)
@@ -472,7 +478,7 @@ export function TarefasApp(props: TarefasAppProps) {
     const a = map.get(anteriorId)
     const b = map.get(seguinteId)
     if (!a || !b || anteriorId === seguinteId || b.anteriores.includes(anteriorId)) return
-    if (a.casoId == null || a.casoId !== b.casoId) return avisar({ msg: "Ligações só entre tarefas do mesmo caso." })
+    if (a.projeto == null || a.projeto !== b.projeto) return avisar({ msg: "Ligações só entre tarefas do mesmo projeto." })
     if (criariaCiclo(anteriorId, seguinteId, map)) return avisar({ msg: "Não é possível: as tarefas ficariam esperando uma pela outra." })
     patchLocal(seguinteId, (x) => ({ anteriores: [...x.anteriores, anteriorId], status: statusAoLigar(x, a) }))
     const r = await enviar<{ acaoId: string }>("/api/tarefas/ligacoes", "POST", { anteriorId, seguinteId })
@@ -554,9 +560,9 @@ export function TarefasApp(props: TarefasAppProps) {
     criar: async (n) => {
       const r = await enviar<{ id: number; prazo: string; acaoId: string }>("/api/tarefas", "POST", n)
       if (!r) return false
-      if (n.casoId != null) setUltimoCaso(n.casoId)
+      if (n.projeto != null) setUltimoProjeto(n.projeto)
       const partes = [
-        casoMap.get(n.casoId ?? -1)?.nomeCurto ?? "Sem caso",
+        (n.projeto ? projetoMap.get(n.projeto)?.nomeCurto : null) ?? "Sem projeto",
         n.responsavelId != null ? pessoaMap.get(n.responsavelId)?.first : null,
         rotuloPrazo(r.prazo, hoje),
       ].filter(Boolean) as string[]
@@ -564,32 +570,68 @@ export function TarefasApp(props: TarefasAppProps) {
       await recarregar()
       return true
     },
-    criarCaso: async (v) => {
-      const r = await enviar<{ id: number; acaoId: string }>("/api/tarefas/casos", "POST", v)
+    criarProjeto: async (v) => {
+      const r = await enviar<{ chave: ChaveProjeto; tipo: "caso" | "interno"; acaoId: string }>("/api/tarefas/projetos", "POST", v)
       if (!r) return null
-      avisar({ msg: `Caso criado: ${v.nomeCurto.trim()}`, acaoId: r.acaoId })
+      avisar({ msg: `${r.tipo === "caso" ? "Caso criado" : "Projeto criado"}: ${v.nomeCurto.trim()}`, acaoId: r.acaoId })
       await recarregar()
-      return r.id
+      return r.chave
+    },
+    editarProjeto: async (id, patch) => {
+      const r = await enviar<{ acaoId: string | null }>(`/api/tarefas/projetos/${id}`, "PATCH", patch)
+      if (!r) return false
+      const nome = patch.nomeCurto ?? projetoMap.get(chaveInterno(id))?.nomeCurto ?? ""
+      const msg = patch.arquivado === true ? "Projeto arquivado" : patch.arquivado === false ? "Projeto reaberto" : "Projeto alterado"
+      if (r.acaoId) avisar({ msg: `${msg}: ${nome}`, acaoId: r.acaoId })
+      await recarregar()
+      return true
+    },
+    excluirProjeto: async (id) => {
+      const nome = projetoMap.get(chaveInterno(id))?.nomeCurto ?? ""
+      const r = await enviar<{ acaoId: string; tarefas: number }>(`/api/tarefas/projetos/${id}`, "DELETE")
+      if (!r) return false
+      if (F.projetos.includes(chaveInterno(id))) setF({ projetos: F.projetos.filter((k) => k !== chaveInterno(id)) })
+      avisar({
+        msg: `Projeto excluído: ${nome}`,
+        sub: r.tarefas ? [`${r.tarefas} ${r.tarefas === 1 ? "tarefa ficou" : "tarefas ficaram"} sem projeto`] : undefined,
+        acaoId: r.acaoId,
+      })
+      await recarregar()
+      return true
+    },
+    converterProjeto: async (id, clienteId) => {
+      const r = await enviar<{ casoId: number; chave: ChaveProjeto }>(`/api/tarefas/projetos/${id}/converter`, "POST", { clienteId })
+      if (!r) return null
+      const de = chaveInterno(id)
+      if (F.projetos.includes(de)) setF({ projetos: F.projetos.map((k) => (k === de ? r.chave : k)) })
+      avisar({ msg: `Agora é um caso de ${clienteMap.get(clienteId)?.nome ?? "cliente"}` })
+      await recarregar()
+      return r.casoId
     },
     usarModelo: async (modeloId, alvo, grupos, responsaveis) => {
-      const r = await enviar<{ id: number; acaoId: string; tarefas: number; ligacoes: number }>(
+      const r = await enviar<{ chave: ChaveProjeto; acaoId: string; tarefas: number; ligacoes: number }>(
         `/api/tarefas/modelos/${modeloId}/usar`,
         "POST",
         { ...alvo, grupos, responsaveis },
       )
       if (!r) return null
-      const nome = "caso" in alvo ? alvo.caso.nomeCurto.trim() : (casoMap.get(alvo.casoId)?.nomeCurto ?? "")
+      const novo = "novo" in alvo
+      const nome = novo ? alvo.novo.nomeCurto.trim() : (projetoMap.get(alvo.projeto)?.nomeCurto ?? "")
       avisar({
-        msg: "caso" in alvo ? `Caso criado: ${nome}` : `Modelo aplicado: ${nome}`,
+        msg: novo ? `${alvo.novo.clienteId != null ? "Caso criado" : "Projeto criado"}: ${nome}` : `Modelo aplicado: ${nome}`,
         sub: r.tarefas ? [`${r.tarefas} tarefas · ${r.ligacoes} ligações`] : undefined,
         acaoId: r.acaoId,
       })
       await recarregar()
-      return r.id
+      return r.chave
     },
-    abrirCaso: (id) => {
-      resetFiltros({ escopo: gestao ? "team" : "mine", casos: [id] })
+    abrirProjeto: (chave) => {
+      resetFiltros({ escopo: gestao ? "team" : "mine", projetos: [chave] })
       setPagina("board")
+    },
+    editarProjetoInterno: (id) => {
+      const p = projetoMap.get(chaveInterno(id))
+      if (p) setDialogo({ kind: "projeto", projeto: p })
     },
     reordenar: (ids) => {
       const itens = reposicionar(ids, ordemManual)
@@ -619,22 +661,22 @@ export function TarefasApp(props: TarefasAppProps) {
     tarefas,
     map,
     seguintes,
-    casos,
-    casosAtivos,
-    casosComTarefas,
-    caso: (id) => (id == null ? null : (casoMap.get(id) ?? null)),
+    projetos,
+    projetosAtivos,
+    projetosComTarefas,
+    projeto: (k) => (k == null ? null : (projetoMap.get(k) ?? null)),
     pessoas,
     pessoa: (id) => (id == null ? null : (pessoaMap.get(id) ?? null)),
     nomePessoa,
     clientes,
     cliente: (id) => (id == null ? null : (clienteMap.get(id) ?? null)),
-    clienteDoCaso: (cid) => casoMap.get(cid)?.clienteId ?? null,
-    podeAbrirCaso: (id) => podeAbrir(casosAcessiveis, id),
+    clienteDoProjeto: (k) => projetoMap.get(k)?.clienteId ?? null,
+    podeAbrirProjeto: (k) => podeAbrir(casosAcessiveis, k ? projetoMap.get(k) : null),
     modelos,
     hoje,
     meId,
     gestao,
-    podeCriarCaso,
+    podeCriarProjeto,
     podeModelo,
     mobile,
     act: acoes,
@@ -649,10 +691,10 @@ export function TarefasApp(props: TarefasAppProps) {
     if (p === "team" && !gestao) return
     setPagina(p)
   }
-  const limparFiltros = () => setFState((f) => ({ ...f, casos: [], responsavel: null, prazo: null, visao: f.visao === "flow" ? "board" : f.visao }))
-  const casoFiltrado = F.casos.length === 1 && F.casos[0] !== SEM_CASO ? F.casos[0] : null
-  // o caso da nova tarefa só vem pré-preenchido se a pessoa pode vincular a ele
-  const casoParaNova = [casoFiltrado, ultimoCaso].find((id) => id != null && casosAtivos.some((c) => c.id === id)) ?? null
+  const limparFiltros = () => setFState((f) => ({ ...f, projetos: [], responsavel: null, prazo: null, visao: f.visao === "flow" ? "board" : f.visao }))
+  const projetoFiltrado = F.projetos.length === 1 && F.projetos[0] !== SEM_PROJETO ? F.projetos[0] : null
+  // o projeto da nova tarefa só vem pré-preenchido se a pessoa pode vincular a ele
+  const projetoParaNova = [projetoFiltrado, ultimoProjeto].find((k) => k != null && projetosAtivos.some((p) => p.chave === k)) ?? null
 
   const conteudo =
     pagina === "board" ? (
@@ -661,6 +703,11 @@ export function TarefasApp(props: TarefasAppProps) {
       ) : (
         <TkBoardPage F={F} setF={setF} setFState={setFState} />
       )
+    ) : pagina === "projetos" ? (
+      <TkProjetosPage
+        onNovo={() => setDialogo({ kind: "projeto", projeto: null })}
+        onAssistente={() => setDialogo({ kind: "wizard", modeloId: null })}
+      />
     ) : pagina === "modelos" ? (
       <TkModelosPage
         onAssistente={(modeloId) => setDialogo({ kind: "wizard", modeloId })}
@@ -693,7 +740,7 @@ export function TarefasApp(props: TarefasAppProps) {
         <Dialogos
           dialogo={dialogo}
           fechar={() => setDialogo(null)}
-          casoParaNova={casoParaNova}
+          projetoParaNova={projetoParaNova}
           atribuirProximo={atribuirProximo}
         />
         <div ref={setPortal} className="tk-portal">
@@ -707,12 +754,12 @@ export function TarefasApp(props: TarefasAppProps) {
 function Dialogos({
   dialogo,
   fechar,
-  casoParaNova,
+  projetoParaNova,
   atribuirProximo,
 }: {
   dialogo: Dialogo | null
   fechar: () => void
-  casoParaNova: number | null
+  projetoParaNova: ChaveProjeto | null
   atribuirProximo: (t: { id: number; titulo: string; grupo: string | null }, responsavelId: number) => void
 }) {
   if (!dialogo) return null
@@ -761,11 +808,13 @@ function Dialogos({
     case "owner":
       return <OwnerDialog tarefa={dialogo.tarefa} fechar={fechar} atribuir={atribuirProximo} />
     case "nova":
-      return <TkNewTask casoInicial={casoParaNova} onClose={fechar} />
+      return <TkNewTask projetoInicial={projetoParaNova} onClose={fechar} />
     case "wizard":
       return <TkModeloWizard modeloId={dialogo.modeloId} onClose={fechar} />
     case "modelo":
       return <TkModeloEditor modelo={dialogo.modelo} onClose={fechar} />
+    case "projeto":
+      return <TkProjetoForm projeto={dialogo.projeto} onClose={fechar} />
   }
 }
 
