@@ -1,19 +1,19 @@
 "use client"
 
 // Tarefas — Modelos: processos repetíveis do escritório (cartões com "Usar"), o
-// assistente que aplica um modelo a um caso NOVO ou a um caso EXISTENTE (Caso ·
-// Grupos · Responsáveis) e o editor de modelos (só sócio). O caso é o "projeto"
-// do quadro; a lista de casos fica em /casos.
+// assistente que aplica um modelo a um projeto NOVO (com cliente = caso do
+// cliente; sem = projeto interno) ou a um projeto EXISTENTE (Projeto · Grupos ·
+// Responsáveis) e o editor de modelos (só sócio).
 import { useState } from "react"
 import { resolveAreaLabel, toAreaOptions, useAreasStore } from "@/lib/areas/store"
 import { ajustarGrupos, gruposPadrao, resumoModelo, textoDiasAntes, type GrupoWizard } from "@/lib/modelos/modelo"
 import { dataCurta } from "@/lib/tarefas/regras"
-import type { ModeloView, PassoModelo, PapelModelo } from "@/lib/tarefas/types"
+import type { ChaveProjeto, ModeloView, PassoModelo, PapelModelo } from "@/lib/tarefas/types"
 import { apiSend } from "@/lib/client/api"
 import { Icon } from "./tf-icons"
-import { useTk, type CasoQuadroForm } from "./tk-context"
-import { TkCasoFields, casoVazio, useCoresEmUso } from "./tk-caso-form"
-import { TkCasoPicker, useGruposDoCaso } from "./tk-pickers"
+import { useTk, type ProjetoForm } from "./tk-context"
+import { TkProjetoFields, projetoVazio, useCoresEmUso } from "./tk-projeto-form"
+import { TkProjetoPicker, useGruposDoProjeto } from "./tk-pickers"
 import { TkDialog, TkDot, TkIconBtn, TkSeg, useEsc } from "./tk-ui"
 import { ELEVACAO_JANELA, TK_JANELA } from "./tk-glass"
 
@@ -25,14 +25,14 @@ export function TkModelosPage({
   onAssistente: (modeloId: number | null) => void
   onEditarModelo: (m: ModeloView | null) => void
 }) {
-  const { podeCriarCaso, podeModelo, modelos } = useTk()
+  const { podeCriarProjeto, podeModelo, modelos } = useTk()
   const areas = useAreasStore((s) => s.areas)
   return (
     <main className="tk-main">
       <div className="tk-head">
         <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
           <h1 className="tk-h1">Modelos</h1>
-          <span style={{ fontSize: 14, color: "var(--text-muted)" }}>Aplique um modelo a um caso novo ou a um caso que já existe.</span>
+          <span style={{ fontSize: 14, color: "var(--text-muted)" }}>Aplique um modelo a um projeto novo ou a um que já existe.</span>
         </div>
       </div>
       <div className="tk-body" style={{ paddingTop: 4 }}>
@@ -47,7 +47,7 @@ export function TkModelosPage({
                   </div>
                 </div>
                 {podeModelo && <TkIconBtn icon="edit" title="Editar modelo" size={14} onClick={() => onEditarModelo(m)} />}
-                {podeCriarCaso && (
+                {podeCriarProjeto && (
                   <button type="button" className="btn btn-secondary btn-sm" onClick={() => onAssistente(m.id)}>
                     Usar
                   </button>
@@ -84,26 +84,26 @@ export function TkModelosPage({
   )
 }
 
-// ── assistente: 1 Caso · 2 Grupos · 3 Responsáveis ───────────────────────────
+// ── assistente: 1 Projeto · 2 Grupos · 3 Responsáveis ────────────────────────
 type Destino = "novo" | "existente"
 
 export function TkModeloWizard({ modeloId, onClose }: { modeloId: number | null; onClose: () => void }) {
-  const { modelos, pessoas, meId, hoje, act, caso, tarefas } = useTk()
+  const { modelos, pessoas, meId, hoje, act, projeto, tarefas } = useTk()
   const usadas = useCoresEmUso()
   const [passo, setPasso] = useState(0)
   const [mid, setMid] = useState<number>(modeloId ?? modelos[0]?.id ?? 0)
   const m = modelos.find((x) => x.id === mid) ?? modelos[0]
   const [destino, setDestino] = useState<Destino>("novo")
-  const [casoId, setCasoId] = useState<number | null>(null)
-  const [v, setV] = useState<CasoQuadroForm>(() => casoVazio(meId, usadas, m?.area, hoje))
-  // num caso existente, a numeração dos grupos continua depois dos que ele já tem
-  const gruposExistentes = useGruposDoCaso(destino === "existente" ? casoId : null).length
+  const [chave, setChave] = useState<ChaveProjeto | null>(null)
+  const [v, setV] = useState<ProjetoForm>(() => projetoVazio(meId, usadas, m?.area, hoje))
+  // num projeto existente, a numeração dos grupos continua depois dos que ele já tem
+  const gruposExistentes = useGruposDoProjeto(destino === "existente" ? chave : null).length
   const [grupos, setGrupos] = useState<GrupoWizard[]>(() => (m ? gruposPadrao(m, 2, hoje) : []))
   const [papeis, setPapeis] = useState<Record<string, number | null>>(() => Object.fromEntries((m?.papeis ?? []).map((r) => [r.id, r.padraoUsuarioId])))
   const [salvando, setSalvando] = useState(false)
   useEsc(onClose)
   if (!m) return null
-  const set = (p: Partial<CasoQuadroForm>) => setV((x) => ({ ...x, ...p }))
+  const set = (p: Partial<ProjetoForm>) => setV((x) => ({ ...x, ...p }))
   const renumerar = (n: number, inicio: number, base = m) => setGrupos(gruposPadrao(base, n, hoje, inicio))
   const trocarModelo = (id: number) => {
     const n = modelos.find((x) => x.id === id)
@@ -117,31 +117,31 @@ export function TkModeloWizard({ modeloId, onClose }: { modeloId: number | null;
     setDestino(d)
     if (d === "novo") renumerar(grupos.length, 0)
   }
-  const escolherCaso = (id: number | null) => {
-    setCasoId(id)
-    // grupos já existentes no caso escolhido (lidos do quadro)
-    const ja = id == null ? 0 : new Set(tarefas.filter((t) => t.casoId === id && t.grupo).map((t) => t.grupo)).size
+  const escolherProjeto = (k: ChaveProjeto | null) => {
+    setChave(k)
+    // grupos já existentes no projeto escolhido (lidos do quadro)
+    const ja = k == null ? 0 : new Set(tarefas.filter((t) => t.projeto === k && t.grupo).map((t) => t.grupo)).size
     renumerar(grupos.length, ja)
   }
   const resumo = resumoModelo(m, grupos)
-  const alvo = caso(casoId)
-  const ok0 = destino === "novo" ? !!(v.nomeCurto.trim() && v.nome.trim()) : casoId != null
+  const alvo = projeto(chave)
+  const ok0 = destino === "novo" ? !!(v.nomeCurto.trim() && v.nome.trim()) : chave != null
   const ok1 = grupos.every((g) => g.nome.trim() && g.prazo)
-  const ETAPAS = ["Caso", "Grupos", "Responsáveis"]
+  const ETAPAS = ["Projeto", "Grupos", "Responsáveis"]
 
   const criar = async () => {
     if (salvando) return
     setSalvando(true)
-    const id = await act.usarModelo(
+    const k = await act.usarModelo(
       m.id,
-      destino === "novo" ? { caso: { ...v, prazo: v.prazo ?? resumo.prazoMax } } : { casoId: casoId! },
+      destino === "novo" ? { novo: { ...v, prazo: v.prazo ?? resumo.prazoMax } } : { projeto: chave! },
       grupos,
       papeis,
     )
     setSalvando(false)
-    if (id != null) {
+    if (k != null) {
       onClose()
-      act.abrirCaso(id)
+      act.abrirProjeto(k)
     }
   }
 
@@ -200,19 +200,19 @@ export function TkModeloWizard({ modeloId, onClose }: { modeloId: number | null;
               <div>
                 <TkSeg<Destino>
                   options={[
-                    { id: "novo", label: "Novo caso" },
-                    { id: "existente", label: "Caso existente" },
+                    { id: "novo", label: "Novo projeto" },
+                    { id: "existente", label: "Projeto existente" },
                   ]}
                   value={destino}
                   onChange={trocarDestino}
                 />
               </div>
               {destino === "novo" ? (
-                <TkCasoFields v={v} set={set} />
+                <TkProjetoFields v={v} set={set} />
               ) : (
                 <div>
-                  <span className="label">Caso</span>
-                  <TkCasoPicker variant="field" value={casoId} onChange={escolherCaso} semCaso={false} placeholder="Escolha o caso" />
+                  <span className="label">Projeto</span>
+                  <TkProjetoPicker variant="field" value={chave} onChange={escolherProjeto} semProjeto={false} placeholder="Escolha o projeto" />
                 </div>
               )}
             </div>
@@ -318,7 +318,7 @@ export function TkModeloWizard({ modeloId, onClose }: { modeloId: number | null;
             </button>
           ) : (
             <button type="button" className="btn btn-primary btn-sm" disabled={salvando} onClick={() => void criar()}>
-              {destino === "novo" ? "Criar caso" : "Aplicar modelo"}
+              {destino === "novo" ? (v.clienteId != null ? "Criar caso" : "Criar projeto") : "Aplicar modelo"}
             </button>
           )}
         </div>

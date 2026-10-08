@@ -1,21 +1,21 @@
 "use client"
 
-// Tarefas — cartão do quadro (SEM vidro), no espírito do Trello: caso·grupo,
+// Tarefas — cartão do quadro (SEM vidro), no espírito do Trello: projeto·grupo,
 // título, estado (Em risco / pelo que espera — "Depois de …" num bloco próprio,
 // para não se confundir com a data) e, por último, o rodapé com o PRAZO em
 // destaque (pílula colorida: vencida/hoje), contadores (checklist, comentários,
 // anexos) e o avatar do responsável à direita.
-// Vencida não tem selo — a pílula vermelha basta. Concluída: só caso +
+// Vencida não tem selo — a pílula vermelha basta. Concluída: só projeto +
 // título, atenuada.
 import { memo } from "react"
 import { selo } from "@/lib/tarefas/regras"
 import { STATUS, type TaskRow, type TaskStatus } from "@/lib/tarefas/types"
 import { Icon } from "./tf-icons"
 import { useTk } from "./tk-context"
-import { TkAvatar, TkIconBtn, TkMenuItem, TkMenuLabel, TkMenuSep, TkPop, TkPrazoBadge, TkCasoTag, TkState, usePop } from "./tk-ui"
+import { TkAvatar, TkIconBtn, TkMenuItem, TkMenuLabel, TkMenuSep, TkPop, TkPrazoBadge, TkProjetoTag, TkState, usePop } from "./tk-ui"
 
 export interface CardProps {
-  mostrarCaso?: boolean
+  mostrarProjeto?: boolean
   mostrarGrupo?: boolean
   naColunaAguardando?: boolean
   arrastavel?: boolean
@@ -23,7 +23,7 @@ export interface CardProps {
 
 function TkCardBase({
   t,
-  mostrarCaso = true,
+  mostrarProjeto = true,
   mostrarGrupo = true,
   naColunaAguardando,
   arrastavel = true,
@@ -41,8 +41,8 @@ function TkCardBase({
   const done = t.status === "done"
   const s = done ? null : selo(t, map, hoje, nomePessoa)
   const feitos = t.checklist.filter((c) => c.marcado).length
-  const linha1 = mostrarCaso ? (
-    <TkCasoTag casoId={t.casoId} grupo={mostrarGrupo ? t.grupo : null} />
+  const linha1 = mostrarProjeto ? (
+    <TkProjetoTag chave={t.projeto} grupo={mostrarGrupo ? t.grupo : null} />
   ) : mostrarGrupo && t.grupo ? (
     <span style={{ fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.grupo}</span>
   ) : null

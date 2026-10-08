@@ -2,18 +2,19 @@
 
 // Tarefas — página Quadro: cabeçalho (título, linha-resumo clicável, Quadro |
 // Lista | Fluxo), linha de filtros (Minhas | Equipe, filtros ativos, Filtrar,
-// Ordenar e Agrupar à vista), cabeçalho compacto do caso quando há UM caso
-// filtrado, colunas fixas com títulos que grudam ao rolar, raias (caso,
+// Ordenar e Agrupar à vista), cabeçalho compacto do projeto quando há UM projeto
+// filtrado, colunas fixas com títulos que grudam ao rolar, raias (projeto,
 // responsável, grupo) e a Lista por prazo. Arrastar um cartão para cima/baixo na
 // coluna grava a ordem manual DE QUEM ESTÁ VENDO e liga o "Ordenar: Manual".
 import { Fragment, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAreasStore, resolveAreaLabel } from "@/lib/areas/store"
-import { ordenarCasos } from "@/lib/tarefas/casos-quadro"
+import { ordenarProjetos } from "@/lib/tarefas/projetos-quadro"
 import {
   ROTULO_PRAZO,
-  SEM_CASO,
+  SEM_PROJETO,
+  type FiltroProjeto,
   noEscopo,
   ordenar,
   visiveis,
@@ -24,12 +25,12 @@ import {
   type Ordenacao,
 } from "@/lib/tarefas/filtros"
 import { cadeia, dataCurta, faixa, resumo, selo } from "@/lib/tarefas/regras"
-import { STATUS, statusLabel, type CasoQuadro, type TaskRow, type TaskStatus } from "@/lib/tarefas/types"
+import { STATUS, statusLabel, type ChaveProjeto, type ProjetoQuadro, type TaskRow, type TaskStatus } from "@/lib/tarefas/types"
 import { Icon, type TfIconName } from "./tf-icons"
 import { TkCard, TkCardSkeleton, type CardProps } from "./tk-card"
 import { useTk } from "./tk-context"
 import { TkFlowView } from "./tk-flow"
-import { TkCasoLista, TkPropMenu, type OpcaoMenu } from "./tk-pickers"
+import { TkProjetoLista, TkPropMenu, type OpcaoMenu } from "./tk-pickers"
 import {
   TkAvatar,
   TkChip,
@@ -42,7 +43,7 @@ import {
   TkPerson,
   TkPop,
   TkProgress,
-  TkCasoTag,
+  TkProjetoTag,
   TkSeg,
   TkState,
   usePop,
@@ -51,18 +52,18 @@ import {
 export type SetFiltros = (p: Partial<Filtros>) => void
 
 // ── helpers ──────────────────────────────────────────────────────────────────
-/** Tudo que o `ordenar` precisa: ordem dos casos (pela etiqueta), nomes e a ordem manual de quem vê. */
+/** Tudo que o `ordenar` precisa: ordem dos projetos (pela etiqueta), nomes e a ordem manual de quem vê. */
 export function useOrdenacao(): CtxOrdenacao {
-  const { casos, nomePessoa, ordemManual } = useTk()
-  const ordemCaso = useMemo(() => {
-    const m = new Map(ordenarCasos(casos).map((c, i) => [c.id, i]))
-    return (id: number | null) => (id == null ? 1e9 : (m.get(id) ?? 1e9 - 1))
-  }, [casos])
-  return { ordemCaso, nomePessoa, ordemManual }
+  const { projetos, nomePessoa, ordemManual } = useTk()
+  const ordemProjeto = useMemo(() => {
+    const m = new Map(ordenarProjetos(projetos).map((p, i) => [p.chave, i]))
+    return (k: ChaveProjeto | null) => (k == null ? 1e9 : (m.get(k) ?? 1e9 - 1))
+  }, [projetos])
+  return { ordemProjeto, nomePessoa, ordemManual }
 }
 
-const ROTULO_ORDENAR: Record<Ordenacao, string> = { manual: "Manual", due: "Prazo", caso: "Caso", owner: "Responsável" }
-const ROTULO_AGRUPAR: Record<Agrupamento, string> = { none: "Nenhum", caso: "Caso", owner: "Responsável", group: "Grupo" }
+const ROTULO_ORDENAR: Record<Ordenacao, string> = { manual: "Manual", due: "Prazo", projeto: "Projeto", owner: "Responsável" }
+const ROTULO_AGRUPAR: Record<Agrupamento, string> = { none: "Nenhum", projeto: "Projeto", owner: "Responsável", group: "Grupo" }
 
 /** "Ordenar: Prazo" à vista na linha de filtros; cada critério crescente ou decrescente. */
 function TkOrdenarChip({ F, setF }: { F: Filtros; setF: SetFiltros }) {
@@ -77,7 +78,7 @@ function TkOrdenarChip({ F, setF }: { F: Filtros; setF: SetFiltros }) {
       </button>
       <TkPop open={pop.open} onClose={pop.close} anchor={pop.anchor} align="right" width={220}>
         <TkMenuLabel>Ordenar por</TkMenuLabel>
-        {(["due", "caso", "owner", "manual"] as Ordenacao[]).map((o) => (
+        {(["due", "projeto", "owner", "manual"] as Ordenacao[]).map((o) => (
           <TkMenuItem key={o} checked={F.ordenar === o} onClick={() => setF({ ordenar: o })}>
             {ROTULO_ORDENAR[o]}
           </TkMenuItem>
@@ -95,11 +96,11 @@ function TkOrdenarChip({ F, setF }: { F: Filtros; setF: SetFiltros }) {
   )
 }
 
-/** "Agrupar: Caso" — raias por caso, responsável ou (dentro de um caso) grupo. */
+/** "Agrupar: Projeto" — raias por projeto, responsável ou (dentro de um projeto) grupo. */
 function TkAgruparChip({ F, setF, single }: { F: Filtros; setF: SetFiltros; single: boolean }) {
   const pop = usePop()
-  const efetivo: Agrupamento = (F.agrupar === "group" && !single) || (F.agrupar === "caso" && single) ? "none" : F.agrupar
-  const opcoes: Agrupamento[] = single ? ["none", "group", "owner"] : ["none", "caso", "owner"]
+  const efetivo: Agrupamento = (F.agrupar === "group" && !single) || (F.agrupar === "projeto" && single) ? "none" : F.agrupar
+  const opcoes: Agrupamento[] = single ? ["none", "group", "owner"] : ["none", "projeto", "owner"]
   const ativo = efetivo !== "none"
   return (
     <span style={{ display: "inline-flex" }}>
@@ -159,13 +160,13 @@ export function TkSummary({ noEsc, F, setF, loading }: { noEsc: TaskRow[]; F: Fi
   )
 }
 
-// ── cabeçalho compacto do caso ───────────────────────────────────────────────
-export function TkCasoHeader({ c }: { c: CasoQuadro }) {
-  const { tarefas, cliente, podeAbrirCaso } = useTk()
+// ── cabeçalho compacto do projeto ────────────────────────────────────────────
+export function TkProjetoHeader({ c }: { c: ProjetoQuadro }) {
+  const { tarefas, cliente, podeAbrirProjeto, podeCriarProjeto, act } = useTk()
   const router = useRouter()
   const areas = useAreasStore((s) => s.areas)
   const [aberto, setAberto] = useState(false)
-  const todas = tarefas.filter((t) => t.casoId === c.id)
+  const todas = tarefas.filter((t) => t.projeto === c.chave)
   const area = resolveAreaLabel(areas, c.area)
   const cli = cliente(c.clienteId)
   return (
@@ -176,7 +177,9 @@ export function TkCasoHeader({ c }: { c: CasoQuadro }) {
           {c.nomeCurto}
           {c.nome !== c.nomeCurto && <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>{c.nome}</span>}
         </span>
-        {cli ? (
+        {c.tipo === "interno" ? (
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Projeto interno</span>
+        ) : cli ? (
           <Link href={`/contatos/${cli.id}`} style={{ fontSize: 12, color: "var(--text-muted)" }} title="Abrir o contato">
             {cli.nome}
           </Link>
@@ -204,7 +207,12 @@ export function TkCasoHeader({ c }: { c: CasoQuadro }) {
               <Icon name="chevronDown" size={13} style={{ transform: aberto ? "rotate(180deg)" : "none", transition: "transform .16s" }} />
             </button>
           )}
-          {podeAbrirCaso(c.id) && <TkIconBtn icon="externalLink" title="Abrir o caso" size={14} onClick={() => router.push(`/casos/${c.id}`)} />}
+          {c.tipo === "caso" && podeAbrirProjeto(c.chave) && (
+            <TkIconBtn icon="externalLink" title="Abrir o caso" size={14} onClick={() => router.push(`/casos/${c.id}`)} />
+          )}
+          {c.tipo === "interno" && podeCriarProjeto && (
+            <TkIconBtn icon="edit" title="Editar o projeto" size={14} onClick={() => act.editarProjetoInterno(c.id)} />
+          )}
         </span>
       </div>
       {aberto && (
@@ -216,19 +224,19 @@ export function TkCasoHeader({ c }: { c: CasoQuadro }) {
   )
 }
 
-// ── Filtrar: três seletores (caso · responsável · prazo) ─────────────────────
+// ── Filtrar: três seletores (projeto · responsável · prazo) ──────────────────
 const OPCOES_PRAZO: { id: FiltroPrazo | null; label: string }[] = [
   { id: null, label: "Qualquer prazo" },
   ...(["late", "today", "week", "fatal"] as FiltroPrazo[]).map((k) => ({ id: k as FiltroPrazo | null, label: ROTULO_PRAZO[k] })),
 ]
 
-/** Casos (vários): "Todos os casos", o caso escolhido ou "N casos". */
-function TkFiltroCaso({ F, toggleCaso }: { F: Filtros; toggleCaso: (id: number) => void }) {
-  const { casosComTarefas, caso } = useTk()
+/** Projetos (vários): "Todos os projetos", o projeto escolhido ou "N projetos". */
+function TkFiltroProjeto({ F, toggleProjeto }: { F: Filtros; toggleProjeto: (k: FiltroProjeto) => void }) {
+  const { projetosComTarefas, projeto } = useTk()
   const pop = usePop()
-  const sel = F.casos
-  const um = sel.length === 1 && sel[0] !== SEM_CASO ? caso(sel[0]) : null
-  const rotulo = !sel.length ? "Todos os casos" : sel.length > 1 ? `${sel.length} casos` : sel[0] === SEM_CASO ? "Sem caso" : (um?.nomeCurto ?? "Caso")
+  const sel = F.projetos
+  const um = sel.length === 1 && sel[0] !== SEM_PROJETO ? projeto(sel[0]) : null
+  const rotulo = !sel.length ? "Todos os projetos" : sel.length > 1 ? `${sel.length} projetos` : sel[0] === SEM_PROJETO ? "Sem projeto" : (um?.nomeCurto ?? "Projeto")
   return (
     <span style={{ position: "relative", minWidth: 0, flex: 1, display: "flex" }}>
       <button type="button" className={"tk-prop-val" + (sel.length ? "" : " muted")} onClick={pop.toggle} title={um?.nome}>
@@ -237,11 +245,11 @@ function TkFiltroCaso({ F, toggleCaso }: { F: Filtros; toggleCaso: (id: number) 
       </button>
       <TkPop open={pop.open} onClose={pop.close} anchor={pop.anchor} width={380}>
         {pop.open && (
-          <TkCasoLista
+          <TkProjetoLista
             value={null}
-            opcoes={casosComTarefas}
-            marcado={(id) => sel.includes(id ?? SEM_CASO)}
-            onPick={(id) => toggleCaso(id ?? SEM_CASO)}
+            opcoes={projetosComTarefas}
+            marcado={(k) => sel.includes(k ?? SEM_PROJETO)}
+            onPick={(k) => toggleProjeto(k ?? SEM_PROJETO)}
           />
         )}
       </TkPop>
@@ -249,15 +257,15 @@ function TkFiltroCaso({ F, toggleCaso }: { F: Filtros; toggleCaso: (id: number) 
   )
 }
 
-function TkFiltroPainel({
+export function TkFiltroPainel({
   F,
   setF,
-  toggleCaso,
+  toggleProjeto,
   onLimpar,
 }: {
   F: Filtros
   setF: SetFiltros
-  toggleCaso: (id: number) => void
+  toggleProjeto: (k: FiltroProjeto) => void
   onLimpar?: () => void
 }) {
   const { pessoas, gestao, meId } = useTk()
@@ -271,8 +279,8 @@ function TkFiltroPainel({
     <>
       <div style={{ padding: "4px 10px 4px 14px" }}>
         <div className="tk-prop">
-          <span className="tk-prop-label">Caso</span>
-          <TkFiltroCaso F={F} toggleCaso={toggleCaso} />
+          <span className="tk-prop-label">Projeto</span>
+          <TkFiltroProjeto F={F} toggleProjeto={toggleProjeto} />
         </div>
         {gestao && (
           <div className="tk-prop">
@@ -315,34 +323,35 @@ export function TkFilterBar({
 }: {
   F: Filtros
   setF: SetFiltros
-  single: CasoQuadro | null
+  single: ProjetoQuadro | null
   fluxo: boolean
   onLimpar: () => void
 }) {
-  const { casosComTarefas, gestao, caso, pessoa } = useTk()
+  const { projetosComTarefas, gestao, projeto, pessoa } = useTk()
   const pf = usePop()
   const pp = usePop()
-  const toggleCaso = (id: number) => setF({ casos: F.casos.includes(id) ? F.casos.filter((x) => x !== id) : [...F.casos, id] })
+  const toggleProjeto = (k: FiltroProjeto) => setF({ projetos: F.projetos.includes(k) ? F.projetos.filter((x) => x !== k) : [...F.projetos, k] })
 
   if (fluxo) {
-    const c = caso(F.casos[0] ?? null)
+    const um = F.projetos[0]
+    const c = um && um !== SEM_PROJETO ? projeto(um) : null
     return (
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <span style={{ display: "inline-flex", minWidth: 0 }}>
           <button type="button" className="btn btn-secondary btn-sm" onClick={pp.toggle} style={{ maxWidth: 360 }}>
             {c && <TkDot color={c.cor} />}
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c ? c.nomeCurto : "Caso"}</span>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c ? c.nomeCurto : "Projeto"}</span>
             <Icon name="chevronDown" size={13} style={{ color: "var(--text-muted)" }} />
           </button>
         </span>
         <TkPop open={pp.open} onClose={pp.close} anchor={pp.anchor} width={380}>
           {pp.open && (
-            <TkCasoLista
-              value={F.casos[0] ?? null}
-              opcoes={casosComTarefas}
-              semCaso={false}
+            <TkProjetoLista
+              value={c?.chave ?? null}
+              opcoes={projetosComTarefas}
+              semProjeto={false}
               onPick={(id) => {
-                if (id != null) setF({ casos: [id] })
+                if (id != null) setF({ projetos: [id] })
                 pp.close()
               }}
             />
@@ -353,17 +362,17 @@ export function TkFilterBar({
   }
 
   const ativos = [
-    ...F.casos.map((id) => {
-      const c = id === SEM_CASO ? null : caso(id)
+    ...F.projetos.map((id) => {
+      const c = id === SEM_PROJETO ? null : projeto(id)
       return {
         k: `c:${id}`,
         label: (
           <>
             <TkDot color={c?.cor ?? "var(--text-subtle)"} />
-            {id === SEM_CASO ? "Sem caso" : (c?.nomeCurto ?? "Caso")}
+            {id === SEM_PROJETO ? "Sem projeto" : (c?.nomeCurto ?? "Projeto")}
           </>
         ),
-        limpar: () => toggleCaso(id),
+        limpar: () => toggleProjeto(id),
       }
     }),
     ...(F.escopo === "team" && F.responsavel != null
@@ -405,7 +414,7 @@ export function TkFilterBar({
           </button>
         </span>
         <TkPop open={pf.open} onClose={pf.close} anchor={pf.anchor} align="right" width={320}>
-          <TkFiltroPainel F={F} setF={setF} toggleCaso={toggleCaso} onLimpar={n ? onLimpar : undefined} />
+          <TkFiltroPainel F={F} setF={setF} toggleProjeto={toggleProjeto} onLimpar={n ? onLimpar : undefined} />
         </TkPop>
         <TkOrdenarChip F={F} setF={setF} />
         {F.visao === "board" && <TkAgruparChip F={F} setF={setF} single={!!single} />}
@@ -548,15 +557,15 @@ export function TkColumnHeads({ counts }: { counts: Record<TaskStatus, number> |
   )
 }
 
-function TkBoardView({ visible, F, single, loading }: { visible: TaskRow[]; F: Filtros; single: CasoQuadro | null; loading?: boolean }) {
-  const { map, seguintes, caso, tarefas, pessoas } = useTk()
+function TkBoardView({ visible, F, single, loading }: { visible: TaskRow[]; F: Filtros; single: ProjetoQuadro | null; loading?: boolean }) {
+  const { map, seguintes, projeto, tarefas, pessoas } = useTk()
   const ord = useOrdenacao()
   const [hover, setHover] = useState<number | null>(null)
   const [recolhidas, setRecolhidas] = useState<Record<string, boolean>>({})
   const chain = useMemo(() => (hover != null ? cadeia(hover, map, seguintes) : new Set<number>()), [hover, map, seguintes])
-  const agrupar = (F.agrupar === "group" && !single) || (F.agrupar === "caso" && single) ? "none" : F.agrupar
+  const agrupar = (F.agrupar === "group" && !single) || (F.agrupar === "projeto" && single) ? "none" : F.agrupar
   const cardProps: CardProps = {
-    mostrarCaso: !single && agrupar !== "caso",
+    mostrarProjeto: !single && agrupar !== "projeto",
     mostrarGrupo: agrupar !== "group",
   }
   if (loading) {
@@ -606,38 +615,38 @@ function TkBoardView({ visible, F, single, loading }: { visible: TaskRow[]; F: F
             lista: visible.filter((t) => t.responsavelId == null || !pessoas.some((p) => p.id === t.responsavelId)),
           },
         ]
-      : agrupar === "caso"
+      : agrupar === "projeto"
       ? [
-          // Uma raia por caso com tarefa visível (os casos podem ser centenas), pela etiqueta.
-          ...ordenarCasos(
-            [...new Set(visible.map((t) => t.casoId))]
-              .map((id) => caso(id))
-              .filter((c): c is CasoQuadro => c != null),
+          // Uma raia por projeto com tarefa visível (os projetos podem ser centenas), pela etiqueta.
+          ...ordenarProjetos(
+            [...new Set(visible.map((t) => t.projeto))]
+              .map((k) => projeto(k))
+              .filter((c): c is ProjetoQuadro => c != null),
           ).map((c) => ({
-            key: `c${c.id}`,
+            key: c.chave,
             head: (
               <>
                 <TkDot color={c.cor} />
                 <span title={c.nome}>{c.nomeCurto}</span>
               </>
             ),
-            lista: visible.filter((t) => t.casoId === c.id),
+            lista: visible.filter((t) => t.projeto === c.chave),
           })),
           {
             key: "none",
             head: (
               <>
                 <TkDot color="var(--text-subtle)" />
-                Sem caso
+                Sem projeto
               </>
             ),
-            lista: visible.filter((t) => t.casoId == null),
+            lista: visible.filter((t) => t.projeto == null),
           },
         ]
-      : [...new Set(tarefas.filter((t) => t.casoId === single!.id).map((t) => t.grupo || "Sem grupo"))]
+      : [...new Set(tarefas.filter((t) => t.projeto === single!.chave).map((t) => t.grupo || "Sem grupo"))]
           .sort((a, b) => (a === "Sem grupo" ? 1 : b === "Sem grupo" ? -1 : a.localeCompare(b, "pt-BR", { numeric: true })))
           .map((g) => {
-            const todas = tarefas.filter((t) => t.casoId === single!.id && (t.grupo || "Sem grupo") === g)
+            const todas = tarefas.filter((t) => t.projeto === single!.chave && (t.grupo || "Sem grupo") === g)
             return {
               key: g,
               head: (
@@ -686,7 +695,7 @@ const FAIXAS = [
   { id: "later", label: "Depois" },
 ] as const
 
-function TkListView({ visible, F, single }: { visible: TaskRow[]; F: Filtros; single: CasoQuadro | null }) {
+function TkListView({ visible, F, single }: { visible: TaskRow[]; F: Filtros; single: ProjetoQuadro | null }) {
   const { map, act, openTask, hoje, nomePessoa: nome } = useTk()
   const ord = useOrdenacao()
   const abertas = visible.filter((t) => t.status !== "done")
@@ -744,7 +753,7 @@ function TkListView({ visible, F, single }: { visible: TaskRow[]; F: Filtros; si
                     {single ? (
                       <span style={{ fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.grupo}</span>
                     ) : (
-                      <TkCasoTag casoId={t.casoId} grupo={t.grupo} />
+                      <TkProjetoTag chave={t.projeto} grupo={t.grupo} />
                     )}
                   </span>
                 )}
@@ -766,7 +775,7 @@ function TkListView({ visible, F, single }: { visible: TaskRow[]; F: Filtros; si
 // ── página Quadro ────────────────────────────────────────────────────────────
 
 // ── quadro vazio: nunca uma tela em branco ───────────────────────────────────
-function TkVazio({ icon, titulo, children }: { icon: TfIconName; titulo: string; children?: ReactNode }) {
+export function TkVazio({ icon, titulo, children }: { icon: TfIconName; titulo: string; children?: ReactNode }) {
   return (
     <div role="status" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, padding: "72px 24px", textAlign: "center" }}>
       <span
@@ -792,17 +801,18 @@ export function TkBoardPage({
   setFState: Dispatch<SetStateAction<Filtros>>
   loading?: boolean
 }) {
-  const { tarefas, caso, casosComTarefas, meId, hoje, act } = useTk()
+  const { tarefas, projeto, projetosComTarefas, meId, hoje, act } = useTk()
   const esc = noEscopo(tarefas, F, meId)
   const visible = visiveis(tarefas, F, meId, hoje)
-  const single = F.casos.length === 1 && F.casos[0] !== SEM_CASO ? caso(F.casos[0]) : null
+  const um = F.projetos.length === 1 ? F.projetos[0] : null
+  const single = um && um !== SEM_PROJETO ? projeto(um) : null
   const counts = Object.fromEntries(STATUS.map((s) => [s.id, visible.filter((t) => t.status === s.id).length])) as Record<TaskStatus, number>
   const fluxo = F.visao === "flow"
   const vazio = !tarefas.length && !loading
   // Há tarefas, mas nenhuma passa pelos filtros/escopo desta tela.
   const nadaVisivel = !vazio && !loading && !visible.length && !fluxo
-  const filtrando = F.prazo != null || F.responsavel != null || (!single && F.casos.length > 0)
-  const limparFiltros = () => setFState((f) => ({ ...f, casos: single ? f.casos : [], responsavel: null, prazo: null }))
+  const filtrando = F.prazo != null || F.responsavel != null || (!single && F.projetos.length > 0)
+  const limparFiltros = () => setFState((f) => ({ ...f, projetos: single ? f.projetos : [], responsavel: null, prazo: null }))
   const botaoNova = (
     <button type="button" className="btn btn-primary btn-sm" onClick={act.novaTarefa}>
       <Icon name="plus" size={15} strokeWidth={2.2} />
@@ -827,10 +837,12 @@ export function TkBoardPage({
                 onChange={(v) =>
                   setF({
                     visao: v,
-                    casos:
+                    projetos:
                       v === "flow"
-                        ? [F.casos.find((x) => x !== SEM_CASO) ?? ordenarCasos(casosComTarefas)[0]?.id].filter((x): x is number => x != null)
-                        : F.casos,
+                        ? [F.projetos.find((x): x is ChaveProjeto => x !== SEM_PROJETO) ?? ordenarProjetos(projetosComTarefas)[0]?.chave].filter(
+                            (x): x is ChaveProjeto => x != null,
+                          )
+                        : F.projetos,
                   })
                 }
               />
@@ -843,10 +855,10 @@ export function TkBoardPage({
             setF={setF}
             single={single}
             fluxo={fluxo}
-            onLimpar={() => setFState((f) => ({ ...f, casos: [], responsavel: null, prazo: null }))}
+            onLimpar={() => setFState((f) => ({ ...f, projetos: [], responsavel: null, prazo: null }))}
           />
         )}
-        {!vazio && single && <TkCasoHeader c={single} />}
+        {!vazio && single && <TkProjetoHeader c={single} />}
       </div>
       {vazio && (
         <TkVazio icon="kanban" titulo="Nenhuma tarefa ainda">
@@ -861,7 +873,7 @@ export function TkBoardPage({
             </button>
           </TkVazio>
         ) : (
-          <TkVazio icon={single ? "folder" : "checkCircle"} titulo={single ? "Nenhuma tarefa neste caso" : "Nenhuma tarefa para mostrar"}>
+          <TkVazio icon={single ? "folder" : "checkCircle"} titulo={single ? "Nenhuma tarefa neste projeto" : "Nenhuma tarefa para mostrar"}>
             {botaoNova}
           </TkVazio>
         ))}
@@ -874,7 +886,7 @@ export function TkBoardPage({
         <div className="tk-body" style={F.visao !== "board" ? { paddingTop: 4 } : undefined}>
           {F.visao === "board" && <TkBoardView visible={visible} F={F} single={single} loading={loading} />}
           {F.visao === "list" && <TkListView visible={visible} F={F} single={single} />}
-          {F.visao === "flow" && (single ? <TkFlowView caso={single} /> : <div style={{ fontSize: 14, color: "var(--text-muted)" }}>Nenhum caso</div>)}
+          {F.visao === "flow" && (single ? <TkFlowView projeto={single} /> : <div style={{ fontSize: 14, color: "var(--text-muted)" }}>Nenhum projeto</div>)}
         </div>
       )}
     </main>

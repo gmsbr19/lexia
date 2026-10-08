@@ -1,14 +1,15 @@
 "use client"
 
 // Tarefas — seletor de data do app (texto livre + atalhos + mini calendário; SEM
-// "Sem prazo": toda tarefa tem prazo), seletores de cliente e de CASO com busca
-// (os casos podem ser centenas), menu de propriedade genérico e "Repetir".
+// "Sem prazo": toda tarefa tem prazo), seletores de cliente e de PROJETO com busca
+// (casos e projetos internos — podem ser centenas), menu de propriedade genérico e
+// "Repetir".
 import { useState, type ReactNode } from "react"
 import { addMonthIndex, buildMonthGrid, MONTHS_LONG } from "@/lib/datas/mes"
 import { recorrenciaOptions } from "@/lib/datas/recorrencia"
 import { normalizar } from "@/lib/text"
-import { buscarCasos } from "@/lib/tarefas/casos-quadro"
-import type { CasoQuadro } from "@/lib/tarefas/types"
+import { buscarProjetos, subtituloProjeto } from "@/lib/tarefas/projetos-quadro"
+import type { ChaveProjeto, ProjetoQuadro } from "@/lib/tarefas/types"
 import {
   dataCurta,
   dataLonga,
@@ -279,7 +280,7 @@ export function TkPropMenu<T extends string | number | null>({
   muted?: boolean
   width?: number
   chip?: boolean
-  /** Item extra no fim do menu (ex.: "Novo caso…"), abre uma janela de criação. */
+  /** Item extra no fim do menu (ex.: "Novo projeto…"), abre uma janela de criação. */
   acao?: { label: string; onClick: () => void }
 }) {
   const pop = usePop()
@@ -323,16 +324,16 @@ export function TkPropMenu<T extends string | number | null>({
   )
 }
 
-/** Grupos já usados no caso (ordem natural: "Protocolo 2" antes de "Protocolo 10"). */
-export function useGruposDoCaso(casoId: number | null): string[] {
+/** Grupos já usados no projeto (ordem natural: "Protocolo 2" antes de "Protocolo 10"). */
+export function useGruposDoProjeto(chave: ChaveProjeto | null): string[] {
   const { tarefas } = useTk()
-  if (casoId == null) return []
-  return [...new Set(tarefas.filter((x) => x.casoId === casoId && x.grupo).map((x) => x.grupo!))].sort((a, b) =>
+  if (chave == null) return []
+  return [...new Set(tarefas.filter((x) => x.projeto === chave && x.grupo).map((x) => x.grupo!))].sort((a, b) =>
     a.localeCompare(b, "pt-BR", { numeric: true }),
   )
 }
 
-/** Janela "Novo grupo": o grupo é só um nome dentro do caso — sai já aplicado. */
+/** Janela "Novo grupo": o grupo é só um nome dentro do projeto — sai já aplicado. */
 export function TkGrupoDialog({ onClose, onSalvar }: { onClose: () => void; onSalvar: (nome: string) => void }) {
   const [nome, setNome] = useState("")
   const salvar = () => {
@@ -380,57 +381,59 @@ export function useOpcoesPessoa(marcarEu = false): OpcaoMenu<number | null>[] {
   ]
 }
 
-// ── caso ─────────────────────────────────────────────────────────────────────
+// ── projeto ──────────────────────────────────────────────────────────────────
 /**
- * Lista de casos com busca (etiqueta, título e cliente; no máximo 60 itens). As
- * opções são os casos que a pessoa pode vincular (não arquivados, acessíveis);
- * "Sem caso" e uma ação extra ("Novo caso…") são opcionais.
+ * Lista de projetos com busca (etiqueta, título e cliente; no máximo 60 itens):
+ * casos dos clientes e projetos internos — a 2ª linha diz o cliente ou "Projeto
+ * interno". As opções são os projetos que a pessoa pode vincular (não arquivados,
+ * acessíveis); "Sem projeto" e uma ação extra ("Novo projeto…") são opcionais.
  */
-export function TkCasoLista({
+export function TkProjetoLista({
   value,
   onPick,
   opcoes,
-  semCaso = true,
+  semProjeto = true,
   acao,
   marcado,
 }: {
-  value: number | null
-  onPick: (id: number | null) => void
-  opcoes?: CasoQuadro[]
-  semCaso?: boolean
+  value: ChaveProjeto | null
+  onPick: (chave: ChaveProjeto | null) => void
+  opcoes?: ProjetoQuadro[]
+  semProjeto?: boolean
   acao?: { label: string; onClick: () => void }
-  /** Várias escolhas (filtro): diz quais estão marcados; `null` = "Sem caso". */
-  marcado?: (id: number | null) => boolean
+  /** Várias escolhas (filtro): diz quais estão marcados; `null` = "Sem projeto". */
+  marcado?: (chave: ChaveProjeto | null) => boolean
 }) {
-  const { casosAtivos, cliente } = useTk()
+  const { projetosAtivos, cliente } = useTk()
   const [q, setQ] = useState("")
-  const lista = buscarCasos(opcoes ?? casosAtivos, q, (id) => cliente(id)?.nome)
-  const ehMarcado = marcado ?? ((id: number | null) => id === value)
+  const nomeCliente = (id: number | null) => cliente(id)?.nome
+  const lista = buscarProjetos(opcoes ?? projetosAtivos, q, nomeCliente)
+  const ehMarcado = marcado ?? ((k: ChaveProjeto | null) => k === value)
   return (
     <>
-      <input className="input" autoFocus placeholder="Buscar caso ou cliente" aria-label="Buscar caso" value={q} onChange={(e) => setQ(e.target.value)} style={{ marginBottom: 3 }} />
+      <input className="input" autoFocus placeholder="Buscar projeto ou cliente" aria-label="Buscar projeto" value={q} onChange={(e) => setQ(e.target.value)} style={{ marginBottom: 3 }} />
       <div style={{ maxHeight: 320, overflowY: "auto", display: "flex", flexDirection: "column", gap: 1 }}>
-        {lista.map((c) => {
-          const nomeCliente = cliente(c.clienteId)?.nome
+        {lista.map((p) => {
+          const sub = subtituloProjeto(p, nomeCliente)
           return (
             <TkMenuItem
-              key={c.id}
-              dot={c.cor}
-              checked={ehMarcado(c.id)}
-              sub={nomeCliente ?? "Sem cliente"}
-              title={nomeCliente ? `${c.nome} — ${nomeCliente}` : c.nome}
-              onClick={() => onPick(c.id)}
+              key={p.chave}
+              dot={p.cor}
+              checked={ehMarcado(p.chave)}
+              sub={sub}
+              title={`${p.nome} — ${sub}`}
+              onClick={() => onPick(p.chave)}
             >
-              {c.nomeCurto}
+              {p.nomeCurto}
             </TkMenuItem>
           )
         })}
-        {!lista.length && <div style={{ padding: "6px 10px", fontSize: 12, color: "var(--text-muted)" }}>Nenhum caso</div>}
-        {semCaso && (
+        {!lista.length && <div style={{ padding: "6px 10px", fontSize: 12, color: "var(--text-muted)" }}>Nenhum projeto</div>}
+        {semProjeto && (
           <>
             <TkMenuSep />
             <TkMenuItem dot="var(--text-subtle)" checked={ehMarcado(null)} onClick={() => onPick(null)}>
-              Sem caso
+              Sem projeto
             </TkMenuItem>
           </>
         )}
@@ -448,38 +451,38 @@ export function TkCasoLista({
 }
 
 /**
- * Seletor de caso. Variantes do gatilho: "prop" (linha da Nova tarefa: bolinha +
- * etiqueta), "field" (campo de formulário). O caso atual aparece mesmo arquivado.
+ * Seletor de projeto. Variantes do gatilho: "prop" (linha da Nova tarefa: bolinha +
+ * etiqueta), "field" (campo de formulário). O projeto atual aparece mesmo arquivado.
  */
-export function TkCasoPicker({
+export function TkProjetoPicker({
   value,
   onChange,
   variant = "prop",
-  semCaso = true,
+  semProjeto = true,
   acao,
   opcoes,
-  placeholder = "Sem caso",
+  placeholder = "Sem projeto",
 }: {
-  value: number | null
-  onChange: (id: number | null) => void
+  value: ChaveProjeto | null
+  onChange: (chave: ChaveProjeto | null) => void
   variant?: "prop" | "field"
-  semCaso?: boolean
+  semProjeto?: boolean
   acao?: { label: string; onClick: () => void }
-  opcoes?: CasoQuadro[]
+  opcoes?: ProjetoQuadro[]
   placeholder?: string
 }) {
-  const { caso } = useTk()
+  const { projeto } = useTk()
   const pop = usePop()
-  const c = caso(value)
-  const escolher = (id: number | null) => {
+  const p = projeto(value)
+  const escolher = (k: ChaveProjeto | null) => {
     pop.close()
-    if (id !== value) onChange(id)
+    if (k !== value) onChange(k)
   }
   const rotulo: ReactNode = (
     <>
-      {c && <TkDot color={c.cor} />}
-      <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "left", color: c ? "var(--text)" : "var(--text-muted)" }}>
-        {c ? c.nomeCurto : placeholder}
+      {p && <TkDot color={p.cor} />}
+      <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "left", color: p ? "var(--text)" : "var(--text-muted)" }}>
+        {p ? p.nomeCurto : placeholder}
       </span>
     </>
   )
@@ -487,20 +490,20 @@ export function TkCasoPicker({
     <span style={{ flex: 1, minWidth: 0, display: "flex" }}>
       <button
         type="button"
-        className={variant === "field" ? "input tk-field-btn" : "tk-prop-val" + (c ? "" : " muted")}
+        className={variant === "field" ? "input tk-field-btn" : "tk-prop-val" + (p ? "" : " muted")}
         onClick={pop.toggle}
-        title={c?.nome}
+        title={p?.nome}
       >
         {rotulo}
         {variant === "field" && <Icon name="chevronDown" size={13} style={{ color: "var(--text-muted)", flexShrink: 0 }} />}
       </button>
       <TkPop open={pop.open} onClose={pop.close} anchor={pop.anchor} width={380}>
         {pop.open && (
-          <TkCasoLista
+          <TkProjetoLista
             value={value}
             onPick={escolher}
             opcoes={opcoes}
-            semCaso={semCaso}
+            semProjeto={semProjeto}
             acao={
               acao && {
                 label: acao.label,

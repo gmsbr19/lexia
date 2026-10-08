@@ -7,7 +7,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react"
 import { createPortal } from "react-dom"
 import { pendentes, rotuloPrazo, vencida, type Selo } from "@/lib/tarefas/regras"
-import type { TaskRow } from "@/lib/tarefas/types"
+import type { ChaveProjeto, TaskRow } from "@/lib/tarefas/types"
 import { Icon, type TfIconName } from "./tf-icons"
 import { useTk } from "./tk-context"
 import { ELEVACAO_JANELA, ELEVACAO_MENU, TK_JANELA, TK_MENU } from "./tk-glass"
@@ -22,19 +22,19 @@ export function TkDot({ color, size = 8 }: { color: string; size?: number }) {
 }
 
 /** "● Alfa · Protocolo 02 · 1º RI Taubaté" — uma linha; etiqueta e grupo truncam. */
-export function TkCasoTag({
-  casoId,
+export function TkProjetoTag({
+  chave,
   grupo,
   strong,
   size = 12,
 }: {
-  casoId: number | null
+  chave: ChaveProjeto | null
   grupo?: string | null
   strong?: boolean
   size?: number
 }) {
-  const { caso } = useTk()
-  const c = caso(casoId)
+  const { projeto } = useTk()
+  const c = projeto(chave)
   return (
     <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, fontSize: size, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
       <TkDot color={c ? c.cor : "var(--text-subtle)"} />
@@ -42,7 +42,7 @@ export function TkCasoTag({
         title={c?.nome}
         style={{ fontWeight: 500, color: strong ? "var(--text)" : "var(--text-muted)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", flexShrink: grupo ? 0 : 1, maxWidth: grupo ? "60%" : undefined }}
       >
-        {c ? c.nomeCurto : "Sem caso"}
+        {c ? c.nomeCurto : "Sem projeto"}
       </span>
       {grupo && (
         <span title={grupo} style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>

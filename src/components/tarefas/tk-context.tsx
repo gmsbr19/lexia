@@ -1,15 +1,16 @@
 "use client"
 
-// Contexto do módulo Tarefas: a carga (tarefas, casos, pessoas…), os índices
+// Contexto do módulo Tarefas: a carga (tarefas, projetos, pessoas…), os índices
 // derivados, quem está vendo e as AÇÕES (cada uma espelha um endpoint e mostra o
-// aviso com "Desfazer"). O CASO é o "projeto" do quadro. Montado por TarefasApp.
+// aviso com "Desfazer"). O "projeto" do quadro é o caso de um cliente OU um
+// projeto interno do escritório (chave `c<id>` / `p<id>`). Montado por TarefasApp.
 import { createContext, useContext } from "react"
-import type { CasoQuadro, ChecklistItem, IdNome, ModeloView, TaskRow, TaskStatus, TeamMember } from "@/lib/tarefas/types"
+import type { ChaveProjeto, ChecklistItem, IdNome, ModeloView, ProjetoQuadro, TaskRow, TaskStatus, TeamMember } from "@/lib/tarefas/types"
 import type { GrupoWizard } from "@/lib/modelos/modelo"
 
 export interface NovaTarefaUI {
   titulo: string
-  casoId: number | null
+  projeto: ChaveProjeto | null
   grupo?: string | null
   responsavelId: number | null
   clienteId: number | null
@@ -17,22 +18,36 @@ export interface NovaTarefaUI {
   prazoFatal: boolean
 }
 
-/** "Novo caso…" pelo quadro (o cadastro completo do caso fica em /casos). */
-export interface CasoQuadroForm {
+/**
+ * "Novo projeto" pelo quadro: COM cliente vira um caso do cliente (o cadastro
+ * completo fica em /casos); SEM cliente, um projeto interno.
+ */
+export interface ProjetoForm {
   nomeCurto: string
-  nome: string // título do caso
+  nome: string // título do caso / nome do projeto interno
   clienteId: number | null
-  area: string | null
+  area: string | null // só caso
   responsavelId: number | null
   prazo: string | null
   cor: string
   descricao: string
 }
 
+/** Editar/arquivar um projeto interno (o caso se edita em /casos). */
+export interface PatchProjetoUI {
+  nomeCurto?: string
+  nome?: string
+  responsavelId?: number | null
+  prazo?: string | null
+  cor?: string | null
+  descricao?: string | null
+  arquivado?: boolean
+}
+
 export interface PatchTarefaUI {
   titulo?: string
   descricao?: string | null
-  casoId?: number | null
+  projeto?: ChaveProjeto | null
   grupo?: string | null
   responsavelId?: number | null
   clienteId?: number | null
@@ -62,16 +77,23 @@ export interface Acoes {
   duplicar: (id: number, abrir?: boolean) => void
   novaTarefa: () => void
   criar: (n: NovaTarefaUI) => Promise<boolean>
-  criarCaso: (v: CasoQuadroForm) => Promise<number | null>
-  /** Aplica um modelo a um caso NOVO (`caso`) ou EXISTENTE (`casoId`); devolve o id do caso. */
+  /** Novo projeto: com cliente → caso do cliente; sem cliente → projeto interno. */
+  criarProjeto: (v: ProjetoForm) => Promise<ChaveProjeto | null>
+  editarProjeto: (id: number, patch: PatchProjetoUI) => Promise<boolean>
+  excluirProjeto: (id: number) => Promise<boolean>
+  /** Vincula um projeto interno a um cliente: ele vira caso. Devolve o id do caso. */
+  converterProjeto: (id: number, clienteId: number) => Promise<number | null>
+  /** Aplica um modelo a um projeto NOVO (`novo`) ou EXISTENTE (`projeto`); devolve a chave. */
   usarModelo: (
     modeloId: number,
-    alvo: { caso: CasoQuadroForm } | { casoId: number },
+    alvo: { novo: ProjetoForm } | { projeto: ChaveProjeto },
     grupos: GrupoWizard[],
     responsaveis: Record<string, number | null>,
-  ) => Promise<number | null>
-  /** Mostra o quadro filtrado por este caso. */
-  abrirCaso: (id: number) => void
+  ) => Promise<ChaveProjeto | null>
+  /** Mostra o quadro filtrado por este projeto. */
+  abrirProjeto: (chave: ChaveProjeto) => void
+  /** Abre a janela de edição de um projeto interno. */
+  editarProjetoInterno: (id: number) => void
   /** Nova ordem manual (de quem está vendo) para uma lista de cartões; liga o "Ordenar: Manual". */
   reordenar: (ids: number[]) => void
   recarregar: () => Promise<void>
@@ -83,25 +105,25 @@ export interface TkCtxValue {
   tarefas: TaskRow[]
   map: Map<number, TaskRow>
   seguintes: Map<number, number[]>
-  casos: CasoQuadro[]
-  /** Casos que podem receber tarefas: não arquivados e acessíveis a quem está vendo. */
-  casosAtivos: CasoQuadro[]
-  /** Casos com alguma tarefa (filtros, raias). */
-  casosComTarefas: CasoQuadro[]
-  caso: (id: number | null) => CasoQuadro | null
+  projetos: ProjetoQuadro[]
+  /** Projetos que podem receber tarefas: não arquivados e acessíveis a quem está vendo. */
+  projetosAtivos: ProjetoQuadro[]
+  /** Projetos com alguma tarefa (filtros, raias). */
+  projetosComTarefas: ProjetoQuadro[]
+  projeto: (chave: ChaveProjeto | null | undefined) => ProjetoQuadro | null
   pessoas: TeamMember[]
   pessoa: (id: number | null) => TeamMember | null
   nomePessoa: (id: number | null) => string
   clientes: IdNome[]
   cliente: (id: number | null) => IdNome | null
-  clienteDoCaso: (casoId: number) => number | null
-  /** Quem está vendo pode abrir a página deste caso? */
-  podeAbrirCaso: (id: number | null) => boolean
+  clienteDoProjeto: (chave: ChaveProjeto) => number | null
+  /** Quem está vendo pode abrir este projeto (caso: escopo de acesso; interno: sempre)? */
+  podeAbrirProjeto: (chave: ChaveProjeto | null | undefined) => boolean
   modelos: ModeloView[]
   hoje: string
   meId: number | null
   gestao: boolean
-  podeCriarCaso: boolean
+  podeCriarProjeto: boolean
   podeModelo: boolean
   mobile: boolean
   act: Acoes
