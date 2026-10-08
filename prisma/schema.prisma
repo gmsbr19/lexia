@@ -622,8 +622,9 @@ model OportunidadeAtividade {
 // `prazo` (obrigatório — sem prazo informado vale a sexta da semana de criação,
 // ver src/lib/tarefas/regras.ts `prazoPadrao`); `prazoFatal` é um marcador sobre o
 // mesmo prazo. Atraso = prazo < hoje (America/Sao_Paulo) e status ≠ done — regra
-// única em regras.ts. O "projeto" do quadro é o CASO (`casoId`); `grupo` é uma
-// etiqueta livre DENTRO do caso (não é hierarquia; zera ao trocar de caso). As
+// única em regras.ts. O "projeto" do quadro é o CASO do cliente (`casoId`) OU um
+// projeto INTERNO do escritório (`projetoId`) — nunca os dois (garantido no código);
+// `grupo` é uma etiqueta livre DENTRO do projeto (zera ao trocar de projeto). As
 // ligações "só começa depois de" vivem em TarefaLigacao; o histórico legível em
 // TarefaHistorico (gravado pelo backend).
 model Tarefa {
@@ -634,7 +635,7 @@ model Tarefa {
   done            Boolean            @default(false) // espelho sincronizado de status === 'done'
   prazo           DateTime // data-limite (date-only, gravada ao meio-dia local) — OBRIGATÓRIA
   prazoFatal      Boolean            @default(false) // prazo legal/processual (nunca deslocado em cadeia)
-  grupo           String? // etiqueta livre dentro do caso (ex.: "Protocolo 01 · 1º RI Taubaté")
+  grupo           String? // etiqueta livre dentro do projeto (ex.: "Protocolo 01 · 1º RI Taubaté")
   aguardandoTexto String? // terceiro externo aguardado (só com status 'wait')
   notes           String? // descrição (texto livre)
   checklist       String             @default("[]") // JSON: [{ id, texto, marcado }] (ordem = posição)
@@ -645,7 +646,7 @@ model Tarefa {
   responsavel     User?              @relation(fields: [responsavelId], references: [id])
   criadoPorId     Int? // quem criou a tarefa; null em tarefas antigas
   criadoPor       User?              @relation("TarefaCriadoPor", fields: [criadoPorId], references: [id])
-  casoId          Int? // o caso da tarefa no quadro; null = "Sem caso"
+  casoId          Int? // projeto = caso do cliente (XOR projetoId); ambos null = "Sem projeto"
   caso            Caso?              @relation(fields: [casoId], references: [id])
   processoId      Int?
   processo        Processo?          @relation(fields: [processoId], references: [id])
@@ -653,7 +654,7 @@ model Tarefa {
   cliente         Cliente?           @relation(fields: [clienteId], references: [id])
   leadId          Int? // oportunidade vinculada (Comercial)
   lead            Lead?              @relation(fields: [leadId], references: [id])
-  projetoId       Int? // DORMENTE (unificação Projeto → Caso): nenhum código lê nem grava
+  projetoId       Int? // projeto INTERNO (XOR casoId) — ex.: Manutenção do Lexia, Marketing
   projetoRef      Projeto?           @relation(fields: [projetoId], references: [id])
   recorrenteDeId  Int? // liga a instância GERADA à tarefa que a originou (guarda de idempotência)
   recorrenteDe    Tarefa?            @relation("TarefaRecorrencia", fields: [recorrenteDeId], references: [id], onDelete: SetNull)
@@ -1307,12 +1308,13 @@ model ExecucaoCaptura {
   @@index([status])
 }
 
-// ── Projetos — DORMENTE ──────────────────────────────────────────────────────
-// Unificado ao Caso (migração 20261006120000_casos_unificam_projetos): cada projeto
-// vivo virou (ou foi mesclado a) um Caso e as tarefas passaram a `Tarefa.casoId`.
-// Nenhum código lê nem grava esta tabela, EXCETO `casoId`, que guarda o caso de
-// destino da conversão (redirects de /projetos/<id> e ?projeto=). Será removida
-// numa migração futura.
+// ── Projetos INTERNOS ────────────────────────────────────────────────────────
+// Projetos do escritório que NÃO são casos de cliente (Manutenção do Lexia,
+// Marketing…): têm tarefas no quadro, mas não aparecem em Casos/Financeiro/
+// Contratos/Comercial. Projeto com cliente É um caso (Caso). Interno vivo =
+// `casoId IS NULL AND excluidoEm IS NULL`; `casoId` preenchido = convertido em
+// caso (registro p/ os redirects de /projetos/<id> e ?projeto=). `clienteId` e
+// `area` não são usados (legado da unificação 20261006120000).
 model Projeto {
   id             Int            @id @default(autoincrement())
   chave          String?        @unique // slug estável p/ seed; null em projetos do usuário
