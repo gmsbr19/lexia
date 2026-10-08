@@ -59,12 +59,14 @@ LexIA AI assistant, and a real-time Notifications system.
   first-class (1 caso→N), pure tested prazo engine (CPC dias úteis), CNJ capture
   (Comunica/DJEN + DataJud). Memories `project_casos_module`, `project_processos_module`,
   `project_captura_cnj`.
-- **Tarefas (redesign, Sep/2026; Projeto→Caso, Out/2026)**: UM quadro único do escritório (Quadro |
-  Lista | Fluxo; Modelos; Equipe só gestão), UMA data (prazo obrigatório; padrão = sexta), prazo
-  fatal, grupos livres, ligações "só começa depois de", histórico, anexos, "Desfazer" (TarefaAcao).
-  O "projeto" do quadro É O CASO (`Tarefa.casoId`; `Projeto`/`Tarefa.projetoId` DORMENTES). Regras
-  ÚNICAS em `lib/tarefas/regras.ts` + `casos-quadro.ts` (servidor + cliente). UI
-  `components/tarefas/tk-*.tsx` + `TarefasApp.tsx` + `tk.css`. Memories `project_tarefas_redesign`,
+- **Tarefas (redesign, Sep/2026; projetos = casos OU internos, Out/2026)**: UM quadro único do escritório
+  (Quadro | Lista | Fluxo; Projetos; Modelos; Equipe só gestão), UMA data (prazo obrigatório; padrão = sexta),
+  prazo fatal, grupos livres, ligações "só começa depois de" (só no MESMO projeto), histórico, anexos, "Desfazer"
+  (TarefaAcao). O "projeto" do quadro é o CASO do cliente (`Tarefa.casoId`) OU um projeto INTERNO do escritório
+  (`Tarefa.projetoId` → `Projeto` vivo = `casoId IS NULL AND excluidoEm IS NULL`) — nunca os dois; no cliente a
+  identidade é a chave `c<id>`/`p<id>` (`TaskRow.projeto`, `ProjetoQuadro.chave`). Regras ÚNICAS em
+  `lib/tarefas/regras.ts` + `projetos-quadro.ts` (servidor + cliente); projeto novo/interno em `lib/tarefas/projetos.ts`.
+  UI `components/tarefas/tk-*.tsx` + `TarefasApp.tsx` + `tk.css`. Memories `project_tarefas_redesign`,
   `project_caso_projeto_unificado`.
 - **Início**: greeting + AI BriefingCard + OfficeDashboard. Memory
   `project_inicio_dashboard`.
@@ -153,6 +155,31 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **Projetos de volta: caso do cliente OU projeto INTERNO (branch `feat/projetos-internos`, 10 micro commits, sem push;
+  tsc 0 novos erros — só o `cm-meta` PRÉ-EXISTENTE —, 867/868 testes — só a `notificacoes-links` PRÉ-EXISTENTE; novos em
+  `tests/projetos-quadro.test.ts`/`tarefas-regras`/`lexia-agent` —, eslint limpo; migração `20261008120000_projetos_internos`
+  (só DADOS) VALIDADA em PGlite na cadeia real A→vínculos→B (22 cenários) + `migrate diff` vazio, e JÁ APLICADA no banco
+  LOCAL).** Pedido: "todo caso de cliente é um projeto; alguns projetos não são casos (manutenção do Lexia, marketing)";
+  aba Projetos com busca + filtros como os do quadro; clicar = caso → página do caso, sem cliente → modal. **Decisões do
+  usuário:** interno = entidade própria (fora de Casos/Financeiro/Contratos/Comercial); os casos SEM cliente criados pela
+  unificação (`app-caso-proj-%`) e nunca usados como caso (processo/lançamento/contrato/documento/lead/evento/anotação/rateio)
+  VOLTAM a ser internos (localmente: "Integralização de imóveis Batista & Almeida" — se for de cliente, "Vincular a um
+  cliente…" o transforma em caso); todo caso abre /casos/<id>; a aba lista todos os casos ativos + internos. **Minhas
+  (aprovadas):** "Projeto" em todo o Tarefas; UM "Novo projeto" (com cliente = caso, sem = interno); "Vincular a um
+  cliente…" converte interno → caso (sem Desfazer); mesmos papéis do caso (sócio/advogado). **Dados:** casoId XOR projetoId
+  (no código); lock do grafo 7331 (caso) / 7332 (interno); a migração também marca os baldes `area-%` como excluídos e
+  limpa o `projetoId` dormente das demais tarefas. **Backend:** `projetos-quadro.ts` (chave, apresentar, acesso, busca,
+  andamento/filtro/ordem da aba), `projetoDoQuadro`/`podeVincularProjeto` em mutations, `lib/tarefas/projetos.ts`
+  (criar/editar/arquivar/excluir interno + `converterEmCaso`), Desfazer `projetosCriados`/`projetos`, modelos com alvo
+  `{novo}|{projeto}`. **Rotas:** `/api/tarefas/casos` → `POST /api/tarefas/projetos`, `PATCH|DELETE /api/tarefas/projetos/[id]`,
+  `POST …/[id]/converter`; `?projeto=<id>` = interno (ou redireciona p/ o caso); `/projetos` → `/tarefas?pagina=projetos`.
+  **UI:** barra lateral Quadro · Projetos · Modelos · Equipe; `tk-projetos.tsx` (Ativos | Arquivados, busca, Filtrar Tipo/
+  Responsável/Andamento/Prazo final, Ordenar, linhas `.tk-prow`, ícone "Abrir no quadro"); `tk-projeto-form.tsx` (novo/
+  editar interno); seletores/filtro "Projeto" com 2ª linha cliente ou "Projeto interno"; filtro do celular = o do desktop.
+  **LexIA:** `listar_projetos`/`criar_projeto`/`editar_projeto`; tarefas com casoId OU projetoId; `criar_estrutura_projeto`
+  substitui `criar_estrutura_caso`; prompt (CORE — invalida o cache 1×). Seed demo + 2 internos (`demo-lexia`, `demo-marketing`).
+  **User action:** conferir visual (`/tarefas?pagina=projetos` etc.); merge/push quando aprovar — em produção a migração roda
+  no boot (conferir depois: `SELECT id, "nomeCurto" FROM "Projeto" WHERE "casoId" IS NULL AND "excluidoEm" IS NULL`).
 - **Projeto ⇒ Caso — UNIFICAÇÃO (Parte A de 2; this session, tsc 0 novos erros — só o `cm-meta` PRÉ-EXISTENTE —,
   858/859 testes — só a `notificacoes-links` PRÉ-EXISTENTE; +14 novos em `tests/casos-quadro.test.ts`/`modelos.test.ts`/
   `lexia-agent.test.ts` —, eslint sem achados novos; migração `20261006120000_casos_unificam_projetos` ESCRITA À MÃO e
