@@ -14,7 +14,7 @@ import { Combobox } from "@/components/ui/Combobox"
 import { DateField } from "@/components/ui/DatePicker"
 import { toAreaOptions, useAreasStore } from "@/lib/areas/store"
 import { CASO_STATUS_OPTS, casoStatusBucket, casoStatusCanonico } from "@/lib/casos/status"
-import { CORES_CASO } from "@/lib/tarefas/types"
+import { CORES_PROJETO } from "@/lib/tarefas/types"
 import type { CasoDetail, CrmDataset } from "../crm-types"
 
 const errMsg = (err: unknown) => (err instanceof Error ? err.message : "Erro")
@@ -237,7 +237,7 @@ export function CrmCasoFormModal({ dataset, caso = null, clienteInicial = null, 
           <div>
             <FxLabel hint="etiqueta no quadro">Cor</FxLabel>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              {CORES_CASO.map((c) => (
+              {CORES_PROJETO.map((c) => (
                 <button
                   type="button"
                   key={c}

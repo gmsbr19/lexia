@@ -40,6 +40,7 @@ export interface AgendaTarefaRow {
   responsavelId: number | null
   casoId: number | null
   caso: string | null
+  projeto: string | null // projeto interno (quando a tarefa não é de um caso)
   clienteId: number | null
   cliente: string | null
 }

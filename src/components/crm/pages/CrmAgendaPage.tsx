@@ -753,7 +753,7 @@ export function CrmAgendaPage({ dataset, role: _role, nav }: Props) {
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{t.titulo}</div>
                           <div style={{ fontSize: 12, color: "var(--text-subtle)" }}>
-                            Tarefa{t.caso ? ` · ${t.caso}` : t.cliente ? ` · ${t.cliente}` : ""}
+                            Tarefa{t.caso ? ` · ${t.caso}` : t.projeto ? ` · ${t.projeto}` : t.cliente ? ` · ${t.cliente}` : ""}
                           </div>
                         </div>
                         {t.prazoFatal && <CrmPrazoFatalTag />}
