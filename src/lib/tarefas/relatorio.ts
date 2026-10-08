@@ -44,8 +44,20 @@ export interface TarefaLinha {
   id: number
   titulo: string
   prazoISO: string
-  contexto?: string | null // cliente ou caso
+  contexto?: string | null // cliente, caso ou projeto interno
   responsavelNome?: string | null // usado só na seção de equipe
+}
+
+/** Contexto da linha: o cliente da tarefa, senão o caso, senão o projeto interno (vivos). */
+function contextoDe(t: {
+  cliente: { nome: string } | null
+  caso: { titulo: string; excluidoEm: Date | null } | null
+  projetoRef: { nome: string; excluidoEm: Date | null; casoId: number | null } | null
+}): string | null {
+  if (t.cliente) return t.cliente.nome
+  if (t.caso && !t.caso.excluidoEm) return t.caso.titulo
+  if (t.projetoRef && !t.projetoRef.excluidoEm && t.projetoRef.casoId == null) return t.projetoRef.nome
+  return null
 }
 
 export interface RelatorioDados {
@@ -226,6 +238,7 @@ export async function enviarRelatoriosDiarios(opts?: EnviarRelatoriosOpts): Prom
       responsavel: { select: { email: true } },
       cliente: { select: { nome: true } },
       caso: { select: { titulo: true, excluidoEm: true } },
+      projetoRef: { select: { nome: true, excluidoEm: true, casoId: true } },
     },
   })
   const porEmail = new Map<string, TarefaLinha[]>()
@@ -236,7 +249,7 @@ export async function enviarRelatoriosDiarios(opts?: EnviarRelatoriosOpts): Prom
       id: t.id,
       titulo: t.titulo,
       prazoISO: toISODate(t.prazo),
-      contexto: t.cliente?.nome ?? (t.caso && !t.caso.excluidoEm ? t.caso.titulo : null),
+      contexto: contextoDe(t),
     }
     const arr = porEmail.get(email)
     if (arr) arr.push(linha)
@@ -256,13 +269,14 @@ export async function enviarRelatoriosDiarios(opts?: EnviarRelatoriosOpts): Prom
         responsavel: { select: { nome: true } },
         cliente: { select: { nome: true } },
         caso: { select: { titulo: true, excluidoEm: true } },
+        projetoRef: { select: { nome: true, excluidoEm: true, casoId: true } },
       },
     })
     equipe = atrasadasEquipe.map((t) => ({
         id: t.id,
         titulo: t.titulo,
         prazoISO: toISODate(t.prazo),
-        contexto: t.cliente?.nome ?? (t.caso && !t.caso.excluidoEm ? t.caso.titulo : null),
+        contexto: contextoDe(t),
         responsavelNome: t.responsavel?.nome ?? null,
       }))
   }

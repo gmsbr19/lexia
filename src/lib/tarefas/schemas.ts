@@ -1,15 +1,20 @@
 // Zod dos payloads do módulo Tarefas — aplicados na borda da rota (parseBody →
-// UserError → 400 limpo). A semântica (prazo padrão, ciclo, caso…) é validada
+// UserError → 400 limpo). A semântica (prazo padrão, ciclo, projeto…) é validada
 // na camada de mutação.
 import { z } from "zod"
 import { idOpt, idReq } from "@/lib/validation"
+import { ehChaveProjeto } from "./projetos-quadro"
+import type { ChaveProjeto } from "./types"
+
+/** Projeto do quadro: `c<id>` (caso do cliente) ou `p<id>` (projeto interno). */
+export const chaveProjetoSchema = z.custom<ChaveProjeto>((v) => ehChaveProjeto(v), { message: "projeto inválido" })
 
 const iso = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 const titulo = z.string().trim().min(1).max(300)
 
 export const tarefaCreateSchema = z.object({
   titulo,
-  casoId: idOpt, // o caso ("projeto") da tarefa no quadro
+  projeto: chaveProjetoSchema.nullish(), // caso do cliente ou projeto interno
   grupo: z.string().max(160).nullish(),
   // ausente = quem cria; null = "Sem responsável"
   responsavelId: idOpt,
@@ -28,7 +33,7 @@ export const tarefaPatchSchema = z
   .object({
     titulo,
     descricao: z.string().max(8000).nullable(),
-    casoId: idOpt,
+    projeto: chaveProjetoSchema.nullable(),
     grupo: z.string().max(160).nullable(),
     responsavelId: idOpt,
     clienteId: idOpt,
@@ -76,9 +81,9 @@ export const comentarioEditSchema = comentarioCreateSchema
 
 // ── visão e ordem manual (por pessoa) ─────────────────────────────────────────
 export const prefsQuadroSchema = z.object({
-  ordenar: z.enum(["manual", "due", "caso", "owner"]),
+  ordenar: z.enum(["manual", "due", "projeto", "owner"]),
   direcao: z.enum(["asc", "desc"]),
-  agrupar: z.enum(["none", "caso", "owner", "group"]),
+  agrupar: z.enum(["none", "projeto", "owner", "group"]),
 })
 
 export const ordemSchema = z.object({

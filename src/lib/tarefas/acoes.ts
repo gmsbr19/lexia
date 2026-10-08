@@ -2,11 +2,12 @@
 //
 // Toda mutação do módulo roda numa transação com um `RegistroAcao`: ANTES de
 // alterar qualquer coisa, a mutação pede para guardar o estado anterior das
-// tarefas/ligações que vai tocar e anota o que CRIOU (tarefas, casos, histórico,
-// comentários, anexos). O snapshot é gravado em TarefaAcao e o
-// POST /api/tarefas/acoes/[id]/desfazer restaura tudo em cascata — inclusive
-// efeitos encadeados (concluir → reabre e volta as liberadas para "aguardando";
-// montar um caso por modelo → tira as tarefas e exclui o caso, SEMPRE soft).
+// tarefas/ligações/projetos internos que vai tocar e anota o que CRIOU (tarefas,
+// casos, projetos internos, histórico, comentários, anexos). O snapshot é gravado
+// em TarefaAcao e o POST /api/tarefas/acoes/[id]/desfazer restaura tudo em
+// cascata — inclusive efeitos encadeados (concluir → reabre e volta as liberadas
+// para "aguardando"; montar um projeto por modelo → tira as tarefas e exclui o
+// caso/projeto, SEMPRE soft).
 //
 // Regras: só quem fez desfaz; vale por JANELA_MS; cada ação desfaz uma vez.
 // Notificações já enviadas não são "desenviadas".
@@ -38,6 +39,7 @@ const CAMPOS_TAREFA = [
   "responsavelId",
   "criadoPorId",
   "casoId",
+  "projetoId",
   "processoId",
   "clienteId",
   "leadId",
@@ -45,6 +47,10 @@ const CAMPOS_TAREFA = [
   "concluidoEm",
 ] as const
 const DATAS_TAREFA = new Set(["prazo", "concluidoEm", "createdAt"])
+
+// Projeto interno: campos restauráveis (edição, arquivamento, exclusão).
+const CAMPOS_PROJETO = ["nomeCurto", "nome", "cor", "prazo", "responsavelId", "descricao", "arquivadoEm", "excluidoEm", "casoId"] as const
+const DATAS_PROJETO = new Set(["prazo", "arquivadoEm", "excluidoEm"])
 
 const CAMPOS_MODELO = ["nome", "area", "palavraGrupo", "sufixoGrupo", "papeis", "ordem", "excluidoEm"] as const
 const CAMPOS_PASSO = ["chave", "titulo", "papelId", "diasAntes", "prazoFatal", "anteriores", "checklist", "ordem"] as const
@@ -68,6 +74,8 @@ export interface Snapshot {
   comentarios: number[]
   anexos: number[]
   casosCriados: number[] // desfazer = soft-delete (recusado se o caso já está em uso)
+  projetosCriados: number[] // projetos internos — desfazer = soft-delete
+  projetos: Json[] // projetos internos ANTES da alteração
   anexosRemovidos: Json[] // restaurados com o mesmo id
   comentariosExcluidos: number[] // soft-delete desfeito
   comentariosEditados: { id: number; conteudo: string; editadoEm: string | null }[]
@@ -85,6 +93,8 @@ const vazio = (): Snapshot => ({
   comentarios: [],
   anexos: [],
   casosCriados: [],
+  projetosCriados: [],
+  projetos: [],
   anexosRemovidos: [],
   comentariosExcluidos: [],
   comentariosEditados: [],
@@ -186,6 +196,15 @@ export class RegistroAcao {
   casoCriado(id: number): void {
     this.snap.casosCriados.push(id)
   }
+  projetoCriado(id: number): void {
+    this.snap.projetosCriados.push(id)
+  }
+  /** Guarda um projeto interno antes de editá-lo/arquivá-lo/excluí-lo. */
+  async guardarProjeto(id: number): Promise<void> {
+    if (this.snap.projetos.some((p) => p.id === id) || this.snap.projetosCriados.includes(id)) return
+    const p = await this.tx.projeto.findUnique({ where: { id } })
+    if (p) this.snap.projetos.push(serializar({ id: p.id, ...pick(p as unknown as Json, CAMPOS_PROJETO) }))
+  }
   historico(ids: number[]): void {
     this.snap.historico.push(...ids)
   }
@@ -258,6 +277,22 @@ export async function desfazerAcao(id: string, autorId: number | null): Promise<
       }
       const agora = new Date()
       for (const casoId of s.casosCriados) await excluirCasoTx(tx, casoId, agora)
+    }
+    if (s.projetosCriados.length) {
+      // Mesma regra do caso: tarefas acrescentadas depois ficam "Sem projeto".
+      const orfas = (
+        await tx.tarefa.findMany({ where: { projetoId: { in: s.projetosCriados } }, select: { id: true } })
+      ).map((t) => t.id)
+      if (orfas.length) {
+        await tx.tarefaLigacao.deleteMany({ where: { OR: [{ anteriorId: { in: orfas } }, { seguinteId: { in: orfas } }] } })
+        await tx.tarefa.updateMany({ where: { id: { in: orfas }, status: "wait", aguardandoTexto: null }, data: { status: "todo" } })
+        await tx.tarefa.updateMany({ where: { id: { in: orfas } }, data: { projetoId: null, grupo: null } })
+      }
+      await tx.projeto.updateMany({ where: { id: { in: s.projetosCriados } }, data: { excluidoEm: new Date() } })
+    }
+    for (const p of s.projetos) {
+      const { id: pid, ...rest } = reviver(p, DATAS_PROJETO)
+      await tx.projeto.updateMany({ where: { id: pid as number }, data: rest as Prisma.ProjetoUncheckedUpdateManyInput })
     }
     // 2) modelos: os criados saem da lista (soft); os alterados voltam com os passos
     if (s.modelosCriados.length) {

@@ -2,7 +2,8 @@
 // inteiro (quadro, lista, fluxo, modelos, equipe): o quadro é ÚNICO para o
 // escritório, e as regras derivadas (risco, cadeia…) dependem das tarefas de
 // todos. Os derivados saem de ./regras.ts no cliente e no servidor. O "projeto"
-// do quadro é o CASO (Tarefa.casoId).
+// do quadro é o CASO do cliente (Tarefa.casoId) ou um projeto INTERNO
+// (Tarefa.projetoId) — no cliente, a chave `c<id>` / `p<id>`.
 import type { Prisma } from "@prisma/client"
 import type { SessionUser } from "@/lib/auth/session"
 import { prisma } from "@/lib/db"
@@ -12,16 +13,16 @@ import { scopeCasoWhere, veTudo } from "@/lib/processos/rbac"
 import { getUsuariosAtivos } from "@/lib/users/queries"
 import { ROLE_LABEL, type UsuarioAtivo } from "@/lib/users/types"
 import { fromDate, parseArr } from "./_input"
-import { apresentarCaso } from "./casos-quadro"
+import { apresentarCaso, apresentarInterno, chaveCaso, chaveInterno } from "./projetos-quadro"
 import { dataSP, hojeSP } from "./regras"
 import type {
   AnexoRow,
-  CasoQuadro,
   ChecklistItem,
   HistoricoRow,
   ModeloView,
   PapelModelo,
   PassoModelo,
+  ProjetoQuadro,
   TarefaDetalhe,
   TarefasBoard,
   TaskRow,
@@ -58,6 +59,7 @@ export const TAREFA_SELECT = {
   prazo: true,
   prazoFatal: true,
   casoId: true,
+  projetoId: true,
   grupo: true,
   clienteId: true,
   responsavelId: true,
@@ -68,6 +70,7 @@ export const TAREFA_SELECT = {
   concluidoEm: true,
   createdAt: true,
   caso: { select: { excluidoEm: true } },
+  projetoRef: { select: { excluidoEm: true, casoId: true } },
   anteriores: { select: { anteriorId: true } },
   _count: { select: { comentarios: { where: { excluidoEm: null } }, anexos: true } },
 } satisfies Prisma.TarefaSelect
@@ -80,17 +83,27 @@ function checklistDe(raw: string): ChecklistItem[] {
     .map((c, i) => ({ id: String(c.id ?? `c${i}`), texto: String(c.texto), marcado: !!c.marcado }))
 }
 
+/** Projeto interno vivo = não excluído e não convertido em caso. */
+export const internoVivo = (p: { excluidoEm: Date | null; casoId: number | null } | null | undefined): boolean =>
+  !!p && !p.excluidoEm && p.casoId == null
+
+/** Chave do projeto da tarefa; projeto excluído → null ("Sem projeto"; a tarefa nunca some). */
+export function projetoDaLinha(r: Pick<TarefaSel, "casoId" | "caso" | "projetoId" | "projetoRef">): TaskRow["projeto"] {
+  if (r.casoId != null) return r.caso && !r.caso.excluidoEm ? chaveCaso(r.casoId) : null
+  if (r.projetoId != null) return internoVivo(r.projetoRef) ? chaveInterno(r.projetoId) : null
+  return null
+}
+
 export function toTaskRow(r: TarefaSel): TaskRow {
-  // caso excluído (soft-delete) → "Sem caso" (a tarefa nunca some).
-  const casoVivo = r.casoId != null && r.caso != null && !r.caso.excluidoEm
+  const projeto = projetoDaLinha(r)
   return {
     id: r.id,
     titulo: r.titulo,
     status: (isStatus(r.status) ? r.status : "todo") as TaskStatus,
     prazo: fromDate(r.prazo)!,
     prazoFatal: r.prazoFatal,
-    casoId: casoVivo ? r.casoId : null,
-    grupo: casoVivo ? r.grupo : null,
+    projeto,
+    grupo: projeto ? r.grupo : null,
     clienteId: r.clienteId,
     responsavelId: r.responsavelId,
     aguardandoTexto: r.status === "wait" ? r.aguardandoTexto : null,
@@ -121,9 +134,11 @@ export const CASO_QUADRO_SELECT = {
 
 export type CasoQuadroSel = Prisma.CasoGetPayload<{ select: typeof CASO_QUADRO_SELECT }>
 
-export function toCasoQuadro(c: CasoQuadroSel, corDaArea: (area: string | null) => string | null): CasoQuadro {
+export function toProjetoDeCaso(c: CasoQuadroSel, corDaArea: (area: string | null) => string | null): ProjetoQuadro {
   const { nomeCurto, cor } = apresentarCaso(c, corDaArea)
   return {
+    chave: chaveCaso(c.id),
+    tipo: "caso",
     id: c.id,
     nomeCurto,
     nome: c.titulo,
@@ -138,6 +153,42 @@ export function toCasoQuadro(c: CasoQuadroSel, corDaArea: (area: string | null) 
   }
 }
 
+export const INTERNO_QUADRO_SELECT = {
+  id: true,
+  nome: true,
+  nomeCurto: true,
+  cor: true,
+  responsavelId: true,
+  prazo: true,
+  descricao: true,
+  arquivadoEm: true,
+  modeloOrigemId: true,
+} satisfies Prisma.ProjetoSelect
+
+export type InternoQuadroSel = Prisma.ProjetoGetPayload<{ select: typeof INTERNO_QUADRO_SELECT }>
+
+export function toProjetoInterno(p: InternoQuadroSel): ProjetoQuadro {
+  const { nomeCurto, cor } = apresentarInterno(p)
+  return {
+    chave: chaveInterno(p.id),
+    tipo: "interno",
+    id: p.id,
+    nomeCurto,
+    nome: p.nome,
+    cor,
+    clienteId: null,
+    area: null,
+    responsavelId: p.responsavelId,
+    prazo: fromDate(p.prazo),
+    descricao: p.descricao,
+    arquivado: p.arquivadoEm != null,
+    modeloOrigemId: p.modeloOrigemId,
+  }
+}
+
+/** Filtro Prisma do projeto interno vivo (não excluído, não convertido em caso). */
+export const WHERE_INTERNO_VIVO = { excluidoEm: null, casoId: null } satisfies Prisma.ProjetoWhereInput
+
 /** Cor de cada área (chave → hex) para a etiqueta dos casos sem cor própria. */
 export async function coresDasAreas(): Promise<(area: string | null) => string | null> {
   const areas = await prisma.areaDireito.findMany({ select: { chave: true, cor: true } })
@@ -146,19 +197,24 @@ export async function coresDasAreas(): Promise<(area: string | null) => string |
 }
 
 /**
- * Casos do quadro: os vivos não arquivados + os arquivados que ainda têm alguma
- * tarefa (a etiqueta delas precisa resolver). Excluídos nunca vêm.
+ * Projetos do quadro: casos vivos e projetos internos vivos — os não arquivados +
+ * os arquivados que ainda têm alguma tarefa (a etiqueta delas precisa resolver).
+ * Excluídos nunca vêm.
  */
-export async function getCasosQuadro(): Promise<CasoQuadro[]> {
-  const [rows, citados, corDaArea] = await Promise.all([
+export async function getProjetosQuadro(): Promise<ProjetoQuadro[]> {
+  const [casos, internos, casosCitados, internosCitados, corDaArea] = await Promise.all([
     prisma.caso.findMany({ where: { excluidoEm: null }, select: CASO_QUADRO_SELECT }),
+    prisma.projeto.findMany({ where: WHERE_INTERNO_VIVO, select: INTERNO_QUADRO_SELECT }),
     prisma.tarefa.findMany({ where: { casoId: { not: null } }, select: { casoId: true }, distinct: ["casoId"] }),
+    prisma.tarefa.findMany({ where: { projetoId: { not: null } }, select: { projetoId: true }, distinct: ["projetoId"] }),
     coresDasAreas(),
   ])
-  const comTarefa = new Set(citados.map((t) => t.casoId))
-  return rows
-    .map((r) => toCasoQuadro(r, corDaArea))
-    .filter((c) => !c.arquivado || comTarefa.has(c.id))
+  const casoComTarefa = new Set(casosCitados.map((t) => t.casoId))
+  const internoComTarefa = new Set(internosCitados.map((t) => t.projetoId))
+  return [
+    ...casos.map((r) => toProjetoDeCaso(r, corDaArea)).filter((c) => !c.arquivado || casoComTarefa.has(c.id)),
+    ...internos.map(toProjetoInterno).filter((p) => !p.arquivado || internoComTarefa.has(p.id)),
+  ]
 }
 
 /** Ids dos casos que a pessoa pode abrir/vincular; null = todos (papéis que veem tudo). */
@@ -211,15 +267,15 @@ export async function getModelos(): Promise<ModeloView[]> {
 
 /** Carga única do módulo. `user` define quais casos a pessoa pode abrir/vincular. */
 export async function getTarefasBoard(user: SessionUser | null | undefined): Promise<TarefasBoard> {
-  const [tarefas, casos, casosAcessiveis, usuarios, clientes, modelos] = await Promise.all([
+  const [tarefas, projetos, casosAcessiveis, usuarios, clientes, modelos] = await Promise.all([
     getTarefas(),
-    getCasosQuadro(),
+    getProjetosQuadro(),
     getCasosAcessiveis(user),
     getUsuariosAtivos(),
     getClienteOptions(),
     getModelos(),
   ])
-  return { tarefas, casos, casosAcessiveis, pessoas: usuarios.map(toTeamMember), clientes, modelos, hoje: hojeSP() }
+  return { tarefas, projetos, casosAcessiveis, pessoas: usuarios.map(toTeamMember), clientes, modelos, hoje: hojeSP() }
 }
 
 /** Histórico + anexos (carregados ao abrir a tarefa). */

@@ -2,7 +2,7 @@
 // partir do quadro; GET /api/tarefas/equipe devolve o MESMO cálculo.
 import { addDays, compareISO } from "@/lib/datas/util"
 import { dataCurta, diasEntre, indexar, motivosRisco, rotuloPrazo, vencida } from "./regras"
-import type { CasoQuadro, TaskRow, TeamMember } from "./types"
+import type { ChaveProjeto, ProjetoQuadro, TaskRow, TeamMember } from "./types"
 
 export type TipoAtencao = "late" | "risk" | "fatal"
 
@@ -21,14 +21,14 @@ export interface CargaPessoa {
 export interface PainelEquipe {
   vencidas: number
   noPrazo: { feitas: number; total: number; pct: number | null } // concluídas nos últimos 30 dias
-  casosAtivos: number // casos não arquivados com tarefa aberta
+  projetosAtivos: number // projetos (casos e internos) não arquivados com tarefa aberta
   atencao: ItemAtencao[]
   carga: CargaPessoa[]
 }
 
 export function painelEquipe(
   tarefas: TaskRow[],
-  casos: CasoQuadro[],
+  projetos: ProjetoQuadro[],
   pessoas: TeamMember[],
   hoje: string,
 ): PainelEquipe {
@@ -38,8 +38,8 @@ export function painelEquipe(
   const feitas30 = tarefas.filter((t) => t.status === "done" && t.concluidaEm && compareISO(t.concluidaEm, desde) >= 0)
   const noPrazo = feitas30.filter((t) => compareISO(t.concluidaEm!, t.prazo) <= 0)
 
-  const ativos = new Set(casos.filter((c) => !c.arquivado).map((c) => c.id))
-  const casosAtivos = new Set(abertas.map((t) => t.casoId).filter((id): id is number => id != null && ativos.has(id))).size
+  const ativos = new Set(projetos.filter((p) => !p.arquivado).map((p) => p.chave))
+  const projetosAtivos = new Set(abertas.map((t) => t.projeto).filter((k): k is ChaveProjeto => k != null && ativos.has(k))).size
 
   const map = indexar(tarefas)
   const itens: (ItemAtencao & { ordem: number; prazo: string })[] = []
@@ -72,7 +72,7 @@ export function painelEquipe(
       total: feitas30.length,
       pct: feitas30.length ? Math.round((noPrazo.length / feitas30.length) * 100) : null,
     },
-    casosAtivos,
+    projetosAtivos,
     atencao: itens.map(({ tarefaId, tipo, texto }) => ({ tarefaId, tipo, texto })),
     carga,
   }

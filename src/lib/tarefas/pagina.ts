@@ -4,7 +4,7 @@
 // dessa pessoa (visão preferida + ordem manual).
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
-import { podeCriarCasoQuadro, podeEditarModelo } from "@/lib/modelos/types"
+import { podeCriarProjeto, podeEditarModelo } from "@/lib/modelos/types"
 import { userIdPorEmail } from "@/lib/notificacoes/recipients"
 import type { PrefsQuadro } from "./filtros"
 import { getOrdemManual, getPrefsQuadro } from "./preferencias"
@@ -15,7 +15,7 @@ export interface CargaPagina {
   inicial: TarefasBoard
   meId: number | null
   gestao: boolean
-  podeCriarCaso: boolean
+  podeCriarProjeto: boolean
   podeModelo: boolean
   prefs: PrefsQuadro
   ordemManual: Record<number, number>
@@ -34,7 +34,7 @@ export async function carregarPagina(): Promise<CargaPagina> {
     prefs,
     ordemManual,
     gestao: ehGestao(role),
-    podeCriarCaso: podeCriarCasoQuadro(role),
+    podeCriarProjeto: podeCriarProjeto(role),
     podeModelo: podeEditarModelo(role),
   }
 }
@@ -46,11 +46,16 @@ export function paramId(v: string | string[] | undefined): number | null {
 }
 
 /**
- * Links antigos (/projetos/<id>, ?projeto=<id>): o caso em que o projeto virou na
- * unificação Projeto → Caso (registro guardado em Projeto.casoId, tabela dormente).
+ * Para onde leva um id de Projeto (/projetos/<id>, ?projeto=<id>): o próprio
+ * projeto interno, se vivo; o caso em que ele virou (unificação ou "vincular a um
+ * cliente", registro em Projeto.casoId); ou nada (excluído/inexistente).
  */
-export async function casoDoProjetoAntigo(projetoId: number | null): Promise<number | null> {
+export async function destinoDoProjeto(
+  projetoId: number | null,
+): Promise<{ tipo: "interno"; id: number } | { tipo: "caso"; id: number } | null> {
   if (projetoId == null) return null
-  const p = await prisma.projeto.findUnique({ where: { id: projetoId }, select: { casoId: true } })
-  return p?.casoId ?? null
+  const p = await prisma.projeto.findUnique({ where: { id: projetoId }, select: { id: true, casoId: true, excluidoEm: true } })
+  if (!p) return null
+  if (p.casoId != null) return { tipo: "caso", id: p.casoId }
+  return p.excluidoEm ? null : { tipo: "interno", id: p.id }
 }
