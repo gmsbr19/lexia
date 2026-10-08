@@ -392,16 +392,20 @@ export function TkCasoLista({
   opcoes,
   semCaso = true,
   acao,
+  marcado,
 }: {
   value: number | null
   onPick: (id: number | null) => void
   opcoes?: CasoQuadro[]
   semCaso?: boolean
   acao?: { label: string; onClick: () => void }
+  /** Várias escolhas (filtro): diz quais estão marcados; `null` = "Sem caso". */
+  marcado?: (id: number | null) => boolean
 }) {
   const { casosAtivos, cliente } = useTk()
   const [q, setQ] = useState("")
   const lista = buscarCasos(opcoes ?? casosAtivos, q, (id) => cliente(id)?.nome)
+  const ehMarcado = marcado ?? ((id: number | null) => id === value)
   return (
     <>
       <input className="input" autoFocus placeholder="Buscar caso ou cliente" aria-label="Buscar caso" value={q} onChange={(e) => setQ(e.target.value)} style={{ marginBottom: 3 }} />
@@ -412,7 +416,7 @@ export function TkCasoLista({
             <TkMenuItem
               key={c.id}
               dot={c.cor}
-              checked={c.id === value}
+              checked={ehMarcado(c.id)}
               sub={nomeCliente ?? "Sem cliente"}
               title={nomeCliente ? `${c.nome} — ${nomeCliente}` : c.nome}
               onClick={() => onPick(c.id)}
@@ -425,7 +429,7 @@ export function TkCasoLista({
         {semCaso && (
           <>
             <TkMenuSep />
-            <TkMenuItem dot="var(--text-subtle)" checked={value == null} onClick={() => onPick(null)}>
+            <TkMenuItem dot="var(--text-subtle)" checked={ehMarcado(null)} onClick={() => onPick(null)}>
               Sem caso
             </TkMenuItem>
           </>

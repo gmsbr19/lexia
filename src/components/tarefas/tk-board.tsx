@@ -10,7 +10,7 @@ import { Fragment, useMemo, useState, type Dispatch, type ReactNode, type SetSta
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAreasStore, resolveAreaLabel } from "@/lib/areas/store"
-import { buscarCasos, ordenarCasos } from "@/lib/tarefas/casos-quadro"
+import { ordenarCasos } from "@/lib/tarefas/casos-quadro"
 import {
   ROTULO_PRAZO,
   SEM_CASO,
@@ -29,7 +29,7 @@ import { Icon, type TfIconName } from "./tf-icons"
 import { TkCard, TkCardSkeleton, type CardProps } from "./tk-card"
 import { useTk } from "./tk-context"
 import { TkFlowView } from "./tk-flow"
-import { TkCasoLista } from "./tk-pickers"
+import { TkCasoLista, TkPropMenu, type OpcaoMenu } from "./tk-pickers"
 import {
   TkAvatar,
   TkChip,
@@ -216,6 +216,95 @@ export function TkCasoHeader({ c }: { c: CasoQuadro }) {
   )
 }
 
+// ── Filtrar: três seletores (caso · responsável · prazo) ─────────────────────
+const OPCOES_PRAZO: { id: FiltroPrazo | null; label: string }[] = [
+  { id: null, label: "Qualquer prazo" },
+  ...(["late", "today", "week", "fatal"] as FiltroPrazo[]).map((k) => ({ id: k as FiltroPrazo | null, label: ROTULO_PRAZO[k] })),
+]
+
+/** Casos (vários): "Todos os casos", o caso escolhido ou "N casos". */
+function TkFiltroCaso({ F, toggleCaso }: { F: Filtros; toggleCaso: (id: number) => void }) {
+  const { casosComTarefas, caso } = useTk()
+  const pop = usePop()
+  const sel = F.casos
+  const um = sel.length === 1 && sel[0] !== SEM_CASO ? caso(sel[0]) : null
+  const rotulo = !sel.length ? "Todos os casos" : sel.length > 1 ? `${sel.length} casos` : sel[0] === SEM_CASO ? "Sem caso" : (um?.nomeCurto ?? "Caso")
+  return (
+    <span style={{ position: "relative", minWidth: 0, flex: 1, display: "flex" }}>
+      <button type="button" className={"tk-prop-val" + (sel.length ? "" : " muted")} onClick={pop.toggle} title={um?.nome}>
+        {sel.length === 1 && <TkDot color={um?.cor ?? "var(--text-subtle)"} />}
+        <span>{rotulo}</span>
+      </button>
+      <TkPop open={pop.open} onClose={pop.close} anchor={pop.anchor} width={380}>
+        {pop.open && (
+          <TkCasoLista
+            value={null}
+            opcoes={casosComTarefas}
+            marcado={(id) => sel.includes(id ?? SEM_CASO)}
+            onPick={(id) => toggleCaso(id ?? SEM_CASO)}
+          />
+        )}
+      </TkPop>
+    </span>
+  )
+}
+
+function TkFiltroPainel({
+  F,
+  setF,
+  toggleCaso,
+  onLimpar,
+}: {
+  F: Filtros
+  setF: SetFiltros
+  toggleCaso: (id: number) => void
+  onLimpar?: () => void
+}) {
+  const { pessoas, gestao, meId } = useTk()
+  // Responsável e Minhas/Equipe são o mesmo filtro: "eu" = Minhas, "Todos" = Equipe inteira.
+  const resp = F.escopo === "mine" ? meId : F.responsavel
+  const opcoesResp: OpcaoMenu<number | null>[] = [
+    { id: null, label: "Toda a equipe" },
+    ...pessoas.map((p) => ({ id: p.id as number | null, label: p.id === meId ? `${p.nome} (eu)` : p.nome })),
+  ]
+  return (
+    <>
+      <div style={{ padding: "4px 10px 4px 14px" }}>
+        <div className="tk-prop">
+          <span className="tk-prop-label">Caso</span>
+          <TkFiltroCaso F={F} toggleCaso={toggleCaso} />
+        </div>
+        {gestao && (
+          <div className="tk-prop">
+            <span className="tk-prop-label">Responsável</span>
+            <TkPropMenu<number | null>
+              value={resp}
+              options={opcoesResp}
+              muted={resp == null}
+              width={240}
+              onPick={(id) =>
+                setF(id != null && id === meId ? { escopo: "mine", responsavel: null } : { escopo: "team", responsavel: id })
+              }
+            />
+          </div>
+        )}
+        <div className="tk-prop">
+          <span className="tk-prop-label">Prazo</span>
+          <TkPropMenu<FiltroPrazo | null> value={F.prazo} options={OPCOES_PRAZO} muted={F.prazo == null} width={200} onPick={(v) => setF({ prazo: v })} />
+        </div>
+      </div>
+      {onLimpar && (
+        <>
+          <TkMenuSep />
+          <TkMenuItem icon="x" onClick={onLimpar}>
+            Limpar filtros
+          </TkMenuItem>
+        </>
+      )}
+    </>
+  )
+}
+
 // ── linha 2: Minhas | Equipe · filtros ativos · Filtrar · Mais opções ────────
 export function TkFilterBar({
   F,
@@ -230,11 +319,9 @@ export function TkFilterBar({
   fluxo: boolean
   onLimpar: () => void
 }) {
-  const { casosComTarefas, pessoas, gestao, caso, cliente, pessoa } = useTk()
+  const { casosComTarefas, gestao, caso, pessoa } = useTk()
   const pf = usePop()
   const pp = usePop()
-  const [qCaso, setQCaso] = useState("")
-  const opcoesCaso = buscarCasos(casosComTarefas, qCaso, (id) => cliente(id)?.nome, 30)
   const toggleCaso = (id: number) => setF({ casos: F.casos.includes(id) ? F.casos.filter((x) => x !== id) : [...F.casos, id] })
 
   if (fluxo) {
@@ -317,37 +404,8 @@ export function TkFilterBar({
             {n ? <span className="tnum">{`(${n})`}</span> : null}
           </button>
         </span>
-        <TkPop open={pf.open} onClose={pf.close} anchor={pf.anchor} align="right" width={280}>
-          <TkMenuLabel>Caso</TkMenuLabel>
-          <input className="input" placeholder="Buscar caso ou cliente" aria-label="Buscar caso" value={qCaso} onChange={(e) => setQCaso(e.target.value)} style={{ marginBottom: 3 }} />
-          <div style={{ maxHeight: 220, overflowY: "auto", display: "flex", flexDirection: "column", gap: 1 }}>
-            {opcoesCaso.map((c) => (
-              <TkMenuItem key={c.id} dot={c.cor} checked={F.casos.includes(c.id)} onClick={() => toggleCaso(c.id)}>
-                <span title={c.nome}>{c.nomeCurto}</span>
-              </TkMenuItem>
-            ))}
-            <TkMenuItem dot="var(--text-subtle)" checked={F.casos.includes(SEM_CASO)} onClick={() => toggleCaso(SEM_CASO)}>
-              Sem caso
-            </TkMenuItem>
-          </div>
-          <TkMenuSep />
-          {F.escopo === "team" && gestao && (
-            <>
-              <TkMenuLabel>Responsável</TkMenuLabel>
-              {pessoas.map((p) => (
-                <TkMenuItem key={p.id} checked={F.responsavel === p.id} onClick={() => setF({ responsavel: F.responsavel === p.id ? null : p.id })}>
-                  {p.nome}
-                </TkMenuItem>
-              ))}
-              <TkMenuSep />
-            </>
-          )}
-          <TkMenuLabel>Prazo</TkMenuLabel>
-          {(["late", "week", "fatal"] as FiltroPrazo[]).map((k) => (
-            <TkMenuItem key={k} checked={F.prazo === k} onClick={() => setF({ prazo: F.prazo === k ? null : k })}>
-              {ROTULO_PRAZO[k]}
-            </TkMenuItem>
-          ))}
+        <TkPop open={pf.open} onClose={pf.close} anchor={pf.anchor} align="right" width={320}>
+          <TkFiltroPainel F={F} setF={setF} toggleCaso={toggleCaso} onLimpar={n ? onLimpar : undefined} />
         </TkPop>
         <TkOrdenarChip F={F} setF={setF} />
         {F.visao === "board" && <TkAgruparChip F={F} setF={setF} single={!!single} />}

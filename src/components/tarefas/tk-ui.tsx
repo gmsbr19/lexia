@@ -150,13 +150,19 @@ export function TkPop({
 
   useEffect(() => {
     if (!open) return
+    // Popover aberto POR CIMA deste (ex.: um seletor dentro do Filtrar) é montado
+    // depois no portal: clicar nele não fecha este, e o Esc fecha só o de cima.
+    const depois = (el: Element | null) =>
+      !!el && !!ref.current && el !== ref.current && !!(ref.current.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)
     const down = (e: MouseEvent) => {
       const t = e.target as Node
       if (ref.current?.contains(t) || anchor?.contains(t)) return
+      if (t instanceof Element && depois(t.closest("[data-tk-pop]"))) return
       closeRef.current()
     }
     const key = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return
+      if ([...(portal?.querySelectorAll("[data-tk-pop]") ?? [])].some(depois)) return
       e.stopPropagation()
       closeRef.current()
     }
@@ -167,12 +173,13 @@ export function TkPop({
       document.removeEventListener("mousedown", down)
       document.removeEventListener("keydown", key, true)
     }
-  }, [open, anchor])
+  }, [open, anchor, portal])
 
   if (!open || !portal) return null
   return createPortal(
     <div
       ref={ref}
+      data-tk-pop=""
       className={TK_MENU}
       role="menu"
       onClick={(e) => e.stopPropagation()}
