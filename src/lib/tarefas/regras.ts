@@ -7,7 +7,7 @@
 // Datas são strings "YYYY-MM-DD" no fuso do escritório (America/Sao_Paulo).
 import { parseDataNatural } from "@/lib/datas/nl"
 import { addDays, compareISO, weekdayOf } from "@/lib/datas/util"
-import type { TaskRow, TaskStatus } from "./types"
+import type { ChaveProjeto, TaskRow, TaskStatus } from "./types"
 
 export const FUSO_ESCRITORIO = "America/Sao_Paulo"
 
@@ -298,12 +298,15 @@ export function deslocamentoCadeia<T extends TarefaGrafo & Pick<TaskRow, "prazoF
   return { delta, moveis, fatais: abertas.length - moveis.length }
 }
 
-/** Cliente efetivo: o do caso (herdado, somente leitura) ou o próprio da tarefa. */
+/**
+ * Cliente efetivo: o do caso (herdado, somente leitura) ou o próprio da tarefa.
+ * Projeto interno não tem cliente — vale o da tarefa.
+ */
 export function clienteEfetivo(
-  t: Pick<TaskRow, "clienteId" | "casoId">,
-  clienteDoCaso: (casoId: number) => number | null,
+  t: Pick<TaskRow, "clienteId" | "projeto">,
+  clienteDoProjeto: (chave: ChaveProjeto) => number | null,
 ): { id: number; herdado: boolean } | null {
-  const doCaso = t.casoId != null ? clienteDoCaso(t.casoId) : null
+  const doCaso = t.projeto != null ? clienteDoProjeto(t.projeto) : null
   if (doCaso != null) return { id: doCaso, herdado: true }
   return t.clienteId != null ? { id: t.clienteId, herdado: false } : null
 }

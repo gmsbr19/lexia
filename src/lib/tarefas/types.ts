@@ -1,8 +1,9 @@
 // Tarefas — string unions, taxonomias fixas e view models client-safe (sem
 // imports de Prisma). Redesign "Tarefas": um quadro único com todas as tarefas do
-// escritório; o CASO é o "projeto" do quadro (FILTRO); UMA data só (prazo,
-// obrigatório); prazo fatal é um marcador sobre o mesmo prazo; ligações "só começa
-// depois de" entre tarefas do mesmo caso. As regras derivadas (vencida, em risco, conflito, aguardando…)
+// escritório; o "projeto" do quadro (FILTRO) é o CASO do cliente ou um projeto
+// INTERNO do escritório; UMA data só (prazo, obrigatório); prazo fatal é um
+// marcador sobre o mesmo prazo; ligações "só começa depois de" entre tarefas do
+// mesmo projeto. As regras derivadas (vencida, em risco, conflito, aguardando…)
 // vivem em ./regras.ts — implementação ÚNICA usada pelo servidor e pelo cliente.
 import type { Role } from "@/lib/auth/session"
 
@@ -23,8 +24,13 @@ export const STATUS_IDS: TaskStatus[] = STATUS.map((s) => s.id)
 export const statusLabel = (id: string): string => STATUS.find((s) => s.id === id)?.label ?? "A fazer"
 export const isStatus = (v: unknown): v is TaskStatus => typeof v === "string" && (STATUS_IDS as string[]).includes(v)
 
-// Cores de caso no quadro (reaproveitadas do app — não são cores novas).
-export const CORES_CASO = ["#2E7D6B", "#5A4F9A", "#9A6B2E", "#9A2E5A", "#7A8699", "#C0492F"] as const
+// Cores de projeto no quadro (reaproveitadas do app — não são cores novas).
+export const CORES_PROJETO = ["#2E7D6B", "#5A4F9A", "#9A6B2E", "#9A2E5A", "#7A8699", "#C0492F"] as const
+
+/** Projeto do quadro: o caso de um cliente ou um projeto interno do escritório. */
+export type TipoProjeto = "caso" | "interno"
+/** Identidade de um projeto no quadro: `c<id>` = Caso, `p<id>` = Projeto interno. */
+export type ChaveProjeto = `c${number}` | `p${number}`
 
 // "Equipe" (visão da equipe, filtro por outras pessoas, painel) só para gestão.
 export const ROLES_GESTAO: Role[] = ["socio"] // admin passa implícito
@@ -58,7 +64,7 @@ export interface TaskRow {
   status: TaskStatus
   prazo: string // "YYYY-MM-DD" (sempre presente)
   prazoFatal: boolean
-  casoId: number | null // null = "Sem caso" (ou caso excluído)
+  projeto: ChaveProjeto | null // null = "Sem projeto" (ou projeto excluído)
   grupo: string | null
   clienteId: number | null // vínculo PRÓPRIO (o efetivo considera o caso)
   responsavelId: number | null
@@ -74,20 +80,23 @@ export interface TaskRow {
 }
 
 /**
- * Caso como o quadro o enxerga. `nomeCurto` e `cor` já vêm RESOLVIDOS pelo
- * servidor (próprios do caso → título / cor da área → paleta), ver casos-quadro.ts.
+ * Projeto como o quadro o enxerga (caso do cliente ou projeto interno). `nomeCurto`
+ * e `cor` já vêm RESOLVIDOS pelo servidor (próprios → título / cor da área →
+ * paleta), ver projetos-quadro.ts. Interno nunca tem cliente nem área.
  */
-export interface CasoQuadro {
-  id: number
+export interface ProjetoQuadro {
+  chave: ChaveProjeto
+  tipo: TipoProjeto
+  id: number // Caso.id ou Projeto.id (conforme o tipo)
   nomeCurto: string // etiqueta (resolvida)
-  nome: string // título do caso
+  nome: string // título
   cor: string // hex (resolvida)
   clienteId: number | null
   area: string | null // chave de AreaDireito
   responsavelId: number | null
   prazo: string | null // "YYYY-MM-DD"
   descricao: string | null
-  arquivado: boolean // status "Arquivado"
+  arquivado: boolean // caso "Arquivado" / interno com arquivadoEm
   modeloOrigemId: number | null
 }
 
@@ -118,8 +127,8 @@ export interface ModeloView {
 /** Carga única que alimenta o módulo (quadro + modelos + equipe). */
 export interface TarefasBoard {
   tarefas: TaskRow[]
-  casos: CasoQuadro[] // não arquivados + os arquivados citados por alguma tarefa
-  /** Casos que ESTA pessoa pode abrir/vincular; null = todos (papéis que veem tudo). */
+  projetos: ProjetoQuadro[] // não arquivados + os arquivados citados por alguma tarefa
+  /** Casos que ESTA pessoa pode abrir/vincular; null = todos (papéis que veem tudo). Internos são de todos. */
   casosAcessiveis: number[] | null
   pessoas: TeamMember[]
   clientes: IdNome[]

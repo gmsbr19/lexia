@@ -1,24 +1,25 @@
 // Tarefas — filtros e ordenação do quadro (puro). Usado pelo cliente (quadro,
-// lista, celular) e pela API GET /api/tarefas (mesmos filtros por query string).
+// lista, celular). O "projeto" é o caso do cliente ou um projeto interno (chave).
 // Filtros não ficam salvos entre sessões; a VISÃO (ordenar, direção, agrupar) fica,
 // por pessoa (User.tarefasPrefs) — ver lerPreferencias.
 import { compareISO } from "@/lib/datas/util"
 import { concluidaRecente, faixa, vencida } from "./regras"
-import type { TaskRow } from "./types"
+import type { ChaveProjeto, TaskRow } from "./types"
 
 export type Escopo = "mine" | "team"
 export type FiltroPrazo = "late" | "today" | "week" | "fatal"
-export type Ordenacao = "manual" | "due" | "caso" | "owner"
+export type Ordenacao = "manual" | "due" | "projeto" | "owner"
 export type Direcao = "asc" | "desc"
-export type Agrupamento = "none" | "caso" | "owner" | "group"
+export type Agrupamento = "none" | "projeto" | "owner" | "group"
 export type Visao = "board" | "list" | "flow"
 
-/** Chave de "Sem caso" na multisseleção de casos. */
-export const SEM_CASO = 0
+/** "Sem projeto" na multisseleção de projetos. */
+export const SEM_PROJETO = "sem"
+export type FiltroProjeto = ChaveProjeto | typeof SEM_PROJETO
 
 export interface Filtros {
   escopo: Escopo
-  casos: number[] // ids (SEM_CASO = sem caso)
+  projetos: FiltroProjeto[] // chaves (SEM_PROJETO = sem projeto)
   responsavel: number | null // só vale em "Equipe"
   prazo: FiltroPrazo | null
   ordenar: Ordenacao
@@ -29,7 +30,7 @@ export interface Filtros {
 
 export const FILTROS_PADRAO: Filtros = {
   escopo: "team",
-  casos: [],
+  projetos: [],
   responsavel: null,
   prazo: null,
   ordenar: "due",
@@ -41,10 +42,10 @@ export const FILTROS_PADRAO: Filtros = {
 /** O que fica salvo por pessoa: como ela gosta de ver o quadro. */
 export type PrefsQuadro = Pick<Filtros, "ordenar" | "direcao" | "agrupar">
 
-const ORDENACOES: Ordenacao[] = ["manual", "due", "caso", "owner"]
-const AGRUPAMENTOS: Agrupamento[] = ["none", "caso", "owner", "group"]
-// Antes da unificação Projeto → Caso a visão salva usava "proj".
-const apelido = (v: unknown) => (v === "proj" ? "caso" : v)
+const ORDENACOES: Ordenacao[] = ["manual", "due", "projeto", "owner"]
+const AGRUPAMENTOS: Agrupamento[] = ["none", "projeto", "owner", "group"]
+// Visões salvas antigas usavam "proj" (antes da unificação) e "caso" (depois dela).
+const apelido = (v: unknown) => (v === "proj" || v === "caso" ? "projeto" : v)
 
 /** JSON salvo (ou qualquer coisa) → preferências válidas; o que não reconhece vira o padrão. */
 export function lerPreferencias(raw: unknown): PrefsQuadro {
@@ -71,11 +72,11 @@ export const ROTULO_PRAZO: Record<FiltroPrazo, string> = {
   fatal: "Prazo fatal",
 }
 
-/** Escopo (Minhas/Equipe) + casos + responsável — base da linha-resumo. */
+/** Escopo (Minhas/Equipe) + projetos + responsável — base da linha-resumo. */
 export function noEscopo(tarefas: TaskRow[], f: Filtros, meId: number | null): TaskRow[] {
   return tarefas.filter((t) => {
     if (f.escopo === "mine" && t.responsavelId !== meId) return false
-    if (f.casos.length && !f.casos.includes(t.casoId ?? SEM_CASO)) return false
+    if (f.projetos.length && !f.projetos.includes(t.projeto ?? SEM_PROJETO)) return false
     if (f.escopo === "team" && f.responsavel != null && t.responsavelId !== f.responsavel) return false
     return true
   })
@@ -98,20 +99,20 @@ export function visiveis(tarefas: TaskRow[], f: Filtros, meId: number | null, ho
 }
 
 export interface CtxOrdenacao {
-  ordemCaso: (id: number | null) => number
+  ordemProjeto: (chave: ChaveProjeto | null) => number
   nomePessoa: (id: number | null) => string
   /** Posição manual DESTA pessoa; sem posição = vai para o fim, por prazo. */
   ordemManual?: (id: number) => number | undefined
 }
 
 /**
- * Ordenação: manual · prazo (padrão) · caso · responsável, cada uma crescente
+ * Ordenação: manual · prazo (padrão) · projeto · responsável, cada uma crescente
  * ou decrescente (manual não tem direção). Concluídas pelo prazo: mais recente
- * primeiro no crescente. "Sem caso" / "Sem responsável" ficam sempre no fim.
+ * primeiro no crescente. "Sem projeto" / "Sem responsável" ficam sempre no fim.
  * Empates: prazo crescente, depois id.
  */
 export function ordenar(lista: TaskRow[], por: Ordenacao, ctx: CtxOrdenacao, direcao: Direcao = "asc"): TaskRow[] {
-  const { ordemCaso, nomePessoa, ordemManual } = ctx
+  const { ordemProjeto, nomePessoa, ordemManual } = ctx
   const k = direcao === "desc" ? -1 : 1
   const chave = (t: TaskRow) => (t.status === "done" ? `~${t.concluidaEm ?? ""}` : t.prazo)
   const porPrazo = (a: TaskRow, b: TaskRow) => {
@@ -129,10 +130,10 @@ export function ordenar(lista: TaskRow[], por: Ordenacao, ctx: CtxOrdenacao, dir
       return desempate(a, b)
     },
     due: (a, b) => k * porPrazo(a, b) || a.id - b.id,
-    caso: (a, b) => {
-      const pa = ordemCaso(a.casoId)
-      const pb = ordemCaso(b.casoId)
-      if ((a.casoId == null) !== (b.casoId == null)) return a.casoId == null ? 1 : -1
+    projeto: (a, b) => {
+      const pa = ordemProjeto(a.projeto)
+      const pb = ordemProjeto(b.projeto)
+      if ((a.projeto == null) !== (b.projeto == null)) return a.projeto == null ? 1 : -1
       return k * (pa - pb) || desempate(a, b)
     },
     owner: (a, b) => {
