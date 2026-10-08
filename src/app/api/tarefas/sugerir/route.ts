@@ -1,4 +1,4 @@
-// POST /api/tarefas/sugerir { titulo } → { disponivel, casoId, responsavelId,
+// POST /api/tarefas/sugerir { titulo } → { disponivel, projeto, responsavelId,
 // prazoFatal, prazo }. Só leitura (nada é gravado). Sem modelo → disponivel:false.
 import { NextResponse } from "next/server"
 import { AuthError, requireUser, unauthorized } from "@/lib/auth/session"

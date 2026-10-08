@@ -1,15 +1,19 @@
-// Zod dos payloads de casos criados pelo quadro e dos Modelos de tarefas
-// (borda da rota → UserError → 400).
+// Zod dos payloads de projetos criados/editados pelo quadro e dos Modelos de
+// tarefas (borda da rota → UserError → 400).
 import { z } from "zod"
+import { chaveProjetoSchema } from "@/lib/tarefas/schemas"
 import { idOpt, idReq } from "@/lib/validation"
 
 const iso = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 const cor = z.string().regex(/^#[0-9A-Fa-f]{6}$/)
 
-/** "Novo caso…" do quadro (o cadastro completo do caso fica em /casos). */
-export const casoQuadroSchema = z.object({
+/**
+ * "Novo projeto" do quadro: COM cliente vira um caso do cliente (o cadastro
+ * completo fica em /casos); SEM cliente, um projeto interno.
+ */
+export const projetoNovoSchema = z.object({
   nomeCurto: z.string().trim().min(1).max(24),
-  nome: z.string().trim().min(1).max(400), // título do caso
+  nome: z.string().trim().min(1).max(400), // título do caso / nome do projeto
   clienteId: idOpt,
   area: z.string().max(60).nullish(),
   responsavelId: idOpt,
@@ -18,18 +22,34 @@ export const casoQuadroSchema = z.object({
   descricao: z.string().max(4000).nullish(),
 })
 
-/** Aplicar um modelo: a um caso NOVO (`caso`) ou a um caso existente (`casoId`). */
+/** Editar/arquivar um projeto interno (o caso se edita em /casos). */
+export const projetoInternoPatchSchema = z
+  .object({
+    nomeCurto: z.string().trim().min(1).max(24),
+    nome: z.string().trim().min(1).max(400),
+    responsavelId: idOpt,
+    prazo: iso.nullable(),
+    cor: cor.nullable(),
+    descricao: z.string().max(4000).nullable(),
+    arquivado: z.boolean(),
+  })
+  .partial()
+
+/** Vincular um projeto interno a um cliente (vira caso). */
+export const converterProjetoSchema = z.object({ clienteId: idReq })
+
+/** Aplicar um modelo: a um projeto NOVO (`novo`) ou a um projeto existente (`projeto`). */
 export const usarModeloSchema = z
   .object({
-    caso: casoQuadroSchema.optional(),
-    casoId: idReq.optional(),
+    novo: projetoNovoSchema.optional(),
+    projeto: chaveProjetoSchema.optional(),
     grupos: z
       .array(z.object({ nome: z.string().trim().min(1).max(160), prazo: iso }))
       .min(1)
       .max(12),
     responsaveis: z.record(z.string().max(60), idOpt).optional(),
   })
-  .refine((v) => (v.caso == null) !== (v.casoId == null), { message: "informe um caso novo OU um caso existente" })
+  .refine((v) => (v.novo == null) !== (v.projeto == null), { message: "informe um projeto novo OU um projeto existente" })
 
 const passoSchema = z.object({
   chave: z.string().trim().min(1).max(40),

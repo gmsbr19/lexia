@@ -1,8 +1,8 @@
 // Modelos de tarefas — camada de escrita. SERVER ONLY. Aplicar um modelo gera, num
-// caso NOVO (criado na hora) ou num caso EXISTENTE, as tarefas + ligações do
-// modelo numa única transação (o "Desfazer" tira as tarefas e, se o caso foi
-// criado pela ação, exclui o caso — soft). O editor de modelos também entra no
-// registro de ações.
+// projeto NOVO (criado na hora: com cliente = caso do cliente; sem = projeto
+// interno) ou num projeto EXISTENTE, as tarefas + ligações do modelo numa única
+// transação (o "Desfazer" tira as tarefas e, se o projeto foi criado pela ação,
+// o exclui — soft). O editor de modelos também entra no registro de ações.
 import { randomUUID } from "node:crypto"
 import type { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/db"
@@ -10,16 +10,26 @@ import { UserError } from "@/lib/errors"
 import { isValidISO } from "@/lib/datas/util"
 import { RegistroAcao } from "@/lib/tarefas/acoes"
 import { optId, optStr, reqStr, toDate } from "@/lib/tarefas/_input"
-import { inserirCasoQuadro, type CasoQuadroInput } from "@/lib/tarefas/casos"
-import { casoVivo, historico, MSG_SEM_ACESSO_CASO, podeVincularCaso, TX_OPTS, type Ator } from "@/lib/tarefas/mutations"
+import { inserirProjeto, type ProjetoNovoInput } from "@/lib/tarefas/projetos"
+import { historico, MSG_SEM_ACESSO_CASO, podeVincularProjeto, projetoDoQuadro, TX_OPTS, type Ator } from "@/lib/tarefas/mutations"
+import { lerChave } from "@/lib/tarefas/projetos-quadro"
 import { hojeSP, prazoPadrao } from "@/lib/tarefas/regras"
-import type { PapelModelo, PassoModelo } from "@/lib/tarefas/types"
+import type { ChaveProjeto, PapelModelo, PassoModelo, TipoProjeto } from "@/lib/tarefas/types"
 import { cicloNoModelo, instanciarModelo, type GrupoWizard } from "./modelo"
 
 type Tx = Prisma.TransactionClient
 
-/** Onde as tarefas entram: um caso novo (criado agora) ou um caso existente. */
-export type AlvoCaso = { caso: CasoQuadroInput; casoId?: undefined } | { casoId: number; caso?: undefined }
+/** Onde as tarefas entram: um projeto novo (criado agora) ou um projeto existente. */
+export type AlvoProjeto = { novo: ProjetoNovoInput; projeto?: undefined } | { projeto: ChaveProjeto; novo?: undefined }
+
+interface AlvoResolvido {
+  chave: ChaveProjeto
+  tipo: TipoProjeto
+  casoId: number | null
+  projetoId: number | null
+  curto: string
+  novo: boolean
+}
 
 async function validarUsuario(tx: Tx, id: number | null) {
   if (id != null && !(await tx.user.findUnique({ where: { id }, select: { id: true } }))) {
@@ -27,29 +37,33 @@ async function validarUsuario(tx: Tx, id: number | null) {
   }
 }
 
-/** Resolve o alvo dentro da transação: cria o caso novo ou confere o existente. */
+/** Resolve o alvo dentro da transação: cria o projeto novo ou confere o existente. */
 async function resolverAlvo(
   tx: Tx,
   reg: RegistroAcao,
-  alvo: AlvoCaso,
+  alvo: AlvoProjeto,
   ator: Ator,
   modeloOrigemId: number | null,
-): Promise<{ id: number; curto: string; novo: boolean }> {
-  if (alvo.caso) {
-    const c = await inserirCasoQuadro(tx, reg, alvo.caso, ator, modeloOrigemId)
-    return { ...c, novo: true }
+): Promise<AlvoResolvido> {
+  if (alvo.novo) {
+    const p = await inserirProjeto(tx, reg, alvo.novo, ator, modeloOrigemId)
+    const id = lerChave(p.chave)!.id
+    return { chave: p.chave, tipo: p.tipo, casoId: p.tipo === "caso" ? id : null, projetoId: p.tipo === "interno" ? id : null, curto: p.curto, novo: true }
   }
-  if (!(await podeVincularCaso(ator, alvo.casoId))) throw new UserError(MSG_SEM_ACESSO_CASO)
-  const c = await casoVivo(tx, alvo.casoId)
-  if (!c) throw new UserError("Caso não encontrado")
+  if (!(await podeVincularProjeto(ator, alvo.projeto))) throw new UserError(MSG_SEM_ACESSO_CASO)
+  const p = await projetoDoQuadro(tx, alvo.projeto)
+  if (!p) throw new UserError("Projeto não encontrado")
   if (modeloOrigemId != null) {
-    await tx.caso.updateMany({ where: { id: c.id, modeloOrigemId: null }, data: { modeloOrigemId } })
+    if (p.casoId != null) await tx.caso.updateMany({ where: { id: p.casoId, modeloOrigemId: null }, data: { modeloOrigemId } })
+    if (p.projetoId != null) await tx.projeto.updateMany({ where: { id: p.projetoId, modeloOrigemId: null }, data: { modeloOrigemId } })
   }
-  return { id: c.id, curto: c.curto, novo: false }
+  return { chave: p.chave, tipo: p.casoId != null ? "caso" : "interno", casoId: p.casoId, projetoId: p.projetoId, curto: p.curto, novo: false }
 }
 
+const rotuloNovo = (a: AlvoResolvido) => (a.tipo === "caso" ? "Caso criado" : "Projeto criado")
+
 // ── aplicar um modelo ────────────────────────────────────────────────────────
-export type UsarModeloInput = AlvoCaso & {
+export type UsarModeloInput = AlvoProjeto & {
   grupos: GrupoWizard[]
   responsaveis?: Record<string, number | null | undefined>
 }
@@ -67,7 +81,7 @@ export async function usarModelo(modeloId: number, input: UsarModeloInput, ator:
   return prisma.$transaction(async (tx) => {
     const reg = new RegistroAcao(tx, ator.id)
     for (const uid of new Set(Object.values(responsaveis))) await validarUsuario(tx, uid)
-    const caso = await resolverAlvo(tx, reg, input, ator, modelo.id)
+    const alvo = await resolverAlvo(tx, reg, input, ator, modelo.id)
     const ids = new Map<string, number>()
     for (const g of geradas) {
       const t = await tx.tarefa.create({
@@ -84,7 +98,8 @@ export async function usarModelo(modeloId: number, input: UsarModeloInput, ator:
           geradoPorApp: true,
           responsavelId: g.responsavelId,
           criadoPorId: ator.id,
-          casoId: caso.id,
+          casoId: alvo.casoId,
+          projetoId: alvo.projetoId,
         },
         select: { id: true },
       })
@@ -101,8 +116,8 @@ export async function usarModelo(modeloId: number, input: UsarModeloInput, ator:
       ator,
       [...ids.values()].map((tarefaId) => ({ tarefaId, texto: "Criada pelo modelo" })),
     )
-    const acaoId = await reg.salvar(caso.novo ? `Caso criado: ${caso.curto}` : `Modelo aplicado: ${caso.curto}`)
-    return { id: caso.id, acaoId, tarefas: geradas.length, ligacoes: ligacoes.length }
+    const acaoId = await reg.salvar(alvo.novo ? `${rotuloNovo(alvo)}: ${alvo.curto}` : `Modelo aplicado: ${alvo.curto}`)
+    return { chave: alvo.chave, acaoId, tarefas: geradas.length, ligacoes: ligacoes.length }
   }, TX_OPTS)
 }
 
@@ -267,16 +282,16 @@ export interface EstruturaTarefa {
 }
 
 /**
- * Cria as tarefas + as ligações num caso (novo ou existente) numa única
+ * Cria as tarefas + as ligações num projeto (novo ou existente) numa única
  * transação. `depoisDe` só aceita índices menores que o da própria tarefa —
  * ciclos são impossíveis por construção. Tarefas com anterior nascem
  * "aguardando". Prazo ausente = sexta da semana. "Desfazer" tira tudo.
  */
-export async function montarEstruturaCaso(alvo: AlvoCaso, tarefas: EstruturaTarefa[], ator: Ator) {
+export async function montarEstruturaProjeto(destino: AlvoProjeto, tarefas: EstruturaTarefa[], ator: Ator) {
   const hoje = hojeSP()
   return prisma.$transaction(async (tx) => {
     const reg = new RegistroAcao(tx, ator.id)
-    const caso = await resolverAlvo(tx, reg, alvo, ator, null)
+    const alvo = await resolverAlvo(tx, reg, destino, ator, null)
     const ids: number[] = []
     for (const [i, t] of tarefas.entries()) {
       const antes = [...new Set((t.depoisDe ?? []).filter((j) => Number.isInteger(j) && j >= 0 && j < i))]
@@ -298,7 +313,8 @@ export async function montarEstruturaCaso(alvo: AlvoCaso, tarefas: EstruturaTare
           geradoPorApp: true,
           responsavelId: t.responsavelId === undefined ? ator.id : optId(t.responsavelId),
           criadoPorId: ator.id,
-          casoId: caso.id,
+          casoId: alvo.casoId,
+          projetoId: alvo.projetoId,
         },
         select: { id: true },
       })
@@ -309,7 +325,7 @@ export async function montarEstruturaCaso(alvo: AlvoCaso, tarefas: EstruturaTare
       }
     }
     await historico(tx, reg, ator, ids.map((tarefaId) => ({ tarefaId, texto: "Tarefa criada" })))
-    const acaoId = await reg.salvar(caso.novo ? `Caso criado: ${caso.curto}` : `${ids.length} tarefas no caso ${caso.curto}`)
-    return { id: caso.id, acaoId, tarefas: ids.length }
+    const acaoId = await reg.salvar(alvo.novo ? `${rotuloNovo(alvo)}: ${alvo.curto}` : `${ids.length} tarefas em ${alvo.curto}`)
+    return { chave: alvo.chave, acaoId, tarefas: ids.length }
   }, TX_OPTS)
 }

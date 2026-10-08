@@ -1,4 +1,4 @@
-// GET  /api/tarefas — carga única do módulo (tarefas + casos + equipe + clientes
+// GET  /api/tarefas — carga única do módulo (tarefas + projetos + equipe + clientes
 //      + modelos + "hoje" no fuso do escritório). `?derivados=1` acrescenta a cada
 //      tarefa os campos calculados pelas regras únicas (vencida, faixa, em risco,
 //      conflito, aguardando) — a mesma implementação que o quadro usa.
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
     return criarTarefa(
       {
         titulo: b.titulo,
-        casoId: b.casoId,
+        projeto: b.projeto,
         grupo: b.grupo,
         // ausente no corpo → quem cria; null explícito → sem responsável
         responsavelId: "responsavelId" in body ? (b.responsavelId ?? null) : undefined,
