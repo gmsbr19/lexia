@@ -248,7 +248,7 @@ export function TkFilterBar({
             <Icon name="chevronDown" size={13} style={{ color: "var(--text-muted)" }} />
           </button>
         </span>
-        <TkPop open={pp.open} onClose={pp.close} anchor={pp.anchor} width={320}>
+        <TkPop open={pp.open} onClose={pp.close} anchor={pp.anchor} width={380}>
           {pp.open && (
             <TkCasoLista
               value={F.casos[0] ?? null}

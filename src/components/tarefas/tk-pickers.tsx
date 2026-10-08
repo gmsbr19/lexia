@@ -405,7 +405,7 @@ export function TkCasoLista({
   return (
     <>
       <input className="input" autoFocus placeholder="Buscar caso ou cliente" aria-label="Buscar caso" value={q} onChange={(e) => setQ(e.target.value)} style={{ marginBottom: 3 }} />
-      <div style={{ maxHeight: 260, overflowY: "auto", display: "flex", flexDirection: "column", gap: 1 }}>
+      <div style={{ maxHeight: 320, overflowY: "auto", display: "flex", flexDirection: "column", gap: 1 }}>
         {lista.map((c) => {
           const nomeCliente = cliente(c.clienteId)?.nome
           return (
@@ -413,16 +413,11 @@ export function TkCasoLista({
               key={c.id}
               dot={c.cor}
               checked={c.id === value}
-              right={
-                nomeCliente ? (
-                  <span style={{ fontSize: 12, color: "var(--text-muted)", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 0 }}>
-                    {nomeCliente}
-                  </span>
-                ) : undefined
-              }
+              sub={nomeCliente ?? "Sem cliente"}
+              title={nomeCliente ? `${c.nome} — ${nomeCliente}` : c.nome}
               onClick={() => onPick(c.id)}
             >
-              <span title={c.nome}>{c.nomeCurto}</span>
+              {c.nomeCurto}
             </TkMenuItem>
           )
         })}
@@ -495,7 +490,7 @@ export function TkCasoPicker({
         {rotulo}
         {variant === "field" && <Icon name="chevronDown" size={13} style={{ color: "var(--text-muted)", flexShrink: 0 }} />}
       </button>
-      <TkPop open={pop.open} onClose={pop.close} anchor={pop.anchor} width={variant === "field" ? 380 : 320}>
+      <TkPop open={pop.open} onClose={pop.close} anchor={pop.anchor} width={380}>
         {pop.open && (
           <TkCasoLista
             value={value}

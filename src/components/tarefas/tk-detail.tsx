@@ -168,7 +168,7 @@ function TkCasoCampo({ t }: { t: TaskRow }) {
         </button>
       )}
       {c && podeAbrirCaso(c.id) && <TkIconBtn icon="externalLink" title="Abrir o caso" size={14} onClick={() => router.push(`/casos/${c.id}`)} />}
-      <TkPop open={pop.open} onClose={pop.close} anchor={pop.anchor} width={320}>
+      <TkPop open={pop.open} onClose={pop.close} anchor={pop.anchor} width={380}>
         {pop.open && (
           <TkCasoLista
             value={t.casoId}

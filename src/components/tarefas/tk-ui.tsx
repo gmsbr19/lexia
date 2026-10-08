@@ -220,6 +220,8 @@ export function TkMenuItem({
   danger,
   dot,
   right,
+  sub,
+  title,
 }: {
   children: ReactNode
   onClick?: () => void
@@ -229,19 +231,30 @@ export function TkMenuItem({
   danger?: boolean
   dot?: string
   right?: ReactNode
+  /** Linha secundária (ex.: cliente do caso): o título quebra em até 2 linhas. */
+  sub?: ReactNode
+  title?: string
 }) {
   return (
     <button
       type="button"
       role="menuitem"
-      className="tk-menuitem"
+      className={sub ? "tk-menuitem dupla" : "tk-menuitem"}
       disabled={disabled}
       onClick={onClick}
+      title={title}
       style={{ color: danger ? "var(--crit)" : undefined }}
     >
       {dot && <TkDot color={dot} />}
       {icon && <Icon name={icon} size={15} style={{ color: danger ? undefined : "var(--text-muted)", flexShrink: 0 }} />}
-      <span style={{ flex: 1, minWidth: 0, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis" }}>{children}</span>
+      {sub ? (
+        <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+          <span className="tk-mi-tit">{children}</span>
+          <span className="tk-mi-sub">{sub}</span>
+        </span>
+      ) : (
+        <span style={{ flex: 1, minWidth: 0, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis" }}>{children}</span>
+      )}
       {right}
       {checked && <Icon name="check" size={14} strokeWidth={2.2} style={{ color: "var(--accent)", flexShrink: 0 }} />}
     </button>
