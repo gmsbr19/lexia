@@ -5,7 +5,8 @@
 // menu), "…" e fechar. Esquerda: círculo de concluir + título; ações
 // (Checklist, Anexo, Ligação); campos em pílulas com rótulo (Responsável,
 // Projeto, Grupo, Prazo, Repetir, Cliente — caso e cliente abrem as suas páginas;
-// projeto interno abre a edição);
+// projeto interno abre a edição); "Saiba antes" = as informações fixadas do
+// projeto e do cliente (um comentário pode virar informação);
 // seções com ícone (Descrição,
 // Checklist, Anexos, Ligações). Direita: "Comentários e atividade" — os
 // comentários sempre; o histórico entra com "Mostrar detalhes". No celular:
@@ -28,9 +29,11 @@ import {
 } from "@/lib/tarefas/regras"
 import { segmentosComentario, serializeMencoes, type ComentarioRow, type MencaoPick } from "@/lib/tarefas/comentario-core"
 import { STATUS, statusLabel, type AnexoRow, type ChaveProjeto, type HistoricoRow, type TaskRow, type TaskStatus } from "@/lib/tarefas/types"
+import { ancorasDaTarefa, textoDeComentario } from "@/lib/informacoes/core"
 import { Icon, type TfIconName } from "./tf-icons"
 import { useTk } from "./tk-context"
 import { TkProjetoForm } from "./tk-projeto-form"
+import { TkSaibaAntes } from "./tk-info"
 import { TkClientPicker, TkDatePop, TkGrupoDialog, TkProjetoLista, TkRecurMenu, useGruposDoProjeto } from "./tk-pickers"
 import { TkAvatar, TkDialog, TkEspera, TkIconBtn, TkMenuItem, TkMenuLabel, TkMenuSep, TkPop, useEsc, usePop } from "./tk-ui"
 import { ELEVACAO_JANELA, TK_JANELA } from "./tk-glass"
@@ -615,7 +618,10 @@ function TkAtividade({
   historico: HistoricoRow[]
   recarregar: () => void
 }) {
-  const { pessoas, pessoa, meId, gestao, act } = useTk()
+  const { pessoas, pessoa, meId, gestao, act, clienteDoProjeto } = useTk()
+  const ancoras = ancorasDaTarefa(t, clienteDoProjeto)
+  const fixar = (c: ComentarioRow) =>
+    act.abrirInformacao({ ancoras, texto: textoDeComentario(c.conteudo, (id) => pessoa(id)?.first), origemTarefaId: t.id })
   const [detalhes, setDetalhes] = useState(false)
   const [val, setVal] = useState("")
   const [picks, setPicks] = useState<MencaoPick[]>([])
@@ -783,16 +789,23 @@ function TkAtividade({
                     <Mencionado texto={c.conteudo} />
                   </div>
                 )}
-                {editando?.id !== c.id && (meu || gestao) && (
+                {editando?.id !== c.id && (meu || gestao || ancoras.length > 0) && (
                   <div className="tk-feedacts">
                     {meu && (
                       <button type="button" className="tk-feedlink" onClick={() => setEditando(paraEdicao(c))}>
                         Editar
                       </button>
                     )}
-                    <button type="button" className="tk-feedlink" onClick={() => void excluir(c)}>
-                      Excluir
-                    </button>
+                    {(meu || gestao) && (
+                      <button type="button" className="tk-feedlink" onClick={() => void excluir(c)}>
+                        Excluir
+                      </button>
+                    )}
+                    {ancoras.length > 0 && (
+                      <button type="button" className="tk-feedlink" onClick={() => fixar(c)}>
+                        Fixar como informação
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -831,7 +844,7 @@ function useDetalhe(id: number, versao: unknown) {
 
 // ── o detalhe ────────────────────────────────────────────────────────────────
 export function TkDetail({ id, onClose }: { id: number; onClose: () => void }) {
-  const { map, seguintes, act, hoje, nomePessoa, mobile } = useTk()
+  const { map, seguintes, act, hoje, nomePessoa, mobile, clienteDoProjeto } = useTk()
   const t = map.get(id)
   const [titulo, setTitulo] = useState(t?.titulo ?? "")
   // Ressincroniza o título quando ele muda fora daqui (Desfazer, recarga).
@@ -932,6 +945,7 @@ export function TkDetail({ id, onClose }: { id: number; onClose: () => void }) {
       </div>
 
       <div className="tk-dind">
+        <TkSaibaAntes t={t} />
         {(late || risco.length > 0 || conflitos.length > 0) && (
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {late && (
@@ -967,6 +981,16 @@ export function TkDetail({ id, onClose }: { id: number; onClose: () => void }) {
             {an.enviando ? "Enviando…" : "Anexo"}
           </TkAnexoBotao>
           <TkLinkPicker t={t} acao />
+          {ancorasDaTarefa(t, clienteDoProjeto).length > 0 && (
+            <button
+              type="button"
+              className="tk-dbtn"
+              onClick={() => act.abrirInformacao({ ancoras: ancorasDaTarefa(t, clienteDoProjeto), origemTarefaId: t.id })}
+            >
+              <Icon name="pin" size={15} />
+              Informação
+            </button>
+          )}
         </div>
 
         <div className="tk-dmeta">

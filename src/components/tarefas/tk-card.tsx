@@ -3,8 +3,8 @@
 // Tarefas — cartão do quadro (SEM vidro), no espírito do Trello: projeto·grupo,
 // título, estado (Em risco / pelo que espera — "Depois de …" num bloco próprio,
 // para não se confundir com a data) e, por último, o rodapé com o PRAZO em
-// destaque (pílula colorida: vencida/hoje), contadores (checklist, comentários,
-// anexos) e o avatar do responsável à direita.
+// destaque (pílula colorida: vencida/hoje), contadores (informações fixadas,
+// checklist, comentários, anexos) e o avatar do responsável à direita.
 // Vencida não tem selo — a pílula vermelha basta. Concluída: só projeto +
 // título, atenuada.
 import { memo } from "react"
@@ -36,11 +36,12 @@ function TkCardBase({
   lit?: boolean
   onHover?: (id: number | null) => void
 }) {
-  const { map, hoje, nomePessoa, act, openTask, setDragging } = useTk()
+  const { map, hoje, nomePessoa, act, openTask, setDragging, fixadasDaTarefa } = useTk()
   const pop = usePop()
   const done = t.status === "done"
   const s = done ? null : selo(t, map, hoje, nomePessoa)
   const feitos = t.checklist.filter((c) => c.marcado).length
+  const nFixadas = done ? 0 : fixadasDaTarefa(t).length
   const linha1 = mostrarProjeto ? (
     <TkProjetoTag chave={t.projeto} grupo={mostrarGrupo ? t.grupo : null} />
   ) : mostrarGrupo && t.grupo ? (
@@ -76,6 +77,12 @@ function TkCardBase({
         <div className="tk-card-foot">
           <div className="tk-meta">
             <TkPrazoBadge t={t} />
+            {nFixadas > 0 && (
+              <span className="tnum" title={nFixadas === 1 ? "1 informação fixada" : `${nFixadas} informações fixadas`}>
+                <Icon name="pin" size={13} />
+                {nFixadas}
+              </span>
+            )}
             {t.checklist.length > 0 && (
               <span className="tnum" title="Checklist" style={{ color: feitos === t.checklist.length ? "var(--ok)" : undefined }}>
                 <Icon name="checkSquare" size={13} />

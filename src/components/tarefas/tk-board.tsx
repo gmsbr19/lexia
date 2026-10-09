@@ -30,6 +30,7 @@ import { Icon, type TfIconName } from "./tf-icons"
 import { TkCard, TkCardSkeleton, type CardProps } from "./tk-card"
 import { useTk } from "./tk-context"
 import { TkFlowView } from "./tk-flow"
+import { TkFixadasProjeto, ancorasDoProjeto } from "./tk-info"
 import { TkProjetoLista, TkPropMenu, type OpcaoMenu } from "./tk-pickers"
 import {
   TkAvatar,
@@ -207,6 +208,7 @@ export function TkProjetoHeader({ c }: { c: ProjetoQuadro }) {
               <Icon name="chevronDown" size={13} style={{ transform: aberto ? "rotate(180deg)" : "none", transition: "transform .16s" }} />
             </button>
           )}
+          <TkIconBtn icon="pin" title="Fixar informação" size={14} onClick={() => act.abrirInformacao({ ancoras: ancorasDoProjeto(c) })} />
           {c.tipo === "caso" && podeAbrirProjeto(c.chave) && (
             <TkIconBtn icon="externalLink" title="Abrir o caso" size={14} onClick={() => router.push(`/casos/${c.id}`)} />
           )}
@@ -220,6 +222,7 @@ export function TkProjetoHeader({ c }: { c: ProjetoQuadro }) {
           {[area, c.descricao].filter(Boolean).join(" · ")}
         </div>
       )}
+      <TkFixadasProjeto c={c} />
     </div>
   )
 }

@@ -7,7 +7,8 @@
 // prazos seguintes? / Quem cuida do próximo passo?) e o aviso (toast).
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import { apiSend } from "@/lib/client/api"
-import { chaveInterno, lerChave, podeAbrirProjeto as podeAbrir, projetosComTarefas as comTarefas, projetosVinculaveis } from "@/lib/tarefas/projetos-quadro"
+import { chaveCaso, chaveInterno, lerChave, podeAbrirProjeto as podeAbrir, projetosComTarefas as comTarefas, projetosVinculaveis } from "@/lib/tarefas/projetos-quadro"
+import { ROTULO_ANCORA, ancorasDaTarefa, fixadasDaTarefa as fixadasPara, indexarFixadas, type Ancora, type InformacaoRow } from "@/lib/informacoes/core"
 import { FILTROS_PADRAO, SEM_PROJETO, reposicionar, type Filtros, type PrefsQuadro } from "@/lib/tarefas/filtros"
 import {
   aguardandoRotulo,
@@ -29,7 +30,8 @@ import { addDays } from "@/lib/datas/util"
 import { statusLabel, type ChaveProjeto, type ModeloView, type ProjetoQuadro, type TarefasBoard, type TaskRow, type TaskStatus } from "@/lib/tarefas/types"
 import { Icon, type TfIconName } from "./tf-icons"
 import { TkBoardPage } from "./tk-board"
-import { TkCtx, useTk, type Acoes, type Aviso, type PatchTarefaUI, type TkCtxValue } from "./tk-context"
+import { TkCtx, useTk, type AbrirInformacao, type Acoes, type Aviso, type PatchTarefaUI, type TkCtxValue } from "./tk-context"
+import { TkInfoDialog } from "./tk-info"
 import { TkDetail } from "./tk-detail"
 import { TkMobileBoard, TkMobileNav, type Pagina } from "./tk-mobile"
 import { TkNewTask } from "./tk-newtask"
@@ -49,6 +51,7 @@ type Dialogo =
   | { kind: "wizard"; modeloId: number | null }
   | { kind: "modelo"; modelo: ModeloView | null }
   | { kind: "projeto"; projeto: ProjetoQuadro | null } // null = novo
+  | ({ kind: "info" } & AbrirInformacao)
 
 type Resp<T> = { ok: true; result: T }
 
@@ -179,6 +182,8 @@ export interface TarefasAppProps {
   ordemManual: Record<number, number>
 }
 
+const mesmaInfo = (a: InformacaoRow, b: InformacaoRow) => a.fonte === b.fonte && a.id === b.id
+
 const msgErro = (e: unknown) => (e instanceof Error && e.message ? e.message : "Não foi possível concluir a ação")
 
 export function TarefasApp(props: TarefasAppProps) {
@@ -205,7 +210,7 @@ export function TarefasApp(props: TarefasAppProps) {
   const mobile = useMobile()
   const seq = useRef(0)
 
-  const { tarefas, projetos, casosAcessiveis, pessoas, clientes, modelos, hoje } = board
+  const { tarefas, projetos, casosAcessiveis, pessoas, clientes, modelos, fixadas, hoje } = board
   const map = useMemo(() => indexar(tarefas), [tarefas])
   const seguintes = useMemo(() => mapaSeguintes(tarefas), [tarefas])
   const projetoMap = useMemo(() => new Map(projetos.map((p) => [p.chave, p])), [projetos])
@@ -214,6 +219,15 @@ export function TarefasApp(props: TarefasAppProps) {
   const pessoaMap = useMemo(() => indexar(pessoas), [pessoas])
   const clienteMap = useMemo(() => indexar(clientes), [clientes])
   const nomePessoa = useCallback((id: number | null) => (id == null ? "sem responsável" : (pessoaMap.get(id)?.first ?? "sem responsável")), [pessoaMap])
+  const indiceFixadas = useMemo(() => indexarFixadas(fixadas), [fixadas])
+  const clienteDoProjeto = useCallback((k: ChaveProjeto) => projetoMap.get(k)?.clienteId ?? null, [projetoMap])
+  const nomeAncora = useCallback(
+    (a: Ancora): string =>
+      a.tipo === "cliente"
+        ? (clienteMap.get(a.id)?.nome ?? "Cliente")
+        : (projetoMap.get(a.tipo === "caso" ? chaveCaso(a.id) : chaveInterno(a.id))?.nomeCurto ?? ROTULO_ANCORA[a.tipo]),
+    [clienteMap, projetoMap],
+  )
 
   const setF = useCallback((p: Partial<Filtros>) => setFState((f) => ({ ...f, ...p })), [])
   // Volta aos filtros padrão SEM perder a visão preferida (ordenar/direção/agrupar).
@@ -633,6 +647,30 @@ export function TarefasApp(props: TarefasAppProps) {
       const p = projetoMap.get(chaveInterno(id))
       if (p) setDialogo({ kind: "projeto", projeto: p })
     },
+    criarInformacao: async (v) => {
+      const r = await enviar<{ acaoId: string | null }>("/api/informacoes", "POST", v)
+      if (!r) return false
+      avisar({ msg: "Informação fixada", sub: [`${ROTULO_ANCORA[v.ancora.tipo]} · ${nomeAncora(v.ancora)}`], acaoId: r.acaoId })
+      await recarregar()
+      return true
+    },
+    editarInformacao: async (info, patch) => {
+      // desafixar some do quadro na hora
+      if (patch.fixado === false) setBoard((b) => ({ ...b, fixadas: b.fixadas.filter((x) => !mesmaInfo(x, info)) }))
+      const r = await enviar<{ acaoId: string | null }>(`/api/informacoes/${info.fonte}/${info.id}`, "PATCH", patch)
+      if (!r) return false
+      const msg = patch.fixado === false ? "Informação desafixada" : patch.fixado ? "Informação fixada" : "Informação editada"
+      if (r.acaoId) avisar({ msg, acaoId: r.acaoId })
+      await recarregar()
+      return true
+    },
+    excluirInformacao: (info) => {
+      setBoard((b) => ({ ...b, fixadas: b.fixadas.filter((x) => !mesmaInfo(x, info)) }))
+      void comAviso(enviar(`/api/informacoes/${info.fonte}/${info.id}`, "DELETE"), "Informação excluída")
+    },
+    abrirInformacao: (v) => {
+      if ("info" in v || v.ancoras.length) setDialogo({ kind: "info", ...v })
+    },
     reordenar: (ids) => {
       const itens = reposicionar(ids, ordemManual)
       setOrdemManual((m) => {
@@ -670,8 +708,11 @@ export function TarefasApp(props: TarefasAppProps) {
     nomePessoa,
     clientes,
     cliente: (id) => (id == null ? null : (clienteMap.get(id) ?? null)),
-    clienteDoProjeto: (k) => projetoMap.get(k)?.clienteId ?? null,
+    clienteDoProjeto,
     podeAbrirProjeto: (k) => podeAbrir(casosAcessiveis, k ? projetoMap.get(k) : null),
+    fixadasDaTarefa: (t) => fixadasPara(indiceFixadas, ancorasDaTarefa(t, clienteDoProjeto)),
+    fixadasDe: (ancoras) => fixadasPara(indiceFixadas, ancoras),
+    nomeAncora,
     modelos,
     hoje,
     meId,
@@ -815,6 +856,12 @@ function Dialogos({
       return <TkModeloEditor modelo={dialogo.modelo} onClose={fechar} />
     case "projeto":
       return <TkProjetoForm projeto={dialogo.projeto} onClose={fechar} />
+    case "info":
+      return "info" in dialogo ? (
+        <TkInfoDialog ancoras={[]} info={dialogo.info} onClose={fechar} />
+      ) : (
+        <TkInfoDialog ancoras={dialogo.ancoras} texto={dialogo.texto} origemTarefaId={dialogo.origemTarefaId} onClose={fechar} />
+      )
   }
 }
 

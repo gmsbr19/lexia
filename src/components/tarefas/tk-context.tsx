@@ -3,8 +3,11 @@
 // Contexto do módulo Tarefas: a carga (tarefas, projetos, pessoas…), os índices
 // derivados, quem está vendo e as AÇÕES (cada uma espelha um endpoint e mostra o
 // aviso com "Desfazer"). O "projeto" do quadro é o caso de um cliente OU um
-// projeto interno do escritório (chave `c<id>` / `p<id>`). Montado por TarefasApp.
+// projeto interno do escritório (chave `c<id>` / `p<id>`). As informações
+// FIXADAS (do cliente, do caso ou do projeto) aparecem nas tarefas deles.
+// Montado por TarefasApp.
 import { createContext, useContext } from "react"
+import type { Ancora, InformacaoRow } from "@/lib/informacoes/core"
 import type { ChaveProjeto, ChecklistItem, IdNome, ModeloView, ProjetoQuadro, TaskRow, TaskStatus, TeamMember } from "@/lib/tarefas/types"
 import type { GrupoWizard } from "@/lib/modelos/modelo"
 
@@ -55,6 +58,9 @@ export interface PatchTarefaUI {
   recur?: string | null
 }
 
+/** Janela de informação: fixar uma nova (sobre uma das âncoras) ou editar uma existente. */
+export type AbrirInformacao = { ancoras: Ancora[]; texto?: string; origemTarefaId?: number | null } | { info: InformacaoRow }
+
 export interface Aviso {
   msg: string
   sub?: string[]
@@ -94,6 +100,12 @@ export interface Acoes {
   abrirProjeto: (chave: ChaveProjeto) => void
   /** Abre a janela de edição de um projeto interno. */
   editarProjetoInterno: (id: number) => void
+  /** Fixa uma informação nova num cliente, caso ou projeto interno. */
+  criarInformacao: (v: { ancora: Ancora; conteudo: string; origemTarefaId?: number | null }) => Promise<boolean>
+  /** Edita o texto e/ou (des)fixa. */
+  editarInformacao: (info: InformacaoRow, patch: { conteudo?: string; fixado?: boolean }) => Promise<boolean>
+  excluirInformacao: (info: InformacaoRow) => void
+  abrirInformacao: (v: AbrirInformacao) => void
   /** Nova ordem manual (de quem está vendo) para uma lista de cartões; liga o "Ordenar: Manual". */
   reordenar: (ids: number[]) => void
   recarregar: () => Promise<void>
@@ -119,6 +131,12 @@ export interface TkCtxValue {
   clienteDoProjeto: (chave: ChaveProjeto) => number | null
   /** Quem está vendo pode abrir este projeto (caso: escopo de acesso; interno: sempre)? */
   podeAbrirProjeto: (chave: ChaveProjeto | null | undefined) => boolean
+  /** Informações fixadas da tarefa: as do projeto, depois as do cliente efetivo. */
+  fixadasDaTarefa: (t: Pick<TaskRow, "projeto" | "clienteId">) => InformacaoRow[]
+  /** Fixadas de algumas âncoras, na ordem dada. */
+  fixadasDe: (ancoras: Ancora[]) => InformacaoRow[]
+  /** Nome do cliente / caso / projeto de uma âncora. */
+  nomeAncora: (a: Ancora) => string
   modelos: ModeloView[]
   hoje: string
   meId: number | null

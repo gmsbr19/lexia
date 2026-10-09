@@ -6,6 +6,8 @@
 // sintaxe especial no título. Projeto e Grupo podem ser CRIADOS daqui: "Novo
 // projeto…" abre o formulário rápido (com cliente = caso; sem = interno) e
 // "Novo grupo…" uma janelinha — ao salvar, voltam já escolhidos nesta tarefa.
+// "Tarefa | Informação" no topo: Informação fixa um know-how no projeto ou no
+// cliente (TkNovaInformacao).
 import { useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { apiSend } from "@/lib/client/api"
@@ -14,6 +16,7 @@ import { Icon } from "./tf-icons"
 import { useTk, type NovaTarefaUI } from "./tk-context"
 import type { ChaveProjeto } from "@/lib/tarefas/types"
 import { TkProjetoForm } from "./tk-projeto-form"
+import { TkModoNova, TkNovaInformacao } from "./tk-info"
 import { TkClientPicker, TkDatePop, TkGrupoDialog, TkProjetoPicker, TkPropMenu, useGruposDoProjeto, useOpcoesPessoa } from "./tk-pickers"
 import { TkIconBtn, useEsc } from "./tk-ui"
 import { ELEVACAO_JANELA, TK_JANELA } from "./tk-glass"
@@ -40,6 +43,7 @@ type CtorFala = new () => ReconhecimentoFala
 
 export function TkNewTask({ projetoInicial, onClose }: { projetoInicial: ChaveProjeto | null; onClose: () => void }) {
   const { act, meId, hoje, clienteDoProjeto, projetosAtivos, podeCriarProjeto, portal } = useTk()
+  const [modo, setModo] = useState<"tarefa" | "info">("tarefa")
   const [titulo, setTitulo] = useState("")
   const [projeto, setProjetoState] = useState<ChaveProjeto | null>(projetoInicial)
   const [grupo, setGrupo] = useState<string | null>(null)
@@ -64,7 +68,7 @@ export function TkNewTask({ projetoInicial, onClose }: { projetoInicial: ChavePr
     ...grupos,
   ].map((g) => ({ id: g as string | null, label: g }))
   opcoesGrupo.push({ id: null, label: "Sem grupo" })
-  useEsc(onClose, criando == null)
+  useEsc(onClose, criando == null && modo === "tarefa")
   useEffect(() => () => rec.current?.stop(), [])
 
   const clienteHerdado = projeto != null ? clienteDoProjeto(projeto) : null
@@ -146,11 +150,14 @@ export function TkNewTask({ projetoInicial, onClose }: { projetoInicial: ChavePr
     if (ok) onClose()
   }
 
+  if (modo === "info") return <TkNovaInformacao projetoInicial={projeto} onTarefa={() => setModo("tarefa")} onClose={onClose} />
+
   return (
     <div className="tk-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className={TK_JANELA} role="dialog" aria-label="Nova tarefa" style={{ ...ELEVACAO_JANELA, width: 540, maxWidth: "calc(100% - 32px)" }}>
-        <div style={{ display: "flex", alignItems: "center", padding: "12px 12px 4px 20px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 12px 4px 20px" }}>
           <span style={{ flex: 1, fontSize: 16, fontWeight: 500 }}>Nova tarefa</span>
+          <TkModoNova modo="tarefa" onChange={setModo} />
           <TkIconBtn icon="x" title="Fechar" onClick={onClose} />
         </div>
         <div style={{ padding: "4px 20px 16px", display: "flex", flexDirection: "column", gap: 12 }}>

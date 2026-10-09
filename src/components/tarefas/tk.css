@@ -352,6 +352,21 @@
 .tk-scope .tk-mobile .tk-act-compose { padding: 0 16px 14px; }
 .tk-scope .tk-mobile .tk-feed { overflow: visible; padding: 4px 16px 0; }
 
+/* informações fixadas ("Saiba antes"): caixa neutra com alfinete — o dourado é da IA */
+.tk-scope .tk-infos { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.tk-scope .tk-info { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; column-gap: 8px; align-items: start; padding: 8px 4px 8px 10px; border-radius: var(--r-sm); background: var(--bg-sunken); box-shadow: inset 2px 0 0 var(--border-strong); min-width: 0; }
+.tk-scope .tk-info > svg { margin-top: 3px; color: var(--text-muted); }
+.tk-scope .tk-info-de { display: block; font-size: 12px; font-weight: 500; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tk-scope .tk-info-txt { font-size: 14px; line-height: 1.45; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+.tk-scope .tk-info-txt.clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.tk-scope .tk-info-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 2px; font-size: 12px; color: var(--text-muted); }
+.tk-scope .tk-info.compacta { padding: 6px 2px 6px 8px; }
+.tk-scope .tk-info.compacta .tk-info-txt { font-size: 13px; }
+.tk-scope .tk-info.compacta .tk-info-txt.clamp { -webkit-line-clamp: 2; }
+.tk-scope .tk-info-mais { align-self: flex-start; border: none; background: transparent; padding: 0; font: 500 12px var(--font-sans); color: var(--text-muted); cursor: pointer; }
+.tk-scope .tk-info-mais:hover { color: var(--text); }
+.tk-scope .tk-info-mais:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); border-radius: 4px; }
+
 @media (prefers-reduced-motion: reduce) {
   .tk-portal .tk-pop, .tk-scope .tk-panel, .tk-portal .tk-toast, .tk-scope .skeleton { animation: none; }
 }
