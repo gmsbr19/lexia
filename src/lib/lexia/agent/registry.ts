@@ -12,6 +12,7 @@ import { comercialTools } from "./tools/comercial"
 import { contratoTools } from "./tools/contratos"
 import { documentosTools } from "./tools/documentos"
 import { financeiroTools } from "./tools/financeiro"
+import { informacoesTools } from "./tools/informacoes"
 import { navegacaoTools } from "./tools/navegacao"
 import { perguntarTools } from "./tools/perguntar"
 import { modelosTools } from "./tools/modelos"
@@ -28,6 +29,7 @@ export const TOOLS: AgentTool[] = [
   ...tarefasTools,
   ...modelosTools,
   ...projetosTools,
+  ...informacoesTools,
   ...agendaTools,
   ...comercialTools,
   ...processosTools,

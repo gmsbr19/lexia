@@ -17,6 +17,7 @@ const LABELS: Record<string, string> = {
   tarefas_do_caso: "Abrindo as tarefas do caso",
   listar_modelos: "Consultando os modelos de tarefas",
   listar_projetos: "Listando os projetos internos",
+  informacoes_fixadas: "Lendo as informações fixadas",
   agenda: "Consultando a agenda",
   comercial_resumo: "Consultando o comercial",
   listar_leads: "Listando leads",

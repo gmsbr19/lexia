@@ -305,6 +305,18 @@ describe("registry — deterministic, valid tool schemas", () => {
     }
   })
 
+  it("informações fixadas: ler e fixar abertos a toda a equipe; fixar pede confirmação; some no modo pergunta", () => {
+    const nomes = (role: string, mode?: "agente" | "pergunta") => new Set(toApiTools(role, mode).map((t) => t.name))
+    expect(TOOLS_BY_NAME.get("informacoes_fixadas")?.kind).toBe("readonly")
+    expect(TOOLS_BY_NAME.get("fixar_informacao")?.kind).toBe("mutation")
+    for (const role of ["estagiario", "staff", "financeiro", "advogado", "socio", "admin"]) {
+      expect(nomes(role).has("informacoes_fixadas"), role).toBe(true)
+      expect(nomes(role).has("fixar_informacao"), role).toBe(true)
+    }
+    expect(nomes("advogado", "pergunta").has("informacoes_fixadas")).toBe(true)
+    expect(nomes("advogado", "pergunta").has("fixar_informacao")).toBe(false)
+  })
+
   it("tarefa: projeto = casoId (caso do cliente) OU projetoId (interno), nunca os dois", () => {
     expect(chaveDosIds(12, null)).toBe("c12")
     expect(chaveDosIds(undefined, 5)).toBe("p5")
