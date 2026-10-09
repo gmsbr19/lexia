@@ -607,6 +607,15 @@ function Mencionado({ texto }: { texto: string }) {
 
 type ItemFeed = { k: string; at: string } & ({ c: ComentarioRow } | { h: HistoricoRow })
 
+/** Botão de ícone da barra de ações do comentário (só nomeado pelo tooltip). */
+function TkAcaoCmt({ icon, title, onClick, perigo }: { icon: TfIconName; title: string; onClick: () => void; perigo?: boolean }) {
+  return (
+    <button type="button" className={"tk-iconbtn" + (perigo ? " perigo" : "")} title={title} aria-label={title} onClick={onClick}>
+      <Icon name={icon} size={14} />
+    </button>
+  )
+}
+
 function TkAtividade({
   t,
   comentarios,
@@ -711,25 +720,37 @@ function TkAtividade({
         </button>
       </div>
       <div className="tk-act-compose">
-        <input
-          className="input"
-          placeholder="Comentário"
-          aria-label="Comentário"
-          value={val}
-          onFocus={(e) => setAncora(e.currentTarget)}
-          onChange={(e) => {
-            setVal(e.target.value)
-            setAncora(e.currentTarget)
-            setMencaoFechada(false)
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault()
-              if (candidatos.length && mencao) escolher(candidatos[0])
-              else void publicar()
-            }
-          }}
-        />
+        <div className="tk-cmtbox">
+          <input
+            className="tk-plain-input"
+            placeholder="Escreva um comentário… (@ para mencionar)"
+            aria-label="Comentário"
+            value={val}
+            onFocus={(e) => setAncora(e.currentTarget)}
+            onChange={(e) => {
+              setVal(e.target.value)
+              setAncora(e.currentTarget)
+              setMencaoFechada(false)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault()
+                if (candidatos.length && mencao) escolher(candidatos[0])
+                else void publicar()
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="tk-iconbtn tk-enviar"
+            title="Publicar comentário"
+            aria-label="Publicar comentário"
+            disabled={!val.trim()}
+            onClick={() => void publicar()}
+          >
+            <Icon name="send" size={16} />
+          </button>
+        </div>
         <TkPop open={candidatos.length > 0 && !mencaoFechada} onClose={() => setMencaoFechada(true)} anchor={ancora} width={220}>
           {candidatos.map((c) => (
             <TkMenuItem key={String(c.id)} onClick={() => escolher(c)}>
@@ -757,58 +778,63 @@ function TkAtividade({
           }
           const c = it.c
           const meu = c.autorId === meId
+          const emEdicao = editando?.id === c.id ? editando : null
+          const temAcoes = meu || gestao || ancoras.length > 0
           return (
-            <div key={it.k} className="tk-feeditem">
+            <div key={it.k} className="tk-feeditem tk-cmt">
               <TkAutor id={c.autorId} />
               <div style={{ minWidth: 0 }}>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 14, fontWeight: 500 }}>{pessoa(c.autorId)?.nome ?? "—"}</span>
-                  <span className="tk-when">
-                    {quando(c.createdAt, hoje)}
-                    {c.editado ? " · editado" : ""}
-                  </span>
+                <div className="tk-cmt-head">
+                  <span className="tk-cmt-nome">{pessoa(c.autorId)?.nome ?? "—"}</span>
+                  <span className="tk-when">{quando(c.createdAt, hoje)}</span>
+                  {c.editado && (
+                    <span className="tk-cmt-editado">
+                      <Icon name="edit" size={11} />
+                      editado
+                    </span>
+                  )}
                 </div>
-                {editando?.id === c.id ? (
-                  <input
-                    className="input"
-                    autoFocus
-                    aria-label="Comentário"
-                    value={editando.texto}
-                    onChange={(e) => setEditando({ ...editando, texto: e.target.value })}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") void salvarEdicao()
-                      if (e.key === "Escape") {
-                        e.stopPropagation()
-                        setEditando(null)
-                      }
-                    }}
-                    style={{ marginTop: 4 }}
-                  />
+                {emEdicao ? (
+                  <div className="tk-cmtbox editando">
+                    <input
+                      className="tk-plain-input"
+                      autoFocus
+                      aria-label="Editar comentário"
+                      value={emEdicao.texto}
+                      onChange={(e) => setEditando({ ...emEdicao, texto: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") void salvarEdicao()
+                        if (e.key === "Escape") {
+                          e.stopPropagation()
+                          setEditando(null)
+                        }
+                      }}
+                    />
+                    <TkAcaoCmt icon="x" title="Cancelar" onClick={() => setEditando(null)} />
+                    <button
+                      type="button"
+                      className="tk-iconbtn tk-enviar"
+                      title="Salvar"
+                      aria-label="Salvar"
+                      disabled={!emEdicao.texto.trim()}
+                      onClick={() => void salvarEdicao()}
+                    >
+                      <Icon name="check" size={16} />
+                    </button>
+                  </div>
                 ) : (
                   <div className="tk-bubble">
                     <Mencionado texto={c.conteudo} />
                   </div>
                 )}
-                {editando?.id !== c.id && (meu || gestao || ancoras.length > 0) && (
-                  <div className="tk-feedacts">
-                    {meu && (
-                      <button type="button" className="tk-feedlink" onClick={() => setEditando(paraEdicao(c))}>
-                        Editar
-                      </button>
-                    )}
-                    {(meu || gestao) && (
-                      <button type="button" className="tk-feedlink" onClick={() => void excluir(c)}>
-                        Excluir
-                      </button>
-                    )}
-                    {ancoras.length > 0 && (
-                      <button type="button" className="tk-feedlink" onClick={() => fixar(c)}>
-                        Fixar como informação
-                      </button>
-                    )}
-                  </div>
-                )}
               </div>
+              {!emEdicao && temAcoes && (
+                <div className="tk-cmt-acts" role="toolbar" aria-label="Ações do comentário">
+                  {ancoras.length > 0 && <TkAcaoCmt icon="pin" title="Fixar como informação" onClick={() => fixar(c)} />}
+                  {meu && <TkAcaoCmt icon="edit" title="Editar" onClick={() => setEditando(paraEdicao(c))} />}
+                  {(meu || gestao) && <TkAcaoCmt icon="trash2" title="Excluir" perigo onClick={() => void excluir(c)} />}
+                </div>
+              )}
             </div>
           )
         })}
