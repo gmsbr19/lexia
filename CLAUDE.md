@@ -66,8 +66,9 @@ LexIA AI assistant, and a real-time Notifications system.
   (`Tarefa.projetoId` → `Projeto` vivo = `casoId IS NULL AND excluidoEm IS NULL`) — nunca os dois; no cliente a
   identidade é a chave `c<id>`/`p<id>` (`TaskRow.projeto`, `ProjetoQuadro.chave`). Regras ÚNICAS em
   `lib/tarefas/regras.ts` + `projetos-quadro.ts` (servidor + cliente); projeto novo/interno em `lib/tarefas/projetos.ts`.
-  UI `components/tarefas/tk-*.tsx` + `TarefasApp.tsx` + `tk.css`. Memories `project_tarefas_redesign`,
-  `project_caso_projeto_unificado`.
+  UI `components/tarefas/tk-*.tsx` + `TarefasApp.tsx` + `tk.css`. **Informações fixadas** (know-how do cliente/caso/projeto
+  interno que aparece em toda tarefa deles — "Saiba antes"): `lib/informacoes/*` + `tk-info.tsx` + `crm/pages/CrmFixadas.tsx`.
+  Memories `project_tarefas_redesign`, `project_caso_projeto_unificado`, `project_informacoes_fixadas`.
 - **Início**: greeting + AI BriefingCard + OfficeDashboard. Memory
   `project_inicio_dashboard`.
 - **LexIA**: agentic assistant over the Anthropic API (`lib/lexia/agent/*`:
@@ -155,7 +156,33 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
-- **Projetos de volta: caso do cliente OU projeto INTERNO (branch `feat/projetos-internos`, 10 micro commits, sem push;
+- **Informações fixadas — Parte B (branch `feat/informacoes-fixadas`, micro commits, sem push; tsc 0 novos erros — só o
+  `cm-meta` PRÉ-EXISTENTE —, 879/880 testes — só a `notificacoes-links` PRÉ-EXISTENTE; novos em `tests/informacoes-core.test.ts`
+  + gating em `lexia-agent` —, eslint sem achados novos; migração `20261009120000_informacoes_fixadas` ADITIVA, VALIDADA em
+  PGlite (6 cenários) + `migrate diff` vazio, e JÁ APLICADA no banco LOCAL + `prisma generate`).** Pedido de origem: guardar
+  know-how ("só paga no dia 10", "tal imóvel não precisa ser integralizado") visível a todos, como as tarefas — SEM a
+  nota-tarefa `*` do Todoist. **Modelo:** a informação é uma NOTA com dono natural — cliente (`ClienteAnotacao`, só
+  `tipo='nota'`), caso ou projeto INTERNO (`Anotacao`, que ganhou `projetoId` FK Cascade; nota de processo não conta). Ambas
+  ganharam `fixadoEm/fixadoPor/editadoEm/editadoPor` (e-mail) + `origemTarefaId` (FK SetNull); `Anotacao.fixado`. Notas de
+  cliente já fixadas receberam `fixadoEm=createdAt`. **Fixada = aparece em toda tarefa** daquele cliente/caso/projeto (projeto
+  antes do cliente efetivo). **Decisões do usuário (plano aprovado):** só as fixadas aparecem nas tarefas; qualquer pessoa
+  cria/edita/fixa/desafixa (registra quem/quando); excluir = autor ou sócio/admin (a rota antiga de excluir nota de cliente
+  ganhou a mesma regra); visual neutro (sem dourado). **Minha (sinalizada):** projeto interno também é âncora (o plano dizia só
+  cliente+caso, mas sem isso "Manutenção do Lexia"/"Marketing" não teriam onde fixar); converter interno → caso leva as notas.
+  Nota de caso NÃO fixada exige acesso ao caso. **Backend:** núcleo puro `lib/informacoes/core.ts` (âncoras, índice,
+  `fixadasDaTarefa`, `textoDeComentario`, `podeExcluirInformacao`, `tempoDesde`/`talvezDesatualizada` >6 meses), `queries.ts`
+  (`getFixadas` vai em `TarefasBoard.fixadas`; `getInformacoes(ancora)` p/ fichas), `mutations.ts` (criar/editar/excluir com
+  `RegistroAcao` → "Desfazer" do quadro; histórico na tarefa de origem). Rotas `POST /api/informacoes`,
+  `PATCH|DELETE /api/informacoes/[fonte]/[id]` (fonte `cliente|anotacao`). **Tarefas:** "Saiba antes" no topo do detalhe
+  (2 + "Mostrar todas"; menu Editar/Desafixar/Excluir; "Da tarefa: …"; "Pode estar desatualizada"), botão "Informação" nas
+  ações do detalhe, "Fixar como informação" em cada comentário (menções viram nomes), alfinete com contagem no cartão,
+  fixadas compactas + ícone de alfinete no cabeçalho do projeto, "Nova tarefa" com "Tarefa | Informação". **CRM:** seção
+  "Fixadas" acima das abas na ficha do contato e na página do caso (no caso, as do cliente com "Do cliente"); notas com
+  fixar/desafixar, editar no lugar e excluir com confirmação; campo de nota com "Fixar nas tarefas"; aba Notas do caso
+  SEMPRE visível. `CrmDataset.userId` novo. **LexIA:** `informacoes_fixadas` (leitura; `tarefaId` traz projeto + cliente) e
+  `fixar_informacao` (confirmada, qualquer papel); bullet no prompt (CORE — invalida o cache 1×). Seed demo + 3 fixadas.
+  **User action:** conferir visual; merge/push quando aprovar (em produção a migração roda no boot).
+- **Projetos de volta: caso do cliente OU projeto INTERNO (mergeado no master e enviado em 09/10/2026;
   tsc 0 novos erros — só o `cm-meta` PRÉ-EXISTENTE —, 867/868 testes — só a `notificacoes-links` PRÉ-EXISTENTE; novos em
   `tests/projetos-quadro.test.ts`/`tarefas-regras`/`lexia-agent` —, eslint limpo; migração `20261008120000_projetos_internos`
   (só DADOS) VALIDADA em PGlite na cadeia real A→vínculos→B (22 cenários) + `migrate diff` vazio, e JÁ APLICADA no banco
