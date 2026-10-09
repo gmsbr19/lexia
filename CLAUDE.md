@@ -156,7 +156,7 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
-- **Informações fixadas — Parte B (branch `feat/informacoes-fixadas`, micro commits, sem push; tsc 0 novos erros — só o
+- **Informações fixadas — Parte B (mergeado no master e enviado em 09/10/2026; tsc 0 novos erros — só o
   `cm-meta` PRÉ-EXISTENTE —, 879/880 testes — só a `notificacoes-links` PRÉ-EXISTENTE; novos em `tests/informacoes-core.test.ts`
   + gating em `lexia-agent` —, eslint sem achados novos; migração `20261009120000_informacoes_fixadas` ADITIVA, VALIDADA em
   PGlite (6 cenários) + `migrate diff` vazio, e JÁ APLICADA no banco LOCAL + `prisma generate`).** Pedido de origem: guardar
@@ -181,7 +181,12 @@ This Next (16.2.6) has breaking changes vs. training data — consult
   fixar/desafixar, editar no lugar e excluir com confirmação; campo de nota com "Fixar nas tarefas"; aba Notas do caso
   SEMPRE visível. `CrmDataset.userId` novo. **LexIA:** `informacoes_fixadas` (leitura; `tarefaId` traz projeto + cliente) e
   `fixar_informacao` (confirmada, qualquer papel); bullet no prompt (CORE — invalida o cache 1×). Seed demo + 3 fixadas.
-  **User action:** conferir visual; merge/push quando aprovar (em produção a migração roda no boot).
+  **Ajustes pós-visual (mesma sessão):** comentários com ações em ÍCONES (fixar/editar/excluir numa barrinha que aparece no
+  hover; sempre visível no toque), balão com canto do autor reto, campo com botão de enviar; o aviso (toast) do quadro ganhou
+  ícone do tipo de alteração, desfazer em ícone + Ctrl/⌘Z (fora de campos de texto), barrinha de tempo que pausa no hover,
+  "Desfeito" e CLIQUE QUE LEVA À ALTERAÇÃO (`Aviso.alvo`: tarefa / projeto / Modelos; fecha ao abrir). **Fix Casos:** rateio
+  100/0 voltava a mostrar 50/50 (o servidor não grava a parte de 0%; a página agora usa o complemento) + `apiSend` GET com
+  `cache: "no-store"`. **User action:** em produção a migração roda no boot.
 - **Projetos de volta: caso do cliente OU projeto INTERNO (mergeado no master e enviado em 09/10/2026;
   tsc 0 novos erros — só o `cm-meta` PRÉ-EXISTENTE —, 867/868 testes — só a `notificacoes-links` PRÉ-EXISTENTE; novos em
   `tests/projetos-quadro.test.ts`/`tarefas-regras`/`lexia-agent` —, eslint limpo; migração `20261008120000_projetos_internos`
