@@ -779,7 +779,9 @@ export function TarefasApp(props: TarefasAppProps) {
     else setPagina(alvo.pagina)
   }
   const abrirAviso = () => {
-    if (aviso?.alvo) irPara(aviso.alvo)
+    const alvo = aviso?.alvo
+    setAviso(null) // abriu o destino: o aviso já cumpriu o papel
+    if (alvo) irPara(alvo)
   }
   const desfazerAviso = () => void desfazer()
 
