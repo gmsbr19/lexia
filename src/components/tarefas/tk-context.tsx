@@ -8,6 +8,7 @@
 // Montado por TarefasApp.
 import { createContext, useContext } from "react"
 import type { Ancora, InformacaoRow } from "@/lib/informacoes/core"
+import type { TfIconName } from "./tf-icons"
 import type { ChaveProjeto, ChecklistItem, IdNome, ModeloView, ProjetoQuadro, TaskRow, TaskStatus, TeamMember } from "@/lib/tarefas/types"
 import type { GrupoWizard } from "@/lib/modelos/modelo"
 
@@ -61,10 +62,17 @@ export interface PatchTarefaUI {
 /** Janela de informação: fixar uma nova (sobre uma das âncoras) ou editar uma existente. */
 export type AbrirInformacao = { ancoras: Ancora[]; texto?: string; origemTarefaId?: number | null } | { info: InformacaoRow }
 
+/** Onde a alteração aconteceu — clicar no aviso leva até lá. */
+export type AlvoAviso = { tarefa: number } | { projeto: ChaveProjeto } | { pagina: "projetos" | "modelos" }
+
 export interface Aviso {
   msg: string
   sub?: string[]
   acaoId?: string | null
+  /** Ícone do tipo de alteração (padrão: check; erro: alerta). */
+  icon?: TfIconName
+  tom?: "ok" | "erro"
+  alvo?: AlvoAviso
 }
 
 export interface Acoes {

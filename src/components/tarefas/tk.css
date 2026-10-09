@@ -228,7 +228,29 @@
   .tk-scope .tk-cmt-acts { position: static; grid-column: 2; justify-self: start; margin-top: 4px; opacity: 1; transform: none; pointer-events: auto; border: none; box-shadow: none; background: transparent; padding: 0; }
   .tk-scope .tk-ck-convert, .tk-scope .tk-ck-x, .tk-scope .tk-file .tk-iconbtn, .tk-scope .tk-linkrow .tk-iconbtn, .tk-scope .tk-card-more { opacity: 1; }
 }
-.tk-portal .tk-toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 1300; width: min(480px, calc(100% - 32px)); padding: 8px 8px 8px 16px; animation: tkToast .2s var(--ease) both; }
+.tk-portal .tk-toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 1300; width: min(500px, calc(100% - 32px)); padding: 6px; animation: tkToast .2s var(--ease) both; }
+.tk-portal .tk-toast-row { display: flex; align-items: center; gap: 4px; }
+/* corpo: ícone do tipo + texto; com destino, é um botão que leva até a alteração */
+.tk-portal .tk-toast-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 6px 8px; border: none; border-radius: 10px; background: transparent; color: var(--text); font: inherit; text-align: left; }
+.tk-portal .tk-toast-main.link { cursor: pointer; transition: background var(--dur); }
+.tk-portal .tk-toast-main.link:hover { background: var(--surface-hover); }
+.tk-portal .tk-toast-main.link:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
+.tk-portal .tk-toast-ico { width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--bg-sunken); color: var(--text); }
+.tk-portal .tk-toast-ico.ok { background: var(--ok-soft); color: var(--ok); }
+.tk-portal .tk-toast-ico.erro { background: color-mix(in srgb, var(--crit) 14%, transparent); color: var(--crit); }
+.tk-portal .tk-toast-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.tk-portal .tk-toast-msg, .tk-portal .tk-toast-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tk-portal .tk-toast-msg { font-size: 14px; font-weight: 500; }
+.tk-portal .tk-toast-sub { font-size: 12px; color: var(--text-muted); }
+.tk-portal .tk-toast-ir { flex-shrink: 0; color: var(--text-muted); transition: transform var(--dur), color var(--dur); }
+.tk-portal .tk-toast-main.link:hover .tk-toast-ir { transform: translateX(2px); color: var(--text); }
+/* desfazer: ícone num círculo preenchido (a ação principal do aviso) */
+.tk-portal .tk-toast-undo { width: 36px; height: 36px; border-radius: 50%; color: var(--text); background: color-mix(in srgb, var(--text) 9%, transparent); }
+.tk-portal .tk-toast-undo:hover { background: color-mix(in srgb, var(--text) 16%, transparent); }
+/* tempo até sumir — pausa com o mouse/foco em cima */
+.tk-portal .tk-toast-tempo { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--text-muted); opacity: .35; transform-origin: left center; animation-name: tkToastTempo; animation-timing-function: linear; animation-fill-mode: forwards; }
+.tk-portal .tk-toast:hover .tk-toast-tempo, .tk-portal .tk-toast:focus-within .tk-toast-tempo { animation-play-state: paused; }
+@keyframes tkToastTempo { from { transform: scaleX(1) } to { transform: scaleX(0) } }
 @keyframes tkToast { from { opacity: 0; transform: translate(-50%, 8px) } to { opacity: 1; transform: translate(-50%, 0) } }
 
 /* ── tabelas (equipe) ── */
@@ -388,4 +410,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .tk-portal .tk-pop, .tk-scope .tk-panel, .tk-portal .tk-toast, .tk-scope .skeleton { animation: none; }
+  /* a barrinha segue contando (é ela que fecha o aviso), só não aparece */
+  .tk-portal .tk-toast-tempo { visibility: hidden; }
 }

@@ -30,7 +30,7 @@ import { addDays } from "@/lib/datas/util"
 import { statusLabel, type ChaveProjeto, type ModeloView, type ProjetoQuadro, type TarefasBoard, type TaskRow, type TaskStatus } from "@/lib/tarefas/types"
 import { Icon, type TfIconName } from "./tf-icons"
 import { TkBoardPage } from "./tk-board"
-import { TkCtx, useTk, type AbrirInformacao, type Acoes, type Aviso, type PatchTarefaUI, type TkCtxValue } from "./tk-context"
+import { TkCtx, useTk, type AbrirInformacao, type Acoes, type AlvoAviso, type Aviso, type PatchTarefaUI, type TkCtxValue } from "./tk-context"
 import { TkInfoDialog } from "./tk-info"
 import { TkDetail } from "./tk-detail"
 import { TkMobileBoard, TkMobileNav, type Pagina } from "./tk-mobile"
@@ -70,31 +70,75 @@ function useMobile(): boolean {
 }
 
 // ── aviso (toast) ────────────────────────────────────────────────────────────
-function TkToast({ aviso, onUndo, onClose }: { aviso: (Aviso & { k: number }) | null; onUndo: () => void; onClose: () => void }) {
+// Ícone do tipo de alteração + texto; clicar leva até onde a alteração
+// aconteceu (`alvo`); desfazer é um ícone (ou Ctrl+Z / ⌘Z fora de campos de
+// texto). Some sozinho — a barrinha de tempo PAUSA enquanto o mouse está em cima.
+const AVISO_MS = 8000
+
+const emCampoDeTexto = (el: Element | null) =>
+  !!el && ((el as HTMLElement).isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))
+
+function TkToast({
+  aviso,
+  onUndo,
+  onAbrir,
+  onClose,
+}: {
+  aviso: (Aviso & { k: number }) | null
+  onUndo: () => void
+  onAbrir: () => void
+  onClose: () => void
+}) {
+  const podeDesfazer = !!aviso?.acaoId
   useEffect(() => {
-    if (!aviso) return
-    const id = window.setTimeout(onClose, 7000)
-    return () => window.clearTimeout(id)
-  }, [aviso, onClose])
+    if (!podeDesfazer) return
+    const h = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== "z") return
+      if (emCampoDeTexto(document.activeElement)) return
+      e.preventDefault()
+      onUndo()
+    }
+    window.addEventListener("keydown", h)
+    return () => window.removeEventListener("keydown", h)
+  }, [podeDesfazer, onUndo])
   if (!aviso) return null
+  const erro = aviso.tom === "erro"
+  const icone = aviso.icon ?? (erro ? "alertCircle" : "check")
+  const ok = !erro && (icone === "check" || icone === "checkCircle")
+  const corpo = (
+    <>
+      <span className={"tk-toast-ico" + (erro ? " erro" : ok ? " ok" : "")} aria-hidden>
+        <Icon name={icone} size={16} strokeWidth={2.1} />
+      </span>
+      <span className="tk-toast-txt">
+        <span className="tk-toast-msg">{aviso.msg}</span>
+        {(aviso.sub ?? []).map((s, i) => (
+          <span key={i} className="tk-toast-sub">
+            {s}
+          </span>
+        ))}
+      </span>
+      {aviso.alvo && <Icon name="chevronRight" size={16} className="tk-toast-ir" />}
+    </>
+  )
   return (
-    <div className={TK_AVISO} role="status" key={aviso.k} style={ELEVACAO_AVISO}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
-          <span style={{ fontSize: 14, fontWeight: 500 }}>{aviso.msg}</span>
-          {(aviso.sub ?? []).map((s, i) => (
-            <span key={i} style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              {s}
-            </span>
-          ))}
-        </div>
-        {aviso.acaoId && (
-          <button type="button" className="btn btn-secondary btn-sm" onClick={onUndo}>
-            Desfazer
+    <div className={TK_AVISO} role="status" aria-live="polite" key={aviso.k} style={ELEVACAO_AVISO}>
+      <div className="tk-toast-row">
+        {aviso.alvo ? (
+          <button type="button" className="tk-toast-main link" onClick={onAbrir} title="Abrir">
+            {corpo}
+          </button>
+        ) : (
+          <div className="tk-toast-main">{corpo}</div>
+        )}
+        {podeDesfazer && (
+          <button type="button" className="tk-iconbtn tk-toast-undo" title="Desfazer (Ctrl+Z)" aria-label="Desfazer" onClick={onUndo}>
+            <Icon name="undo2" size={17} strokeWidth={2.1} />
           </button>
         )}
         <TkIconBtn icon="x" title="Fechar" onClick={onClose} />
       </div>
+      <span className="tk-toast-tempo" style={{ animationDuration: `${AVISO_MS}ms` }} onAnimationEnd={onClose} aria-hidden />
     </div>
   )
 }
@@ -183,6 +227,14 @@ export interface TarefasAppProps {
 }
 
 const mesmaInfo = (a: InformacaoRow, b: InformacaoRow) => a.fonte === b.fonte && a.id === b.id
+
+/** Para onde leva o aviso de uma informação: a tarefa de origem, senão o projeto (cliente: nenhum). */
+function alvoDaInfo(ancora: Ancora, origemTarefaId?: number | null): AlvoAviso | undefined {
+  if (origemTarefaId != null) return { tarefa: origemTarefaId }
+  if (ancora.tipo === "caso") return { projeto: chaveCaso(ancora.id) }
+  if (ancora.tipo === "projeto") return { projeto: chaveInterno(ancora.id) }
+  return undefined
+}
 
 const msgErro = (e: unknown) => (e instanceof Error && e.message ? e.message : "Não foi possível concluir a ação")
 
@@ -291,7 +343,7 @@ export function TarefasApp(props: TarefasAppProps) {
   const fecharAviso = useCallback(() => setAviso(null), [])
   const erro = useCallback(
     (e: unknown) => {
-      setAviso({ msg: msgErro(e), k: Date.now() })
+      setAviso({ msg: msgErro(e), tom: "erro", k: Date.now() })
       void recarregar()
     },
     [recarregar],
@@ -314,6 +366,7 @@ export function TarefasApp(props: TarefasAppProps) {
     if (!id) return
     const r = await enviar<{ descricao: string }>(`/api/tarefas/acoes/${id}/desfazer`, "POST")
     if (r) {
+      avisar({ msg: "Desfeito", sub: r.descricao ? [r.descricao] : undefined, icon: "undo2" })
       setDialogo((d) => (d && (d.kind === "owner" || d.kind === "shift") ? null : d))
       await recarregar()
     }
@@ -355,7 +408,7 @@ export function TarefasApp(props: TarefasAppProps) {
       })
       return
     }
-    if (r.acaoId) avisar({ msg: `Movida para ${statusLabel(status)}`, sub: [t.titulo], acaoId: r.acaoId })
+    if (r.acaoId) avisar({ msg: `Movida para ${statusLabel(status)}`, sub: [t.titulo], acaoId: r.acaoId, icon: "arrowRight", alvo: { tarefa: id } })
     void recarregar()
   }
 
@@ -371,7 +424,7 @@ export function TarefasApp(props: TarefasAppProps) {
     type L = { id: number; titulo: string; grupo: string | null; responsavelId: number | null }
     const r = await enviar<{ acaoId: string | null; liberadas: L[]; semResponsavel: L[] }>(`/api/tarefas/${id}/concluir`, "POST")
     if (!r) return
-    avisar({ msg: `Concluída: ${t.titulo}`, sub: r.liberadas.map(suaVez), acaoId: r.acaoId })
+    avisar({ msg: `Concluída: ${t.titulo}`, sub: r.liberadas.map(suaVez), acaoId: r.acaoId, icon: "checkCircle", alvo: { tarefa: id } })
     if (r.semResponsavel.length) {
       const o = r.semResponsavel[0]
       setDialogo({ kind: "owner", tarefa: { id: o.id, titulo: o.titulo, grupo: o.grupo } })
@@ -446,7 +499,7 @@ export function TarefasApp(props: TarefasAppProps) {
     })
     const r = await enviar<{ acaoId: string | null }>(`/api/tarefas/${id}`, "PATCH", p)
     if (!r) return
-    if (r.acaoId) avisar({ msg: rotuloPatch(t, p), acaoId: r.acaoId })
+    if (r.acaoId) avisar({ msg: rotuloPatch(t, p), sub: p.titulo === undefined ? [t.titulo] : undefined, acaoId: r.acaoId, icon: "edit", alvo: { tarefa: id } })
     void recarregar()
   }
 
@@ -461,8 +514,10 @@ export function TarefasApp(props: TarefasAppProps) {
     if (r.acaoId) {
       avisar({
         msg: `Prazo: ${dataCurta(prazo)}`,
-        sub: r.ajustadas ? [`${r.ajustadas} ${r.ajustadas === 1 ? "prazo seguinte ajustado" : "prazos seguintes ajustados"}`] : undefined,
+        sub: [t.titulo, ...(r.ajustadas ? [`${r.ajustadas} ${r.ajustadas === 1 ? "prazo seguinte ajustado" : "prazos seguintes ajustados"}`] : [])],
         acaoId: r.acaoId,
+        icon: "calendar",
+        alvo: { tarefa: id },
       })
     }
     void recarregar()
@@ -492,12 +547,12 @@ export function TarefasApp(props: TarefasAppProps) {
     const a = map.get(anteriorId)
     const b = map.get(seguinteId)
     if (!a || !b || anteriorId === seguinteId || b.anteriores.includes(anteriorId)) return
-    if (a.projeto == null || a.projeto !== b.projeto) return avisar({ msg: "Ligações só entre tarefas do mesmo projeto." })
-    if (criariaCiclo(anteriorId, seguinteId, map)) return avisar({ msg: "Não é possível: as tarefas ficariam esperando uma pela outra." })
+    if (a.projeto == null || a.projeto !== b.projeto) return avisar({ msg: "Ligações só entre tarefas do mesmo projeto.", tom: "erro", icon: "link2" })
+    if (criariaCiclo(anteriorId, seguinteId, map)) return avisar({ msg: "Não é possível: as tarefas ficariam esperando uma pela outra.", tom: "erro", icon: "link2" })
     patchLocal(seguinteId, (x) => ({ anteriores: [...x.anteriores, anteriorId], status: statusAoLigar(x, a) }))
     const r = await enviar<{ acaoId: string }>("/api/tarefas/ligacoes", "POST", { anteriorId, seguinteId })
     if (!r) return
-    avisar({ msg: "Ligação criada", sub: [`${b.titulo} só começa depois de ${a.titulo}`], acaoId: r.acaoId })
+    avisar({ msg: "Ligação criada", sub: [`${b.titulo} só começa depois de ${a.titulo}`], acaoId: r.acaoId, icon: "link2", alvo: { tarefa: seguinteId } })
     void recarregar()
   }
 
@@ -508,7 +563,7 @@ export function TarefasApp(props: TarefasAppProps) {
     patchLocal(seguinteId, (x) => ({ anteriores: x.anteriores.filter((y) => y !== anteriorId), status: statusAoDesligar(x, restantes) }))
     const r = await enviar<{ acaoId: string }>("/api/tarefas/ligacoes", "DELETE", { anteriorId, seguinteId })
     if (!r) return
-    avisar({ msg: "Ligação removida", acaoId: r.acaoId })
+    avisar({ msg: "Ligação removida", sub: [b.titulo], acaoId: r.acaoId, icon: "link2", alvo: { tarefa: seguinteId } })
     void recarregar()
   }
 
@@ -523,15 +578,15 @@ export function TarefasApp(props: TarefasAppProps) {
     const { ordem } = r
     // na ordem manual de quem duplicou, a cópia entra logo abaixo da original
     if (ordem != null) setOrdemManual((m) => new Map(m).set(r.id, ordem))
-    avisar({ msg: `Duplicada: ${t.titulo}`, acaoId: r.acaoId })
+    avisar({ msg: `Duplicada: ${t.titulo}`, acaoId: r.acaoId, icon: "copy", alvo: { tarefa: r.id } })
     await recarregar()
     if (abrir) setOpenId(r.id)
   }
 
-  const comAviso = async (req: Promise<{ acaoId: string } | null>, msg: string) => {
+  const comAviso = async (req: Promise<{ acaoId: string; id?: number } | null>, msg: string, extra: Omit<Aviso, "msg" | "acaoId"> = {}) => {
     const r = await req
     if (!r) return
-    avisar({ msg, acaoId: r.acaoId })
+    avisar({ msg, acaoId: r.acaoId, ...extra })
     void recarregar()
   }
 
@@ -544,30 +599,35 @@ export function TarefasApp(props: TarefasAppProps) {
     desligar: (a, b) => void desligar(a, b),
     checklistAdicionar: (id, texto) => {
       patchLocal(id, (t) => ({ checklist: [...t.checklist, { id: `tmp-${Date.now()}`, texto, marcado: false }] }))
-      void comAviso(enviar(`/api/tarefas/${id}/checklist`, "POST", { texto }), "Item adicionado ao checklist")
+      void comAviso(enviar(`/api/tarefas/${id}/checklist`, "POST", { texto }), "Item adicionado ao checklist", { sub: [texto], icon: "checkSquare", alvo: { tarefa: id } })
     },
     checklistEditar: (id, item, p) => {
       if (provisorio(item)) return
       patchLocal(id, (t) => ({ checklist: t.checklist.map((c) => (c.id === item.id ? { ...c, ...p } : c)) }))
       const msg = p.marcado === undefined ? "Item alterado" : p.marcado ? "Item marcado" : "Item desmarcado"
-      void comAviso(enviar(`/api/tarefas/${id}/checklist/${encodeURIComponent(item.id)}`, "PATCH", p), msg)
+      void comAviso(enviar(`/api/tarefas/${id}/checklist/${encodeURIComponent(item.id)}`, "PATCH", p), msg, { sub: [item.texto], icon: "checkSquare", alvo: { tarefa: id } })
     },
     checklistRemover: (id, item) => {
       if (provisorio(item)) return
       patchLocal(id, (t) => ({ checklist: t.checklist.filter((c) => c.id !== item.id) }))
-      void comAviso(enviar(`/api/tarefas/${id}/checklist/${encodeURIComponent(item.id)}`, "DELETE"), "Item removido do checklist")
+      void comAviso(enviar(`/api/tarefas/${id}/checklist/${encodeURIComponent(item.id)}`, "DELETE"), "Item removido do checklist", { sub: [item.texto], icon: "trash2", alvo: { tarefa: id } })
     },
     checklistParaTarefa: (id, item) => {
       if (provisorio(item)) return
       patchLocal(id, (t) => ({ checklist: t.checklist.filter((c) => c.id !== item.id) }))
-      void comAviso(enviar(`/api/tarefas/${id}/checklist/${encodeURIComponent(item.id)}/virar-tarefa`, "POST"), `Tarefa criada: ${item.texto}`)
+      void (async () => {
+        const r = await enviar<{ id: number; acaoId: string }>(`/api/tarefas/${id}/checklist/${encodeURIComponent(item.id)}/virar-tarefa`, "POST")
+        if (!r) return
+        avisar({ msg: `Tarefa criada: ${item.texto}`, acaoId: r.acaoId, icon: "plus", alvo: { tarefa: r.id } })
+        void recarregar()
+      })()
     },
     excluir: (id) => {
       const t = map.get(id)
       if (!t) return
       local((ts) => ts.filter((x) => x.id !== id).map((x) => (x.anteriores.includes(id) ? { ...x, anteriores: x.anteriores.filter((a) => a !== id) } : x)))
       if (openId === id) setOpenId(null)
-      void comAviso(enviar(`/api/tarefas/${id}`, "DELETE"), `Excluída: ${t.titulo}`)
+      void comAviso(enviar(`/api/tarefas/${id}`, "DELETE"), `Excluída: ${t.titulo}`, { icon: "trash2" })
     },
     duplicar: (id, abrir) => void duplicar(id, !!abrir),
     novaTarefa: () => setDialogo({ kind: "nova" }),
@@ -580,14 +640,19 @@ export function TarefasApp(props: TarefasAppProps) {
         n.responsavelId != null ? pessoaMap.get(n.responsavelId)?.first : null,
         rotuloPrazo(r.prazo, hoje),
       ].filter(Boolean) as string[]
-      avisar({ msg: `Criada: ${n.titulo}`, sub: [partes.join(" · ")], acaoId: r.acaoId })
+      avisar({ msg: `Criada: ${n.titulo}`, sub: [partes.join(" · ")], acaoId: r.acaoId, icon: "plus", alvo: { tarefa: r.id } })
       await recarregar()
       return true
     },
     criarProjeto: async (v) => {
       const r = await enviar<{ chave: ChaveProjeto; tipo: "caso" | "interno"; acaoId: string }>("/api/tarefas/projetos", "POST", v)
       if (!r) return null
-      avisar({ msg: `${r.tipo === "caso" ? "Caso criado" : "Projeto criado"}: ${v.nomeCurto.trim()}`, acaoId: r.acaoId })
+      avisar({
+        msg: `${r.tipo === "caso" ? "Caso criado" : "Projeto criado"}: ${v.nomeCurto.trim()}`,
+        acaoId: r.acaoId,
+        icon: r.tipo === "caso" ? "briefcase" : "folder",
+        alvo: { projeto: r.chave },
+      })
       await recarregar()
       return r.chave
     },
@@ -596,7 +661,7 @@ export function TarefasApp(props: TarefasAppProps) {
       if (!r) return false
       const nome = patch.nomeCurto ?? projetoMap.get(chaveInterno(id))?.nomeCurto ?? ""
       const msg = patch.arquivado === true ? "Projeto arquivado" : patch.arquivado === false ? "Projeto reaberto" : "Projeto alterado"
-      if (r.acaoId) avisar({ msg: `${msg}: ${nome}`, acaoId: r.acaoId })
+      if (r.acaoId) avisar({ msg: `${msg}: ${nome}`, acaoId: r.acaoId, icon: patch.arquivado === true ? "archive" : "folder", alvo: { projeto: chaveInterno(id) } })
       await recarregar()
       return true
     },
@@ -609,6 +674,7 @@ export function TarefasApp(props: TarefasAppProps) {
         msg: `Projeto excluído: ${nome}`,
         sub: r.tarefas ? [`${r.tarefas} ${r.tarefas === 1 ? "tarefa ficou" : "tarefas ficaram"} sem projeto`] : undefined,
         acaoId: r.acaoId,
+        icon: "trash2",
       })
       await recarregar()
       return true
@@ -618,7 +684,7 @@ export function TarefasApp(props: TarefasAppProps) {
       if (!r) return null
       const de = chaveInterno(id)
       if (F.projetos.includes(de)) setF({ projetos: F.projetos.map((k) => (k === de ? r.chave : k)) })
-      avisar({ msg: `Agora é um caso de ${clienteMap.get(clienteId)?.nome ?? "cliente"}` })
+      avisar({ msg: `Agora é um caso de ${clienteMap.get(clienteId)?.nome ?? "cliente"}`, icon: "briefcase", alvo: { projeto: r.chave } })
       await recarregar()
       return r.casoId
     },
@@ -635,6 +701,8 @@ export function TarefasApp(props: TarefasAppProps) {
         msg: novo ? `${alvo.novo.clienteId != null ? "Caso criado" : "Projeto criado"}: ${nome}` : `Modelo aplicado: ${nome}`,
         sub: r.tarefas ? [`${r.tarefas} tarefas · ${r.ligacoes} ligações`] : undefined,
         acaoId: r.acaoId,
+        icon: "layers",
+        alvo: { projeto: r.chave },
       })
       await recarregar()
       return r.chave
@@ -650,7 +718,13 @@ export function TarefasApp(props: TarefasAppProps) {
     criarInformacao: async (v) => {
       const r = await enviar<{ acaoId: string | null }>("/api/informacoes", "POST", v)
       if (!r) return false
-      avisar({ msg: "Informação fixada", sub: [`${ROTULO_ANCORA[v.ancora.tipo]} · ${nomeAncora(v.ancora)}`], acaoId: r.acaoId })
+      avisar({
+        msg: "Informação fixada",
+        sub: [`${ROTULO_ANCORA[v.ancora.tipo]} · ${nomeAncora(v.ancora)}`],
+        acaoId: r.acaoId,
+        icon: "pin",
+        alvo: alvoDaInfo(v.ancora, v.origemTarefaId),
+      })
       await recarregar()
       return true
     },
@@ -660,13 +734,24 @@ export function TarefasApp(props: TarefasAppProps) {
       const r = await enviar<{ acaoId: string | null }>(`/api/informacoes/${info.fonte}/${info.id}`, "PATCH", patch)
       if (!r) return false
       const msg = patch.fixado === false ? "Informação desafixada" : patch.fixado ? "Informação fixada" : "Informação editada"
-      if (r.acaoId) avisar({ msg, acaoId: r.acaoId })
+      if (r.acaoId) {
+        avisar({
+          msg,
+          sub: [`${ROTULO_ANCORA[info.ancora.tipo]} · ${nomeAncora(info.ancora)}`],
+          acaoId: r.acaoId,
+          icon: patch.fixado === false ? "pinOff" : patch.fixado ? "pin" : "edit",
+          alvo: alvoDaInfo(info.ancora, info.origemTarefaId),
+        })
+      }
       await recarregar()
       return true
     },
     excluirInformacao: (info) => {
       setBoard((b) => ({ ...b, fixadas: b.fixadas.filter((x) => !mesmaInfo(x, info)) }))
-      void comAviso(enviar(`/api/informacoes/${info.fonte}/${info.id}`, "DELETE"), "Informação excluída")
+      void comAviso(enviar(`/api/informacoes/${info.fonte}/${info.id}`, "DELETE"), "Informação excluída", {
+        sub: [`${ROTULO_ANCORA[info.ancora.tipo]} · ${nomeAncora(info.ancora)}`],
+        icon: "trash2",
+      })
     },
     abrirInformacao: (v) => {
       if ("info" in v || v.ancoras.length) setDialogo({ kind: "info", ...v })
@@ -686,12 +771,24 @@ export function TarefasApp(props: TarefasAppProps) {
     erro,
   }
 
+  // aviso: clicar leva até onde a alteração aconteceu; o ícone (ou Ctrl+Z) desfaz
+  const irPara = (alvo: AlvoAviso) => {
+    if ("tarefa" in alvo) return setOpenId(alvo.tarefa)
+    setOpenId(null)
+    if ("projeto" in alvo) acoes.abrirProjeto(alvo.projeto)
+    else setPagina(alvo.pagina)
+  }
+  const abrirAviso = () => {
+    if (aviso?.alvo) irPara(aviso.alvo)
+  }
+  const desfazerAviso = () => void desfazer()
+
   const atribuirProximo = async (tarefa: { id: number; titulo: string; grupo: string | null }, responsavelId: number) => {
     setDialogo(null)
     patchLocal(tarefa.id, { responsavelId })
     const r = await enviar<{ acaoId: string }>(`/api/tarefas/${tarefa.id}/responsavel`, "POST", { responsavelId })
     if (!r) return
-    avisar({ msg: suaVez({ ...tarefa, responsavelId }), acaoId: r.acaoId })
+    avisar({ msg: suaVez({ ...tarefa, responsavelId }), acaoId: r.acaoId, icon: "user", alvo: { tarefa: tarefa.id } })
     void recarregar()
   }
 
@@ -785,7 +882,7 @@ export function TarefasApp(props: TarefasAppProps) {
           atribuirProximo={atribuirProximo}
         />
         <div ref={setPortal} className="tk-portal">
-          <TkToast aviso={aviso} onUndo={() => void desfazer()} onClose={fecharAviso} />
+          <TkToast aviso={aviso} onUndo={desfazerAviso} onAbrir={abrirAviso} onClose={fecharAviso} />
         </div>
       </div>
     </TkCtx.Provider>

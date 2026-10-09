@@ -415,7 +415,7 @@ export function TkModeloEditor({ modelo, onClose }: { modelo: ModeloView | null;
         ? await apiSend<{ result: { acaoId: string } }>(`/api/tarefas/modelos/${modelo.id}`, "PATCH", corpo)
         : await apiSend<{ result: { acaoId: string } }>("/api/tarefas/modelos", "POST", corpo)
       await act.recarregar()
-      act.avisar({ msg: modelo ? `Modelo salvo: ${corpo.nome}` : `Modelo criado: ${corpo.nome}`, acaoId: r?.result?.acaoId ?? null })
+      act.avisar({ msg: modelo ? `Modelo salvo: ${corpo.nome}` : `Modelo criado: ${corpo.nome}`, acaoId: r?.result?.acaoId ?? null, icon: "layers", alvo: { pagina: "modelos" } })
       onClose()
     } catch (e) {
       act.erro(e)
@@ -428,7 +428,7 @@ export function TkModeloEditor({ modelo, onClose }: { modelo: ModeloView | null;
     try {
       const r = await apiSend<{ result: { acaoId: string } }>(`/api/tarefas/modelos/${modelo.id}`, "DELETE")
       await act.recarregar()
-      act.avisar({ msg: `Modelo excluído: ${modelo.nome}`, acaoId: r?.result?.acaoId ?? null })
+      act.avisar({ msg: `Modelo excluído: ${modelo.nome}`, acaoId: r?.result?.acaoId ?? null, icon: "trash2" })
       onClose()
     } catch (e) {
       act.erro(e)

@@ -436,7 +436,7 @@ function useAnexos(tarefaId: number, recarregar: () => void) {
       const res = await fetch(`/api/tarefas/${tarefaId}/anexos`, { method: "POST", body: fd })
       const data = (await res.json().catch(() => ({}))) as { error?: string; result?: { acaoId?: string } }
       if (!res.ok || data.error) throw new Error(data.error ?? "Falha ao enviar")
-      act.avisar({ msg: `Anexo: ${f.name}`, acaoId: data.result?.acaoId ?? null })
+      act.avisar({ msg: `Anexo: ${f.name}`, acaoId: data.result?.acaoId ?? null, icon: "paperclip", alvo: { tarefa: tarefaId } })
       recarregar()
       void act.recarregar()
     } catch (e) {
@@ -449,7 +449,7 @@ function useAnexos(tarefaId: number, recarregar: () => void) {
     if (!link) return
     try {
       const r = await apiSend<{ result: { acaoId: string } }>(`/api/tarefas/${tarefaId}/anexos`, "POST", link)
-      act.avisar({ msg: `Anexo: ${link.nome}`, acaoId: r.result.acaoId })
+      act.avisar({ msg: `Anexo: ${link.nome}`, acaoId: r.result.acaoId, icon: "paperclip", alvo: { tarefa: tarefaId } })
       setLink(null)
       recarregar()
       void act.recarregar()
@@ -460,7 +460,7 @@ function useAnexos(tarefaId: number, recarregar: () => void) {
   const remover = async (a: AnexoRow) => {
     try {
       const r = await apiSend<{ result: { acaoId: string } }>(`/api/tarefas/${tarefaId}/anexos/${a.id}`, "DELETE")
-      act.avisar({ msg: `Anexo removido: ${a.nome}`, acaoId: r.result.acaoId })
+      act.avisar({ msg: `Anexo removido: ${a.nome}`, acaoId: r.result.acaoId, icon: "trash2", alvo: { tarefa: tarefaId } })
       recarregar()
       void act.recarregar()
     } catch (e) {
@@ -673,7 +673,7 @@ function TkAtividade({
       const r = await apiSend<{ result: { acaoId: string } }>(`/api/tarefas/${t.id}/comentarios`, "POST", { conteudo })
       setVal("")
       setPicks([])
-      act.avisar({ msg: "Comentário publicado", acaoId: r.result.acaoId })
+      act.avisar({ msg: "Comentário publicado", sub: [t.titulo], acaoId: r.result.acaoId, icon: "messageSquare", alvo: { tarefa: t.id } })
       recarregar()
       void act.recarregar()
     } catch (e) {
@@ -686,7 +686,7 @@ function TkAtividade({
       const conteudo = serializeMencoes(editando.texto.trim(), editando.picks)
       const r = await apiSend<{ result: { acaoId: string } }>(`/api/tarefas/${t.id}/comentarios/${editando.id}`, "PATCH", { conteudo })
       setEditando(null)
-      act.avisar({ msg: "Comentário editado", acaoId: r.result.acaoId })
+      act.avisar({ msg: "Comentário editado", sub: [t.titulo], acaoId: r.result.acaoId, icon: "edit", alvo: { tarefa: t.id } })
       recarregar()
     } catch (e) {
       act.erro(e)
@@ -695,7 +695,7 @@ function TkAtividade({
   const excluir = async (c: ComentarioRow) => {
     try {
       const r = await apiSend<{ result: { acaoId: string } }>(`/api/tarefas/${t.id}/comentarios/${c.id}`, "DELETE")
-      act.avisar({ msg: "Comentário excluído", acaoId: r.result.acaoId })
+      act.avisar({ msg: "Comentário excluído", sub: [t.titulo], acaoId: r.result.acaoId, icon: "trash2", alvo: { tarefa: t.id } })
       recarregar()
       void act.recarregar()
     } catch (e) {
