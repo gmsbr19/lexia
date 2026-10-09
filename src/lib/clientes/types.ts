@@ -13,6 +13,7 @@ import type {
 import type { ProcessoMini } from "@/lib/processos/types"
 import type { LancOptions } from "@/components/financeiro/interativo/NovoLancamentoModal"
 import type { AnotacaoRow, EstadoCobranca } from "./cobranca-core"
+import type { InformacaoRow } from "@/lib/informacoes/core"
 
 export interface ClienteHeader {
   id: number
@@ -75,6 +76,8 @@ export interface ClienteDetail {
   documentos: DocumentoRow[]
   /** Notes timeline (free context + collection directives) the AI/UI read. */
   anotacoes: AnotacaoRow[]
+  /** As notas livres (`tipo='nota'`) como informações: quem fixou/editou; as fixadas aparecem nas tarefas. */
+  notas: InformacaoRow[]
   /** Derived collection state (ativo / pausado até X / não cobrar). */
   cobranca: EstadoCobranca
   /** Lookups for the cliente-scoped lançamentos table (categorias/contatos/fornecedores/contas). */

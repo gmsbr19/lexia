@@ -50,6 +50,7 @@ export interface CrmDataset {
   contaOptions: ContaOption[]
   usuarios: IdNome[]
   role: Role
+  userId: number | null
   userName: string
   userEmail: string
 }

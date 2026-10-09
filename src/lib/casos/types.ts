@@ -4,6 +4,7 @@ import type { EventoRow } from "@/lib/agenda/types"
 import type { CasoResponsavelInfo, CasoTipo, HonorarioRow, LancamentoRow } from "@/lib/finance/types"
 import type { ProcessoMini } from "@/lib/processos/types"
 import type { LancOptions } from "@/components/financeiro/interativo/NovoLancamentoModal"
+import type { InformacaoRow } from "@/lib/informacoes/core"
 
 export interface CasoDocumentoRow {
   id: number
@@ -105,14 +106,11 @@ export interface CasoDetail {
   eventos: EventoRow[]
   processos: ProcessoMini[]
   documentos: CasoDocumentoRow[]
-  anotacoes: CasoAnotacaoRow[]
+  /** Notas do caso (as fixadas aparecem nas tarefas do caso). */
+  anotacoes: InformacaoRow[]
+  /** Informações fixadas do cliente do caso (também aparecem nas tarefas). */
+  fixadasCliente: InformacaoRow[]
   /** Opções do formulário de lançamento (só p/ quem vê o Financeiro; a rota preenche). */
   lancOptions?: LancOptions
 }
 
-export interface CasoAnotacaoRow {
-  id: number
-  autor: string
-  conteudo: string
-  createdAt: string
-}

@@ -10,6 +10,7 @@ import { lancamentoToHonorarioRow } from "@/lib/finance/honorario-map"
 import { scopeCasoWhere } from "@/lib/processos/rbac"
 import type { ProcessoMini, ProcessoStatus } from "@/lib/processos/types"
 import { hojeSP } from "@/lib/tarefas/regras"
+import { getInformacoes } from "@/lib/informacoes/queries"
 import type { CasoDetail, CasoDocumentoRow, CasoListRow, CasoPageRow, CasoTarefaRow } from "./types"
 
 const isoDate = (d: Date | null): string | null => (d ? d.toISOString().slice(0, 10) : null)
@@ -111,7 +112,7 @@ export async function getCasoDetail(id: number): Promise<CasoDetail | null> {
   })
   if (!caso) return null
 
-  const [lancRows, honRows, tarefaRows, eventos, processoRows, documentoRows, anotacaoRows] = await Promise.all([
+  const [lancRows, honRows, tarefaRows, eventos, processoRows, documentoRows, anotacoes, fixadasCliente] = await Promise.all([
     prisma.lancamento.findMany({
       where: { casoId: id, isAnomalia: false },
       select: {
@@ -186,11 +187,8 @@ export async function getCasoDetail(id: number): Promise<CasoDetail | null> {
       orderBy: { createdAt: "desc" },
       select: { id: true, nome: true, tipo: true, status: true, createdAt: true },
     }),
-    prisma.anotacao.findMany({
-      where: { casoId: id, processoId: null, excluidoEm: null },
-      orderBy: { createdAt: "desc" },
-      select: { id: true, autor: true, conteudo: true, createdAt: true },
-    }),
+    getInformacoes({ tipo: "caso", id }),
+    caso.clientePrincipalId != null ? getInformacoes({ tipo: "cliente", id: caso.clientePrincipalId }, { soFixadas: true }) : [],
   ])
 
   const processos: ProcessoMini[] = processoRows.map((p) => ({
@@ -297,12 +295,8 @@ export async function getCasoDetail(id: number): Promise<CasoDetail | null> {
     eventos,
     processos,
     documentos,
-    anotacoes: anotacaoRows.map((a) => ({
-      id: a.id,
-      autor: a.autor,
-      conteudo: a.conteudo,
-      createdAt: a.createdAt.toISOString(),
-    })),
+    anotacoes,
+    fixadasCliente,
   }
 }
 

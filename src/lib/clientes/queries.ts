@@ -3,6 +3,7 @@
 // excluded, money is integer centavos, "vencido" is relative to the real today.
 import { prisma } from "@/lib/db"
 import { getCobrancaCliente } from "./cobranca"
+import { getInformacoes } from "@/lib/informacoes/queries"
 import { getDocumentos } from "@/lib/documentos/queries"
 import { listEventos } from "@/lib/agenda/queries"
 import {
@@ -49,7 +50,7 @@ export async function getClienteDetail(id: number): Promise<ClienteDetail | null
   })
   if (!cliente) return null
 
-  const [lancRows, contratos, casoRows, tarefaRows, eventos, documentos, cobranca, cats, clienteOpts, fornecedores, contas] = await Promise.all([
+  const [lancRows, contratos, casoRows, tarefaRows, eventos, documentos, cobranca, cats, clienteOpts, fornecedores, contas, notas] = await Promise.all([
     prisma.lancamento.findMany({
       where: { clienteId: id, isAnomalia: false },
       select: {
@@ -133,6 +134,7 @@ export async function getClienteDetail(id: number): Promise<ClienteDetail | null
     getClienteOptions(),
     getFornecedorOptions(),
     getContaOptions(),
+    getInformacoes({ tipo: "cliente", id }),
   ])
 
   const header: ClienteHeader = {
@@ -228,6 +230,7 @@ export async function getClienteDetail(id: number): Promise<ClienteDetail | null
     eventos,
     documentos,
     anotacoes: cobranca.anotacoes,
+    notas,
     cobranca: cobranca.estado,
     lancOptions: { cats, clientes: clienteOpts.map((c) => c.nome), fornecedores, contas, casos: casoRows.map((c) => c.titulo) },
   }

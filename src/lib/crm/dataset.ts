@@ -14,6 +14,7 @@ import {
 import type { CasoRow, ContaOption, ContratoRow, IdNome, SocioConta } from "@/lib/finance/types"
 import type { ClienteRow } from "@/lib/finance/types"
 import { getUsuariosAtivos } from "@/lib/users/queries"
+import { userIdPorEmail } from "@/lib/notificacoes/recipients"
 
 export interface CrmDataset {
   clientes: ClienteRow[]
@@ -25,6 +26,7 @@ export interface CrmDataset {
   contaOptions: ContaOption[]
   usuarios: IdNome[] // usuários ativos — responsável do caso (e demais pickers de pessoa)
   role: Role
+  userId: number | null // quem está vendo (autor das notas que pode excluir)
   userName: string
   userEmail: string
 }
@@ -41,6 +43,7 @@ export async function getCrmDataset(): Promise<CrmDataset> {
     getContasOptions(),
     getUsuariosAtivos(),
   ])
+  const userId = await userIdPorEmail(user.email)
   return {
     clientes,
     casos,
@@ -51,6 +54,7 @@ export async function getCrmDataset(): Promise<CrmDataset> {
     contaOptions,
     usuarios: usuarios.map((u) => ({ id: u.id, nome: u.nome })),
     role: (user.role as Role) ?? "socio",
+    userId,
     userName: user.nome,
     userEmail: user.email,
   }

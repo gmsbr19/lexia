@@ -1,7 +1,8 @@
 "use client"
 
 // LexIA · CRM — Cliente detail page: header + 6 tabs, wired to the real backend.
-// Fetches /api/clientes/[id] on mount; edit mode PATCHes via patchCliente.
+// Fetches /api/clientes/[id] on mount; edit mode PATCHes via patchCliente. Notas
+// fixadas ("Fixadas", acima das abas) aparecem em todas as tarefas do cliente.
 import { useCallback, useEffect, useState, type ReactNode } from "react"
 import {
   CrmAvatar,
@@ -32,9 +33,9 @@ import {
 import { Icon } from "../crm-icons"
 import { CrmInfoLine, CrmMoneyStat, CrmProcessoSubRow, CrmStat } from "./crm-detail-kit"
 import { CrmCasoFormModal } from "./CrmCasoForm"
+import { CrmFixadasSection, CrmNotaComposer, CrmNotaRow } from "./CrmFixadas"
 import { PODE_CRIAR_CASO } from "@/lib/casos/status"
 import {
-  addAnotacaoCliente,
   deleteAnotacaoCliente,
   fetchClienteDetail,
   pagarLancamento,
@@ -156,7 +157,6 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
   const [fUf, setFUf] = useState("")
   const [fOrigem, setFOrigem] = useState("")
   // cobrança & anotações tab
-  const [noteText, setNoteText] = useState("")
   const [cobMotivo, setCobMotivo] = useState("")
   const [cobDias, setCobDias] = useState(30)
   const [cobBusy, setCobBusy] = useState(false)
@@ -230,22 +230,6 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
     [clienteId, load, onRefresh, toast],
   )
 
-  const addNote = useCallback(async () => {
-    const t = noteText.trim()
-    if (!t) return
-    setCobBusy(true)
-    try {
-      await addAnotacaoCliente(clienteId, { conteudo: t })
-      setNoteText("")
-      await load()
-      toast("Anotação adicionada")
-    } catch (err) {
-      toast(err instanceof Error ? err.message : "Erro", { tone: "neg", icon: "alertTriangle" })
-    } finally {
-      setCobBusy(false)
-    }
-  }, [clienteId, noteText, load, toast])
-
   const removeNote = useCallback(
     async (anotacaoId: number) => {
       try {
@@ -314,6 +298,10 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
   ]
 
   const sectionCard = (children: ReactNode) => <div className="card" style={{ overflow: "hidden" }}>{children}</div>
+  // notas livres como informações (fixar/editar/excluir); excluir: autor ou admin/sócio
+  const quem = { id: dataset.userId, role }
+  const notaPorId = new Map(detail.notas.map((n) => [n.id, n]))
+  const gestao = role === "admin" || role === "socio"
 
   const lancSorted = [...detail.lancamentos].sort((a, b) => (a.venc ?? "").localeCompare(b.venc ?? ""))
   const hoje = new Date().toISOString().slice(0, 10)
@@ -381,6 +369,13 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
           <CrmMoneyStat label="A receber" cents={r.aReceberCents} tone={null} />
           <CrmMoneyStat label="Vencido" cents={r.vencidoCents} tone={r.vencidoCents ? "neg" : null} />
         </div>
+
+        <CrmFixadasSection
+          itens={detail.notas.filter((n) => n.fixado)}
+          sub="Aparecem em todas as tarefas deste cliente"
+          quem={quem}
+          onChanged={() => void load()}
+        />
 
         {edit && (
           <div className="card" style={{ padding: 18, marginBottom: 18, background: "var(--bg-soft)" }}>
@@ -497,29 +492,19 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
             </div>
 
             {/* note composer */}
-            <FxCardTitle title="Anotações" sub="Contexto que a LexIA lê sobre este cliente" />
-            <div className="card" style={{ padding: 14, marginBottom: 14 }}>
-              <textarea
-                value={noteText}
-                onChange={(e) => setNoteText(e.target.value)}
-                placeholder="Registre um combinado, negociação ou observação…"
-                rows={2}
-                style={{
-                  width: "100%", resize: "vertical", borderRadius: 8, border: "1px solid var(--border)",
-                  background: "var(--bg-soft)", color: "var(--text)", padding: "10px 12px", fontSize: 13, fontFamily: "inherit",
-                }}
-              />
-              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
-                <button className="btn btn-secondary" disabled={cobBusy || !noteText.trim()} onClick={addNote}>
-                  <Icon name="plus" size={14} />Adicionar anotação
-                </button>
-              </div>
-            </div>
+            <FxCardTitle title="Anotações" sub="Contexto que a LexIA lê sobre este cliente · as fixadas aparecem em todas as tarefas dele" />
+            <CrmNotaComposer
+              ancora={{ tipo: "cliente", id: clienteId }}
+              placeholder="Registre um combinado, negociação ou observação…"
+              onCreated={() => void load()}
+            />
 
             {/* timeline */}
             {detail.anotacoes.length === 0
               ? sectionCard(<CrmEmpty icon="handshake" title="Sem anotações" sub="Adicione contexto que a LexIA usará ao analisar o cliente." />)
               : sectionCard(detail.anotacoes.map((a, i) => {
+                const nota = a.tipo === "nota" ? notaPorId.get(a.id) : undefined
+                if (nota) return <CrmNotaRow key={a.id} info={nota} quem={quem} onChanged={() => void load()} first={i === 0} />
                 const dir = a.tipo === "cobranca"
                 const tag = a.acao === "pausar" ? "Pausar cobrança" : a.acao === "suspender" ? "Não cobrar" : a.acao === "retomar" ? "Retomar cobrança" : null
                 return (
@@ -536,9 +521,11 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
                       <div style={{ fontSize: 13, color: "var(--text)", marginTop: tag ? 5 : 0, whiteSpace: "pre-wrap" }}>{a.conteudo}</div>
                       <div style={{ fontSize: 11.5, color: "var(--text-subtle)", marginTop: 4 }}>{a.autor} · {crmDate(a.createdAt)}</div>
                     </div>
-                    <button className="btn btn-ghost" onClick={() => removeNote(a.id)} title="Remover" style={{ width: 28, height: 28, padding: 0, flexShrink: 0 }}>
-                      <Icon name="x" size={14} />
-                    </button>
+                    {(gestao || a.autor === dataset.userEmail) && (
+                      <button className="btn btn-ghost" onClick={() => removeNote(a.id)} title="Remover" style={{ width: 28, height: 28, padding: 0, flexShrink: 0 }}>
+                        <Icon name="x" size={14} />
+                      </button>
+                    )}
                   </div>
                 )
               }))}

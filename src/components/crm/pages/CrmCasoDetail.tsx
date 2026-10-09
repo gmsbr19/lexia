@@ -7,8 +7,9 @@
 //
 // Cabeçalho: identidade + vínculos clicáveis (cliente/contrato/responsável — um
 // vínculo ausente vira atalho para o formulário) + ações Editar/Novo processo/
-// Excluir. Abas: Honorários · Processos · Tarefas & agenda · Documentos ·
-// Rateio · Notas. Mesmo visual da ficha do contato.
+// Excluir. "Fixadas" (do caso e do cliente) acima das abas: aparecem em todas
+// as tarefas do caso. Abas: Honorários · Processos · Tarefas & agenda ·
+// Documentos · Rateio · Notas. Mesmo visual da ficha do contato.
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import {
@@ -34,6 +35,7 @@ import { crmDate, crmDateLong } from "../crm-fmt"
 import { deleteCaso, fetchCasoDetail, setResponsaveis } from "../crm-api"
 import { CrmInfoLine, CrmMoneyStat, CrmProcessoSubRow, CrmStat } from "./crm-detail-kit"
 import { CrmCasoFormModal } from "./CrmCasoForm"
+import { CrmFixadasSection, CrmNotaComposer, CrmNotaRow } from "./CrmFixadas"
 import { CrmRateioSlider } from "./CrmRateioSlider"
 import { LancamentosTable } from "@/components/financeiro/interativo/LancamentosTable"
 import { ProcNovoProcessoModal } from "@/components/processos/ProcModals"
@@ -148,6 +150,8 @@ export function CrmCasoDetail({ casoId, tab, onTab, dataset, nav, onRefresh, onD
   const showRateio = verFin && !!socioA && !!socioB
   const hoje = new Date().toISOString().slice(0, 10)
   const sectionCard = (children: ReactNode) => <div className="card" style={{ overflow: "hidden" }}>{children}</div>
+  const quem = { id: dataset.userId, role: dataset.role }
+  const recarregarNotas = () => void load()
 
   const TABS: FxTabDef[] = [
     { id: "honorarios", label: "Honorários", icon: "receipt", badge: fin.lancamentos.length || null },
@@ -155,7 +159,7 @@ export function CrmCasoDetail({ casoId, tab, onTab, dataset, nav, onRefresh, onD
     { id: "tarefas", label: "Tarefas & agenda", icon: "listChecks", badge: detail.tarefas.length + detail.eventos.length || null },
     { id: "documentos", label: "Documentos", icon: "fileText", badge: detail.documentos.length || null },
     ...(showRateio ? [{ id: "rateio", label: "Rateio", icon: "percent" } as FxTabDef] : []),
-    ...(detail.anotacoes.length ? [{ id: "notas", label: "Notas", icon: "edit3", badge: detail.anotacoes.length } as FxTabDef] : []),
+    { id: "notas", label: "Notas", icon: "edit3", badge: detail.anotacoes.length || null },
   ]
   // aba pedida pode não existir (módulo desligado, sem permissão) → Honorários
   const activeTab: CasoTab = TABS.some((t) => t.id === tab) ? tab : "honorarios"
@@ -290,6 +294,14 @@ export function CrmCasoDetail({ casoId, tab, onTab, dataset, nav, onRefresh, onD
           {processosOk && <CrmStat label="Processos" value={detail.processos.length} />}
           <CrmStat label="Tarefas abertas" value={tarefasAbertas} />
         </div>
+
+        <CrmFixadasSection
+          itens={[...detail.anotacoes.filter((a) => a.fixado), ...detail.fixadasCliente]}
+          sub="Aparecem em todas as tarefas deste caso"
+          quem={quem}
+          onChanged={recarregarNotas}
+          badgeDe={(i) => (i.ancora.tipo === "cliente" ? "Do cliente" : undefined)}
+        />
       </div>
 
       {/* tabs */}
@@ -437,13 +449,17 @@ export function CrmCasoDetail({ casoId, tab, onTab, dataset, nav, onRefresh, onD
 
         {activeTab === "notas" && (
           <>
-            <FxCardTitle title="Notas" sub="Anotações do caso (inclui dados antigos importados do Astrea)" />
-            {sectionCard(detail.anotacoes.map((a, i) => (
-              <div key={a.id} style={{ padding: "12px 16px", borderTop: i ? "1px solid var(--border)" : "none" }}>
-                <div style={{ fontSize: 13, color: "var(--text)", whiteSpace: "pre-wrap" }}>{a.conteudo}</div>
-                <div style={{ fontSize: 11.5, color: "var(--text-subtle)", marginTop: 4 }}>{a.autor} · {crmDate(a.createdAt)}</div>
-              </div>
-            )))}
+            <FxCardTitle title="Notas" sub="Anotações do caso (inclui dados antigos importados do Astrea) · as fixadas aparecem em todas as tarefas do caso" />
+            <CrmNotaComposer
+              ancora={{ tipo: "caso", id: detail.id }}
+              placeholder="Registre um combinado, uma particularidade ou um cuidado deste caso…"
+              onCreated={recarregarNotas}
+            />
+            {detail.anotacoes.length === 0
+              ? sectionCard(<CrmEmpty icon="edit3" title="Sem notas" sub="Fixe o que toda tarefa do caso precisa saber." />)
+              : sectionCard(detail.anotacoes.map((a, i) => (
+                <CrmNotaRow key={a.id} info={a} quem={quem} onChanged={recarregarNotas} first={i === 0} />
+              )))}
           </>
         )}
       </div>

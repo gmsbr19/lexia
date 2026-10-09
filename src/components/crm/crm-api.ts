@@ -82,6 +82,17 @@ export const anonimizarCliente = (id: number) => mut(`/api/clientes/${id}/anonim
 export const mesclarClientes = (id: number, duplicadoId: number) =>
   mut(`/api/clientes/${id}/mesclar`, "POST", { duplicadoId })
 
+// ── notas / informações fixadas (cliente, caso, projeto interno) ──
+// Fixada = aparece em todas as tarefas daquele cliente/caso. fonte: "cliente" | "anotacao".
+export const criarInformacao = (body: {
+  ancora: { tipo: "cliente" | "caso" | "projeto"; id: number }
+  conteudo: string
+  fixado?: boolean
+}) => mut(`/api/informacoes`, "POST", body)
+export const patchInformacao = (fonte: "cliente" | "anotacao", id: number, body: { conteudo?: string; fixado?: boolean }) =>
+  mut(`/api/informacoes/${fonte}/${id}`, "PATCH", body)
+export const deleteInformacao = (fonte: "cliente" | "anotacao", id: number) => mut(`/api/informacoes/${fonte}/${id}`, "DELETE")
+
 // ── cobrança & anotações ──
 export const addAnotacaoCliente = (id: number, body: { conteudo: string; fixado?: boolean }) =>
   mut(`/api/clientes/${id}/anotacoes`, "POST", body)
