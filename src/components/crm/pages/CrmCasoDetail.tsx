@@ -78,19 +78,25 @@ export function CrmCasoDetail({ casoId, tab, onTab, dataset, nav, onRefresh, onD
   const socioA = socios[0]
   const socioB = socios[1]
   const socioAId = socioA?.id
+  const socioBId = socioB?.id
   const [rateio, setRateio] = useState(50)
   const [savedRateio, setSavedRateio] = useState(50)
 
   // Aplica um detalhe recém-buscado (também semeia o slider de rateio).
+  // O servidor NÃO grava a parte de 0% — "100% para B" volta só com a linha de B;
+  // por isso o % de A sai da linha de A, senão do complemento da de B, e só um
+  // caso SEM rateio nenhum cai no padrão 50/50.
   const aplicar = useCallback(
     (d: CasoDetail) => {
       setDetail(d)
-      const a = socioAId != null ? d.responsaveis.find((r) => r.contaId === socioAId) : undefined
-      const r = a ? a.percentual : 50
+      const pct = (id: number | undefined) => (id != null ? d.responsaveis.find((x) => x.contaId === id)?.percentual : undefined)
+      const a = pct(socioAId)
+      const b = pct(socioBId)
+      const r = a ?? (b != null ? 100 - b : d.responsaveis.length ? 0 : 50)
       setRateio(r)
       setSavedRateio(r)
     },
-    [socioAId],
+    [socioAId, socioBId],
   )
 
   // Recarga (após salvar/lançar): mantém o conteúdo na tela enquanto busca.
