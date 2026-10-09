@@ -6,7 +6,8 @@
 //  3) `--demo`: dados de exemplo do spec (casos Alfa…Ômega com tarefas,
 //     grupos, ligações, uma vencida em risco, prazo fatal etc. + 2 projetos
 //     internos), marcados com astreaId "app-caso-demo-*" / "app-tarefa-demo-*" /
-//     "app-cliente-demo-*" e Projeto.chave "demo-*".
+//     "app-cliente-demo-*" e Projeto.chave "demo-*" (+ 3 informações fixadas, que
+//     saem junto por cascata).
 //     `--limpar-demo` remove tudo isso. Só para desenvolvimento.
 // Rode após `db:migrate` + `db:generate`: npm run db:seed:modelos [-- --demo]
 import { PrismaClient } from "@prisma/client"
@@ -211,7 +212,7 @@ async function seedDemo(): Promise<void> {
   }
   const hoje = hojeSP()
   const d = (n: number) => new Date(`${addDays(hoje, n)}T12:00:00.000Z`)
-  const users = await prisma.user.findMany({ where: { ativo: true }, select: { id: true, nome: true } })
+  const users = await prisma.user.findMany({ where: { ativo: true }, select: { id: true, nome: true, email: true } })
   const pessoa = (primeiro: string) => users.find((u) => normalizar(u.nome).startsWith(normalizar(primeiro)))?.id ?? users[0]?.id ?? null
   const TH = pessoa("Thiago")
   const LE = pessoa("Leonardo")
@@ -345,7 +346,20 @@ async function seedDemo(): Promise<void> {
   const ligacoes = tarefas.flatMap((t) => (t.depois ?? []).map((a) => ({ anteriorId: ids.get(a)!, seguinteId: ids.get(t.k)! })))
   await prisma.tarefaLigacao.createMany({ data: ligacoes, skipDuplicates: true })
   await prisma.tarefaHistorico.createMany({ data: [...ids.values()].map((tarefaId) => ({ tarefaId, texto: "Tarefa criada", autorId: TH })) })
-  console.log(`Demo: 5 casos, 2 projetos internos, ${tarefas.length} tarefas, ${ligacoes.length} ligações.`)
+
+  // informações FIXADAS ("Saiba antes" nas tarefas) — saem junto com caso/cliente/projeto da demo
+  const autor = users.find((u) => u.id === TH)?.email ?? "sistema"
+  const fixada = { autor, fixado: true, fixadoEm: new Date(), fixadoPor: autor }
+  await prisma.anotacao.createMany({
+    data: [
+      { ...fixada, casoId: ALFA, conteudo: "O imóvel da Rua das Palmeiras NÃO entra na integralização — fica fora dos quatro protocolos." },
+      { ...fixada, projetoId: LEXIA, conteudo: "Publicar em produção só às sextas, depois das 18h." },
+    ],
+  })
+  await prisma.clienteAnotacao.create({
+    data: { ...fixada, clienteId: await cliente("andrade", "Família Andrade", "pf"), tipo: "nota", conteudo: "Só paga no dia 10 — boleto com vencimento antes disso volta." },
+  })
+  console.log(`Demo: 5 casos, 2 projetos internos, ${tarefas.length} tarefas, ${ligacoes.length} ligações, 3 informações fixadas.`)
 }
 
 async function main() {
