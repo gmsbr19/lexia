@@ -175,20 +175,28 @@ model Cliente {
 // puro; `tipo='cobranca'` carrega uma diretiva (`acao` = pausar/suspender/retomar)
 // que o plano de ação respeita: pausar(+`ate`) silencia a cobrança até a data,
 // suspender ("não cobrar mais") indefinidamente, retomar reativa. A diretiva mais
-// recente vence (estado derivado na leitura, nunca armazenado). SERVER ONLY.
+// recente vence (estado derivado na leitura, nunca armazenado). Uma `nota` com
+// `fixado` é "informação fixada": aparece em toda tarefa do cliente (quem fixou /
+// editou por último fica registrado, por e-mail). SERVER ONLY.
 model ClienteAnotacao {
-  id         Int       @id @default(autoincrement())
-  clienteId  Int
-  cliente    Cliente   @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  autor      String
-  conteudo   String
-  tipo       String    @default("nota") // 'nota' | 'cobranca'
-  acao       String? // when tipo='cobranca': 'pausar' | 'suspender' | 'retomar'
-  ate        DateTime? // for acao='pausar': active until this date (local noon)
-  fixado     Boolean   @default(false)
-  excluidoEm DateTime?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  id             Int       @id @default(autoincrement())
+  clienteId      Int
+  cliente        Cliente   @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  autor          String
+  conteudo       String
+  tipo           String    @default("nota") // 'nota' | 'cobranca'
+  acao           String? // when tipo='cobranca': 'pausar' | 'suspender' | 'retomar'
+  ate            DateTime? // for acao='pausar': active until this date (local noon)
+  fixado         Boolean   @default(false)
+  fixadoEm       DateTime?
+  fixadoPor      String? // e-mail
+  editadoEm      DateTime?
+  editadoPor     String? // e-mail
+  origemTarefaId Int? // tarefa cujo comentário virou esta nota
+  origemTarefa   Tarefa?   @relation(fields: [origemTarefaId], references: [id], onDelete: SetNull)
+  excluidoEm     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([clienteId])
 }
@@ -668,6 +676,8 @@ model Tarefa {
   historico       TarefaHistorico[]
   anexos          TarefaAnexo[]
   ordens          TarefaOrdem[]
+  infoCaso        Anotacao[] // informações fixadas nascidas de um comentário desta tarefa
+  infoCliente     ClienteAnotacao[]
 
   @@index([status])
   @@index([responsavelId])
@@ -1232,22 +1242,36 @@ model DocumentoVersao {
   @@index([documentoId])
 }
 
-// Free-text note attached to a Caso and/or Processo (author + timestamp + interno).
+// Free-text note attached to a Caso and/or Processo — or to an INTERNAL Projeto of
+// the Tarefas board (author = e-mail + timestamp + interno). `fixado` = "informação
+// fixada": shows up in every task of that caso/projeto (only notes of the caso or
+// projeto itself — processoId null). Who pinned / last edited is recorded (e-mail);
+// `origemTarefaId` = the task whose comment became this note.
 model Anotacao {
-  id         Int       @id @default(autoincrement())
-  casoId     Int?
-  caso       Caso?     @relation(fields: [casoId], references: [id], onDelete: Cascade)
-  processoId Int?
-  processo   Processo? @relation(fields: [processoId], references: [id], onDelete: Cascade)
-  autor      String
-  conteudo   String
-  interno    Boolean   @default(true)
-  excluidoEm DateTime?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  id             Int       @id @default(autoincrement())
+  casoId         Int?
+  caso           Caso?     @relation(fields: [casoId], references: [id], onDelete: Cascade)
+  processoId     Int?
+  processo       Processo? @relation(fields: [processoId], references: [id], onDelete: Cascade)
+  projetoId      Int? // projeto INTERNO (Tarefas); nota de caso/processo deixa nulo
+  projeto        Projeto?  @relation(fields: [projetoId], references: [id], onDelete: Cascade)
+  autor          String
+  conteudo       String
+  interno        Boolean   @default(true)
+  fixado         Boolean   @default(false)
+  fixadoEm       DateTime?
+  fixadoPor      String? // e-mail
+  editadoEm      DateTime?
+  editadoPor     String? // e-mail
+  origemTarefaId Int?
+  origemTarefa   Tarefa?   @relation(fields: [origemTarefaId], references: [id], onDelete: SetNull)
+  excluidoEm     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([casoId])
   @@index([processoId])
+  @@index([projetoId])
 }
 
 // Comentário numa Tarefa: thread cronológico com autor (User FK, p/ reusar o
@@ -1335,6 +1359,7 @@ model Projeto {
   arquivadoEm    DateTime?
   excluidoEm     DateTime?
   tarefas        Tarefa[]
+  anotacoes      Anotacao[] // informações (fixadas) do projeto interno
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
