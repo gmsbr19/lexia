@@ -6,6 +6,7 @@
 // mesmo projeto. As regras derivadas (vencida, em risco, conflito, aguardando…)
 // vivem em ./regras.ts — implementação ÚNICA usada pelo servidor e pelo cliente.
 import type { Role } from "@/lib/auth/session"
+import type { InformacaoRow } from "@/lib/informacoes/core"
 
 export type TaskStatus = "todo" | "doing" | "wait" | "done"
 
@@ -133,6 +134,8 @@ export interface TarefasBoard {
   pessoas: TeamMember[]
   clientes: IdNome[]
   modelos: ModeloView[]
+  /** Informações FIXADAS de clientes, casos e projetos internos ("Saiba antes" nas tarefas). */
+  fixadas: InformacaoRow[]
   hoje: string // "YYYY-MM-DD" no fuso do escritório (servidor)
 }
 

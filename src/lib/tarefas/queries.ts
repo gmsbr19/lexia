@@ -9,6 +9,7 @@ import type { SessionUser } from "@/lib/auth/session"
 import { prisma } from "@/lib/db"
 import { casoStatusBucket } from "@/lib/casos/status"
 import { getClienteOptions } from "@/lib/finance/queries"
+import { getFixadas } from "@/lib/informacoes/queries"
 import { scopeCasoWhere, veTudo } from "@/lib/processos/rbac"
 import { getUsuariosAtivos } from "@/lib/users/queries"
 import { ROLE_LABEL, type UsuarioAtivo } from "@/lib/users/types"
@@ -267,15 +268,16 @@ export async function getModelos(): Promise<ModeloView[]> {
 
 /** Carga única do módulo. `user` define quais casos a pessoa pode abrir/vincular. */
 export async function getTarefasBoard(user: SessionUser | null | undefined): Promise<TarefasBoard> {
-  const [tarefas, projetos, casosAcessiveis, usuarios, clientes, modelos] = await Promise.all([
+  const [tarefas, projetos, casosAcessiveis, usuarios, clientes, modelos, fixadas] = await Promise.all([
     getTarefas(),
     getProjetosQuadro(),
     getCasosAcessiveis(user),
     getUsuariosAtivos(),
     getClienteOptions(),
     getModelos(),
+    getFixadas(),
   ])
-  return { tarefas, projetos, casosAcessiveis, pessoas: usuarios.map(toTeamMember), clientes, modelos, hoje: hojeSP() }
+  return { tarefas, projetos, casosAcessiveis, pessoas: usuarios.map(toTeamMember), clientes, modelos, fixadas, hoje: hojeSP() }
 }
 
 /** Histórico + anexos (carregados ao abrir a tarefa). */

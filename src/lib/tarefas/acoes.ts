@@ -2,8 +2,8 @@
 //
 // Toda mutação do módulo roda numa transação com um `RegistroAcao`: ANTES de
 // alterar qualquer coisa, a mutação pede para guardar o estado anterior das
-// tarefas/ligações/projetos internos que vai tocar e anota o que CRIOU (tarefas,
-// casos, projetos internos, histórico, comentários, anexos). O snapshot é gravado
+// tarefas/ligações/projetos internos/informações que vai tocar e anota o que CRIOU
+// (tarefas, casos, projetos internos, informações, histórico, comentários, anexos). O snapshot é gravado
 // em TarefaAcao e o POST /api/tarefas/acoes/[id]/desfazer restaura tudo em
 // cascata — inclusive efeitos encadeados (concluir → reabre e volta as liberadas
 // para "aguardando"; montar um projeto por modelo → tira as tarefas e exclui o
@@ -52,6 +52,11 @@ const DATAS_TAREFA = new Set(["prazo", "concluidoEm", "createdAt"])
 const CAMPOS_PROJETO = ["nomeCurto", "nome", "cor", "prazo", "responsavelId", "descricao", "arquivadoEm", "excluidoEm", "casoId"] as const
 const DATAS_PROJETO = new Set(["prazo", "arquivadoEm", "excluidoEm"])
 
+// Informação (nota de cliente / de caso ou projeto interno): campos restauráveis.
+const CAMPOS_INFO = ["conteudo", "fixado", "fixadoEm", "fixadoPor", "editadoEm", "editadoPor", "excluidoEm"] as const
+const DATAS_INFO = new Set(["fixadoEm", "editadoEm", "excluidoEm"])
+type FonteSnap = "cliente" | "anotacao"
+
 const CAMPOS_MODELO = ["nome", "area", "palavraGrupo", "sufixoGrupo", "papeis", "ordem", "excluidoEm"] as const
 const CAMPOS_PASSO = ["chave", "titulo", "papelId", "diasAntes", "prazoFatal", "anteriores", "checklist", "ordem"] as const
 
@@ -81,6 +86,8 @@ export interface Snapshot {
   comentariosEditados: { id: number; conteudo: string; editadoEm: string | null }[]
   modelos: { modelo: Json; passos: Json[] }[] // modelo + passos ANTES da alteração
   modelosCriados: number[]
+  informacoesCriadas: { fonte: FonteSnap; id: number }[] // desfazer = soft-delete
+  informacoes: { fonte: FonteSnap; dados: Json }[] // informações ANTES da alteração
 }
 
 const vazio = (): Snapshot => ({
@@ -100,6 +107,8 @@ const vazio = (): Snapshot => ({
   comentariosEditados: [],
   modelos: [],
   modelosCriados: [],
+  informacoesCriadas: [],
+  informacoes: [],
 })
 
 function serializar(row: Record<string, unknown>): Json {
@@ -205,6 +214,19 @@ export class RegistroAcao {
     const p = await this.tx.projeto.findUnique({ where: { id } })
     if (p) this.snap.projetos.push(serializar({ id: p.id, ...pick(p as unknown as Json, CAMPOS_PROJETO) }))
   }
+  informacaoCriada(fonte: FonteSnap, id: number): void {
+    this.snap.informacoesCriadas.push({ fonte, id })
+  }
+  /** Guarda uma informação antes de editá-la / (des)fixá-la / excluí-la. */
+  async guardarInformacao(fonte: FonteSnap, id: number): Promise<void> {
+    if (this.snap.informacoes.some((x) => x.fonte === fonte && x.dados.id === id)) return
+    if (this.snap.informacoesCriadas.some((x) => x.fonte === fonte && x.id === id)) return
+    const r =
+      fonte === "cliente"
+        ? await this.tx.clienteAnotacao.findUnique({ where: { id } })
+        : await this.tx.anotacao.findUnique({ where: { id } })
+    if (r) this.snap.informacoes.push({ fonte, dados: serializar({ id: r.id, ...pick(r as unknown as Json, CAMPOS_INFO) }) })
+  }
   historico(ids: number[]): void {
     this.snap.historico.push(...ids)
   }
@@ -293,6 +315,23 @@ export async function desfazerAcao(id: string, autorId: number | null): Promise<
     for (const p of s.projetos) {
       const { id: pid, ...rest } = reviver(p, DATAS_PROJETO)
       await tx.projeto.updateMany({ where: { id: pid as number }, data: rest as Prisma.ProjetoUncheckedUpdateManyInput })
+    }
+    // informações: as criadas saem (soft); as alteradas voltam ao que eram
+    const agoraInfo = new Date()
+    const criadasDe = (f: FonteSnap) => s.informacoesCriadas.filter((x) => x.fonte === f).map((x) => x.id)
+    if (criadasDe("cliente").length) {
+      await tx.clienteAnotacao.updateMany({ where: { id: { in: criadasDe("cliente") } }, data: { excluidoEm: agoraInfo } })
+    }
+    if (criadasDe("anotacao").length) {
+      await tx.anotacao.updateMany({ where: { id: { in: criadasDe("anotacao") } }, data: { excluidoEm: agoraInfo } })
+    }
+    for (const { fonte, dados } of s.informacoes) {
+      const { id: iid, ...rest } = reviver(dados, DATAS_INFO)
+      if (fonte === "cliente") {
+        await tx.clienteAnotacao.updateMany({ where: { id: iid as number }, data: rest as Prisma.ClienteAnotacaoUpdateManyMutationInput })
+      } else {
+        await tx.anotacao.updateMany({ where: { id: iid as number }, data: rest as Prisma.AnotacaoUpdateManyMutationInput })
+      }
     }
     // 2) modelos: os criados saem da lista (soft); os alterados voltam com os passos
     if (s.modelosCriados.length) {

@@ -227,6 +227,8 @@ export async function converterEmCaso(id: number, clienteId: number, ator: Ator)
         data: tarefas.map((tarefaId) => ({ tarefaId, texto: `Projeto virou caso do cliente: ${p.nomeCurto}`, autorId: ator.id })),
       })
     }
+    // as informações (notas) do projeto passam a ser do caso
+    await tx.anotacao.updateMany({ where: { projetoId: id }, data: { casoId: c.id, projetoId: null } })
     await tx.projeto.update({ where: { id }, data: { casoId: c.id } })
     return { casoId: c.id, chave: chaveCaso(c.id) }
   }, TX_OPTS)
