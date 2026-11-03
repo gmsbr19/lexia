@@ -34,6 +34,10 @@ function lead(over: Partial<CmDatasetLead>): CmDatasetLead {
     viabilidade: null,
     contratoEnviadoEm: null,
     perdidoAutomatico: false,
+    // Captação — as 2 flags leves da grade, obrigatórias no tipo. A fixture nasce
+    // sem clique e sem UTM; quem precisar sobrescreve via `over`.
+    temClique: false,
+    utmTerm: null,
     ...over,
   }
 }

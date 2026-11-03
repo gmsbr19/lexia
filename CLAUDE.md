@@ -156,6 +156,16 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **A suíte está 100% VERDE: `npx tsc --noEmit` 0 erros e 930/930 testes (this session, SEM migração).** As 2
+  falhas que todos os bullets abaixo citam como "PRÉ-EXISTENTES de sempre" foram corrigidas — eram os TESTES
+  que estavam obsoletos, não o código. (1) `tests/cm-meta.test.ts`: a fixture `lead()` não tinha os 2 campos
+  de captação que o `CmDatasetLead` passou a exigir (`temClique`, `utmTerm`) — como eles só chegavam pelo
+  spread de `Partial<CmDatasetLead>`, o tsc via `boolean | undefined` / `string | null | undefined`;
+  adicionados com o default "sem clique / sem UTM" (quem precisar sobrescreve via `over`). (2)
+  `tests/notificacoes-links.test.ts`: esperava `/processos?view=captura`, mas a view `captura` foi REMOVIDA de
+  `/processos` (restaram só `prazos` e `andamentos` — confirmado por grep nos componentes), então
+  `linkParaNotificacao("sistema","captura",null)` → `/processos` está certo e a expectativa virou essa.
+  **Daqui pra frente, qualquer falha de tsc/teste é REGRESSÃO — não há mais ruído de base.**
 - **Financeiro · RELATÓRIO por período (mês ou faixa livre) — nova aba + rota de impressão (this session,
   VERIFIED tsc 0 novos erros — só o `tests/cm-meta.test.ts` `temClique` PRÉ-EXISTENTE —, 889/890 testes
   (+50 novos; a 1 falha é a `notificacoes-links.test.ts` PRÉ-EXISTENTE de sempre), eslint limpo em TODOS os
