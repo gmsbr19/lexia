@@ -13,11 +13,10 @@ const ROTAS: RegExp[] = [
   /^\/clientes$/, // legado → redireciona para /contatos
   /^\/clientes\/\d+$/,
   /^\/casos$/,
+  /^\/casos\/\d+$/,
   /^\/contratos$/,
   /^\/agenda$/,
   /^\/tarefas$/,
-  /^\/projetos$/,
-  /^\/projetos\/\d+$/,
   /^\/comercial$/,
   /^\/documents$/,
   /^\/processos$/,
@@ -45,10 +44,11 @@ export const navegacaoTools = [
     description:
       "Leva o usuário a uma tela do app. Use quando ele pedir para 'abrir/ir para/mostrar' uma seção. " +
       "Rotas válidas: / (início), /financeiro (aceita ?tab=&mes=&periodo=&dir=&stat=&q=), /contatos, /contatos/<id>, " +
-      "/contratos (?contrato=<id>), /agenda, /tarefas, /projetos, /projetos/<id>, /comercial (?tab=), /documents, " +
-      "/processos (módulo unificado 'Casos & Processos'; aceita ?view=painel|processos|prazos|andamentos|captura e ?caso=<id> para abrir um caso), " +
-      "/processos/<id>, /plano-acao, /lexia. " +
-      "Obs.: /casos é legado e redireciona para /processos?view=processos — prefira /processos.",
+      "/casos (lista de casos), /casos/<id> (página do caso: honorários, contrato, processos; aceita ?tab=honorarios|processos|tarefas|documentos|rateio), " +
+      "/contratos (?contrato=<id>), /agenda, /tarefas (quadro; aceita ?caso=<id> p/ filtrar por caso, ?projeto=<id> p/ projeto interno, ?pagina=projetos|modelos|equipe), " +
+      "/comercial (?tab=), /documents, " +
+      "/processos (módulo Processos; aceita ?view=painel|processos|prazos|andamentos), " +
+      "/processos/<id>, /plano-acao, /lexia.",
     schema: z.object({
       rota: z.string().min(1).max(200).describe("Caminho interno do app, ex.: /financeiro?tab=lancamentos&stat=vencido"),
     }),

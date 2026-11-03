@@ -35,7 +35,7 @@ export const PROC_PECAS = [
   "Razões finais / Memoriais", "Contrarrazões", "Cumprimento de sentença", "Petição", "Últimas declarações",
 ]
 
-const userOptions = (us: UsuarioOption[]) => [{ value: "", label: "—" }, ...us.map((u) => ({ value: String(u.id), label: u.nome }))]
+const userOptions = (us: IdNome[]) => [{ value: "", label: "—" }, ...us.map((u) => ({ value: String(u.id), label: u.nome }))]
 
 // Shared preview card (interno × fatal + semáforo) used by both prazo flows.
 function PreviewCard({ result, hoje }: { result: PrazoPreviewResult | null; hoje: string }) {
@@ -333,18 +333,20 @@ const centsToReais = (c: number | null | undefined): string =>
  * Em EDIÇÃO (`processo` presente), os campos vêm preenchidos e o caso é fixo.
  */
 export function ProcProcessoModal({
-  casoOptions, responsaveis, processo, onClose, onSaved,
+  casoOptions, responsaveis, processo, casoFixo, onClose, onSaved,
 }: {
   casoOptions: IdNome[]
-  responsaveis: UsuarioOption[]
+  responsaveis: IdNome[]
   processo?: ProcessoRow | null
+  /** Criação a partir da página do caso: o caso já está escolhido (sem seletor). */
+  casoFixo?: IdNome | null
   onClose: () => void
   onSaved: (id: number) => void
 }) {
   const { toast } = useCrmToast()
   const editing = !!processo
   const [f, setF] = useState({
-    casoId: "",
+    casoId: casoFixo ? String(casoFixo.id) : "",
     novoCaso: "",
     numeroCnj: processo?.numeroCnj ?? "",
     classe: processo?.classe ?? "",
@@ -416,7 +418,13 @@ export function ProcProcessoModal({
   return (
     <FxModal
       title={editing ? "Editar processo" : "Novo processo"}
-      sub={editing ? "Atualize os dados do processo." : "Cadastre um processo e vincule-o a um caso (escolha ou crie um novo)."}
+      sub={
+        editing
+          ? "Atualize os dados do processo."
+          : casoFixo
+            ? `Cadastre um processo do caso “${casoFixo.nome}”.`
+            : "Cadastre um processo e vincule-o a um caso (escolha ou crie um novo)."
+      }
       onClose={onClose}
       width={620}
       footer={
@@ -427,7 +435,7 @@ export function ProcProcessoModal({
       }
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {!editing && (
+        {!editing && !casoFixo && (
           <G>
             <div><FxLabel>Caso</FxLabel><FxSelect options={[{ value: "", label: casoOptions.length ? "Selecione…" : "Nenhum caso ainda" }, ...casoOptions.map((c) => ({ value: String(c.id), label: c.nome }))]} value={f.casoId} onChange={(e) => { set("casoId", e.target.value); if (e.target.value) set("novoCaso", "") }} /></div>
             <div><FxLabel hint="ou crie um novo">Novo caso (título)</FxLabel><FxInput value={f.novoCaso} onChange={(e) => { set("novoCaso", e.target.value); if (e.target.value) set("casoId", "") }} placeholder="Ex.: Cobrança — Cliente X" /></div>
@@ -474,11 +482,12 @@ export function ProcProcessoModal({
 // Alias de compatibilidade (criação) — usado pelo ProcessosApp.
 export function ProcNovoProcessoModal(props: {
   casoOptions: IdNome[]
-  responsaveis: UsuarioOption[]
+  responsaveis: IdNome[]
+  casoFixo?: IdNome | null
   onClose: () => void
   onCreated: (id: number) => void
 }) {
-  return <ProcProcessoModal casoOptions={props.casoOptions} responsaveis={props.responsaveis} onClose={props.onClose} onSaved={props.onCreated} />
+  return <ProcProcessoModal casoOptions={props.casoOptions} responsaveis={props.responsaveis} casoFixo={props.casoFixo} onClose={props.onClose} onSaved={props.onCreated} />
 }
 
 // ── Registrar publicação (manual → alimenta a fila de triagem) ──────────────────

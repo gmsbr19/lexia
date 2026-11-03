@@ -10,7 +10,7 @@ export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
-  // Casos & Processos pode ser temporariamente desativado (Configurações → Módulos).
+  // O módulo Processos pode ser temporariamente desativado (Configurações → Módulos).
   if (!processosHabilitado(await getModulosConfig())) redirect("/")
   const { id } = await params
   const pid = Number(id)

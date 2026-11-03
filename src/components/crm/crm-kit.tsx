@@ -442,32 +442,23 @@ export const CRM_EVT: Record<EvtTipo, { label: string; color: string; soft: stri
 }
 export const CRM_TASK_STATUS: Record<string, { label: string; tone: BadgeTone }> = {
   todo: { label: "A fazer", tone: "neutral" },
-  doing: { label: "Fazendo", tone: "blue" },
-  review: { label: "Revisão", tone: "gold" },
+  doing: { label: "Em andamento", tone: "blue" },
+  wait: { label: "Aguardando", tone: "gold" },
   done: { label: "Concluída", tone: "pos" },
 }
-export const CRM_PRIO: Record<string, { label: string; color: string }> = {
-  P1: { label: "P1", color: "#C0492F" },
-  P2: { label: "P2", color: "#C0A147" },
-  P3: { label: "P3", color: "#7A8194" },
-  P4: { label: "P4", color: "#7A8194" },
-}
-/** Accepts P1..P4 or numeric 1..4. */
-export function CrmPrioTag({ p }: { p: string | number }) {
-  const key = typeof p === "number" ? `P${p}` : p
-  const m = CRM_PRIO[key] || CRM_PRIO.P4
+/** Marcador de prazo fatal de uma tarefa (mesmo desenho do quadro de Tarefas). */
+export function CrmPrazoFatalTag() {
   return (
     <span
       style={{
-        display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 26, height: 20, padding: "0 6px",
-        borderRadius: 6, fontSize: 11, fontWeight: 500, letterSpacing: "0.02em", color: m.color, background: m.color + "1f", ...FX_NUM,
+        display: "inline-flex", alignItems: "center", height: 20, padding: "0 6px", borderRadius: 4,
+        border: "1px solid var(--crit, #C0492F)", fontSize: 11, fontWeight: 500, color: "var(--crit, #C0492F)", whiteSpace: "nowrap",
       }}
     >
-      {m.label}
+      Prazo fatal
     </span>
   )
 }
-
 // ───────────────────────── empty state ─────────────────────────
 export function CrmEmpty({ icon = "inbox", title, sub, cta }: { icon?: CrmIconName; title: ReactNode; sub?: ReactNode; cta?: ReactNode }) {
   return (

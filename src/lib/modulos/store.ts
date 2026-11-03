@@ -34,7 +34,7 @@ export const useModulosStore = create<State>((set, get) => ({
   },
 }))
 
-/** Módulo "Casos & Processos" habilitado (default true — só desliga com false explícito). */
+/** Módulo "Processos" (prazos/andamentos/publicações/captura) habilitado — os Casos não dependem dele (default true — só desliga com false explícito). */
 export function processosHabilitado(modulos: ModulosConfig): boolean {
   return modulos.processos !== false
 }

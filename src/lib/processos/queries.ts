@@ -615,13 +615,13 @@ export async function getDashboard(user: SessionUser): Promise<DashboardData> {
         // (mirrors eventoScope), never the whole office's tasks.
         where: {
           AND: [
-            { done: false, prazo: { not: null } },
+            { done: false },
             veTudo(user.role) ? {} : uid == null ? { id: -1 } : { responsavelId: uid },
           ],
         },
         orderBy: { prazo: "asc" },
         take: 20,
-        select: { id: true, titulo: true, status: true, prio: true, prazo: true },
+        select: { id: true, titulo: true, status: true, prazoFatal: true, prazo: true },
       }),
       prisma.publicacao.findMany({
         where: { AND: [{ excluidoEm: null, statusTriagem: "pendente" }, veTudo(user.role) ? {} : { OR: [{ processo: procScope }, { processoId: null }] }] },
@@ -665,7 +665,7 @@ export async function getDashboard(user: SessionUser): Promise<DashboardData> {
       id: t.id,
       titulo: t.titulo,
       status: t.status,
-      prio: t.prio,
+      prazoFatal: t.prazoFatal,
       prazo: iso(t.prazo),
     })),
     publicacoesPendentes: pubRows.map((pub) => ({

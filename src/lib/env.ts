@@ -6,7 +6,7 @@
 import { z } from "zod"
 
 const envSchema = z.object({
-  DATABASE_URL: z.string().min(1, "DATABASE_URL é obrigatória (ex.: file:./dev.db)"),
+  DATABASE_URL: z.string().min(1, "DATABASE_URL é obrigatória (ex.: postgresql://usuario:senha@localhost:5432/ncm)"),
   AUTH_SECRET: z.string().min(32, "AUTH_SECRET deve ter pelo menos 32 caracteres (gere com: openssl rand -base64 32)"),
   // Optional — only needed for the respective import CLIs / PDF generation.
   ASTREA_BACKUP_DIR: z.string().optional(),

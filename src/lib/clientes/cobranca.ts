@@ -3,7 +3,7 @@
 // decision shared by the action plan (briefing.ts) and the próximo-passo queue.
 // Pure state machine lives in cobranca-core.ts. SERVER ONLY.
 import { prisma } from "@/lib/db"
-import { UserError } from "@/lib/errors"
+import { ForbiddenError, UserError } from "@/lib/errors"
 import { addDiasISO, hojeISO } from "@/lib/lexia/agent/datas"
 import {
   COBRANCA_ATIVA,
@@ -255,15 +255,20 @@ export async function anotarCliente(clienteId: number, input: AnotarInput): Prom
   const conteudo = input.conteudo.trim()
   if (!conteudo) throw new UserError("A anotação não pode ficar vazia")
   const tipo = input.tipo === "cobranca" ? "cobranca" : "nota"
+  const autor = input.autor || "—"
+  const fixado = tipo === "nota" && !!input.fixado
   const row = await prisma.clienteAnotacao.create({
     data: {
       clienteId,
-      autor: input.autor || "—",
+      autor,
       conteudo,
       tipo,
       acao: tipo === "cobranca" ? (input.acao ?? null) : null,
       ate: tipo === "cobranca" && input.acao === "pausar" && input.ate ? noon(input.ate) : null,
-      fixado: !!input.fixado,
+      // nota fixada = "informação fixada": aparece nas tarefas do cliente
+      fixado,
+      fixadoEm: fixado ? new Date() : null,
+      fixadoPor: fixado ? autor : null,
     },
     select: SELECT,
   })
@@ -295,13 +300,20 @@ export async function retomarCobranca(clienteId: number, input: { autor: string;
 }
 
 /** Soft-delete a note (keeps history; drops it from reads). Scoped to the
- *  cliente so one cliente's id can't be used to delete another's note (IDOR). */
-export async function excluirAnotacao(clienteId: number, id: number): Promise<{ id: number }> {
+ *  cliente so one cliente's id can't be used to delete another's note (IDOR).
+ *  Only the author or management (admin/sócio) may delete. */
+export async function excluirAnotacao(
+  clienteId: number,
+  id: number,
+  quem: { email: string | null; role: string | null },
+): Promise<{ id: number }> {
   const row = await prisma.clienteAnotacao.findFirst({
     where: { id, clienteId, excluidoEm: null },
-    select: { id: true },
+    select: { id: true, autor: true },
   })
   if (!row) throw new UserError("Anotação não encontrada")
+  const gestao = quem.role === "admin" || quem.role === "socio"
+  if (!gestao && (!quem.email || row.autor.toLowerCase() !== quem.email.toLowerCase())) throw new ForbiddenError()
   await prisma.clienteAnotacao.update({ where: { id }, data: { excluidoEm: new Date() } })
   return { id }
 }

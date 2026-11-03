@@ -15,10 +15,13 @@ import {
   createTarefa,
   deleteEvento,
   deleteTarefa,
+  moverTarefa,
   patchEvento,
+  patchPrazoTarefa,
   patchTarefa,
 } from "../crm-api"
 import { crmTodayISO } from "../crm-fmt"
+import { hojeSP, prazoPadrao } from "@/lib/tarefas/regras"
 import type { ClienteTarefaRow, EventoRow, EventoTipo, IdNome, SocioConta } from "../crm-types"
 
 const pad = (n: number) => String(n).padStart(2, "0")
@@ -26,15 +29,12 @@ const errMsg = (e: unknown) => (e instanceof Error ? e.message : "Erro ao salvar
 
 const STATUS_OPTS = [
   { value: "todo", label: "A fazer" },
-  { value: "doing", label: "Fazendo" },
-  { value: "review", label: "Revisão" },
+  { value: "doing", label: "Em andamento" },
   { value: "done", label: "Concluída" },
 ]
-const PRIO_OPTS = [
-  { value: "1", label: "P1 · Urgente" },
-  { value: "2", label: "P2 · Alta" },
-  { value: "3", label: "P3 · Média" },
-  { value: "4", label: "P4 · Normal" },
+const FATAL_OPTS = [
+  { value: "nao", label: "Não" },
+  { value: "sim", label: "Sim" },
 ]
 const TIPO_OPTS: { value: EventoTipo; label: string }[] = [
   { value: "audiencia", label: "Audiência" },
@@ -65,10 +65,11 @@ export function CrmTarefaModal({
   const editing = !!tarefa
   const [titulo, setTitulo] = useState(tarefa?.titulo ?? "")
   const [status, setStatus] = useState(tarefa?.status ?? "todo")
-  const [prio, setPrio] = useState(String(tarefa?.prio ?? 3))
-  const [prazo, setPrazo] = useState(tarefa?.prazo?.slice(0, 10) ?? "")
+  const [fatal, setFatal] = useState(tarefa?.prazoFatal ? "sim" : "nao")
+  const [prazo, setPrazo] = useState(tarefa?.prazo?.slice(0, 10) ?? prazoPadrao(hojeSP()))
   const [resp, setResp] = useState(tarefa?.responsavelId != null ? String(tarefa.responsavelId) : "")
   const [busy, setBusy] = useState(false)
+  const statusOpts = tarefa?.status === "wait" ? [...STATUS_OPTS, { value: "wait", label: "Aguardando" }] : STATUS_OPTS
 
   const save = async () => {
     if (!titulo.trim()) {
@@ -79,13 +80,16 @@ export function CrmTarefaModal({
     try {
       const base = {
         titulo: titulo.trim(),
-        status,
-        prio: Number(prio),
-        prazo: prazo || null,
+        prazoFatal: fatal === "sim",
         responsavelId: resp ? Number(resp) : null,
       }
-      if (editing) await patchTarefa(tarefa.id, base)
-      else await createTarefa({ ...base, clienteId })
+      if (editing) {
+        await patchTarefa(tarefa.id, base)
+        if (prazo !== tarefa.prazo) await patchPrazoTarefa(tarefa.id, prazo)
+        if (status !== tarefa.status) await moverTarefa(tarefa.id, status)
+      } else {
+        await createTarefa({ ...base, prazo, clienteId })
+      }
       toast(editing ? "Tarefa atualizada" : "Tarefa criada")
       onSaved()
       onClose()
@@ -138,11 +142,11 @@ export function CrmTarefaModal({
           <FxInput value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="O que precisa ser feito?" autoFocus />
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <div><FxLabel>Status</FxLabel><FxSelect options={STATUS_OPTS} value={status} onChange={(e) => setStatus(e.target.value)} /></div>
-          <div><FxLabel>Prioridade</FxLabel><FxSelect options={PRIO_OPTS} value={prio} onChange={(e) => setPrio(e.target.value)} /></div>
+          <div><FxLabel>Status</FxLabel><FxSelect options={statusOpts} value={status} onChange={(e) => setStatus(e.target.value)} /></div>
+          <div><FxLabel>Prazo fatal</FxLabel><FxSelect options={FATAL_OPTS} value={fatal} onChange={(e) => setFatal(e.target.value)} /></div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <div><FxLabel>Prazo</FxLabel><DateField value={prazo || null} onChange={(iso) => setPrazo(iso ?? "")} /></div>
+          <div><FxLabel>Prazo</FxLabel><DateField value={prazo} onChange={(iso) => iso && setPrazo(iso)} /></div>
           <div><FxLabel>Responsável</FxLabel><FxSelect options={socioOpts(socios)} value={resp} onChange={(e) => setResp(e.target.value)} placeholder="—" /></div>
         </div>
       </div>

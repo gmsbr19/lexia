@@ -5,7 +5,7 @@
 // arrows + a route-based tab strip + a per-page actions slot, plus the global AI
 // surfaces (LexIA orb/popup, Spotlight ⌘K, Settings). Each route renders its
 // content in the content area; there is no per-pane split (route-tabs model).
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { signOut } from "next-auth/react"
 import { apiSend } from "@/lib/client/api"
@@ -37,7 +37,7 @@ import { usePipelineStore } from "@/lib/comercial/pipeline/store"
 import { useScoringStore } from "@/lib/comercial/scoring/store"
 
 function emptyDataset(clientes: ClienteRow[], role: Role, userName: string, userEmail: string): CrmDataset {
-  return { clientes, casos: [], contratos: [], socios: [], clienteOptions: [], casoOptions: [], contaOptions: [], role, userName, userEmail }
+  return { clientes, casos: [], contratos: [], socios: [], clienteOptions: [], casoOptions: [], contaOptions: [], usuarios: [], role, userId: null, userName, userEmail }
 }
 
 const CHAT_SIDEBAR_W = 412 // keep in sync with the LexiaChat sidebar-mode width
@@ -254,22 +254,26 @@ export function UnifiedShell({ children }: { children: ReactNode }) {
   const isLogin =
     pathname === "/login" || pathname.startsWith("/definir-senha") || pathname.startsWith("/financeiro/relatorio")
 
-  // No editor de documentos, a sidebar global recolhe automaticamente p/ dar mais
-  // espaço ao editor; restaura o estado anterior ao sair. O toggle manual (Recolher
-  // menu) continua livre — só re-força ao entrar/sair do editor, não a cada render.
+  // No editor de documentos e no módulo de Tarefas (que tem a própria barra
+  // lateral), a sidebar global recolhe automaticamente ao ENTRAR; restaura o
+  // estado anterior ao sair. O toggle manual (Recolher menu) continua livre — só
+  // re-força na transição entrar/sair (ajuste durante o render, sem efeito:
+  // abrir /tarefas direto já pinta recolhido, sem piscar aberta).
   const isDocEditor = pathname.startsWith("/documents/doc/")
-  const collapsedRef = useRef(collapsed)
-  collapsedRef.current = collapsed
-  const preEditorCollapsed = useRef<boolean | null>(null)
-  useEffect(() => {
-    if (isDocEditor) {
-      if (preEditorCollapsed.current === null) preEditorCollapsed.current = collapsedRef.current
+  const isTarefas = /^\/tarefas(\/|$)/.test(pathname)
+  const autoRecolher = isDocEditor || isTarefas
+  const [autoAnterior, setAutoAnterior] = useState(false)
+  const [antesDoAuto, setAntesDoAuto] = useState<boolean | null>(null)
+  if (autoRecolher !== autoAnterior) {
+    setAutoAnterior(autoRecolher)
+    if (autoRecolher) {
+      setAntesDoAuto(collapsed)
       setCollapsed(true)
-    } else if (preEditorCollapsed.current !== null) {
-      setCollapsed(preEditorCollapsed.current)
-      preEditorCollapsed.current = null
+    } else {
+      setCollapsed(antesDoAuto ?? false)
+      setAntesDoAuto(null)
     }
-  }, [isDocEditor])
+  }
 
   useEffect(() => {
     if (isLogin) return
@@ -337,7 +341,7 @@ export function UnifiedShell({ children }: { children: ReactNode }) {
       navPage: (page: CrmPage) => router.push(page === "clientes" ? "/contatos" : `/${page}`),
       openCliente: (id: number) => router.push(`/contatos/${id}`),
       openClienteTab: (id: number) => router.push(`/contatos/${id}`),
-      openCaso: (id: number) => router.push(`/processos?view=processos&caso=${id}`),
+      openCaso: (id: number) => router.push(`/casos/${id}`),
       openContrato: (id: number) => router.push(`/contratos?contrato=${id}`),
       openProcesso: (id: number) => router.push(`/processos/${id}`),
     }),

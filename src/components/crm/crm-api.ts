@@ -56,10 +56,23 @@ export const fetchAgenda = (de: string, ate: string) => get<AgendaDataset>(`/api
 export const fetchDocumentos = (clienteId: number) => get<DocumentoRow[]>(`/api/documentos?clienteId=${clienteId}`)
 export const searchAll = (q: string) => get<SearchResults>(`/api/search?q=${encodeURIComponent(q)}`)
 
-// Quick-create a caso (título + optional client/área) — used by the contrato
-// modal's "criar caso" combobox option. Route gates on socio/advogado.
-export const createCaso = (body: { titulo: string; clientePrincipalId?: number; area?: string | null; tipo?: string }) =>
-  mut<{ id: number }>(`/api/casos`, "POST", body)
+// Create a caso — the "Novo caso" form (full) and the contrato modal's quick
+// "criar caso" combobox option (título + cliente/área). Route gates on socio/advogado.
+export interface CasoInput {
+  titulo: string
+  clientePrincipalId?: number | null
+  contratoId?: number | null
+  area?: string | null
+  tipo?: string
+  status?: string | null
+  responsavelUserId?: number | null
+  // etiqueta no quadro de Tarefas (o caso é o "projeto" do quadro)
+  nomeCurto?: string | null
+  cor?: string | null
+  prazo?: string | null
+  descricao?: string | null
+}
+export const createCaso = (body: CasoInput) => mut<{ id: number }>(`/api/casos`, "POST", body)
 
 // ── cliente mutations ──
 export const createCliente = (body: unknown) => mut(`/api/clientes`, "POST", body)
@@ -68,6 +81,17 @@ export const anonimizarCliente = (id: number) => mut(`/api/clientes/${id}/anonim
 /** Merge the duplicate into the survivor (id). Returns per-relation move counts. */
 export const mesclarClientes = (id: number, duplicadoId: number) =>
   mut(`/api/clientes/${id}/mesclar`, "POST", { duplicadoId })
+
+// ── notas / informações fixadas (cliente, caso, projeto interno) ──
+// Fixada = aparece em todas as tarefas daquele cliente/caso. fonte: "cliente" | "anotacao".
+export const criarInformacao = (body: {
+  ancora: { tipo: "cliente" | "caso" | "projeto"; id: number }
+  conteudo: string
+  fixado?: boolean
+}) => mut(`/api/informacoes`, "POST", body)
+export const patchInformacao = (fonte: "cliente" | "anotacao", id: number, body: { conteudo?: string; fixado?: boolean }) =>
+  mut(`/api/informacoes/${fonte}/${id}`, "PATCH", body)
+export const deleteInformacao = (fonte: "cliente" | "anotacao", id: number) => mut(`/api/informacoes/${fonte}/${id}`, "DELETE")
 
 // ── cobrança & anotações ──
 export const addAnotacaoCliente = (id: number, body: { conteudo: string; fixado?: boolean }) =>
@@ -83,7 +107,8 @@ export const setCobranca = (
 ) => mut(`/api/clientes/${id}/cobranca`, "POST", body)
 
 // ── caso mutations ──
-export const patchCaso = (id: number, body: unknown) => mut(`/api/casos/${id}`, "PATCH", body)
+export const patchCaso = (id: number, body: Partial<CasoInput>) => mut(`/api/casos/${id}`, "PATCH", body)
+export const deleteCaso = (id: number) => mut(`/api/casos/${id}`, "DELETE")
 export const setResponsaveis = (id: number, responsaveis: { contaId: number; percentual: number }[]) =>
   mut(`/api/financeiro/casos/${id}/responsaveis`, "PATCH", { responsaveis })
 
@@ -102,6 +127,12 @@ export const createLancamento = (body: unknown) => mut(`/api/financeiro/lancamen
 export const createTarefa = (body: unknown) => mut(`/api/tarefas`, "POST", body)
 export const patchTarefa = (id: number, body: unknown) => mut(`/api/tarefas/${id}`, "PATCH", body)
 export const deleteTarefa = (id: number) => mut(`/api/tarefas/${id}`, "DELETE")
+export const patchPrazoTarefa = (id: number, prazo: string) => mut(`/api/tarefas/${id}/prazo`, "PATCH", { prazo, ajustarSeguintes: false })
+/** Status pelas regras do quadro: concluir libera as seguintes; "Em andamento" confirma o início. */
+export const moverTarefa = (id: number, status: string) =>
+  status === "done"
+    ? mut(`/api/tarefas/${id}/concluir`, "POST")
+    : mut(`/api/tarefas/${id}/status`, "POST", { status, confirmarInicio: true })
 
 // ── evento mutations ──
 export const createEvento = (body: unknown) => mut(`/api/eventos`, "POST", body)
@@ -201,7 +232,7 @@ export const getAudit = (q?: string) => get<AuditRow[]>(`/api/audit${q ? `?q=${e
 // ── áreas do direito (admin) ──
 export type AreaComUsoResult = {
   id: number; chave: string; nome: string; cor: string | null; icone: string | null
-  ordem: number; ativo: boolean; projetos: number; casos: number; leads: number; campanhas: number
+  ordem: number; ativo: boolean; casos: number; leads: number; campanhas: number
 }
 export const listAreasComUso = () => get<AreaComUsoResult[]>(`/api/areas/uso`)
 export const createAreaAdmin = (body: { nome: string; chave?: string; cor?: string | null; icone?: string | null; ordem?: number }) =>

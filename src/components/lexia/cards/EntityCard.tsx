@@ -123,7 +123,7 @@ function HonorarioDetailView({ h, onOpen }: { h: CardHonorarioData; onOpen: () =
 }
 
 // ── Tarefa ───────────────────────────────────────────────────────────────────
-const PRIO_LABEL: Record<number, string> = { 1: "Baixa", 2: "Média", 3: "Alta", 4: "Urgente" }
+const STATUS_TAREFA: Record<string, string> = { todo: "A fazer", doing: "Em andamento", wait: "Aguardando", done: "Concluída" }
 function TarefaRowView({ t, onClick }: { t: CardTarefaData; onClick: () => void }) {
   const diasPrazo = t.prazo ? diasAte(t.prazo) : null
   const u = ccUrgency(diasPrazo)
@@ -135,8 +135,8 @@ function TarefaDetailView({ t, onOpen }: { t: CardTarefaData; onOpen: () => void
   return (
     <CcDetail leading={<CcIconBox icon="checkSquare" size={34} />} title={t.titulo} sub={t.responsavel ?? undefined} onOpen={onOpen} banner={t.prazo ? <CcUrgencyBanner tone={u.tone} icon="clock" eyebrow="Prazo" label={u.label} /> : undefined}>
       <CcGrid>
-        {t.prio != null && <CcField label="Prioridade">{PRIO_LABEL[t.prio] ?? t.prio}</CcField>}
-        <CcField label="Status">{t.status}</CcField>
+        {t.prazoFatal && <CcField label="Prazo">Prazo fatal</CcField>}
+        <CcField label="Status">{STATUS_TAREFA[t.status] ?? t.status}</CcField>
       </CcGrid>
     </CcDetail>
   )

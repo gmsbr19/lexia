@@ -41,6 +41,9 @@ model User {
   // ("oportunidades"|"contatos"): { visibleColumns, filters, sort, groupBy }.
   // null = sem view salva (grid usa os defaults). Ver src/lib/crm/view-prefs.ts.
   crmViewPrefs            String?
+  // Preferências de visão do quadro de Tarefas (JSON): { ordenar, direcao, agrupar }.
+  // null = padrão (Prazo crescente, sem agrupar). Ver src/lib/tarefas/preferencias.ts.
+  tarefasPrefs            String?
   createdAt               DateTime                @default(now())
   updatedAt               DateTime                @updatedAt
   tarefas                 Tarefa[] // tasks delegated to this user
@@ -52,6 +55,9 @@ model User {
   convites                ConviteAcesso[] // one-time access links (set/reset the own password)
   projetos                Projeto[]               @relation("ProjetoResponsavel") // projects this user leads
   comentarios             TarefaComentario[] // comentários que este usuário escreveu em tarefas
+  tarefaHistorico         TarefaHistorico[]       @relation("TarefaHistoricoAutor") // linhas de histórico de tarefa que este usuário gerou
+  tarefaAnexos            TarefaAnexo[]           @relation("TarefaAnexoAutor") // anexos de tarefa que este usuário enviou
+  tarefaOrdens            TarefaOrdem[]           @relation("TarefaOrdemUsuario") // a ordem manual das tarefas NESTE usuário
   leadsResp               Lead[]                  @relation("LeadResponsavelUser") // oportunidades das quais este usuário é dono
   oportunidadeAtividades  OportunidadeAtividade[] // atividades de oportunidade que este usuário registrou
   landingPagesResponsavel LandingPage[]           @relation("LandingPageResponsavel") // landing pages onde este usuário é o responsável padrão
@@ -169,24 +175,36 @@ model Cliente {
 // puro; `tipo='cobranca'` carrega uma diretiva (`acao` = pausar/suspender/retomar)
 // que o plano de ação respeita: pausar(+`ate`) silencia a cobrança até a data,
 // suspender ("não cobrar mais") indefinidamente, retomar reativa. A diretiva mais
-// recente vence (estado derivado na leitura, nunca armazenado). SERVER ONLY.
+// recente vence (estado derivado na leitura, nunca armazenado). Uma `nota` com
+// `fixado` é "informação fixada": aparece em toda tarefa do cliente (quem fixou /
+// editou por último fica registrado, por e-mail). SERVER ONLY.
 model ClienteAnotacao {
-  id         Int       @id @default(autoincrement())
-  clienteId  Int
-  cliente    Cliente   @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  autor      String
-  conteudo   String
-  tipo       String    @default("nota") // 'nota' | 'cobranca'
-  acao       String? // when tipo='cobranca': 'pausar' | 'suspender' | 'retomar'
-  ate        DateTime? // for acao='pausar': active until this date (local noon)
-  fixado     Boolean   @default(false)
-  excluidoEm DateTime?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  id             Int       @id @default(autoincrement())
+  clienteId      Int
+  cliente        Cliente   @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  autor          String
+  conteudo       String
+  tipo           String    @default("nota") // 'nota' | 'cobranca'
+  acao           String? // when tipo='cobranca': 'pausar' | 'suspender' | 'retomar'
+  ate            DateTime? // for acao='pausar': active until this date (local noon)
+  fixado         Boolean   @default(false)
+  fixadoEm       DateTime?
+  fixadoPor      String? // e-mail
+  editadoEm      DateTime?
+  editadoPor     String? // e-mail
+  origemTarefaId Int? // tarefa cujo comentário virou esta nota
+  origemTarefa   Tarefa?   @relation(fields: [origemTarefaId], references: [id], onDelete: SetNull)
+  excluidoEm     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([clienteId])
 }
 
+// O Caso é a matéria do cliente E o "projeto" do quadro de Tarefas (mesma
+// entidade desde a unificação de out/2026 — o antigo model Projeto está DORMENTE).
+// `nomeCurto` + `cor` são a etiqueta do caso nos cartões (sem eles: título e cor da
+// área); `prazo` é o prazo final do trabalho; arquivar = status "Arquivado".
 model Caso {
   id                 Int               @id @default(autoincrement())
   astreaId           String            @unique
@@ -209,6 +227,12 @@ model Caso {
   dataCriacao        DateTime?
   ultimaMovimentacao DateTime?
   excluidoEm         DateTime? // soft-delete marker (legal data is never physically removed)
+  nomeCurto          String? // etiqueta curta no quadro de Tarefas (≤24); sem ela, o título
+  cor                String? // hex (uma das 6 cores do quadro); sem ela, a cor da área
+  descricao          String?
+  prazo              DateTime? // prazo final do trabalho (local noon) — opcional
+  modeloOrigemId     Int? // modelo de tarefas a partir do qual o caso foi montado
+  modeloOrigem       ProjetoModelo?    @relation(fields: [modeloOrigemId], references: [id])
   // O contrato (documento assinado) que este caso pertence. Nullable: um caso pode
   // existir sem contrato vinculado. Um contrato pode reunir vários casos (ex.: um
   // condomínio com assessoria mensal + uma ação de obrigação de fazer).
@@ -222,7 +246,7 @@ model Caso {
   documentos         Documento[]
   processos          Processo[]
   anotacoes          Anotacao[]
-  projetos           Projeto[]
+  projetos           Projeto[] // DORMENTE: registro da conversão Projeto → Caso
 
   @@index([status])
   @@index([tipo])
@@ -601,69 +625,147 @@ model OportunidadeAtividade {
   @@index([ocorreuEm])
 }
 
-// ── Tarefas (operator-entered task manager) ──────────────────────────────────
-// A task carries TWO distinct dates kept visually separate everywhere:
-//   data  = quando fazer (scheduled day) + optional `hora` (HH:MM block)
-//   prazo = limite máximo (deadline) — drives the urgency color.
-// `projeto` is a static practice-area key (see src/lib/tarefas/types.ts PROJECTS,
-// NOT a Caso). `responsavel` is a sócio Conta; the vínculo links to a real Caso
-// OR Cliente (mutually exclusive). subtasks / dor / dod are JSON arrays stored as
-// TEXT (parsed in the query layer) — no Json scalar, consistent with the schema.
+// ── Tarefas ──────────────────────────────────────────────────────────────────
+// Tarefa do quadro único do escritório (redesign "Tarefas"). UMA data só: o
+// `prazo` (obrigatório — sem prazo informado vale a sexta da semana de criação,
+// ver src/lib/tarefas/regras.ts `prazoPadrao`); `prazoFatal` é um marcador sobre o
+// mesmo prazo. Atraso = prazo < hoje (America/Sao_Paulo) e status ≠ done — regra
+// única em regras.ts. O "projeto" do quadro é o CASO do cliente (`casoId`) OU um
+// projeto INTERNO do escritório (`projetoId`) — nunca os dois (garantido no código);
+// `grupo` é uma etiqueta livre DENTRO do projeto (zera ao trocar de projeto). As
+// ligações "só começa depois de" vivem em TarefaLigacao; o histórico legível em
+// TarefaHistorico (gravado pelo backend).
 model Tarefa {
-  id             Int                @id @default(autoincrement())
-  astreaId       String?            @unique // "app-tarefa-<uuid>"; Tarefa is never imported from Astrea
-  titulo         String
-  status         String             @default("todo") // 'todo' | 'doing' | 'review' | 'done'
-  done           Boolean            @default(false) // synced mirror of status === 'done'
-  prio           Int                @default(4) // 1=Urgente .. 4=Normal
-  projeto        String             @default("inbox") // static PROJECTS key
-  data           DateTime? // scheduled day (date-only, stored at local noon)
-  hora           String? // "HH:MM" when a time was set on `data`
-  prazo          DateTime? // deadline (date-only, stored at local noon)
-  notes          String? // descrição (free text)
-  reminder       String? // label only (REMINDER_OPTS)
-  recur          String? // label only (RECUR_OPTS) — NOT an auto-generated series
-  ai             Boolean            @default(false) // suggested/generated by LexIA (Phase B)
-  subtasks       String             @default("[]") // JSON: [{ id, title, done }]
-  dor            String             @default("[]") // JSON: [{ text, done }]  Definition of Ready
-  dod            String             @default("[]") // JSON: [{ text, done }]  Definition of Done
-  origem         String             @default("manual")
-  geradoPorApp   Boolean            @default(true)
-  ordem          Int                @default(0)
-  responsavelId  Int? // a registered User (active users are the delegation pool)
-  responsavel    User?              @relation(fields: [responsavelId], references: [id])
-  criadoPorId    Int? // quem criou/delegou a tarefa (notificado na conclusão); null em tarefas antigas
-  criadoPor      User?              @relation("TarefaCriadoPor", fields: [criadoPorId], references: [id])
-  casoId         Int?
-  caso           Caso?              @relation(fields: [casoId], references: [id])
-  processoId     Int?
-  processo       Processo?          @relation(fields: [processoId], references: [id])
-  clienteId      Int?
-  cliente        Cliente?           @relation(fields: [clienteId], references: [id])
-  leadId         Int? // oportunidade vinculada (Comercial)
-  lead           Lead?              @relation(fields: [leadId], references: [id])
-  projetoId      Int? // container de trabalho dinâmico (substitui a string `projeto`; backfill via seed)
-  projetoRef     Projeto?           @relation(fields: [projetoId], references: [id])
-  secaoId        Int? // seção personalizada dentro do projeto (estilo Todoist); null = "Sem seção"
-  secao          ProjetoSecao?      @relation(fields: [secaoId], references: [id], onDelete: SetNull)
-  recorrenteDeId Int? // engine de recorrência: liga a instância GERADA à tarefa que a originou (guarda de idempotência)
-  recorrenteDe   Tarefa?            @relation("TarefaRecorrencia", fields: [recorrenteDeId], references: [id], onDelete: SetNull)
-  recorrencias   Tarefa[]           @relation("TarefaRecorrencia")
-  concluidoEm    DateTime? // setado na transição p/ done (alimenta cycle time / taxa no prazo do dashboard)
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-  comentarios    TarefaComentario[]
+  id              Int                @id @default(autoincrement())
+  astreaId        String?            @unique // "app-tarefa-<uuid>"; Tarefa is never imported from Astrea
+  titulo          String
+  status          String             @default("todo") // 'todo' | 'doing' | 'wait' | 'done'
+  done            Boolean            @default(false) // espelho sincronizado de status === 'done'
+  prazo           DateTime // data-limite (date-only, gravada ao meio-dia local) — OBRIGATÓRIA
+  prazoFatal      Boolean            @default(false) // prazo legal/processual (nunca deslocado em cadeia)
+  grupo           String? // etiqueta livre dentro do projeto (ex.: "Protocolo 01 · 1º RI Taubaté")
+  aguardandoTexto String? // terceiro externo aguardado (só com status 'wait')
+  notes           String? // descrição (texto livre)
+  checklist       String             @default("[]") // JSON: [{ id, texto, marcado }] (ordem = posição)
+  recur           String? // regra de repetição (rótulo de src/lib/datas/recorrencia.ts); concluir gera a próxima
+  origem          String             @default("manual") // 'manual' | 'modelo' | 'checklist' | 'recorrencia' | 'lexia'
+  geradoPorApp    Boolean            @default(true)
+  responsavelId   Int? // a registered User (active users are the delegation pool)
+  responsavel     User?              @relation(fields: [responsavelId], references: [id])
+  criadoPorId     Int? // quem criou a tarefa; null em tarefas antigas
+  criadoPor       User?              @relation("TarefaCriadoPor", fields: [criadoPorId], references: [id])
+  casoId          Int? // projeto = caso do cliente (XOR projetoId); ambos null = "Sem projeto"
+  caso            Caso?              @relation(fields: [casoId], references: [id])
+  processoId      Int?
+  processo        Processo?          @relation(fields: [processoId], references: [id])
+  clienteId       Int? // cliente PRÓPRIO; o efetivo é caso.clientePrincipalId ?? clienteId (regras.ts)
+  cliente         Cliente?           @relation(fields: [clienteId], references: [id])
+  leadId          Int? // oportunidade vinculada (Comercial)
+  lead            Lead?              @relation(fields: [leadId], references: [id])
+  projetoId       Int? // projeto INTERNO (XOR casoId) — ex.: Manutenção do Lexia, Marketing
+  projetoRef      Projeto?           @relation(fields: [projetoId], references: [id])
+  recorrenteDeId  Int? // liga a instância GERADA à tarefa que a originou (guarda de idempotência)
+  recorrenteDe    Tarefa?            @relation("TarefaRecorrencia", fields: [recorrenteDeId], references: [id], onDelete: SetNull)
+  recorrencias    Tarefa[]           @relation("TarefaRecorrencia")
+  concluidoEm     DateTime? // setado ao concluir; zerado ao reabrir
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  comentarios     TarefaComentario[]
+  anteriores      TarefaLigacao[]    @relation("LigacaoSeguinte") // ligações em que esta é a SEGUINTE
+  seguintes       TarefaLigacao[]    @relation("LigacaoAnterior") // ligações em que esta é a ANTERIOR
+  historico       TarefaHistorico[]
+  anexos          TarefaAnexo[]
+  ordens          TarefaOrdem[]
+  infoCaso        Anotacao[] // informações fixadas nascidas de um comentário desta tarefa
+  infoCliente     ClienteAnotacao[]
 
   @@index([status])
   @@index([responsavelId])
   @@index([criadoPorId])
   @@index([prazo])
-  @@index([data])
+  @@index([casoId])
   @@index([processoId])
   @@index([projetoId])
-  @@index([secaoId])
   @@index([leadId])
   @@index([recorrenteDeId])
+  @@index([concluidoEm])
+}
+
+// "A seguinte só começa depois que a anterior terminar" — único tipo de ligação.
+// Só dentro do mesmo caso, sem ciclos (validado em src/lib/tarefas/mutations.ts).
+// Trocar a tarefa de caso remove todas as ligações dela.
+model TarefaLigacao {
+  anteriorId Int
+  anterior   Tarefa   @relation("LigacaoAnterior", fields: [anteriorId], references: [id], onDelete: Cascade)
+  seguinteId Int
+  seguinte   Tarefa   @relation("LigacaoSeguinte", fields: [seguinteId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@id([anteriorId, seguinteId])
+  @@index([seguinteId])
+}
+
+// Histórico legível da tarefa ("Movida para Em andamento", "Prazo ajustado para
+// 30 set"…). Gravado SEMPRE pelo backend, a cada alteração.
+model TarefaHistorico {
+  id        Int      @id @default(autoincrement())
+  tarefaId  Int
+  tarefa    Tarefa   @relation(fields: [tarefaId], references: [id], onDelete: Cascade)
+  autorId   Int?
+  autor     User?    @relation("TarefaHistoricoAutor", fields: [autorId], references: [id])
+  texto     String
+  createdAt DateTime @default(now())
+
+  @@index([tarefaId])
+}
+
+// Anexo da tarefa: arquivo (bytes em base64 no banco, com teto de tamanho — mesmo
+// padrão do LexiaAnexo storage "db") ou link externo.
+model TarefaAnexo {
+  id        Int      @id @default(autoincrement())
+  tarefaId  Int
+  tarefa    Tarefa   @relation(fields: [tarefaId], references: [id], onDelete: Cascade)
+  tipo      String // 'arquivo' | 'link'
+  nome      String
+  url       String? // link externo (tipo 'link')
+  mimeType  String? // tipo 'arquivo'
+  tamanho   Int? // bytes decodificados (tipo 'arquivo')
+  data      String? // base64 (tipo 'arquivo')
+  autorId   Int?
+  autor     User?    @relation("TarefaAnexoAutor", fields: [autorId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([tarefaId])
+}
+
+// Ordem manual do quadro, POR PESSOA: cada usuário arrasta os cartões na coluna
+// do seu jeito sem mexer na ordem dos outros. `ordem` é só uma chave de
+// classificação (quem não tem linha vai para o fim, por prazo). Excluir a tarefa
+// ou o usuário leva as linhas junto.
+model TarefaOrdem {
+  userId   Int
+  user     User   @relation("TarefaOrdemUsuario", fields: [userId], references: [id], onDelete: Cascade)
+  tarefaId Int
+  tarefa   Tarefa @relation(fields: [tarefaId], references: [id], onDelete: Cascade)
+  ordem    Float
+
+  @@id([userId, tarefaId])
+  @@index([tarefaId])
+}
+
+// Registro de ação p/ "Desfazer": toda mutação do módulo Tarefas grava aqui o
+// estado ANTERIOR do que tocou (snapshot JSON) — POST /api/tarefas/acoes/[id]/desfazer
+// restaura em cascata (ver src/lib/tarefas/acoes.ts). Válido por alguns minutos e
+// só para quem fez a ação.
+model TarefaAcao {
+  id         String    @id
+  autorId    Int?
+  descricao  String
+  snapshot   String // JSON (Snapshot em acoes.ts)
+  createdAt  DateTime  @default(now())
+  desfeitaEm DateTime?
+
+  @@index([createdAt])
 }
 
 // ── Agenda (operator-entered office calendar; NOT in the Astrea backup) ──────
@@ -1140,22 +1242,36 @@ model DocumentoVersao {
   @@index([documentoId])
 }
 
-// Free-text note attached to a Caso and/or Processo (author + timestamp + interno).
+// Free-text note attached to a Caso and/or Processo — or to an INTERNAL Projeto of
+// the Tarefas board (author = e-mail + timestamp + interno). `fixado` = "informação
+// fixada": shows up in every task of that caso/projeto (only notes of the caso or
+// projeto itself — processoId null). Who pinned / last edited is recorded (e-mail);
+// `origemTarefaId` = the task whose comment became this note.
 model Anotacao {
-  id         Int       @id @default(autoincrement())
-  casoId     Int?
-  caso       Caso?     @relation(fields: [casoId], references: [id], onDelete: Cascade)
-  processoId Int?
-  processo   Processo? @relation(fields: [processoId], references: [id], onDelete: Cascade)
-  autor      String
-  conteudo   String
-  interno    Boolean   @default(true)
-  excluidoEm DateTime?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  id             Int       @id @default(autoincrement())
+  casoId         Int?
+  caso           Caso?     @relation(fields: [casoId], references: [id], onDelete: Cascade)
+  processoId     Int?
+  processo       Processo? @relation(fields: [processoId], references: [id], onDelete: Cascade)
+  projetoId      Int? // projeto INTERNO (Tarefas); nota de caso/processo deixa nulo
+  projeto        Projeto?  @relation(fields: [projetoId], references: [id], onDelete: Cascade)
+  autor          String
+  conteudo       String
+  interno        Boolean   @default(true)
+  fixado         Boolean   @default(false)
+  fixadoEm       DateTime?
+  fixadoPor      String? // e-mail
+  editadoEm      DateTime?
+  editadoPor     String? // e-mail
+  origemTarefaId Int?
+  origemTarefa   Tarefa?   @relation(fields: [origemTarefaId], references: [id], onDelete: SetNull)
+  excluidoEm     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([casoId])
   @@index([processoId])
+  @@index([projetoId])
 }
 
 // Comentário numa Tarefa: thread cronológico com autor (User FK, p/ reusar o
@@ -1216,132 +1332,93 @@ model ExecucaoCaptura {
   @@index([status])
 }
 
-// ── Projetos & Tarefas (container de trabalho dinâmico) ─────────────────────
-// Um Projeto agrupa Tarefas com dono, prazo-alvo e status. Substitui a antiga
-// string `Tarefa.projeto` (área de prática), que vira a TAG `Projeto.area`. O
-// progresso/saúde NÃO são persistidos — derivam das tarefas na leitura.
-// Soft-delete `excluidoEm`: a lista de projetos filtra excluidoEm=null e a
-// leitura de tarefas trata um projeto excluído como "sem projeto" (a tarefa
-// nunca some). `chave` dá um slug estável p/ seed idempotente (áreas, holding).
+// ── Projetos INTERNOS ────────────────────────────────────────────────────────
+// Projetos do escritório que NÃO são casos de cliente (Manutenção do Lexia,
+// Marketing…): têm tarefas no quadro, mas não aparecem em Casos/Financeiro/
+// Contratos/Comercial. Projeto com cliente É um caso (Caso). Interno vivo =
+// `casoId IS NULL AND excluidoEm IS NULL`; `casoId` preenchido = convertido em
+// caso (registro p/ os redirects de /projetos/<id> e ?projeto=). `clienteId` e
+// `area` não são usados (legado da unificação 20261006120000).
 model Projeto {
-  id               Int              @id @default(autoincrement())
-  chave            String?          @unique // slug estável p/ seed (ex.: 'area-trab'); null em projetos do usuário
-  nome             String
-  descricao        String?
-  status           String           @default("ativo") // 'ativo' | 'pausado' | 'concluido' | 'arquivado'
-  cor              String? // hex (ponto/cor no rail)
-  icone            String?
-  area             String? // tag de área de prática (inbox/trab/soc/trib/civ/int ou livre)
-  prazo            DateTime? // data-alvo (local noon)
-  responsavelId    Int?
-  responsavel      User?            @relation("ProjetoResponsavel", fields: [responsavelId], references: [id])
-  casoId           Int?
-  caso             Caso?            @relation(fields: [casoId], references: [id])
-  clienteId        Int?
-  cliente          Cliente?         @relation(fields: [clienteId], references: [id])
-  templateOrigemId Int? // template a partir do qual foi instanciado (se houver)
-  templateOrigem   ProjetoTemplate? @relation(fields: [templateOrigemId], references: [id])
-  ordem            Int              @default(0)
-  excluidoEm       DateTime? // soft-delete marker
-  tarefas          Tarefa[]
-  secoes           ProjetoSecao[]
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
+  id             Int            @id @default(autoincrement())
+  chave          String?        @unique // slug estável p/ seed; null em projetos do usuário
+  nomeCurto      String
+  nome           String // nome completo
+  descricao      String?
+  cor            String? // hex (uma das 6 cores de projeto)
+  area           String? // chave de AreaDireito
+  prazo          DateTime? // prazo final (local noon) — projeto pode não ter
+  responsavelId  Int?
+  responsavel    User?          @relation("ProjetoResponsavel", fields: [responsavelId], references: [id])
+  casoId         Int? // caso de destino da conversão Projeto → Caso
+  caso           Caso?          @relation(fields: [casoId], references: [id])
+  clienteId      Int?
+  cliente        Cliente?       @relation(fields: [clienteId], references: [id])
+  modeloOrigemId Int? // modelo a partir do qual foi criado (se houver)
+  modeloOrigem   ProjetoModelo? @relation(fields: [modeloOrigemId], references: [id])
+  arquivadoEm    DateTime?
+  excluidoEm     DateTime?
+  tarefas        Tarefa[]
+  anotacoes      Anotacao[] // informações (fixadas) do projeto interno
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
-  @@index([status])
   @@index([area])
   @@index([responsavelId])
   @@index([casoId])
   @@index([clienteId])
+  @@index([arquivadoEm])
   @@index([excluidoEm])
 }
 
-// Seção personalizada dentro de um projeto (estilo Todoist) — vira COLUNA do
-// quadro do projeto e cabeçalho agrupável na lista. As tarefas apontam para a
-// seção via `Tarefa.secaoId` (onDelete: SetNull → excluir a seção manda as
-// tarefas para "Sem seção", nunca as apaga). Cascade no delete físico do projeto.
-model ProjetoSecao {
-  id        Int      @id @default(autoincrement())
-  projetoId Int
-  projeto   Projeto  @relation(fields: [projetoId], references: [id], onDelete: Cascade)
-  nome      String
-  cor       String? // hex opcional (ponto no cabeçalho da coluna)
-  ordem     Int      @default(0)
-  tarefas   Tarefa[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+// Modelo de tarefas: aplicado a um caso (novo ou existente), gera (grupos × passos)
+// tarefas + as ligações do modelo dentro de cada grupo. Prazo do passo = prazo do
+// grupo − diasAntes. `papeis` = JSON [{ id, rotulo, padraoUsuarioId }]; o
+// responsável de cada papel é escolhido no assistente. Editável por sócio/admin.
+// (Nome da tabela mantido por compatibilidade.)
+model ProjetoModelo {
+  id           Int                  @id @default(autoincrement())
+  chave        String?              @unique // slug p/ seed idempotente
+  nome         String
+  area         String? // chave de AreaDireito
+  palavraGrupo String               @default("Grupo") // "Protocolo" / "Fase"
+  sufixoGrupo  String               @default("") // ex.: " · 1º RI Taubaté"
+  papeis       String               @default("[]") // JSON: [{ id, rotulo, padraoUsuarioId }]
+  ordem        Int                  @default(0)
+  excluidoEm   DateTime?
+  passos       ProjetoModeloPasso[]
+  projetos     Projeto[] // DORMENTE
+  casos        Caso[]
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
 
-  @@index([projetoId])
+  @@index([excluidoEm])
 }
 
-// Modelo de projeto reutilizável (estilo Todoist) — o escritório instancia um
-// processo repetível (ex.: "Holding Patrimonial") gerando 1 Projeto + N Tarefas
-// com prazos relativos em DIAS ÚTEIS (calcularPrazo). Editável por admin/sócio.
-model ProjetoTemplate {
-  id         Int                     @id @default(autoincrement())
-  chave      String?                 @unique // slug p/ seed idempotente (ex.: 'holding-patrimonial')
-  nome       String
-  descricao  String?
-  area       String?
-  cor        String?
-  icone      String?
-  ativo      Boolean                 @default(true)
-  ordem      Int                     @default(0)
-  excluidoEm DateTime? // soft-delete marker
-  itens      ProjetoTemplateTarefa[]
-  secoes     ProjetoTemplateSecao[]
-  projetos   Projeto[]
-  createdAt  DateTime                @default(now())
-  updatedAt  DateTime                @updatedAt
+// Passo de um modelo. `anteriores` = JSON com as `chave`s dos passos que precisam
+// terminar antes (dentro do mesmo grupo); `checklist` = JSON string[].
+model ProjetoModeloPasso {
+  id         Int           @id @default(autoincrement())
+  modeloId   Int
+  modelo     ProjetoModelo @relation(fields: [modeloId], references: [id], onDelete: Cascade)
+  chave      String
+  titulo     String
+  papelId    String?
+  diasAntes  Int           @default(0)
+  prazoFatal Boolean       @default(false)
+  anteriores String        @default("[]") // JSON: string[] (chaves)
+  checklist  String        @default("[]") // JSON: string[]
+  ordem      Int           @default(0)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
 
-  @@index([ativo])
-}
-
-// Seção-modelo de um template. Ao instanciar, cada uma vira uma ProjetoSecao
-// real; os itens do template referenciam a seção pelo ÍNDICE `ordem`
-// (ProjetoTemplateTarefa.secaoOrdem) — evita malabarismo de FK id no replace-all
-// do editor. Cascade no delete do template.
-model ProjetoTemplateSecao {
-  id         Int             @id @default(autoincrement())
-  templateId Int
-  template   ProjetoTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  nome       String
-  cor        String?
-  ordem      Int             @default(0)
-  createdAt  DateTime        @default(now())
-  updatedAt  DateTime        @updatedAt
-
-  @@index([templateId])
-}
-
-// Um item de template = uma tarefa-modelo. `offsetDias` é o nº de DIAS ÚTEIS de
-// folga a partir da `base`: 'inicio' (data de início do projeto) ou 'anterior'
-// (prazo do item anterior, encadeado). `responsavelPlaceholder` é um rótulo de
-// papel mapeado a um User real no momento da instanciação.
-model ProjetoTemplateTarefa {
-  id                     Int             @id @default(autoincrement())
-  templateId             Int
-  template               ProjetoTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  titulo                 String
-  descricao              String?
-  prio                   Int             @default(3) // 1=Urgente .. 4=Normal
-  responsavelPlaceholder String? // rótulo de papel (ex.: "Advogado responsável")
-  offsetDias             Int             @default(0) // dias úteis de folga
-  base                   String          @default("inicio") // 'inicio' | 'anterior'
-  dor                    String          @default("[]") // JSON: string[]
-  dod                    String          @default("[]") // JSON: string[]
-  ordem                  Int             @default(0)
-  secaoOrdem             Int? // índice `ordem` da ProjetoTemplateSecao a que pertence (null = sem seção)
-  createdAt              DateTime        @default(now())
-  updatedAt              DateTime        @updatedAt
-
-  @@index([templateId])
+  @@index([modeloId])
 }
 
 // ── Áreas do Direito (taxonomia dinâmica, gerenciável pelo admin) ─────────────
-// Entidades que referenciam uma área (Projeto, ProjetoTemplate, Caso, Lead,
-// Campanha) guardam a CHAVE (slug) como String? — sem FK rígida, preservando
-// o histórico quando uma área é arquivada (soft-delete via excluidoEm).
+// Entidades que referenciam uma área (Caso, ProjetoModelo, Lead, Campanha) guardam
+// a CHAVE (slug) como String? — sem FK rígida, preservando o histórico quando uma
+// área é arquivada (soft-delete via excluidoEm).
 model AreaDireito {
   id         Int       @id @default(autoincrement())
   chave      String    @unique // slug estável (ex.: 'trab', 'soc', 'trib')

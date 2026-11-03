@@ -74,6 +74,7 @@ export function NovoLancamentoModal({
   initialDir = "in",
   options,
   lockCliente = null,
+  lockCaso = null,
 }: {
   onClose: () => void
   onSaved: () => void
@@ -82,13 +83,15 @@ export function NovoLancamentoModal({
   options: LancOptions
   /** When set, every save is hard-linked to this cliente (used by the cliente-scoped ledger). */
   lockCliente?: { id: number; nome: string } | null
+  /** When set, every save is hard-linked to this caso (used by the caso page ledger) — also for saídas (custas). */
+  lockCaso?: { id: number; titulo: string } | null
 }) {
   const isEdit = !!edit
   const [dir, setDir] = useState<LancDir>(edit ? edit.dir : initialDir)
   const [desc, setDesc] = useState(edit ? edit.desc : "")
   const [cat, setCat] = useState(edit?.cat ?? options.cats[0] ?? "")
   const [party, setParty] = useState(edit?.party ?? (lockCliente?.nome ?? ""))
-  const [caso, setCaso] = useState(edit?.caso ?? "")
+  const [caso, setCaso] = useState(edit?.caso ?? lockCaso?.titulo ?? "")
   const [contaId, setContaId] = useState<number | null>(edit?.contaId ?? null)
   const [valor, setValor] = useState(edit ? (edit.valorCents / 100).toFixed(2).replace(".", ",") : "")
   const [venc, setVenc] = useState(edit?.venc?.slice(0, 10) ?? todayISO())
@@ -130,9 +133,10 @@ export function NovoLancamentoModal({
       venc,
       cat: cat || null,
       party: clienteLocked ? lockCliente.nome : party.trim() || null,
-      caso: dir === "in" ? caso.trim() || null : null,
+      caso: lockCaso ? lockCaso.titulo : dir === "in" ? caso.trim() || null : null,
       contaId,
       clienteId: lockCliente?.id ?? null,
+      casoId: lockCaso?.id ?? null,
       pago,
       pagoData: pago ? pagoData : null,
       modo,
@@ -224,7 +228,12 @@ export function NovoLancamentoModal({
             </div>
           </div>
 
-          {dir === "in" && (
+          {lockCaso ? (
+            <div className={c.field}>
+              <div className={c.fieldLabel}><span className={c.fieldLabelText}>Caso vinculado</span></div>
+              <input className={c.input} value={lockCaso.titulo} disabled title="Vinculado a este caso" style={{ opacity: 0.7, cursor: "not-allowed" }} />
+            </div>
+          ) : dir === "in" && (
             <div className={c.field}>
               <div className={c.fieldLabel}><span className={c.fieldLabelText}>Caso vinculado</span><span className={c.fieldHint}>opcional</span></div>
               <CasoCombo value={caso} onChange={setCaso} options={options.casos} />

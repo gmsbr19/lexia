@@ -1,3 +1,4 @@
+import Link from "next/link"
 import { AlertTriangle, Scale } from "lucide-react"
 import { scrollArea } from "@/components/documents/page/documents-page.css"
 import {
@@ -67,7 +68,11 @@ export async function CasosSemFeeTab() {
               ) : (
                 casos.map((c) => (
                   <tr key={c.id} className={tableRow}>
-                    <td className={documentCell}>{c.titulo}</td>
+                    <td className={documentCell}>
+                      <Link href={`/casos/${c.id}`} style={{ color: "inherit", textDecoration: "none" }} title="Abrir o caso">
+                        {c.titulo}
+                      </Link>
+                    </td>
                     <td className={documentCell}>{c.cliente ?? "—"}</td>
                     <td className={documentCell}>
                       <StatusPill

@@ -3,6 +3,7 @@
 // excluded, money is integer centavos, "vencido" is relative to the real today.
 import { prisma } from "@/lib/db"
 import { getCobrancaCliente } from "./cobranca"
+import { getInformacoes } from "@/lib/informacoes/queries"
 import { getDocumentos } from "@/lib/documentos/queries"
 import { listEventos } from "@/lib/agenda/queries"
 import {
@@ -49,7 +50,7 @@ export async function getClienteDetail(id: number): Promise<ClienteDetail | null
   })
   if (!cliente) return null
 
-  const [lancRows, contratos, casoRows, tarefaRows, eventos, documentos, cobranca, cats, clienteOpts, fornecedores, contas] = await Promise.all([
+  const [lancRows, contratos, casoRows, tarefaRows, eventos, documentos, cobranca, cats, clienteOpts, fornecedores, contas, notas] = await Promise.all([
     prisma.lancamento.findMany({
       where: { clienteId: id, isAnomalia: false },
       select: {
@@ -104,14 +105,23 @@ export async function getClienteDetail(id: number): Promise<ClienteDetail | null
       orderBy: { titulo: "asc" },
     }),
     prisma.tarefa.findMany({
-      where: { clienteId: id },
+      // cliente efetivo (regras.ts clienteEfetivo): o do caso vivo, se houver;
+      // senão o próprio da tarefa. Uma tarefa com cliente próprio X num caso do
+      // cliente Y pertence a Y — não aparece na ficha de X.
+      where: {
+        OR: [
+          { caso: { clientePrincipalId: id, excluidoEm: null } },
+          {
+            clienteId: id,
+            OR: [{ casoId: null }, { caso: { clientePrincipalId: null } }, { caso: { excluidoEm: { not: null } } }],
+          },
+        ],
+      },
       select: {
         id: true,
         titulo: true,
         status: true,
-        prio: true,
-        data: true,
-        hora: true,
+        prazoFatal: true,
         prazo: true,
         responsavelId: true,
       },
@@ -124,6 +134,7 @@ export async function getClienteDetail(id: number): Promise<ClienteDetail | null
     getClienteOptions(),
     getFornecedorOptions(),
     getContaOptions(),
+    getInformacoes({ tipo: "cliente", id }),
   ])
 
   const header: ClienteHeader = {
@@ -193,10 +204,8 @@ export async function getClienteDetail(id: number): Promise<ClienteDetail | null
     id: r.id,
     titulo: r.titulo,
     status: r.status,
-    prio: r.prio,
-    data: isoDate(r.data),
-    hora: r.hora,
-    prazo: isoDate(r.prazo),
+    prazoFatal: r.prazoFatal,
+    prazo: isoDate(r.prazo) ?? "",
     responsavelId: r.responsavelId,
   }))
 
@@ -221,6 +230,7 @@ export async function getClienteDetail(id: number): Promise<ClienteDetail | null
     eventos,
     documentos,
     anotacoes: cobranca.anotacoes,
+    notas,
     cobranca: cobranca.estado,
     lancOptions: { cats, clientes: clienteOpts.map((c) => c.nome), fornecedores, contas, casos: casoRows.map((c) => c.titulo) },
   }

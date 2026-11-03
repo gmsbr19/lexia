@@ -4,6 +4,7 @@ import { compactarHistorico } from "@/lib/lexia/agent/cache"
 import { decidirModelo } from "@/lib/lexia/agent/router"
 import { perguntarSchema } from "@/lib/lexia/agent/tools/perguntar"
 import { validarRota } from "@/lib/lexia/agent/tools/navegacao"
+import { chaveDosIds } from "@/lib/lexia/agent/tools/tarefas"
 import { TOOLS, TOOLS_BY_NAME, toApiTools } from "@/lib/lexia/agent/registry"
 import { deveAutoExecutar } from "@/lib/lexia/agent/auto"
 import { acaoDecisaoSchema } from "@/lib/lexia/schemas"
@@ -264,13 +265,17 @@ describe("registry — deterministic, valid tool schemas", () => {
     expect(pergunta.length).toBe(all.length - mutNames.size)
   })
 
-  it("processosHabilitado=false remove por inteiro as ferramentas de Casos & Processos", () => {
+  it("processosHabilitado=false remove as ferramentas de Processos, mas mantém as de Casos", () => {
     const on = new Set(toApiTools("admin").map((t) => t.name))
     const off = new Set(toApiTools("admin", "agente", false, false).map((t) => t.name))
-    const PROCESSOS_SAMPLE = ["listar_casos", "criar_caso", "listar_processos", "criar_processo", "listar_prazos", "cumprir_prazo"]
+    const PROCESSOS_SAMPLE = ["listar_processos", "criar_processo", "listar_prazos", "cumprir_prazo"]
     for (const n of PROCESSOS_SAMPLE) {
       expect(on.has(n), n).toBe(true)
       expect(off.has(n), n).toBe(false)
+    }
+    // o caso (cliente/contrato/honorários) independe do módulo Processos
+    for (const n of ["listar_casos", "detalhe_caso", "criar_caso", "editar_caso", "excluir_caso"]) {
+      expect(off.has(n), n).toBe(true)
     }
     // ferramentas de outros módulos continuam disponíveis
     expect(off.has("buscar")).toBe(true)
@@ -280,27 +285,19 @@ describe("registry — deterministic, valid tool schemas", () => {
     expect(toApiTools("admin").length).toBe(on.size)
   })
 
-  it("expõe as tools de projetos e gateia a escrita (sócio/advogado), mantendo a leitura aberta", () => {
+  it("modelos, projetos internos e montagem de projeto: leitura aberta, escrita só sócio/advogado", () => {
     const nomes = (role: string) => new Set(toApiTools(role).map((t) => t.name))
     // leitura disponível para todos (inclusive estagiário/staff)
     for (const role of ["estagiario", "staff", "advogado", "socio", "admin"]) {
+      expect(nomes(role).has("listar_modelos"), role).toBe(true)
+      expect(nomes(role).has("tarefas_do_caso"), role).toBe(true)
       expect(nomes(role).has("listar_projetos"), role).toBe(true)
-      expect(nomes(role).has("listar_templates_projeto"), role).toBe(true)
     }
-    // criar/editar/excluir projeto + CRUD de seção + instanciar: só sócio/advogado (+ admin implícito)
-    const ESCRITA = [
-      "criar_projeto",
-      "criar_estrutura_projetos",
-      "editar_projeto",
-      "excluir_projeto",
-      "criar_secao",
-      "criar_secoes_lote",
-      "editar_secao",
-      "excluir_secao",
-      "reordenar_secoes",
-      "instanciar_template_projeto",
-    ]
-    for (const n of ESCRITA) {
+    // a montagem antiga por caso virou a montagem por projeto (caso OU interno)
+    expect(TOOLS_BY_NAME.has("criar_estrutura_caso")).toBe(false)
+    for (const n of ["criar_projeto", "editar_projeto", "criar_estrutura_projeto"]) expect(TOOLS_BY_NAME.get(n)?.kind, n).toBe("mutation")
+    // criar/editar projeto, aplicar modelo e montar estrutura: só sócio/advogado (+ admin implícito)
+    for (const n of ["aplicar_modelo", "criar_estrutura_projeto", "criar_projeto", "editar_projeto"]) {
       expect(nomes("estagiario").has(n)).toBe(false)
       expect(nomes("staff").has(n)).toBe(false)
       expect(nomes("financeiro").has(n)).toBe(false)
@@ -308,35 +305,56 @@ describe("registry — deterministic, valid tool schemas", () => {
     }
   })
 
-  it("as tools de LOTE existem, são mutações e criar_tarefas_lote fica aberta a toda a equipe", () => {
-    expect(TOOLS_BY_NAME.get("criar_tarefas_lote")?.kind).toBe("mutation")
-    expect(TOOLS_BY_NAME.get("criar_secoes_lote")?.kind).toBe("mutation")
-    // criar_tarefas_lote não tem gate de papel (igual a criar_tarefa) → todos veem
+  it("informações fixadas: ler e fixar abertos a toda a equipe; fixar pede confirmação; some no modo pergunta", () => {
+    const nomes = (role: string, mode?: "agente" | "pergunta") => new Set(toApiTools(role, mode).map((t) => t.name))
+    expect(TOOLS_BY_NAME.get("informacoes_fixadas")?.kind).toBe("readonly")
+    expect(TOOLS_BY_NAME.get("fixar_informacao")?.kind).toBe("mutation")
+    for (const role of ["estagiario", "staff", "financeiro", "advogado", "socio", "admin"]) {
+      expect(nomes(role).has("informacoes_fixadas"), role).toBe(true)
+      expect(nomes(role).has("fixar_informacao"), role).toBe(true)
+    }
+    expect(nomes("advogado", "pergunta").has("informacoes_fixadas")).toBe(true)
+    expect(nomes("advogado", "pergunta").has("fixar_informacao")).toBe(false)
+  })
+
+  it("tarefa: projeto = casoId (caso do cliente) OU projetoId (interno), nunca os dois", () => {
+    expect(chaveDosIds(12, null)).toBe("c12")
+    expect(chaveDosIds(undefined, 5)).toBe("p5")
+    expect(chaveDosIds(null, null)).toBeNull()
+    expect(() => chaveDosIds(1, 2)).toThrow()
+  })
+
+  it("as tools de tarefa (lote, concluir, ligar) são mutações abertas a toda a equipe", () => {
+    for (const n of ["criar_tarefas_lote", "concluir_tarefa", "ligar_tarefas", "desligar_tarefas", "editar_tarefa"]) {
+      expect(TOOLS_BY_NAME.get(n)?.kind, n).toBe("mutation")
+    }
+    // sem gate de papel: qualquer usuário edita tarefas do escritório
     for (const role of ["estagiario", "staff", "advogado", "socio", "admin"]) {
-      expect(new Set(toApiTools(role).map((t) => t.name)).has("criar_tarefas_lote"), role).toBe(true)
+      const nomes = new Set(toApiTools(role).map((t) => t.name))
+      for (const n of ["criar_tarefas_lote", "concluir_tarefa", "ligar_tarefas"]) expect(nomes.has(n), `${role}:${n}`).toBe(true)
     }
   })
 })
 
 describe("deveAutoExecutar — política do modo automático (sem confirmar cada criação)", () => {
   it("auto ligado + modo agente: TODA criação/edição executa sem confirmação (várias por vez)", () => {
-    for (const n of ["criar_projeto", "criar_estrutura_projetos", "criar_secao", "criar_secoes_lote", "criar_tarefa", "criar_tarefas_lote", "editar_projeto", "reordenar_secoes", "instanciar_template_projeto"]) {
+    for (const n of ["criar_caso", "criar_projeto", "criar_estrutura_projeto", "aplicar_modelo", "criar_tarefa", "criar_tarefas_lote", "editar_caso", "concluir_tarefa", "ligar_tarefas"]) {
       expect(deveAutoExecutar(true, "agente", n), n).toBe(true)
     }
   })
 
   it("auto DESLIGADO: sempre pede confirmação", () => {
-    expect(deveAutoExecutar(false, "agente", "criar_secao")).toBe(false)
+    expect(deveAutoExecutar(false, "agente", "criar_caso")).toBe(false)
     expect(deveAutoExecutar(undefined, "agente", "criar_tarefa")).toBe(false)
   })
 
   it("modo plano: confirma mesmo com auto ligado (prometeu aprovação)", () => {
-    expect(deveAutoExecutar(true, "plano", "criar_projeto")).toBe(false)
+    expect(deveAutoExecutar(true, "plano", "criar_caso")).toBe(false)
   })
 
   it("ações destrutivas (excluir/anonimizar) confirmam mesmo com auto ligado", () => {
-    expect(deveAutoExecutar(true, "agente", "excluir_projeto")).toBe(false)
-    expect(deveAutoExecutar(true, "agente", "excluir_secao")).toBe(false)
+    expect(deveAutoExecutar(true, "agente", "excluir_caso")).toBe(false)
+    expect(deveAutoExecutar(true, "agente", "excluir_tarefa")).toBe(false)
     expect(deveAutoExecutar(true, "agente", "anonimizar_cliente")).toBe(false)
   })
 })

@@ -1,8 +1,10 @@
-// Casos — view-model shapes for the caso detail modal (processo + financeiro +
-// rateio + vínculos). Reuses the finance/agenda row types.
+// Casos — view-model shapes for the casos list + caso page (identidade +
+// financeiro + rateio + vínculos). Reuses the finance/agenda row types.
 import type { EventoRow } from "@/lib/agenda/types"
 import type { CasoResponsavelInfo, CasoTipo, HonorarioRow, LancamentoRow } from "@/lib/finance/types"
 import type { ProcessoMini } from "@/lib/processos/types"
+import type { LancOptions } from "@/components/financeiro/interativo/NovoLancamentoModal"
+import type { InformacaoRow } from "@/lib/informacoes/core"
 
 export interface CasoDocumentoRow {
   id: number
@@ -31,10 +33,8 @@ export interface CasoTarefaRow {
   id: number
   titulo: string
   status: string
-  prio: number
-  data: string | null // ISO date
-  hora: string | null
-  prazo: string | null // ISO date
+  prazoFatal: boolean
+  prazo: string // ISO date (toda tarefa tem prazo)
   responsavelId: number | null
 }
 
@@ -45,7 +45,40 @@ export interface CasoFinanceiro {
   lancamentos: LancamentoRow[]
 }
 
-/** Single server fetch powering the caso modal. */
+/** Row da lista /casos (grade). Financeiro zerado para quem não vê finanças. */
+export interface CasoPageRow {
+  id: number
+  titulo: string
+  nomeCurto: string | null // etiqueta no quadro de Tarefas
+  prazo: string | null // prazo final do trabalho (ISO date)
+  tarefasTotal: number
+  tarefasFeitas: number
+  tarefasAbertas: number
+  tarefasVencidas: number
+  tipo: CasoTipo
+  area: string | null
+  status: string | null
+  clienteId: number | null
+  cliente: string | null
+  responsavelUserId: number | null
+  responsavel: string | null // User estruturado (nome) — senão o rótulo livre do Astrea
+  contratoId: number | null
+  contrato: string | null // título do contrato (ou "Contrato de dd/mm/aaaa")
+  numProcessos: number
+  honorariosCents: number // soma dos fee-lançamentos (entrada/honorário)
+  recebidoCents: number
+  abertoCents: number
+  dataCriacao: string | null // ISO date
+  ultimaMovimentacao: string | null // ISO date
+}
+
+export interface CasoContratoInfo {
+  id: number
+  titulo: string | null
+  dataFechamento: string | null // ISO date
+}
+
+/** Single server fetch powering the caso page (/casos/[id]). */
 export interface CasoDetail {
   id: number
   titulo: string
@@ -57,16 +90,15 @@ export interface CasoDetail {
   responsavelUser: string | null
   clienteId: number | null
   cliente: string | null
-  // dados do processo (editable)
-  numeroProcesso: string | null
-  tribunal: string | null
-  vara: string | null
-  instancia: string | null
-  tipoAcao: string | null
-  valorCausaCents: number | null
-  dataDistribuicao: string | null // ISO date
+  contrato: CasoContratoInfo | null
   dataCriacao: string | null // ISO date
   ultimaMovimentacao: string | null // ISO date
+  // etiqueta no quadro de Tarefas (o caso é o "projeto" do quadro)
+  nomeCurto: string | null
+  cor: string | null
+  prazo: string | null // ISO date
+  descricao: string | null
+  modeloOrigemId: number | null
   // rateio entre sócios
   responsaveis: CasoResponsavelInfo[]
   financeiro: CasoFinanceiro
@@ -74,4 +106,11 @@ export interface CasoDetail {
   eventos: EventoRow[]
   processos: ProcessoMini[]
   documentos: CasoDocumentoRow[]
+  /** Notas do caso (as fixadas aparecem nas tarefas do caso). */
+  anotacoes: InformacaoRow[]
+  /** Informações fixadas do cliente do caso (também aparecem nas tarefas). */
+  fixadasCliente: InformacaoRow[]
+  /** Opções do formulário de lançamento (só p/ quem vê o Financeiro; a rota preenche). */
+  lancOptions?: LancOptions
 }
+

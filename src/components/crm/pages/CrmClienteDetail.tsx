@@ -1,7 +1,8 @@
 "use client"
 
 // LexIA · CRM — Cliente detail page: header + 6 tabs, wired to the real backend.
-// Fetches /api/clientes/[id] on mount; edit mode PATCHes via patchCliente.
+// Fetches /api/clientes/[id] on mount; edit mode PATCHes via patchCliente. Notas
+// fixadas ("Fixadas", acima das abas) aparecem em todas as tarefas do cliente.
 import { useCallback, useEffect, useState, type ReactNode } from "react"
 import {
   CrmAvatar,
@@ -11,7 +12,7 @@ import {
   CrmContratoStatus,
   CrmEmpty,
   CrmLink,
-  CrmPrioTag,
+  CrmPrazoFatalTag,
   CrmRow,
   CrmTipoBadge,
   CRM_EVT,
@@ -30,9 +31,11 @@ import {
   useCrmToast,
 } from "../crm-kit"
 import { Icon } from "../crm-icons"
-import { ProcSemaforo, urgenciaCalc } from "@/components/processos/proc-kit"
+import { CrmInfoLine, CrmMoneyStat, CrmProcessoSubRow, CrmStat } from "./crm-detail-kit"
+import { CrmCasoFormModal } from "./CrmCasoForm"
+import { CrmFixadasSection, CrmNotaComposer, CrmNotaRow } from "./CrmFixadas"
+import { PODE_CRIAR_CASO } from "@/lib/casos/status"
 import {
-  addAnotacaoCliente,
   deleteAnotacaoCliente,
   fetchClienteDetail,
   pagarLancamento,
@@ -55,7 +58,6 @@ import type {
   CrmNav,
   EventoRow,
   LancamentoRow,
-  ProcessoMini,
   Role,
 } from "../crm-types"
 
@@ -75,75 +77,8 @@ type ClienteModal =
   | { type: "tarefa"; tarefa?: ClienteTarefaRow | null }
   | { type: "evento"; evento?: EventoRow | null }
   | { type: "documento" }
+  | { type: "caso" }
   | null
-
-// ───────────────────────── small atoms (from the design) ─────────────────────────
-function CrmStat({ label, value, tone }: { label: string; value: ReactNode; tone?: "pos" | "neg" | null }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-      <span style={{ fontSize: 11, color: "var(--text-subtle)", fontWeight: 500 }}>{label}</span>
-      <span
-        style={{
-          fontSize: 16, fontWeight: 500, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums",
-          color: tone === "neg" ? "var(--fin-neg,#C0492F)" : tone === "pos" ? "var(--fin-pos,#2E9E5B)" : "var(--text)",
-        }}
-      >
-        {value}
-      </span>
-    </div>
-  )
-}
-
-function CrmMoneyStat({ label, cents, tone }: { label: string; cents: number; tone?: "pos" | "neg" | null }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-      <span style={{ fontSize: 11, color: "var(--text-subtle)", fontWeight: 500 }}>{label}</span>
-      <span style={{ fontSize: 16, fontWeight: 500, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>
-        <FxMoney cents={cents} size={16} plain={tone == null} dir={tone === "neg" ? "out" : "in"} />
-      </span>
-    </div>
-  )
-}
-
-function CrmInfoLine({ icon, children }: { icon: string; children: ReactNode }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-muted)" }}>
-      <Icon name={icon} size={14} style={{ color: "var(--text-subtle)", flexShrink: 0 }} />
-      <span>{children}</span>
-    </div>
-  )
-}
-
-// ───────────────────────── processo sub-row (casos & processos tab) ─────────────────────────
-function CrmProcessoSubRow({ p, hoje, onClick }: { p: ProcessoMini; hoje: string; onClick: () => void }) {
-  const foro = [p.tribunal, p.vara].filter(Boolean).join(" · ")
-  return (
-    <CrmRow
-      onClick={onClick}
-      style={{
-        display: "flex", alignItems: "center", gap: 12, padding: "10px 16px 10px 40px",
-        borderTop: "1px solid var(--border)", background: "var(--bg-soft)",
-      }}
-    >
-      <Icon name="cornerDownRight" size={14} style={{ color: "var(--text-subtle)", flexShrink: 0 }} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12.5, fontWeight: 500, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {p.numeroCnj || "Sem CNJ"}
-        </div>
-        <div style={{ fontSize: 11.5, color: "var(--text-subtle)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {[p.classe, foro].filter(Boolean).join(" · ") || "—"}
-        </div>
-      </div>
-      <CrmBadge tone="neutral">{p.status}</CrmBadge>
-      {p.proximaDataFatal != null ? (
-        <ProcSemaforo urgencia={urgenciaCalc(p.proximaDataFatal, null, hoje)} />
-      ) : (
-        <span style={{ fontSize: 11.5, color: "var(--text-subtle)" }}>sem prazo</span>
-      )}
-      <Icon name="chevronRight" size={15} style={{ color: "var(--text-subtle)", flexShrink: 0 }} />
-    </CrmRow>
-  )
-}
 
 // ───────────────────────── lançamento row (financeiro tab) ─────────────────────────
 function CrmLancRow({
@@ -222,7 +157,6 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
   const [fUf, setFUf] = useState("")
   const [fOrigem, setFOrigem] = useState("")
   // cobrança & anotações tab
-  const [noteText, setNoteText] = useState("")
   const [cobMotivo, setCobMotivo] = useState("")
   const [cobDias, setCobDias] = useState(30)
   const [cobBusy, setCobBusy] = useState(false)
@@ -296,22 +230,6 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
     [clienteId, load, onRefresh, toast],
   )
 
-  const addNote = useCallback(async () => {
-    const t = noteText.trim()
-    if (!t) return
-    setCobBusy(true)
-    try {
-      await addAnotacaoCliente(clienteId, { conteudo: t })
-      setNoteText("")
-      await load()
-      toast("Anotação adicionada")
-    } catch (err) {
-      toast(err instanceof Error ? err.message : "Erro", { tone: "neg", icon: "alertTriangle" })
-    } finally {
-      setCobBusy(false)
-    }
-  }, [clienteId, noteText, load, toast])
-
   const removeNote = useCallback(
     async (anotacaoId: number) => {
       try {
@@ -373,13 +291,17 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
     { id: "financeiro", label: "Financeiro", icon: "wallet", badge: detail.lancamentos.length || null },
     { id: "cobranca", label: "Cobrança & notas", icon: "handshake", badge: detail.anotacoes.length || null },
     { id: "tarefas", label: "Tarefas", icon: "listChecks", badge: detail.tarefas.length || null },
-    ...(processosOk ? [{ id: "casos", label: "Casos & Processos", icon: "briefcase", badge: detail.casos.length || null } as FxTabDef] : []),
+    { id: "casos", label: "Casos", icon: "briefcase", badge: detail.casos.length || null },
     { id: "contratos", label: "Contratos", icon: "receipt", badge: detail.contratos.length || null },
     { id: "eventos", label: "Eventos", icon: "calendar", badge: detail.eventos.length || null },
     { id: "documentos", label: "Documentos", icon: "fileText", badge: detail.documentos.length || null },
   ]
 
   const sectionCard = (children: ReactNode) => <div className="card" style={{ overflow: "hidden" }}>{children}</div>
+  // notas livres como informações (fixar/editar/excluir); excluir: autor ou admin/sócio
+  const quem = { id: dataset.userId, role }
+  const notaPorId = new Map(detail.notas.map((n) => [n.id, n]))
+  const gestao = role === "admin" || role === "socio"
 
   const lancSorted = [...detail.lancamentos].sort((a, b) => (a.venc ?? "").localeCompare(b.venc ?? ""))
   const hoje = new Date().toISOString().slice(0, 10)
@@ -447,6 +369,13 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
           <CrmMoneyStat label="A receber" cents={r.aReceberCents} tone={null} />
           <CrmMoneyStat label="Vencido" cents={r.vencidoCents} tone={r.vencidoCents ? "neg" : null} />
         </div>
+
+        <CrmFixadasSection
+          itens={detail.notas.filter((n) => n.fixado)}
+          sub="Aparecem em todas as tarefas deste cliente"
+          quem={quem}
+          onChanged={() => void load()}
+        />
 
         {edit && (
           <div className="card" style={{ padding: 18, marginBottom: 18, background: "var(--bg-soft)" }}>
@@ -563,29 +492,19 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
             </div>
 
             {/* note composer */}
-            <FxCardTitle title="Anotações" sub="Contexto que a LexIA lê sobre este cliente" />
-            <div className="card" style={{ padding: 14, marginBottom: 14 }}>
-              <textarea
-                value={noteText}
-                onChange={(e) => setNoteText(e.target.value)}
-                placeholder="Registre um combinado, negociação ou observação…"
-                rows={2}
-                style={{
-                  width: "100%", resize: "vertical", borderRadius: 8, border: "1px solid var(--border)",
-                  background: "var(--bg-soft)", color: "var(--text)", padding: "10px 12px", fontSize: 13, fontFamily: "inherit",
-                }}
-              />
-              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
-                <button className="btn btn-secondary" disabled={cobBusy || !noteText.trim()} onClick={addNote}>
-                  <Icon name="plus" size={14} />Adicionar anotação
-                </button>
-              </div>
-            </div>
+            <FxCardTitle title="Anotações" sub="Contexto que a LexIA lê sobre este cliente · as fixadas aparecem em todas as tarefas dele" />
+            <CrmNotaComposer
+              ancora={{ tipo: "cliente", id: clienteId }}
+              placeholder="Registre um combinado, negociação ou observação…"
+              onCreated={() => void load()}
+            />
 
             {/* timeline */}
             {detail.anotacoes.length === 0
               ? sectionCard(<CrmEmpty icon="handshake" title="Sem anotações" sub="Adicione contexto que a LexIA usará ao analisar o cliente." />)
               : sectionCard(detail.anotacoes.map((a, i) => {
+                const nota = a.tipo === "nota" ? notaPorId.get(a.id) : undefined
+                if (nota) return <CrmNotaRow key={a.id} info={nota} quem={quem} onChanged={() => void load()} first={i === 0} />
                 const dir = a.tipo === "cobranca"
                 const tag = a.acao === "pausar" ? "Pausar cobrança" : a.acao === "suspender" ? "Não cobrar" : a.acao === "retomar" ? "Retomar cobrança" : null
                 return (
@@ -602,9 +521,11 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
                       <div style={{ fontSize: 13, color: "var(--text)", marginTop: tag ? 5 : 0, whiteSpace: "pre-wrap" }}>{a.conteudo}</div>
                       <div style={{ fontSize: 11.5, color: "var(--text-subtle)", marginTop: 4 }}>{a.autor} · {crmDate(a.createdAt)}</div>
                     </div>
-                    <button className="btn btn-ghost" onClick={() => removeNote(a.id)} title="Remover" style={{ width: 28, height: 28, padding: 0, flexShrink: 0 }}>
-                      <Icon name="x" size={14} />
-                    </button>
+                    {(gestao || a.autor === dataset.userEmail) && (
+                      <button className="btn btn-ghost" onClick={() => removeNote(a.id)} title="Remover" style={{ width: 28, height: 28, padding: 0, flexShrink: 0 }}>
+                        <Icon name="x" size={14} />
+                      </button>
+                    )}
                   </div>
                 )
               }))}
@@ -629,7 +550,7 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
                 const resp = dataset.socios.find((s) => s.id === t.responsavelId)?.nome
                 return (
                   <CrmRow key={t.id} onClick={() => setModal({ type: "tarefa", tarefa: t })} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderTop: i ? "1px solid var(--border)" : "none" }}>
-                    <CrmPrioTag p={t.prio} />
+                    {t.prazoFatal && <CrmPrazoFatalTag />}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{t.titulo}</div>
                       <div style={{ fontSize: 12, color: "var(--text-subtle)" }}>Prazo {crmDate(t.prazo)}{resp ? ` · ${resp}` : ""}</div>
@@ -642,11 +563,21 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
           </>
         )}
 
-        {tab === "casos" && processosOk && (
+        {tab === "casos" && (
           <>
-            <FxCardTitle title="Casos & Processos" sub={`${detail.casos.length} caso(s)`} />
+            <FxCardTitle
+              title="Casos"
+              sub={`${detail.casos.length} caso(s) · clique para abrir a página do caso (honorários, contrato, processos)`}
+              right={
+                PODE_CRIAR_CASO.includes(role) && (
+                  <button className="btn btn-secondary" onClick={() => setModal({ type: "caso" })} style={{ height: 32 }}>
+                    <Icon name="plus" size={14} />Novo caso
+                  </button>
+                )
+              }
+            />
             {detail.casos.length === 0
-              ? sectionCard(<CrmEmpty icon="briefcase" title="Sem casos" />)
+              ? sectionCard(<CrmEmpty icon="briefcase" title="Sem casos" sub="Crie o caso deste contato para vincular honorários e contrato." />)
               : sectionCard(detail.casos.map((k, i) => (
                 <div key={k.id}>
                   <CrmRow onClick={() => nav.openCaso(k.id)} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 16px", borderTop: i ? "1px solid var(--border)" : "none" }}>
@@ -662,7 +593,7 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
                     </span>
                     <Icon name="chevronRight" size={16} style={{ color: "var(--text-subtle)" }} />
                   </CrmRow>
-                  {k.processos.length > 0 && k.processos.map((p) => (
+                  {processosOk && k.processos.length > 0 && k.processos.map((p) => (
                     <CrmProcessoSubRow key={p.id} p={p} hoje={hoje} onClick={() => nav.openProcesso(p.id)} />
                   ))}
                 </div>
@@ -783,6 +714,14 @@ export function CrmClienteDetail({ clienteId, tab, onTab, role, dataset, nav, on
       )}
       {modal?.type === "documento" && (
         <CrmDocumentoModal clienteId={clienteId} onClose={() => setModal(null)} onSaved={() => { void load(); onRefresh() }} />
+      )}
+      {modal?.type === "caso" && (
+        <CrmCasoFormModal
+          dataset={dataset}
+          clienteInicial={{ id: clienteId, nome: detail.header.nome }}
+          onClose={() => setModal(null)}
+          onSaved={(id) => { setModal(null); onRefresh(); nav.openCaso(id) }}
+        />
       )}
     </div>
   )

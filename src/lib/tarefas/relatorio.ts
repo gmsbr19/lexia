@@ -26,9 +26,10 @@ const TZ = "America/Sao_Paulo"
 const ROLES_GESTOR = new Set(["socio", "admin"])
 const MAX_LINHAS_EQUIPE = 30 // corta o e-mail da equipe p/ não estourar
 
+// Meio-dia UTC — mesma convenção com que o prazo das tarefas é gravado (tarefas/_input.ts toDate).
 function noon(isoDate: string): Date {
   const [y, m, d] = isoDate.split("-").map(Number)
-  return new Date(y, m - 1, d, 12, 0, 0)
+  return new Date(Date.UTC(y, m - 1, d, 12, 0, 0))
 }
 
 /** Hora do relógio de parede São Paulo (0–23). */
@@ -43,8 +44,20 @@ export interface TarefaLinha {
   id: number
   titulo: string
   prazoISO: string
-  contexto?: string | null // cliente ou projeto
+  contexto?: string | null // cliente, caso ou projeto interno
   responsavelNome?: string | null // usado só na seção de equipe
+}
+
+/** Contexto da linha: o cliente da tarefa, senão o caso, senão o projeto interno (vivos). */
+function contextoDe(t: {
+  cliente: { nome: string } | null
+  caso: { titulo: string; excluidoEm: Date | null } | null
+  projetoRef: { nome: string; excluidoEm: Date | null; casoId: number | null } | null
+}): string | null {
+  if (t.cliente) return t.cliente.nome
+  if (t.caso && !t.caso.excluidoEm) return t.caso.titulo
+  if (t.projetoRef && !t.projetoRef.excluidoEm && t.projetoRef.casoId == null) return t.projetoRef.nome
+  return null
 }
 
 export interface RelatorioDados {
@@ -215,7 +228,7 @@ export async function enviarRelatoriosDiarios(opts?: EnviarRelatoriosOpts): Prom
   const pendentes = await prisma.tarefa.findMany({
     where: {
       done: false,
-      prazo: { not: null, lte: noon(hoje) },
+      prazo: { lte: noon(hoje) },
       responsavel: { email: { in: emails } },
     },
     select: {
@@ -224,18 +237,19 @@ export async function enviarRelatoriosDiarios(opts?: EnviarRelatoriosOpts): Prom
       prazo: true,
       responsavel: { select: { email: true } },
       cliente: { select: { nome: true } },
-      projetoRef: { select: { nome: true } },
+      caso: { select: { titulo: true, excluidoEm: true } },
+      projetoRef: { select: { nome: true, excluidoEm: true, casoId: true } },
     },
   })
   const porEmail = new Map<string, TarefaLinha[]>()
   for (const t of pendentes) {
     const email = t.responsavel?.email
-    if (!email || !t.prazo) continue
+    if (!email) continue
     const linha: TarefaLinha = {
       id: t.id,
       titulo: t.titulo,
       prazoISO: toISODate(t.prazo),
-      contexto: t.cliente?.nome ?? t.projetoRef?.nome ?? null,
+      contexto: contextoDe(t),
     }
     const arr = porEmail.get(email)
     if (arr) arr.push(linha)
@@ -246,7 +260,7 @@ export async function enviarRelatoriosDiarios(opts?: EnviarRelatoriosOpts): Prom
   let equipe: TarefaLinha[] = []
   if (destinatarios.some((d) => d.gestor)) {
     const atrasadasEquipe = await prisma.tarefa.findMany({
-      where: { done: false, prazo: { not: null, lt: noon(hoje) }, responsavelId: { not: null } },
+      where: { done: false, prazo: { lt: noon(hoje) }, responsavelId: { not: null } },
       orderBy: { prazo: "asc" },
       select: {
         id: true,
@@ -254,16 +268,15 @@ export async function enviarRelatoriosDiarios(opts?: EnviarRelatoriosOpts): Prom
         prazo: true,
         responsavel: { select: { nome: true } },
         cliente: { select: { nome: true } },
-        projetoRef: { select: { nome: true } },
+        caso: { select: { titulo: true, excluidoEm: true } },
+        projetoRef: { select: { nome: true, excluidoEm: true, casoId: true } },
       },
     })
-    equipe = atrasadasEquipe
-      .filter((t) => t.prazo)
-      .map((t) => ({
+    equipe = atrasadasEquipe.map((t) => ({
         id: t.id,
         titulo: t.titulo,
-        prazoISO: toISODate(t.prazo as Date),
-        contexto: t.cliente?.nome ?? t.projetoRef?.nome ?? null,
+        prazoISO: toISODate(t.prazo),
+        contexto: contextoDe(t),
         responsavelNome: t.responsavel?.nome ?? null,
       }))
   }

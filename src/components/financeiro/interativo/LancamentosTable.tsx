@@ -190,6 +190,7 @@ export function LancamentosTable({
   options,
   initial,
   lockCliente = null,
+  lockCaso = null,
   onRefresh,
   embedded = false,
 }: {
@@ -198,6 +199,8 @@ export function LancamentosTable({
   initial?: InitialFilter
   /** When set, create/edit hard-links to this cliente (cliente-scoped ledger). */
   lockCliente?: { id: number; nome: string } | null
+  /** When set, create/edit hard-links to this caso (caso-page ledger). */
+  lockCaso?: { id: number; titulo: string } | null
   /** Called after a mutation instead of router.refresh() — used when rows come from a client-side fetch. */
   onRefresh?: () => void
   /** Render inside a normal-flow container (no full-height flex / no bottom-bar report). */
@@ -439,11 +442,11 @@ export function LancamentosTable({
       )}
 
       {editRow && (
-        <NovoLancamentoModal options={options} edit={editRow} lockCliente={lockCliente} onClose={() => setEditRow(null)} onSaved={() => { setEditRow(null); refresh() }} />
+        <NovoLancamentoModal options={options} edit={editRow} lockCliente={lockCliente} lockCaso={lockCaso} onClose={() => setEditRow(null)} onSaved={() => { setEditRow(null); refresh() }} />
       )}
 
       {newOpen && (
-        <NovoLancamentoModal options={options} lockCliente={lockCliente} onClose={() => setNewOpen(false)} onSaved={() => { setNewOpen(false); refresh() }} />
+        <NovoLancamentoModal options={options} lockCliente={lockCliente} lockCaso={lockCaso} onClose={() => setNewOpen(false)} onSaved={() => { setNewOpen(false); refresh() }} />
       )}
     </div>
   )

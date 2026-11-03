@@ -78,9 +78,7 @@ export function linkParaResultado(toolName: string, result: unknown, payload: un
     case "criar_caso":
     case "editar_caso": {
       const id = idDe(result)
-      bruto = id
-        ? { rota: `/processos?view=processos&caso=${id}`, label: "Ver caso" }
-        : { rota: "/processos?view=processos", label: "Ver casos" }
+      bruto = id ? { rota: `/casos/${id}`, label: "Ver caso" } : { rota: "/casos", label: "Ver casos" }
       break
     }
     case "editar_cliente": {
@@ -106,6 +104,19 @@ export function linkParaResultado(toolName: string, result: unknown, payload: un
     case "editar_tarefa": {
       const id = idDe(result)
       bruto = { rota: id ? `/tarefas?tarefa=${id}` : "/tarefas", label: "Ver tarefa" }
+      break
+    }
+    case "criar_estrutura_projeto":
+    case "aplicar_modelo": {
+      // { chave: "c<id>" (caso) | "p<id>" (projeto interno) }
+      const chave = result && typeof result === "object" && "chave" in result ? String((result as { chave: unknown }).chave) : ""
+      const m = /^([cp])(\d+)$/.exec(chave)
+      bruto = m ? { rota: `/tarefas?${m[1] === "c" ? "caso" : "projeto"}=${m[2]}`, label: "Ver no quadro" } : { rota: "/tarefas", label: "Ver no quadro" }
+      break
+    }
+    case "criar_projeto": {
+      const pid = result && typeof result === "object" && "projetoId" in result ? (result as { projetoId: unknown }).projetoId : null
+      bruto = { rota: typeof pid === "number" ? `/tarefas?projeto=${pid}` : "/tarefas?pagina=projetos", label: "Ver no quadro" }
       break
     }
     default:

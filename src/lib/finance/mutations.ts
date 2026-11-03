@@ -252,6 +252,7 @@ export interface NovoLancamentoInput {
   caso?: string | null
   contaId?: number | null // conta que recebeu (in) / pagou (out)
   clienteId?: number | null // explicit cliente link (overrides name resolution — used by the cliente-scoped ledger)
+  casoId?: number | null // explicit caso link (overrides name resolution — used by the caso page ledger)
   tipoHonorario?: string | null // fee bucket (recorrente/parcelado/exito/avista) when dir='in'
   valorLiquidoCents?: number | null
   pago?: boolean
@@ -279,7 +280,15 @@ async function resolveRefs(dir: "in" | "out", cat?: string | null, party?: strin
   }
   let casoId: number | null = null
   if (dir === "in" && caso?.trim()) {
-    casoId = (await prisma.caso.findFirst({ where: { titulo: caso.trim() }, select: { id: true } }))?.id ?? null
+    // Títulos podem se repetir (ex.: casos vindos do quadro de Tarefas): o caso do
+    // MESMO cliente tem preferência; sem cliente resolvido, o mais recente.
+    const doCliente = clienteId
+      ? await prisma.caso.findFirst({ where: { titulo: caso.trim(), excluidoEm: null, clientePrincipalId: clienteId }, select: { id: true } })
+      : null
+    casoId =
+      doCliente?.id ??
+      (await prisma.caso.findFirst({ where: { titulo: caso.trim(), excluidoEm: null }, orderBy: { id: "desc" }, select: { id: true } }))?.id ??
+      null
   }
   return { categoriaId, clienteId, pagoPara, casoId }
 }
@@ -334,7 +343,7 @@ export async function criarLancamentos(input: NovoLancamentoInput) {
         recorrenteParentId: parentId,
         categoriaId: refs.categoriaId,
         clienteId: input.clienteId ?? refs.clienteId,
-        casoId: refs.casoId,
+        casoId: input.casoId ?? refs.casoId,
         contaId: input.contaId ?? null,
         tipoHonorario: input.dir === "in" ? (input.tipoHonorario ?? "avista") : null,
         valorLiquidoCents: input.dir === "in" ? (input.valorLiquidoCents ?? null) : null,
@@ -369,7 +378,7 @@ export async function editarLancamento(id: number, input: NovoLancamentoInput) {
       pagoPara: refs.pagoPara,
       categoriaId: refs.categoriaId,
       clienteId: input.clienteId ?? refs.clienteId,
-      casoId: refs.casoId,
+      casoId: input.casoId ?? refs.casoId,
       contaId: input.contaId ?? null,
       ...(input.tipoHonorario !== undefined ? { tipoHonorario: input.tipoHonorario } : {}),
       ...(input.valorLiquidoCents !== undefined ? { valorLiquidoCents: input.valorLiquidoCents } : {}),

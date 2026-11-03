@@ -31,7 +31,7 @@ export interface ProcTarefa {
   id: number
   titulo: string
   status: string
-  prio: number
+  prazoFatal: boolean
   prazo: string | null // ISO date
   responsavelId: number | null
 }
@@ -96,10 +96,10 @@ export async function getProcessosDataset(): Promise<ProcessosDataset> {
       },
     }),
     prisma.tarefa.findMany({
-      where: { AND: [{ done: false, prazo: { not: null } }, tarefaScope] },
+      where: { AND: [{ done: false }, tarefaScope] },
       orderBy: { prazo: "asc" },
       take: 50,
-      select: { id: true, titulo: true, status: true, prio: true, prazo: true, responsavelId: true },
+      select: { id: true, titulo: true, status: true, prazoFatal: true, prazo: true, responsavelId: true },
     }),
   ])
 
@@ -123,8 +123,8 @@ export async function getProcessosDataset(): Promise<ProcessosDataset> {
     id: t.id,
     titulo: t.titulo,
     status: t.status,
-    prio: t.prio,
-    prazo: t.prazo ? t.prazo.toISOString().slice(0, 10) : null,
+    prazoFatal: t.prazoFatal,
+    prazo: t.prazo.toISOString().slice(0, 10),
     responsavelId: t.responsavelId,
   }))
 

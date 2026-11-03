@@ -27,12 +27,8 @@ export interface GerarNotificacoesResult {
   jaExistiam: number
 }
 
-// Day offsets for Tarefa.reminder labels (sub-day reminders + "Na data do prazo"
-// collapse to 0 — the reminder granularity equals the cron cadence).
-const REMINDER_OFFSET_DIAS: Record<string, number> = { "1 dia antes": 1 }
-
 /**
- * Scan upcoming/overdue prazos, compromissos (eventos), tarefas (prazo + lembrete)
+ * Scan upcoming/overdue prazos, compromissos (eventos), tarefas (prazo)
  * within the configured look-ahead window and create a Notificacao per responsible
  * user. Unassigned items are skipped (no destinatário). Pass `now`/`antecedenciaDias`
  * for tests/manual runs.
@@ -171,17 +167,18 @@ export async function gerarNotificacoes(opts?: { hoje?: string; antecedenciaDias
   const tarefas = await prisma.tarefa.findMany({
     where: {
       done: false,
-      prazo: { not: null, lte: noon(limite) },
+      prazo: { lte: noon(limite) },
       responsavelId: { not: null },
     },
-    select: { id: true, titulo: true, prazo: true, responsavel: { select: { email: true } } },
+    select: { id: true, titulo: true, prazo: true, prazoFatal: true, responsavel: { select: { email: true } } },
   })
   for (const t of tarefas) {
     const email = t.responsavel?.email
-    if (!email || !t.prazo) continue
+    if (!email) continue
     const prazoISO = iso(t.prazo)
-    const prioridade: Prioridade = prazoISO < hoje ? "alta" : "normal"
-    await upsert(email, "tarefa", "tarefa", t.id, prazoISO, `Tarefa "${t.titulo}" — prazo ${prazoISO}`, {
+    const prioridade: Prioridade = prazoISO < hoje || t.prazoFatal ? "alta" : "normal"
+    const rotulo = t.prazoFatal ? "prazo fatal" : "prazo"
+    await upsert(email, "tarefa", "tarefa", t.id, prazoISO, `Tarefa "${t.titulo}" — ${rotulo} ${prazoISO}`, {
       modulo: "tarefas",
       prioridade,
     })
@@ -234,24 +231,6 @@ export async function gerarNotificacoes(opts?: { hoje?: string; antecedenciaDias
     for (const l of leadsAbertos) {
       await avaliarEAplicarPerdaAutomatica(l, porLead.get(l.id) ?? [], followupCfg.regrasPerda)
     }
-  }
-
-  // ── Lembretes de tarefas (Tarefa.reminder) — disparados pela cadência do cron ──
-  // O alvo é a data AGENDADA (`data`) menos o offset do label; idempotente por janela.
-  const tarefasLembrete = await prisma.tarefa.findMany({
-    where: { done: false, reminder: { not: null }, data: { not: null }, responsavelId: { not: null } },
-    select: { id: true, titulo: true, data: true, reminder: true, responsavel: { select: { email: true } } },
-  })
-  for (const t of tarefasLembrete) {
-    const email = t.responsavel?.email
-    if (!email || !t.data || !t.reminder || t.reminder === "Sem lembrete") continue
-    const dataISO = iso(t.data)
-    const offset = REMINDER_OFFSET_DIAS[t.reminder] ?? 0
-    const lembreteISO = addDiasISO(dataISO, -offset)
-    if (hoje < lembreteISO || hoje > dataISO) continue // ainda não é hora, ou a data já passou
-    await upsert(email, "lembrete", "tarefa", t.id, lembreteISO, `Lembrete: "${t.titulo}" em ${dataISO}`, {
-      modulo: "tarefas",
-    })
   }
 
   return { criadas, jaExistiam }

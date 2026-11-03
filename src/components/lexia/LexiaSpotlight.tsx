@@ -181,8 +181,8 @@ export function LexiaSpotlight({ seed = "", page, clienteId, nav, onNavigate, on
       id: `tar-${t.id}`,
       icon: "listChecks" as CrmIconName,
       title: t.titulo,
-      sub: `P${t.prio}${t.prazo ? ` · ${crmDate(t.prazo)}` : ""}`,
-      run: () => { onNavigate("/tarefas"); close() },
+      sub: `${t.prazoFatal ? "Prazo fatal · " : ""}${t.prazo ? crmDate(t.prazo) : ""}`,
+      run: () => { onNavigate(`/tarefas?tarefa=${t.id}`); close() },
     }))
     if (clientes.length) g.push({ key: "k-cli", label: "Contatos", items: clientes })
     if (casos.length) g.push({ key: "k-cas", label: "Casos", items: casos })

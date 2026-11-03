@@ -8,6 +8,7 @@ import { useMemo, useState } from "react"
 import { apiSend } from "@/lib/client/api"
 import { parseBRLToCents } from "@/lib/finance/money"
 import { DateField } from "@/components/ui/DatePicker"
+import { hojeSP, prazoPadrao } from "@/lib/tarefas/regras"
 import {
   CRM_TODAY,
   FxInput,
@@ -170,8 +171,8 @@ export function CrmQuickTarefa({ dataset, clienteId, onClose, onRefresh }: Quick
     [dataset.clientes, clienteId],
   )
   const [titulo, setTitulo] = useState("")
-  const [prio, setPrio] = useState("P2")
-  const [prazo, setPrazo] = useState(CRM_TODAY)
+  const [fatal, setFatal] = useState("nao")
+  const [prazo, setPrazo] = useState(() => prazoPadrao(hojeSP()))
   const [responsavelId, setResponsavelId] = useState<string>(
     dataset.socios[0] ? String(dataset.socios[0].id) : "",
   )
@@ -187,7 +188,7 @@ export function CrmQuickTarefa({ dataset, clienteId, onClose, onRefresh }: Quick
     try {
       const r = await apiSend<{ ok: boolean; result: unknown }>("/api/tarefas", "POST", {
         titulo: titulo.trim(),
-        prio: Number(prio.replace("P", "")) || 4,
+        prazoFatal: fatal === "sim",
         prazo,
         responsavelId: responsavelId ? Number(responsavelId) : null,
         clienteId: clienteId ?? null,
@@ -223,12 +224,19 @@ export function CrmQuickTarefa({ dataset, clienteId, onClose, onRefresh }: Quick
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
           <div>
-            <FxLabel>Prioridade</FxLabel>
-            <FxSelect options={["P1", "P2", "P3", "P4"]} value={prio} onChange={(e) => setPrio(e.target.value)} />
+            <FxLabel>Prazo</FxLabel>
+            <DateField value={prazo} onChange={(iso) => iso && setPrazo(iso)} />
           </div>
           <div>
-            <FxLabel>Prazo</FxLabel>
-            <DateField value={prazo} onChange={(iso) => setPrazo(iso ?? CRM_TODAY)} />
+            <FxLabel>Prazo fatal</FxLabel>
+            <FxSelect
+              options={[
+                { value: "nao", label: "Não" },
+                { value: "sim", label: "Sim" },
+              ]}
+              value={fatal}
+              onChange={(e) => setFatal(e.target.value)}
+            />
           </div>
           <div>
             <FxLabel>Responsável</FxLabel>

@@ -127,7 +127,7 @@ export const clientesTools = [
     schema: z.object({
       id: idReq.describe("Id do cliente"),
       conteudo: z.string().min(1).max(2000).describe("Texto da anotação"),
-      fixar: z.boolean().optional().describe("Fixar no topo como contexto importante"),
+      fixar: z.boolean().optional().describe("Fixar: vira informação fixada e aparece em TODAS as tarefas do cliente"),
     }),
     resumo: (i) => `Anotar cliente #${(i as { id: number }).id}`,
     montarConfirmacao: async (_ctx, i) => ({

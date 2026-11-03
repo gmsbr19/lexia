@@ -1,0 +1,390 @@
+// Regras únicas do módulo Tarefas (src/lib/tarefas/regras.ts) + filtros, painel
+// da Equipe e layout do Fluxo — sobre o cenário de exemplo do protótipo
+// (hoje = quarta 23/09/2026; resumo esperado em Equipe: 2 vencidas · 1 hoje · 4 na semana).
+import { describe, expect, it } from "vitest"
+import { addDays } from "@/lib/datas/util"
+import {
+  aguardandoRotulo,
+  cadeia,
+  conflitosPrazo,
+  criariaCiclo,
+  deslocamentoCadeia,
+  faixa,
+  indexar,
+  interpretarData,
+  liberadasAoConcluir,
+  mapaSeguintes,
+  motivosRisco,
+  prazoPadrao,
+  precisaConfirmarInicio,
+  precisaTextoAguardando,
+  proximaSegunda,
+  proximaSexta,
+  resumo,
+  rotuloPrazo,
+  selo,
+  statusAoDesligar,
+  statusAoLigar,
+  vencida,
+  hojeSP,
+  clienteEfetivo,
+  tituloCopia,
+} from "@/lib/tarefas/regras"
+import { FILTROS_PADRAO, SEM_PROJETO, lerPreferencias, noEscopo, ordenar, posicaoDepois, reposicionar, visiveis } from "@/lib/tarefas/filtros"
+import { painelEquipe } from "@/lib/tarefas/equipe"
+import { layoutFluxo, listaFluxo, profundidades } from "@/lib/tarefas/fluxo"
+import type { ChaveProjeto, ProjetoQuadro, TaskRow, TeamMember } from "@/lib/tarefas/types"
+
+const HOJE = "2026-09-23" // quarta
+const d = (n: number) => addDays(HOJE, n)
+
+const TH = 1
+const LE = 2
+const ED = 3
+const ALFA: ChaveProjeto = "c10"
+const BETA: ChaveProjeto = "c11"
+const GAMA: ChaveProjeto = "c12"
+const DELTA: ChaveProjeto = "p13" // projeto interno
+const OMEGA: ChaveProjeto = "c14"
+const G1 = "Protocolo 01 · 1º RI Taubaté"
+const G2 = "Protocolo 02 · 1º RI Taubaté"
+const G3 = "Protocolo 03 · 1º RI Taubaté"
+const G4 = "Protocolo 04 · 1º RI Taubaté"
+
+let seq = 100
+function t(p: Partial<TaskRow> & { due: number; st: TaskRow["status"]; doneAt?: number }): TaskRow {
+  const { due, st, doneAt, ...rest } = p
+  return {
+    id: seq++,
+    titulo: "Tarefa",
+    status: st,
+    prazo: d(due),
+    prazoFatal: false,
+    projeto: null,
+    grupo: null,
+    clienteId: null,
+    responsavelId: null,
+    aguardandoTexto: null,
+    descricao: null,
+    checklist: [],
+    recur: null,
+    anteriores: [],
+    concluidaEm: st === "done" ? d(doneAt ?? due) : null,
+    criadaEm: "2026-09-10T12:00:00.000Z",
+    nComentarios: 0,
+    nAnexos: 0,
+    ...rest,
+  }
+}
+
+// ── seed do protótipo (ids fixos) ──
+const a1 = t({ id: 1, titulo: "Reunir documentação", projeto: ALFA, grupo: G1, responsavelId: ED, due: -3, st: "done", doneAt: -4 })
+const a2 = t({ id: 2, titulo: "Solicitar ITBI", projeto: ALFA, grupo: G1, responsavelId: LE, due: 2, st: "doing", anteriores: [1] })
+const a3 = t({ id: 3, titulo: "Protocolar remessa", projeto: ALFA, grupo: G1, responsavelId: LE, due: 6, st: "wait", anteriores: [2] })
+const a4 = t({ id: 4, titulo: "Reunir documentação", projeto: ALFA, grupo: G2, responsavelId: ED, due: -5, st: "done", doneAt: -6 })
+const a5 = t({ id: 5, titulo: "Emitir guia de ITBI", projeto: ALFA, grupo: G2, responsavelId: LE, due: 5, st: "wait", aguardandoTexto: "Prefeitura — ITBI", anteriores: [4] })
+const a6 = t({ id: 6, titulo: "Conferir certidões", projeto: ALFA, grupo: G2, responsavelId: ED, due: -2, st: "todo", anteriores: [4] })
+const a7 = t({ id: 7, titulo: "Protocolar remessa", projeto: ALFA, grupo: G2, responsavelId: LE, due: 8, st: "wait", anteriores: [5, 6] })
+const a8 = t({ id: 8, titulo: "Reunir documentação", projeto: ALFA, grupo: G3, responsavelId: ED, due: 9, st: "todo" })
+const a9 = t({ id: 9, titulo: "Solicitar ITBI", projeto: ALFA, grupo: G3, responsavelId: LE, due: 14, st: "wait", anteriores: [8] })
+const a10 = t({ id: 10, titulo: "Protocolar remessa", projeto: ALFA, grupo: G3, responsavelId: null, due: 13, st: "wait", anteriores: [9] })
+const a11 = t({ id: 11, titulo: "Reunir documentação", projeto: ALFA, grupo: G4, responsavelId: ED, due: 12, st: "todo" })
+const a12 = t({ id: 12, titulo: "Solicitar ITBI", projeto: ALFA, grupo: G4, responsavelId: LE, due: 17, st: "wait", anteriores: [11] })
+const a13 = t({ id: 13, titulo: "Protocolar remessa", projeto: ALFA, grupo: G4, responsavelId: LE, due: 22, st: "wait", anteriores: [12, 10] })
+const b1 = t({ id: 21, titulo: "Enviar minuta", projeto: BETA, responsavelId: LE, due: -1, st: "todo" })
+const b2 = t({ id: 22, titulo: "Calcular ITBI", projeto: BETA, responsavelId: TH, due: 3, st: "todo" })
+const b3 = t({ id: 23, titulo: "Colher assinaturas", projeto: BETA, responsavelId: LE, due: 12, st: "wait", aguardandoTexto: "Cliente — assinaturas" })
+const b4 = t({ id: 24, titulo: "Levantar matrículas", projeto: BETA, responsavelId: ED, due: -3, st: "done", doneAt: -2 })
+const g1 = t({ id: 31, titulo: "Revisar contrato social", projeto: GAMA, responsavelId: TH, due: 0, st: "doing" })
+const g2 = t({ id: 32, titulo: "Montar planilha", projeto: GAMA, responsavelId: ED, due: 8, st: "todo" })
+const g3 = t({ id: 33, titulo: "Reunião inicial", projeto: GAMA, responsavelId: TH, due: -1, st: "done", doneAt: -1 })
+const d1 = t({ id: 41, titulo: "Solicitar matrículas", projeto: DELTA, responsavelId: ED, due: 1, st: "todo" })
+const d2 = t({ id: 42, titulo: "Minuta de laudo", projeto: DELTA, responsavelId: LE, due: 15, st: "doing" })
+const d3 = t({ id: 43, titulo: "Aprovar laudo", projeto: DELTA, responsavelId: TH, due: 20, st: "wait", anteriores: [42] })
+const o1 = t({ id: 51, titulo: "Protocolar contestação", projeto: OMEGA, responsavelId: LE, due: 2, prazoFatal: true, st: "doing" })
+const o2 = t({ id: 52, titulo: "Conferir publicações", projeto: OMEGA, responsavelId: ED, due: 7, st: "todo" })
+const o3 = t({ id: 53, titulo: "Juntar procuração", projeto: OMEGA, responsavelId: ED, due: -4, st: "done", doneAt: -3 })
+const o4 = t({ id: 54, titulo: "Preparar audiência", projeto: OMEGA, responsavelId: LE, due: 16, st: "todo" })
+const o5 = t({ id: 55, titulo: "Cadastrar processo", projeto: OMEGA, responsavelId: ED, due: -16, st: "done", doneAt: -15 })
+const n1 = t({ id: 61, titulo: "Renovar certificado", responsavelId: TH, due: 11, st: "todo" })
+const n2 = t({ id: 62, titulo: "Enviar proposta de honorários", clienteId: 7, responsavelId: TH, due: 9, st: "todo" })
+
+const SEED = [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, b1, b2, b3, b4, g1, g2, g3, d1, d2, d3, o1, o2, o3, o4, o5, n1, n2]
+const MAP = indexar(SEED)
+const NOMES: Record<number, string> = { [TH]: "Thiago", [LE]: "Leonardo", [ED]: "Eduarda" }
+const nome = (id: number | null) => (id == null ? "sem responsável" : NOMES[id])
+
+describe("datas e prazo padrão", () => {
+  it("hojeSP usa o fuso do escritório", () => {
+    expect(hojeSP(new Date("2026-09-24T02:30:00Z"))).toBe("2026-09-23") // 23h30 em SP
+    expect(hojeSP(new Date("2026-09-24T03:30:00Z"))).toBe("2026-09-24")
+  })
+  it("prazo padrão = sexta da semana; sábado/domingo → sexta seguinte", () => {
+    expect(prazoPadrao("2026-09-21")).toBe("2026-09-25") // segunda
+    expect(prazoPadrao("2026-09-23")).toBe("2026-09-25") // quarta
+    expect(prazoPadrao("2026-09-25")).toBe("2026-09-25") // sexta
+    expect(prazoPadrao("2026-09-26")).toBe("2026-10-02") // sábado
+    expect(prazoPadrao("2026-09-27")).toBe("2026-10-02") // domingo
+  })
+  it("atalhos: próxima sexta e próxima segunda nunca são hoje", () => {
+    expect(proximaSexta("2026-09-25")).toBe("2026-10-02")
+    expect(proximaSexta(HOJE)).toBe("2026-09-25")
+    expect(proximaSegunda(HOJE)).toBe("2026-09-28")
+  })
+  it("rótulo do prazo", () => {
+    expect(rotuloPrazo(HOJE, HOJE)).toBe("Hoje")
+    expect(rotuloPrazo(d(1), HOJE)).toBe("Amanhã")
+    expect(rotuloPrazo(d(-1), HOJE)).toBe("Ontem")
+    expect(rotuloPrazo(d(2), HOJE)).toBe("Sexta")
+    expect(rotuloPrazo(d(4), HOJE)).toBe("Domingo")
+    expect(rotuloPrazo(d(5), HOJE)).toBe("28 set")
+  })
+  it("texto livre do seletor de data", () => {
+    expect(interpretarData("hoje", HOJE)).toBe(HOJE)
+    expect(interpretarData("amanhã", HOJE)).toBe(d(1))
+    expect(interpretarData("depois de amanhã", HOJE)).toBe(d(2))
+    expect(interpretarData("sex", HOJE)).toBe("2026-09-25")
+    expect(interpretarData("quarta", HOJE)).toBe("2026-09-30") // nunca hoje
+    expect(interpretarData("próxima semana", HOJE)).toBe("2026-09-28")
+    expect(interpretarData("em 3 dias", HOJE)).toBe(d(3))
+    expect(interpretarData("2 semanas", HOJE)).toBe(d(14))
+    expect(interpretarData("dia 15", HOJE)).toBe("2026-10-15")
+    expect(interpretarData("15/10", HOJE)).toBe("2026-10-15")
+    expect(interpretarData("15/10/26", HOJE)).toBe("2026-10-15")
+    expect(interpretarData("sem prazo", HOJE)).toBeNull()
+    expect(interpretarData("xyz", HOJE)).toBeNull()
+  })
+})
+
+describe("regra única de atraso e faixas", () => {
+  it("vencida = prazo < hoje e não concluída", () => {
+    expect(vencida(a6, HOJE)).toBe(true)
+    expect(vencida(a1, HOJE)).toBe(false) // concluída
+    expect(vencida(g1, HOJE)).toBe(false) // hoje
+  })
+  it("faixas: semana = amanhã até domingo", () => {
+    expect(faixa(g1, HOJE)).toBe("today")
+    expect(faixa(d1, HOJE)).toBe("week")
+    expect(faixa(t({ due: 4, st: "todo" }), HOJE)).toBe("week") // domingo
+    expect(faixa(t({ due: 5, st: "todo" }), HOJE)).toBe("later")
+    expect(faixa({ prazo: "2026-09-28" }, "2026-09-27")).toBe("later") // domingo: a semana acabou
+  })
+  it("resumo do cenário do protótipo: 2 vencidas · 1 hoje · 4 na semana", () => {
+    expect(resumo(SEED, HOJE)).toEqual({ vencidas: 2, hoje: 1, semana: 4 })
+  })
+})
+
+describe("cadeia, risco, conflito, aguardando", () => {
+  it("em risco quando uma anterior (mesmo transitiva) está vencida", () => {
+    expect(motivosRisco(a7, MAP, HOJE).map((r) => r.id)).toEqual([6])
+    expect(motivosRisco(a3, MAP, HOJE)).toEqual([])
+    const s = selo(a7, MAP, HOJE, nome)
+    expect(s?.kind).toBe("risk")
+  })
+  it("selo por prioridade: Vencida > Em risco > Aguardando", () => {
+    expect(selo(a6, MAP, HOJE, nome)).toEqual({ kind: "late" })
+    expect(selo(a3, MAP, HOJE, nome)).toEqual({ kind: "wait", label: "Solicitar ITBI (Leonardo)" })
+    expect(selo(a5, MAP, HOJE, nome)).toEqual({ kind: "wait", label: "Prefeitura — ITBI" })
+    expect(selo(a1, MAP, HOJE, nome)).toBeNull()
+  })
+  it("rótulo do aguardando: 1 anterior → Título (Pessoa); várias → N passos", () => {
+    const x = t({ due: 30, st: "wait", anteriores: [5, 6], projeto: ALFA })
+    const m = indexar([...SEED, x])
+    expect(aguardandoRotulo(x, m, nome)).toBe("2 passos")
+    const semResp = t({ due: 30, st: "wait", anteriores: [10], projeto: ALFA })
+    expect(aguardandoRotulo(semResp, indexar([...SEED, semResp]), nome)).toBe("Protocolar remessa (sem responsável)")
+  })
+  it("conflito de prazo: anterior pendente vence depois desta", () => {
+    expect(conflitosPrazo(a10, MAP).map((c) => c.id)).toEqual([9])
+    expect(conflitosPrazo(a13, MAP)).toEqual([])
+  })
+  it("cadeia inclui anteriores e seguintes transitivas", () => {
+    const seg = mapaSeguintes(SEED)
+    expect([...cadeia(12, MAP, seg)].sort((x, y) => x - y)).toEqual([11, 12, 13])
+    expect([...cadeia(13, MAP, seg)].sort((x, y) => x - y)).toEqual([8, 9, 10, 11, 12, 13])
+  })
+  it("ciclo: ligar a3 → a1 fecharia o círculo; a mesma tarefa também", () => {
+    expect(criariaCiclo(3, 1, MAP)).toBe(true)
+    expect(criariaCiclo(1, 3, MAP)).toBe(false)
+    expect(criariaCiclo(5, 5, MAP)).toBe(true)
+  })
+})
+
+describe("fluxo de status", () => {
+  it("Em andamento a partir de Aguardando pede confirmação", () => {
+    expect(precisaConfirmarInicio(a3, MAP, "doing")).toBe(true)
+    expect(precisaConfirmarInicio(a5, MAP, "doing")).toBe(true) // terceiro
+    expect(precisaConfirmarInicio(a6, MAP, "doing")).toBe(false)
+  })
+  it("Aguardando sem anterior pendente e sem texto pede 'Aguardando o quê?'", () => {
+    expect(precisaTextoAguardando(b2, MAP, "wait")).toBe(true)
+    expect(precisaTextoAguardando(a6, MAP, "wait")).toBe(true) // a anterior (a4) já foi concluída
+    expect(precisaTextoAguardando(a7, MAP, "wait")).toBe(false) // tem anteriores pendentes
+  })
+  it("concluir libera as seguintes que só esperavam por ela", () => {
+    expect(liberadasAoConcluir(2, SEED).map((x) => x.id)).toEqual([3])
+    expect(liberadasAoConcluir(9, SEED).map((x) => x.id)).toEqual([10]) // sem responsável → pergunta
+    expect(liberadasAoConcluir(6, SEED)).toEqual([]) // a7 ainda espera a5
+    expect(liberadasAoConcluir(4, SEED)).toEqual([]) // a5 aguarda terceiro
+  })
+  it("ligar/desligar ajustam o status da seguinte", () => {
+    expect(statusAoLigar({ status: "todo" }, { status: "doing" })).toBe("wait")
+    expect(statusAoLigar({ status: "todo" }, { status: "done" })).toBe("todo")
+    expect(statusAoLigar({ status: "doing" }, { status: "todo" })).toBe("doing")
+    expect(statusAoDesligar({ status: "wait", aguardandoTexto: null }, 0)).toBe("todo")
+    expect(statusAoDesligar({ status: "wait", aguardandoTexto: "Cliente" }, 0)).toBe("wait")
+    expect(statusAoDesligar({ status: "wait", aguardandoTexto: null }, 1)).toBe("wait")
+  })
+  it("ajuste em cadeia nunca toca prazo fatal", () => {
+    const x1 = t({ id: 901, due: 5, st: "todo", projeto: "c99" })
+    const x2 = t({ id: 902, due: 8, st: "wait", projeto: "c99", anteriores: [901] })
+    const x3 = t({ id: 903, due: 10, st: "wait", projeto: "c99", anteriores: [902], prazoFatal: true })
+    const x4 = t({ id: 904, due: 12, st: "done", projeto: "c99", anteriores: [902] })
+    const r = deslocamentoCadeia(901, d(8), [x1, x2, x3, x4])
+    expect(r).toEqual({ delta: 3, moveis: [902], fatais: 1 })
+  })
+  it("cliente efetivo: o do caso (herdado) vence o próprio; projeto interno não tem cliente", () => {
+    const doProjeto = (k: ChaveProjeto) => (k === ALFA ? 1 : null)
+    expect(clienteEfetivo({ projeto: ALFA, clienteId: 5 }, doProjeto)).toEqual({ id: 1, herdado: true })
+    expect(clienteEfetivo({ projeto: BETA, clienteId: 5 }, doProjeto)).toEqual({ id: 5, herdado: false })
+    expect(clienteEfetivo({ projeto: DELTA, clienteId: 7 }, doProjeto)).toEqual({ id: 7, herdado: false })
+    expect(clienteEfetivo({ projeto: null, clienteId: null }, doProjeto)).toBeNull()
+  })
+})
+
+describe("filtros do quadro", () => {
+  it("Minhas = responsável sou eu; Concluído só últimos 7 dias", () => {
+    const minhas = noEscopo(SEED, { ...FILTROS_PADRAO, escopo: "mine" }, TH)
+    expect(minhas.every((x) => x.responsavelId === TH)).toBe(true)
+    const antiga = t({ due: -20, st: "done", doneAt: -8 })
+    expect(visiveis([antiga, g3], FILTROS_PADRAO, TH, HOJE).map((x) => x.id)).toEqual([g3.id])
+  })
+  it("filtro de prazo usa a mesma regra", () => {
+    const f = { ...FILTROS_PADRAO, prazo: "late" as const }
+    expect(visiveis(SEED, f, TH, HOJE).map((x) => x.id).sort((x, y) => x - y)).toEqual([6, 21])
+    const fatal = { ...FILTROS_PADRAO, prazo: "fatal" as const }
+    expect(visiveis(SEED, fatal, TH, HOJE).map((x) => x.id)).toEqual([51])
+  })
+  it("SEM_PROJETO = sem projeto; filtro por caso e por projeto interno", () => {
+    expect(noEscopo(SEED, { ...FILTROS_PADRAO, projetos: [SEM_PROJETO] }, TH).map((x) => x.id)).toEqual([61, 62])
+    expect(noEscopo(SEED, { ...FILTROS_PADRAO, projetos: [DELTA] }, TH).map((x) => x.id)).toEqual([41, 42, 43])
+    expect(noEscopo(SEED, { ...FILTROS_PADRAO, projetos: [GAMA, SEM_PROJETO] }, TH).map((x) => x.id)).toEqual([31, 32, 33, 61, 62])
+  })
+  const ctx = { ordemProjeto: () => 0, nomePessoa: nome }
+  it("ordenar por prazo e por responsável (sem responsável por último)", () => {
+    const ord = ordenar([a3, a10, a2], "due", ctx)
+    expect(ord.map((x) => x.id)).toEqual([2, 3, 10])
+    const porResp = ordenar([a10, a3, a8], "owner", ctx)
+    expect(porResp.map((x) => x.id)).toEqual([8, 3, 10]) // Eduarda, Leonardo, sem
+  })
+  it("decrescente inverte o critério, mas \"sem responsável\" continua no fim", () => {
+    expect(ordenar([a3, a10, a2], "due", ctx, "desc").map((x) => x.id)).toEqual([10, 3, 2])
+    expect(ordenar([a10, a3, a8], "owner", ctx, "desc").map((x) => x.id)).toEqual([3, 8, 10]) // Leonardo, Eduarda, sem
+  })
+  it("manual: quem tem posição vem primeiro, na ordem; o resto por prazo", () => {
+    const pos = new Map([
+      [10, 1],
+      [3, 2],
+    ])
+    const ord = ordenar([a2, a3, a10], "manual", { ...ctx, ordemManual: (id) => pos.get(id) })
+    expect(ord.map((x) => x.id)).toEqual([10, 3, 2])
+  })
+})
+
+describe("ordem manual e preferências", () => {
+  it("reposicionar reaproveita as posições da lista e põe os novos depois de todas", () => {
+    const atual = new Map([
+      [1, 100],
+      [2, 200],
+      [9, 5000], // fora da lista: não mexe
+    ])
+    expect(reposicionar([2, 1], atual)).toEqual([
+      { id: 2, ordem: 100 },
+      { id: 1, ordem: 200 },
+    ])
+    expect(reposicionar([3, 1], atual)).toEqual([
+      { id: 3, ordem: 100 },
+      { id: 1, ordem: 6024 },
+    ])
+  })
+  it("posicaoDepois põe a cópia entre a original e a seguinte (ou depois de todas)", () => {
+    expect(posicaoDepois(100, [100, 200, 5000])).toBe(150)
+    expect(posicaoDepois(200, [300, 100, 200, 250])).toBe(225)
+    expect(posicaoDepois(5000, [100, 5000])).toBe(6024)
+  })
+  it("lerPreferencias aceita só valores conhecidos", () => {
+    expect(lerPreferencias(JSON.stringify({ ordenar: "manual", direcao: "desc", agrupar: "owner" }))).toEqual({
+      ordenar: "manual",
+      direcao: "desc",
+      agrupar: "owner",
+    })
+    expect(lerPreferencias("{lixo")).toEqual({ ordenar: "due", direcao: "asc", agrupar: "none" })
+    expect(lerPreferencias({ ordenar: "x", direcao: "y", agrupar: 1 })).toEqual({ ordenar: "due", direcao: "asc", agrupar: "none" })
+    expect(lerPreferencias(null)).toEqual({ ordenar: "due", direcao: "asc", agrupar: "none" })
+    // visões salvas antigas: "proj" (antes da unificação) e "caso" (depois dela) viram "projeto"
+    expect(lerPreferencias({ ordenar: "proj", direcao: "desc", agrupar: "proj" })).toEqual({ ordenar: "projeto", direcao: "desc", agrupar: "projeto" })
+    expect(lerPreferencias({ ordenar: "caso", direcao: "asc", agrupar: "caso" })).toEqual({ ordenar: "projeto", direcao: "asc", agrupar: "projeto" })
+  })
+})
+
+describe("painel da Equipe", () => {
+  const pessoas: TeamMember[] = [TH, LE, ED].map((id) => ({ id, nome: NOMES[id], first: NOMES[id], initials: "", color: "", role: "" }))
+  const projetos: ProjetoQuadro[] = [ALFA, BETA, GAMA, DELTA, OMEGA].map((chave) => ({
+    chave,
+    tipo: chave.startsWith("c") ? "caso" : "interno",
+    id: Number(chave.slice(1)),
+    nomeCurto: chave,
+    nome: chave,
+    cor: "#2E7D6B",
+    clienteId: null,
+    area: null,
+    responsavelId: null,
+    prazo: null,
+    descricao: null,
+    arquivado: false,
+    modeloOrigemId: null,
+  }))
+  it("indicadores, atenção e carga", () => {
+    const p = painelEquipe(SEED, projetos, pessoas, HOJE)
+    expect(p.vencidas).toBe(2)
+    expect(p.projetosAtivos).toBe(5)
+    expect(p.noPrazo).toEqual({ feitas: 3, total: 6, pct: 50 }) // b4, o3 e o5 foram entregues depois do prazo
+    // atenção: vencidas primeiro, depois prazo fatal em até 5 dias, depois em risco
+    expect(p.atencao.map((i) => `${i.tipo}:${i.tarefaId}`)).toEqual(["late:6", "late:21", "fatal:51", "risk:7"])
+    expect(p.carga.find((c) => c.pessoaId === ED)).toEqual({ pessoaId: ED, abertas: 6, vencidas: 1 })
+  })
+})
+
+describe("fluxo", () => {
+  const alfa = SEED.filter((x) => x.projeto === ALFA)
+  it("profundidade = ordem das ligações", () => {
+    const p = profundidades(alfa)
+    expect([p.get(1), p.get(2), p.get(3)]).toEqual([0, 1, 2])
+    expect(p.get(13)).toBe(3) // depende de a12 (1) e a10 (2)
+  })
+  it("uma faixa por grupo, setas entre faixas e tons", () => {
+    const l = layoutFluxo(alfa, HOJE)
+    expect(l.faixas.map((f) => f.grupo)).toEqual([G1, G2, G3, G4])
+    expect(l.faixas[0]).toMatchObject({ feitas: 1, total: 3 })
+    const seta = (de: number, para: number) => l.setas.find((s) => s.de === de && s.para === para)
+    expect(seta(6, 7)?.tom).toBe("crit") // anterior vencida
+    expect(seta(9, 10)?.tom).toBe("warn") // conflito de prazo
+    expect(seta(10, 13)?.tom).toBe("base") // entre faixas
+    expect(l.pos.get(13)!.x).toBeGreaterThan(l.pos.get(12)!.x)
+  })
+  it("celular: lista por grupo na ordem das ligações", () => {
+    const g = listaFluxo(alfa)
+    expect(g[1].tarefas.map((x) => x.id)).toEqual([4, 6, 5, 7])
+  })
+})
+
+describe("duplicar", () => {
+  it("tituloCopia acrescenta (cópia) sem empilhar e respeita o limite", () => {
+    expect(tituloCopia("Protocolar petição")).toBe("Protocolar petição (cópia)")
+    expect(tituloCopia("  Protocolar petição  ")).toBe("Protocolar petição (cópia)")
+    expect(tituloCopia("Protocolar petição (cópia)")).toBe("Protocolar petição (cópia)")
+    const longo = tituloCopia("a".repeat(300))
+    expect(longo.length).toBeLessThanOrEqual(300)
+    expect(longo.endsWith(" (cópia)")).toBe(true)
+  })
+})

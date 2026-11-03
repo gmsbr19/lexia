@@ -93,7 +93,13 @@ export type VgSavedView = {
   isDefault?: boolean;
   state: VgState;
 };
-export type VgGridStore = { activeId: string; views: VgSavedView[] };
+export type VgGridStore = {
+  activeId: string;
+  views: VgSavedView[];
+  /** Ids das visões-semente já oferecidas — uma semente NOVA aparece uma vez;
+   *  uma semente que a pessoa excluiu não volta. */
+  seedsVistos?: string[];
+};
 
 // linha genérica: chaves do schema + id da entidade original (p/ ações)
 export type VgRow = Record<string, unknown> & { id: string | number };

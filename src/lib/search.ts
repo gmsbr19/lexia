@@ -38,7 +38,7 @@ export interface SearchTarefaHit {
   id: number
   titulo: string
   status: string
-  prio: number
+  prazoFatal: boolean
   prazo: string | null // ISO date
 }
 export interface SearchLancamentoHit {
@@ -116,8 +116,9 @@ export async function searchAll(qRaw: string): Promise<SearchResults> {
         id: true,
         titulo: true,
         status: true,
-        numeroProcesso: true,
         clientePrincipal: { select: { nome: true } },
+        // o nº do processo mora no Processo (caso ≠ processo) — busca por qualquer um
+        processos: { where: { excluidoEm: null, numeroCnj: { not: null } }, select: { numeroCnj: true }, take: 5 },
       },
       orderBy: { titulo: "asc" },
     }),
@@ -133,7 +134,7 @@ export async function searchAll(qRaw: string): Promise<SearchResults> {
     }),
     getContratos(),
     prisma.tarefa.findMany({
-      select: { id: true, titulo: true, status: true, prio: true, prazo: true },
+      select: { id: true, titulo: true, status: true, prazoFatal: true, prazo: true },
       orderBy: [{ done: "asc" }, { prazo: "asc" }],
     }),
     prisma.lancamento.findMany({
@@ -167,14 +168,14 @@ export async function searchAll(qRaw: string): Promise<SearchResults> {
         numCasos: r._count.casos,
       })),
     casos: casos
-      .filter((r) => contemNormalizado(nq, r.titulo, r.numeroProcesso))
+      .filter((r) => contemNormalizado(nq, r.titulo, r.clientePrincipal?.nome, ...r.processos.map((p) => p.numeroCnj)))
       .slice(0, PER_GROUP)
       .map((r) => ({
         id: r.id,
         titulo: r.titulo,
         cliente: r.clientePrincipal?.nome ?? null,
         status: r.status,
-        numeroProcesso: r.numeroProcesso,
+        numeroProcesso: r.processos[0]?.numeroCnj ?? null,
       })),
     processos: processos
       .filter((r) => contemNormalizado(nq, r.numeroCnj, r.classe, r.assunto))
@@ -212,8 +213,8 @@ export async function searchAll(qRaw: string): Promise<SearchResults> {
         id: r.id,
         titulo: r.titulo,
         status: r.status,
-        prio: r.prio,
-        prazo: r.prazo ? r.prazo.toISOString().slice(0, 10) : null,
+        prazoFatal: r.prazoFatal,
+        prazo: r.prazo.toISOString().slice(0, 10),
       })),
     lancamentos: lancamentos
       .filter((r) => contemNormalizado(nq, r.descricao, r.pagoPara))

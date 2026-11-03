@@ -52,12 +52,23 @@ LexIA AI assistant, and a real-time Notifications system.
   (`CasoResponsavel`, 50/50 default). Memories `project_financeiro_*`.
 - **Comercial**: `/comercial` 5 tabs; `Campanha`+`Lead`; ad-spend→Lançamento;
   convert lead→Honorário; Genions CSV import.
-- **Clientes / Contratos / Casos & Processos / Agenda**: CRM routes via
-  `components/crm/CrmRoutes.tsx`; cliente detail = `/clientes/[id]`. Processos =
+- **Contatos / Casos / Contratos / Processos / Agenda**: CRM routes via
+  `components/crm/CrmRoutes.tsx`; contato = `/contatos/[id]`, caso = `/casos/[id]` (página
+  própria, INDEPENDE do módulo Processos). Caso ≠ processo: o caso é a matéria do cliente
+  (cliente, contrato, honorários, rateio); o Processo (nº CNJ, tribunal, vara, prazos) é
   first-class (1 caso→N), pure tested prazo engine (CPC dias úteis), CNJ capture
-  (Comunica/DJEN + DataJud). Memories `project_processos_module`, `project_captura_cnj`.
-- **Tarefas**: DB-backed, 5 views + modal; assignee + (new) creator. Memory
-  `project_tarefas_module`.
+  (Comunica/DJEN + DataJud). Memories `project_casos_module`, `project_processos_module`,
+  `project_captura_cnj`.
+- **Tarefas (redesign, Sep/2026; projetos = casos OU internos, Out/2026)**: UM quadro único do escritório
+  (Quadro | Lista | Fluxo; Projetos; Modelos; Equipe só gestão), UMA data (prazo obrigatório; padrão = sexta),
+  prazo fatal, grupos livres, ligações "só começa depois de" (só no MESMO projeto), histórico, anexos, "Desfazer"
+  (TarefaAcao). O "projeto" do quadro é o CASO do cliente (`Tarefa.casoId`) OU um projeto INTERNO do escritório
+  (`Tarefa.projetoId` → `Projeto` vivo = `casoId IS NULL AND excluidoEm IS NULL`) — nunca os dois; no cliente a
+  identidade é a chave `c<id>`/`p<id>` (`TaskRow.projeto`, `ProjetoQuadro.chave`). Regras ÚNICAS em
+  `lib/tarefas/regras.ts` + `projetos-quadro.ts` (servidor + cliente); projeto novo/interno em `lib/tarefas/projetos.ts`.
+  UI `components/tarefas/tk-*.tsx` + `TarefasApp.tsx` + `tk.css`. **Informações fixadas** (know-how do cliente/caso/projeto
+  interno que aparece em toda tarefa deles — "Saiba antes"): `lib/informacoes/*` + `tk-info.tsx` + `crm/pages/CrmFixadas.tsx`.
+  Memories `project_tarefas_redesign`, `project_caso_projeto_unificado`, `project_informacoes_fixadas`.
 - **Início**: greeting + AI BriefingCard + OfficeDashboard. Memory
   `project_inicio_dashboard`.
 - **LexIA**: agentic assistant over the Anthropic API (`lib/lexia/agent/*`:
@@ -245,7 +256,266 @@ This Next (16.2.6) has breaking changes vs. training data — consult
   LIGADO (sem isso o Chrome descarta os fundos coloridos); repetir no tema ESCURO e confirmar que o PDF sai em
   papel branco. Se o escritório tiver razão social/CNPJ/OAB em Configurações → Escritório, eles aparecem no
   cabeçalho do relatório.
-- **Captação: data inválida, gclid visível/exportável + exclusão DEFINITIVA de leads (prev session, VERIFIED
+- **Informações fixadas — Parte B (mergeado no master e enviado em 09/10/2026; tsc 0 novos erros — só o
+  `cm-meta` PRÉ-EXISTENTE —, 879/880 testes — só a `notificacoes-links` PRÉ-EXISTENTE; novos em `tests/informacoes-core.test.ts`
+  + gating em `lexia-agent` —, eslint sem achados novos; migração `20261009120000_informacoes_fixadas` ADITIVA, VALIDADA em
+  PGlite (6 cenários) + `migrate diff` vazio, e JÁ APLICADA no banco LOCAL + `prisma generate`).** Pedido de origem: guardar
+  know-how ("só paga no dia 10", "tal imóvel não precisa ser integralizado") visível a todos, como as tarefas — SEM a
+  nota-tarefa `*` do Todoist. **Modelo:** a informação é uma NOTA com dono natural — cliente (`ClienteAnotacao`, só
+  `tipo='nota'`), caso ou projeto INTERNO (`Anotacao`, que ganhou `projetoId` FK Cascade; nota de processo não conta). Ambas
+  ganharam `fixadoEm/fixadoPor/editadoEm/editadoPor` (e-mail) + `origemTarefaId` (FK SetNull); `Anotacao.fixado`. Notas de
+  cliente já fixadas receberam `fixadoEm=createdAt`. **Fixada = aparece em toda tarefa** daquele cliente/caso/projeto (projeto
+  antes do cliente efetivo). **Decisões do usuário (plano aprovado):** só as fixadas aparecem nas tarefas; qualquer pessoa
+  cria/edita/fixa/desafixa (registra quem/quando); excluir = autor ou sócio/admin (a rota antiga de excluir nota de cliente
+  ganhou a mesma regra); visual neutro (sem dourado). **Minha (sinalizada):** projeto interno também é âncora (o plano dizia só
+  cliente+caso, mas sem isso "Manutenção do Lexia"/"Marketing" não teriam onde fixar); converter interno → caso leva as notas.
+  Nota de caso NÃO fixada exige acesso ao caso. **Backend:** núcleo puro `lib/informacoes/core.ts` (âncoras, índice,
+  `fixadasDaTarefa`, `textoDeComentario`, `podeExcluirInformacao`, `tempoDesde`/`talvezDesatualizada` >6 meses), `queries.ts`
+  (`getFixadas` vai em `TarefasBoard.fixadas`; `getInformacoes(ancora)` p/ fichas), `mutations.ts` (criar/editar/excluir com
+  `RegistroAcao` → "Desfazer" do quadro; histórico na tarefa de origem). Rotas `POST /api/informacoes`,
+  `PATCH|DELETE /api/informacoes/[fonte]/[id]` (fonte `cliente|anotacao`). **Tarefas:** "Saiba antes" no topo do detalhe
+  (2 + "Mostrar todas"; menu Editar/Desafixar/Excluir; "Da tarefa: …"; "Pode estar desatualizada"), botão "Informação" nas
+  ações do detalhe, "Fixar como informação" em cada comentário (menções viram nomes), alfinete com contagem no cartão,
+  fixadas compactas + ícone de alfinete no cabeçalho do projeto, "Nova tarefa" com "Tarefa | Informação". **CRM:** seção
+  "Fixadas" acima das abas na ficha do contato e na página do caso (no caso, as do cliente com "Do cliente"); notas com
+  fixar/desafixar, editar no lugar e excluir com confirmação; campo de nota com "Fixar nas tarefas"; aba Notas do caso
+  SEMPRE visível. `CrmDataset.userId` novo. **LexIA:** `informacoes_fixadas` (leitura; `tarefaId` traz projeto + cliente) e
+  `fixar_informacao` (confirmada, qualquer papel); bullet no prompt (CORE — invalida o cache 1×). Seed demo + 3 fixadas.
+  **Ajustes pós-visual (mesma sessão):** comentários com ações em ÍCONES (fixar/editar/excluir numa barrinha que aparece no
+  hover; sempre visível no toque), balão com canto do autor reto, campo com botão de enviar; o aviso (toast) do quadro ganhou
+  ícone do tipo de alteração, desfazer em ícone + Ctrl/⌘Z (fora de campos de texto), barrinha de tempo que pausa no hover,
+  "Desfeito" e CLIQUE QUE LEVA À ALTERAÇÃO (`Aviso.alvo`: tarefa / projeto / Modelos; fecha ao abrir). **Fix Casos:** rateio
+  100/0 voltava a mostrar 50/50 (o servidor não grava a parte de 0%; a página agora usa o complemento) + `apiSend` GET com
+  `cache: "no-store"`. **User action:** em produção a migração roda no boot.
+- **Projetos de volta: caso do cliente OU projeto INTERNO (mergeado no master e enviado em 09/10/2026;
+  tsc 0 novos erros — só o `cm-meta` PRÉ-EXISTENTE —, 867/868 testes — só a `notificacoes-links` PRÉ-EXISTENTE; novos em
+  `tests/projetos-quadro.test.ts`/`tarefas-regras`/`lexia-agent` —, eslint limpo; migração `20261008120000_projetos_internos`
+  (só DADOS) VALIDADA em PGlite na cadeia real A→vínculos→B (22 cenários) + `migrate diff` vazio, e JÁ APLICADA no banco
+  LOCAL).** Pedido: "todo caso de cliente é um projeto; alguns projetos não são casos (manutenção do Lexia, marketing)";
+  aba Projetos com busca + filtros como os do quadro; clicar = caso → página do caso, sem cliente → modal. **Decisões do
+  usuário:** interno = entidade própria (fora de Casos/Financeiro/Contratos/Comercial); os casos SEM cliente criados pela
+  unificação (`app-caso-proj-%`) e nunca usados como caso (processo/lançamento/contrato/documento/lead/evento/anotação/rateio)
+  VOLTAM a ser internos (localmente: "Integralização de imóveis Batista & Almeida" — se for de cliente, "Vincular a um
+  cliente…" o transforma em caso); todo caso abre /casos/<id>; a aba lista todos os casos ativos + internos. **Minhas
+  (aprovadas):** "Projeto" em todo o Tarefas; UM "Novo projeto" (com cliente = caso, sem = interno); "Vincular a um
+  cliente…" converte interno → caso (sem Desfazer); mesmos papéis do caso (sócio/advogado). **Dados:** casoId XOR projetoId
+  (no código); lock do grafo 7331 (caso) / 7332 (interno); a migração também marca os baldes `area-%` como excluídos e
+  limpa o `projetoId` dormente das demais tarefas. **Backend:** `projetos-quadro.ts` (chave, apresentar, acesso, busca,
+  andamento/filtro/ordem da aba), `projetoDoQuadro`/`podeVincularProjeto` em mutations, `lib/tarefas/projetos.ts`
+  (criar/editar/arquivar/excluir interno + `converterEmCaso`), Desfazer `projetosCriados`/`projetos`, modelos com alvo
+  `{novo}|{projeto}`. **Rotas:** `/api/tarefas/casos` → `POST /api/tarefas/projetos`, `PATCH|DELETE /api/tarefas/projetos/[id]`,
+  `POST …/[id]/converter`; `?projeto=<id>` = interno (ou redireciona p/ o caso); `/projetos` → `/tarefas?pagina=projetos`.
+  **UI:** barra lateral Quadro · Projetos · Modelos · Equipe; `tk-projetos.tsx` (Ativos | Arquivados, busca, Filtrar Tipo/
+  Responsável/Andamento/Prazo final, Ordenar, linhas `.tk-prow`, ícone "Abrir no quadro"); `tk-projeto-form.tsx` (novo/
+  editar interno); seletores/filtro "Projeto" com 2ª linha cliente ou "Projeto interno"; filtro do celular = o do desktop.
+  **LexIA:** `listar_projetos`/`criar_projeto`/`editar_projeto`; tarefas com casoId OU projetoId; `criar_estrutura_projeto`
+  substitui `criar_estrutura_caso`; prompt (CORE — invalida o cache 1×). Seed demo + 2 internos (`demo-lexia`, `demo-marketing`).
+  **User action:** conferir visual (`/tarefas?pagina=projetos` etc.); merge/push quando aprovar — em produção a migração roda
+  no boot (conferir depois: `SELECT id, "nomeCurto" FROM "Projeto" WHERE "casoId" IS NULL AND "excluidoEm" IS NULL`).
+- **Projeto ⇒ Caso — UNIFICAÇÃO (Parte A de 2; this session, tsc 0 novos erros — só o `cm-meta` PRÉ-EXISTENTE —,
+  858/859 testes — só a `notificacoes-links` PRÉ-EXISTENTE; +14 novos em `tests/casos-quadro.test.ts`/`modelos.test.ts`/
+  `lexia-agent.test.ts` —, eslint sem achados novos; migração `20261006120000_casos_unificam_projetos` ESCRITA À MÃO e
+  VALIDADA em PGlite (23 cenários + `migrate diff` vazio) — NÃO aplicada em banco real).** Pedido de origem: "informações
+  fixadas" (know-how do cliente/caso visível nas tarefas — Parte B, ainda NÃO feita). Ao detalhar, o usuário disse que
+  **cada Projeto de Tarefas é um Caso do cliente — mesma entidade** e escolheu unificar. **Decisões do usuário:** baldes
+  por área (`Projeto.chave 'area-%'`) somem (tarefas → "Sem caso"); todo outro projeto vivo vira caso (mesmo sem cliente →
+  visão "Sem cliente"); UMA lista só (`/casos`); Tarefas fica Quadro · Modelos · Equipe. **Modelo:** `Caso` += `nomeCurto`,
+  `cor`, `descricao`, `prazo`, `modeloOrigemId` (FK ProjetoModelo); `Tarefa.casoId` vira o vínculo do quadro (+índice);
+  `Projeto` e `Tarefa.projetoId` DORMENTES (nenhum código lê/grava, exceto `Projeto.casoId` = registro da conversão p/ os
+  redirects). **Migração:** purga `TarefaAcao`; classifica cada projeto (balde/excluído/mesclar/criar — "mesclar" = já
+  apontava p/ caso vivo OU 1 caso vivo com mesmo cliente+título); mescla só campos vazios (cliente só se o contrato do caso
+  não for de outro cliente); cria casos `app-caso-proj-<id>` (Arquivado se arquivado); histórico quando o `casoId` legado da
+  tarefa é sobrescrito; tarefa de processo sem caso herda o do processo. **Backend:** `lib/casos/mutations.ts` ganhou
+  `criarCasoTx`/`excluirCasoTx`/`comResponsavelPadrao` + campos do quadro; `lib/tarefas/*` inteiro em caso (`TaskRow.casoId`,
+  `CasoQuadro` com etiqueta/cor RESOLVIDAS no servidor — `apresentarCaso` em `casos-quadro.ts` —, `casosAcessiveis`,
+  `SEM_CASO`, ordenar/agrupar `"caso"` com apelido `"proj"`, lock por caso, `MSG_CASOS`); **vincular tarefa a caso exige
+  `podeAcessarCaso`** (advogado/estagiário só os seus — senão "ter tarefa no caso" viraria atalho de acesso); **Desfazer de
+  caso criado no quadro = soft-delete via `excluirCasoTx`, recusado se o caso já tem processo/lançamento/contrato/documento**.
+  `lib/projetos/*` → `lib/modelos/*` (`usarModelo` p/ caso NOVO ou EXISTENTE, `montarEstruturaCaso`, `gruposPadrao(...,
+  inicio)`); novo `lib/tarefas/casos.ts` ("Novo caso…" rápido). Rotas: `/api/projetos/**` REMOVIDAS → `POST
+  /api/tarefas/casos`, `/api/tarefas/modelos[/id]`, `POST /api/tarefas/modelos/[id]/usar`. Ficha do cliente, mesclagem de
+  clientes, contagem de áreas, agenda, relatório, sugestão de IA, `resolveRefs` (título de caso → prefere o do mesmo
+  cliente) ajustados. **UI Tarefas:** "Projeto"→"Caso" em tudo; seletores de caso COM BUSCA (`TkCasoLista`/`TkCasoPicker`,
+  60 itens, por etiqueta/título/cliente); `TkCasoHeader` com links p/ contato e "Abrir o caso"; detalhe com ícones de abrir
+  caso/contato; `tk-projects.tsx` → `tk-modelos.tsx` (página Modelos + assistente "Novo caso | Caso existente" + editor —
+  corrigido de quebra o `acaoId` do editor que nunca chegava ao "Desfazer") e `tk-caso-form.tsx`; `/projetos` → `/casos`,
+  `/projetos/<id>` e `?projeto=` → `/tarefas?caso=<id>`. **`/casos`:** colunas Progresso/Tarefas abertas/Vencidas/Prazo
+  final, visões "Com tarefas em andamento" e "Arquivados", botão "A partir de modelo"; página do caso com "Abrir no quadro",
+  prazo/descrição e aviso de que as tarefas ficam "Sem caso"; formulário com nome curto/prazo/cor/descrição. **ViewGrid
+  (genérico):** visões salvas agora ganham colunas novas do schema (antes ficavam invisíveis até no painel Colunas) e
+  sementes novas aparecem uma vez (`seedsVistos`). **LexIA:** tools de projeto removidas → `tools/modelos.ts`
+  (`listar_modelos`, `aplicar_modelo`, `criar_estrutura_caso`) + `tarefas_do_caso`; `criar_caso`/`editar_caso` com
+  nomeCurto/prazo/descricao; prompt (CORE — invalida o cache 1×). Seed `db:seed:modelos` (`db:seed:projetos` = apelido).
+  **User action (REQUIRED — lock do Prisma no Windows):** parar `next dev` → `npx prisma migrate deploy` → `npx prisma
+  generate` → `npm run dev`. Em produção a migração roda no boot. Conferir casos criados: `SELECT id, titulo FROM "Caso"
+  WHERE "astreaId" LIKE 'app-caso-proj-%'`. **Parte B (informações fixadas) começa depois da conferência visual.**
+- **Casos — módulo próprio, separado de Processos (this session, tsc 0 novos erros — só o `cm-meta`
+  PRÉ-EXISTENTE —, 848/849 testes — só a `notificacoes-links` PRÉ-EXISTENTE; +13 novos em
+  `tests/casos-legado.test.ts` —, eslint limpo nos arquivos novos/reescritos, SEM migração).** Pedido: acessar/criar/
+  editar/excluir casos com facilidade e associá-los a clientes e honorários — antes era "uma bagunça, misturado com
+  processos". **Diagnóstico:** `/casos` só redirecionava p/ `/processos` (e o kill-switch do módulo, DESLIGADO no ambiente
+  do usuário, bloqueava tudo); não existia "Novo caso"; o modal do caso não editava título/cliente/contrato/tipo/
+  responsável nem excluía; e era dominado pelos campos de processo LEGADOS do Astrea (nº/tribunal/vara/instância/valor/
+  distribuição/tipo de ação) gravados no próprio `Caso`. **Decisões do usuário:** item próprio "Casos" no menu; página
+  própria com abas; campos antigos CONVERTIDOS em Processos. **Menu:** "Casos" (briefcase) entre Contatos e Contratos,
+  NUNCA filtrado pelo toggle; "Casos & Processos" virou **"Processos"** (sidebar, abas, Configurações → Módulos, prompt).
+  **`/casos`** ([CrmCasosPage.tsx](src/components/crm/pages/CrmCasosPage.tsx)) = ViewGrid (gridId **"casos"**, novo em
+  `view-prefs-core`/`crm/schemas`): colunas Caso/Cliente/Tipo/Área/Status/Responsável/Contrato/Processos(só com o módulo)/
+  Honorários·Recebido·Em aberto(só `verFinanceiro`)/datas; visões-semente Todos · Ativos · Por cliente · **Sem cliente** ·
+  **Sem contrato** (p/ arrumar a base); lote tipo/área/status/responsável via **`PATCH /api/casos/lote`**
+  (`bulkUpdateCasos`, escopado por `scopeCasoWhere`); `?caso=<id>` redireciona. Dados: `listCasosPagina(user, verFin)`
+  ([casos/queries.ts](src/lib/casos/queries.ts), escopo por papel). **`/casos/[id]`**
+  ([CrmCasoDetail.tsx](src/components/crm/pages/CrmCasoDetail.tsx), `key={casoId}`): cabeçalho com vínculos clicáveis
+  (cliente→contato, contrato→modal do contrato, responsável; vínculo ausente = atalho "Vincular …" p/ o formulário),
+  Editar/Novo processo/Excluir (confirmação explica a cascata; lançamentos NÃO são apagados), números (Honorários/
+  Recebido/Em aberto só p/ verFin; Processos; Tarefas abertas) e abas **Honorários** (verFin = `LancamentosTable`
+  embutida com **`lockCaso`** + `lockCliente`; Equipe = lista só leitura) · **Processos** (só com o módulo; "Novo
+  processo" usa `ProcNovoProcessoModal` com `casoFixo`) · **Tarefas & agenda** (links p/ `/tarefas?tarefa=`/`/agenda`) ·
+  **Documentos** · **Rateio** (`CrmRateioSlider` extraído, só verFin) · **Notas** (anotações do caso, se houver).
+  **Formulário único** [CrmCasoForm.tsx](src/components/crm/pages/CrmCasoForm.tsx) (criar/editar): título, cliente
+  (Combobox + "Criar contato"), contrato (só do MESMO cliente ou sem cliente; trocar o cliente solta o contrato), tipo,
+  área, status, responsável. Também em "Novo caso" na aba **Casos** da ficha do contato (aba agora SEMPRE visível; sub-
+  linhas de processo só com o módulo). **Backend:** `casoPatchSchema` perdeu os campos de processo e ganhou `contratoId`
+  (+ `tipo` enum); `updateCaso`/`createCaso` validam contrato↔cliente (`assertContratoDoCliente`, mesma regra de
+  `assertCasosDoCliente`); status gravado CANÔNICO ("Ativo"/"Suspenso"/"Arquivado") via
+  [casos/status.ts](src/lib/casos/status.ts) (puro: bucket tolerante a "ativo"/"Encerrado"/…, `PODE_CRIAR_CASO`,
+  `CASO_TABS` — constantes FORA de arquivos "use client" p/ poderem ser usadas em páginas de servidor); PATCH/DELETE de
+  caso agora com `assertAcessoCaso`; POST (e `criar_caso` da LexIA) torna o advogado responsável quando vazio (senão ele
+  perderia acesso ao caso que criou). `GET /api/casos/[id]` devolve `contrato`, `anotacoes` e `lancOptions` (só verFin).
+  Lançamento ganhou **`casoId` explícito** (schema/mutations, `input.casoId ?? refs.casoId`; nome do caso só resolve
+  casos não excluídos). `getCasosSemFee`: status case-insensitive + nulo, valor da causa cai p/ a soma dos processos;
+  título do caso vira link. Busca global procura caso por título/cliente/CNJ dos processos. `CrmDataset.usuarios` (novo).
+  `CrmCasoModal.tsx` DELETADO; todo `openCaso` (shell/Spotlight/Agenda/Contrato/Processos) navega p/ `/casos/<id>`;
+  `/processos?caso=` redireciona. **Conversão dos campos legados** — núcleo puro
+  [legado-core.ts](src/lib/casos/legado-core.ts) (nada/manter/criar/completar/conflito/registrar; CNJ válido →
+  `formatarCnj` + tribunal/UF derivados; número fora do padrão → processo sem número + anotação com o original; caso já
+  com processo e sem CNJ válido → anotação no caso; consultivo só com valor → mantém) + executor
+  [legado.ts](src/lib/casos/legado.ts) (recebe o PrismaClient, 1 transação por caso, idempotente, `dry`) + script
+  **`npm run db:converter:casos`** (`-- --dry` = simulação). O import do Astrea agora só grava os dados de processo na
+  CRIAÇÃO do caso e converte em seguida (reimportar não os devolve). Verificado ponta a ponta no Postgres local (4 casos
+  de teste: criar/conflito/sem-CNJ/consultivo + 2ª rodada idempotente) e dados de teste REMOVIDOS. **LexIA:** tools de
+  casos NUNCA mais são removidas com o módulo desligado (só as de processo); `criar_caso`/`editar_caso` aceitam
+  `contratoId`/`tipo` (+`semContrato`); bullet **CASOS** no prompt (CORE — invalida o cache 1×); links/cards → `/casos/<id>`;
+  `navegar` aceita `/casos/<id>`. **Conversão AUTOMÁTICA no boot (follow-up):** [src/instrumentation.ts](src/instrumentation.ts)
+  (`register`, só runtime nodejs, nunca no `next build`) → [casos/boot.ts](src/lib/casos/boot.ts)
+  `agendarConversaoCasosNoBoot` roda o conversor em SEGUNDO PLANO a cada start (não atrasa nem derruba o boot; falha =
+  log); idempotente; log pino sem PII (contagens, ids de caso, CNJ); conflitos logados como `warn` a cada boot. O script
+  `db:converter:casos` segue p/ simulação/manual. **User action:** só o deploy — a conversão roda sozinha no 1º start;
+  conferir os logs do container ("casos: dados de processo legados convertidos…" / conflitos). Visual: menu **Casos** → lista (Novo caso, visões "Sem cliente"/"Sem contrato", agrupar
+  por cliente, lote); abrir um caso → Editar (cliente/contrato), aba Honorários → "Novo lançamento" já vinculado ao caso
+  e ao cliente; Excluir; ficha do contato → aba Casos → Novo caso; com o módulo Processos desligado tudo acima segue
+  funcionando (só a aba/coluna Processos some).
+- **Tarefas — "Duplicar" (this session, tsc 0 novos erros — só o `cm-meta` PRÉ-EXISTENTE —, 835/836 testes — só a
+  `notificacoes-links` PRÉ-EXISTENTE —, eslint limpo, SEM migração).** Item "Duplicar" no menu "…" do cartão e do
+  detalhe (no detalhe, abre a cópia). `duplicarTarefa` ([mutations.ts](src/lib/tarefas/mutations.ts)) + `POST
+  /api/tarefas/[id]/duplicar`: copia projeto/grupo/responsável/cliente/prazo/prazo fatal/descrição/checklist
+  (desmarcado)/repetição/vínculos e as "só começa depois de" (NÃO as que ela libera — mudaria outras tarefas); nasce
+  "a fazer" ou "aguardando" se alguma anterior está aberta; comentários/histórico/anexos NÃO vêm; título
+  `tituloCopia` ("… (cópia)", sem empilhar); histórico "Duplicada de: …"; notifica o responsável como uma criação;
+  Desfazer normal (RegistroAcao). Na ordem manual de quem duplicou entra logo abaixo da original (`posicaoDepois`
+  em filtros.ts; fora do Desfazer, cascata com a tarefa). **User action:** só visual em `/tarefas`.
+- **Tarefas — REDESIGN COMPLETO (spec Claude Design "LexIA - Tarefas (Redesign)", `lexia.zip` → `src/tk/*`)
+  (this session; tsc 0 novos erros — só o `cm-meta` PRÉ-EXISTENTE —, testes verdes exceto a
+  `notificacoes-links` PRÉ-EXISTENTE, eslint limpo em todos os arquivos tocados; migração
+  `20260923120000_tarefas_redesign` ESCRITA À MÃO e VALIDADA num Postgres embutido (PGlite) com dados
+  legados + `prisma migrate diff` = ZERO drift — NÃO aplicada em nenhum banco real).** Substitui por completo
+  o módulo anterior (5 visões, data planejada/hora, P1–P4, DoR/DoD, seções, templates antigos, Ramble,
+  quick-add com sintaxe, Dashboard de produtividade — tudo REMOVIDO, arquivos deletados). **Decisões do
+  usuário onde o spec era omisso:** manter recorrência como linha "Repetir"; Agenda mostra tarefas ABERTAS
+  no dia do prazo; incluir editor simples de modelos (só sócio); DESCARTAR DoR/DoD antigos na migração.
+  **Modelo:** `Tarefa.prazo` NOT NULL (padrão = sexta da semana; sáb/dom → sexta seguinte; fuso SP),
+  `prazoFatal`, `grupo` (etiqueta livre no projeto), `aguardandoTexto`, `checklist` JSON `{id,texto,marcado}`,
+  status `todo|doing|wait|done`; novas `TarefaLigacao` (só mesmo projeto, sem ciclo), `TarefaHistorico`
+  (gravado pelo backend), `TarefaAnexo` (arquivo base64 ≤10MB ou link), `TarefaAcao` (snapshot p/ "Desfazer",
+  10 min, só o autor, restaura em cascata inclusive tarefas excluídas/criadas por modelo). `Projeto` ganhou
+  `nomeCurto` + `arquivadoEm`, perdeu status/icone/ordem; `ProjetoModelo`/`ProjetoModeloPasso` (papéis, dias
+  antes do prazo do grupo, anteriores, checklist) substituem ProjetoTemplate*/ProjetoSecao. **Migração converte
+  os dados:** review→doing; prazo = prazo ?? data ?? sexta da semana de criação (SP); subtasks→checklist;
+  seção→grupo; "Caixa de entrada" → tarefas sem projeto + projeto excluído; nome curto derivado; cor garantida;
+  arquivado/concluído → arquivadoEm; templates → modelos (ids preservados, cadeia "anterior" vira ligação,
+  dias úteis ≈ dias corridos × 7/5). **Regras ÚNICAS** puras em `lib/tarefas/regras.ts` (atraso, faixas,
+  prazo padrão, risco transitivo, conflito, aguardando, selo, ciclo, liberação, ajuste em cadeia que nunca
+  toca prazo fatal, cliente efetivo, texto livre de data) + `filtros.ts`, `equipe.ts`, `fluxo.ts`,
+  `lib/projetos/modelo.ts` — usadas pelo servidor E pelo cliente (prévia otimista). **API** (`runMutation`,
+  histórico + `acaoId` em toda escrita): `/api/tarefas` (GET carga única, `?derivados=1`; POST),
+  `[id]` (GET detalhe/PATCH/DELETE), `[id]/{prazo,status,concluir,responsavel,checklist[/item[/virar-tarefa]],
+  anexos[/anexoId]}`, `ligacoes`, `sugerir` (IA Haiku, degrada), `acoes/[id]/desfazer`, `equipe` (só gestão);
+  `/api/projetos` (+`[id]`, `de-modelo`, `modelos[/id]`). Notificação nova **"Sua vez"** (trigger
+  `notificarSuaVez`). **UI** `components/tarefas/`: `TarefasApp.tsx` + `tk-{context,ui,pickers,card,board,flow,
+  detail,newtask,projects,team,mobile}.tsx` + `tk.css` (vidro só na estrutura, blur no `::before`, popovers em
+  portal com inversão, Esc fecha só a janela do topo) + `TkCarregando.tsx` (loading.tsx). Rotas: `/tarefas`
+  (Quadro; `?pagina=equipe`, `?projeto=`, `?visao=lista|fluxo`, `?tarefa=`), `/projetos`, `/projetos/[id]`
+  (Quadro filtrado). Celular ≤720px: quadro por abas de status + barra inferior + Fluxo em lista. **Outros
+  módulos ajustados:** Agenda (prazo), Cliente/Caso/Processos/Busca/Spotlight (prazo fatal no lugar de P1–P4;
+  ficha do cliente inclui tarefas herdadas do projeto), cron de notificações (sem lembretes), relatório
+  diário, Início/briefing, modais de tarefa do CRM, cartão de tarefa da LexIA. **LexIA:** tools reescritas
+  (`listar/criar/criar_lote/editar/concluir/ligar/desligar/excluir_tarefa`, `listar/detalhe/criar/editar/
+  excluir_projeto`, `listar_modelos_projeto`, `criar_projeto_de_modelo`, `criar_estrutura_projeto` — projeto
+  + tarefas + ligações numa chamada) + bullets TAREFAS/PROJETOS do prompt. Seed `db:seed:projetos` reescrito
+  (áreas + 3 modelos create-only; `-- --demo` = dados de exemplo do spec; `-- --limpar-demo`). Testes novos
+  `tests/tarefas-regras.test.ts` (cenário do protótipo: "2 vencidas · 1 hoje · 4 na semana") e
+  `tests/projetos-modelo.test.ts`. **Revisão (2 agentes: servidor + UI) → achados corrigidos:** corridas no
+  grafo de ligações (lock `pg_advisory_xact_lock(7331, projetoId)` em `grafo()`; concluir trava antes de ler),
+  migração que jogava tarefas abertas antigas como vencidas (prazo padrão agora parte de max(criação, hoje)),
+  cliente efetivo na ficha do cliente, relatório diário (meio-dia UTC), projeto excluído tratado como vivo,
+  desfazer "projeto por modelo" com tarefas acrescentadas depois, data UTC na sugestão de IA; na UI: recarga
+  obsoleta (o `apiSend` deduplica GET → recarga usa `fetch` com sequência), URL fora de sincronia com o router
+  (`replaceState(null,…)`), título/descrição do detalhe não voltavam no Desfazer, datas UTC em comentários/
+  histórico, tokens `@[id]` crus ao editar comentário, lista de menção e menu "Remover" da seta do Fluxo agora
+  em portal, diálogos de status que não fechavam, soltar a alça "Ligar" no próprio cartão abria o detalhe,
+  checklist/anexo sem ações no toque (`@media (hover:none)`), raias "por projeto" ignoravam arquivados com
+  tarefa visível, soltar texto externo numa coluna, microfone some sem Web Speech, e **editor de modelos
+  agora tem Desfazer** (snapshot `modelos`/`modelosCriados` em `acoes.ts`). 829/830 testes (só a
+  `notificacoes-links` PRÉ-EXISTENTE). **Ajustes pós-visual (mesma sessão):** janelas/menus/aviso agora
+  usam o vidro do APP (`lexGlass`/`lexGlassStrong` + elevação do CRM, via `tk-glass.ts`; fundo da janela
+  transparente como nos modais do app; o vidro próprio `--tk-glass*` saiu do `tk.css`); a sidebar global
+  recolhe ao ENTRAR em `/tarefas`/`/projetos` (mesmo mecanismo do editor de documentos, agora ajuste
+  durante o render em `UnifiedShell`, sem efeito); a barra lateral do módulo copia a global (234px,
+  `--bg-soft`, título "Tarefas", itens 8px/10px, ícone 17); quadro vazio mostra estado ("Nenhuma tarefa
+  ainda" + Nova tarefa; "Nenhuma tarefa com estes filtros" + Limpar filtros; "Nenhuma tarefa neste
+  projeto"). **Ambiente:** o `.env.example` ainda era SQLite — corrigido p/ `postgresql://`.
+  **Detalhe + cartão no estilo Trello (pedido do usuário, tokens do LexIA):** `tk-detail.tsx` reescrito —
+  topo com status em pílula (menu) + "…" + fechar; esquerda com círculo de concluir/reabrir + título 22px,
+  ações "Checklist / Anexo / Ligação" (botões com borda), campos em pílulas com rótulo em cima
+  (Responsável = avatar, Projeto = etiqueta na cor do projeto, Grupo, Prazo + selo Vencida/Hoje + "Prazo
+  fatal", Repetir, Cliente) e seções com ícone na calha (Descrição em caixa, Checklist com barra de %,
+  Anexos, Ligações); direita (400px) "Comentários e atividade": comentário no topo, feed mais novo primeiro
+  com avatar + balão, histórico só com "Mostrar detalhes". Pickers ganharam variante `chip`; `TkMoveMenu`
+  saiu. Cartão: rodapé com o prazo em PÍLULA colorida (`TkPrazoBadge`: vencida vermelho, hoje âmbar,
+  fatal com bandeira/contorno), contadores de checklist/comentários/anexos e `TkAvatar` do responsável à
+  direita (sempre — `mostrarResponsavel` removido). **Espera ≠ data:** o relógio é SÓ do prazo; o estado
+  "aguardando" virou `TkEspera` (tk-ui) — corrente + "Depois de **<tarefa>** · <pessoa>" (ligação, via
+  `pendentes`) ou pessoa + "Aguardando: <texto>" (terceiro) —, no cartão num bloco próprio ACIMA do rodapé
+  (o prazo fica sozinho na última linha); também na Lista e no topo do detalhe. **Organização do detalhe
+  (feedback "informação jogada"):** campos num PAINEL com borda em grade fixa 3×2 (`.tk-dmeta`: Responsável
+  = avatar + nome, Prazo, Repetir · Projeto, Grupo, Cliente; 2 colunas no celular); "Prazo fatal" saiu da
+  linha e virou opção no menu da data (a pílula da data fica vermelha com bandeira); seções separadas por
+  linha fina (`.tk-dsec`); Descrição começa baixa e cresce com o texto; Ligações em 2 colunas ("Só começa
+  depois de…" | "Libera"); coluna de atividade 360px com estado vazio. **Menu de data sem rolagem:**
+  atalhos em grade 2×2 (`.tk-atalhos`), o mini calendário corta as semanas finais que são todas do mês
+  seguinte, e `TkPop` ganhou `alto` (sem o teto de 480px, só o da janela) — usado pelo `TkDatePop`.
+  **Ordenar/Agrupar à vista + ordem manual POR PESSOA + criar projeto/grupo da tarefa (migração
+  `20260924120000_tarefas_ordem_prefs`, ADITIVA — NÃO aplicada; gerada offline com `prisma migrate diff`):**
+  o menu "…" saiu; a linha de filtros tem os chips **Ordenar** (Prazo/Projeto/Responsável/Manual, cada um
+  crescente ou decrescente — "Sem projeto/responsável" sempre no fim) e **Agrupar** (Projeto/Responsável;
+  dentro de um projeto, Grupo/Responsável). A visão (ordenar/direção/agrupar) fica salva por pessoa em
+  `User.tarefasPrefs` (`PATCH /api/tarefas/preferencias`, carregada no `carregarPagina`). **Ordem manual**:
+  nova tabela `TarefaOrdem(userId, tarefaId, ordem)`; arrastar um cartão para cima/baixo na coluna mostra a
+  linha de inserção, liga "Ordenar: Manual" e grava (`PUT /api/tarefas/ordem`); em Manual, vindo de outra
+  coluna ele entra onde foi solto. `filtros.reposicionar` (puro, testado) REAPROVEITA as posições da própria
+  lista (não bagunça itens de outras raias/colunas) e dá posições novas no fim a quem não tinha; sem posição
+  = fim, por prazo. Não entra no histórico nem no Desfazer (é preferência pessoal). **Criar da tarefa:** Nova
+  tarefa ganhou o campo Grupo (com projeto) e os menus "Novo projeto…" (formulário de projeto; `TkProjectForm`
+  ganhou `onCriado` — devolve o id em vez de navegar) e "Novo grupo…" (`TkGrupoDialog`); o detalhe também.
+  **`TkDialog` agora sempre em portal** — dentro de uma janela de vidro (backdrop-filter) um `position:fixed`
+  ficava preso e cortado (afetava o diálogo "Link" de anexo no detalhe). **User action (REQUIRED — Prisma lock
+  no Windows):** parar `next dev` → `npx prisma migrate deploy` → `npx prisma generate` → `npm run dev`. **User action (REQUIRED — Prisma lock no Windows):** parar `next dev` →
+  `npm install` (este checkout estava sem node_modules/.env) → `npx prisma migrate deploy` (aplica a migração;
+  em produção ela roda sozinha no boot) → `npx prisma generate` → `npm run db:seed:projetos` (modelos; opcional
+  `-- --demo`) → `npm run dev`. Visual: `/tarefas` (Quadro/Lista/Fluxo, filtros, arrastar entre colunas,
+  concluir → "Sua vez" + Desfazer, detalhe, Nova tarefa com ditado e "Sugerir com IA"), `/projetos` (Ativos,
+  Arquivados, Modelos → Usar → assistente), Equipe (sócio/admin), tema claro/escuro, celular.
+- **Captação: data inválida, gclid visível/exportável + exclusão DEFINITIVA de leads (prior session, VERIFIED
   tsc 0 novos erros — só o `tests/cm-meta.test.ts` `temClique` PRÉ-EXISTENTE —, 839/840 testes (+6 novos; a 1
   falha é a `notificacoes-links.test.ts` PRÉ-EXISTENTE de sempre), eslint limpo nos arquivos tocados, SEM
   migração.** 3 pedidos do usuário sobre `/comercial` → aba Captação.

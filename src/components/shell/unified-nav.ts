@@ -18,8 +18,11 @@ export const SIDEBAR: SidebarItem[] = [
   { id: "comercial", label: "Comercial", icon: "megaphone", href: "/comercial" },
   { id: "tarefas", label: "Tarefas", icon: "listChecks", href: "/tarefas" },
   { id: "clientes", label: "Contatos", icon: "users", href: "/contatos" },
+  // Caso = a matéria do cliente (honorários, contrato, rateio). Sempre disponível —
+  // independe do módulo Processos (que pode ser desligado em Configurações → Módulos).
+  { id: "casos", label: "Casos", icon: "briefcase", href: "/casos" },
   { id: "contratos", label: "Contratos", icon: "receipt", href: "/contratos" },
-  { id: "processos", label: "Casos & Processos", icon: "scale", href: "/processos" },
+  { id: "processos", label: "Processos", icon: "scale", href: "/processos" },
   { id: "agenda", label: "Agenda", icon: "calendar", href: "/agenda" },
   // LexIA is no longer a sidebar "place" — the global LexIA bar (⌘K / dock pill)
   // is the single AI surface. The /lexia full page stays reachable from the bar's
@@ -32,11 +35,10 @@ const ROUTE_META: Record<string, { label: string; icon: CrmIconName }> = {
   "/financeiro": { label: "Financeiro", icon: "wallet" },
   "/comercial": { label: "Comercial", icon: "megaphone" },
   "/tarefas": { label: "Tarefas", icon: "listChecks" },
-  "/projetos": { label: "Projetos", icon: "listChecks" },
   "/contatos": { label: "Contatos", icon: "users" },
   "/contratos": { label: "Contratos", icon: "receipt" },
   "/casos": { label: "Casos", icon: "briefcase" },
-  "/processos": { label: "Casos & Processos", icon: "scale" },
+  "/processos": { label: "Processos", icon: "scale" },
   "/agenda": { label: "Agenda", icon: "calendar" },
   "/plano-acao": { label: "Plano de ação", icon: "target" },
   "/lexia": { label: "LexIA", icon: "sparkles" },
@@ -46,6 +48,7 @@ const ROUTE_META: Record<string, { label: string; icon: CrmIconName }> = {
 /** Tab/label metadata for a pathname. Cliente detail is dynamic (label set by the page). */
 export function metaForPath(pathname: string): { label: string; icon: CrmIconName } {
   if (/^\/contatos\/\d+/.test(pathname)) return { label: "Contato", icon: "user" }
+  if (/^\/casos\/\d+/.test(pathname)) return { label: "Caso", icon: "briefcase" }
   if (/^\/processos\/\d+/.test(pathname)) return { label: "Processo", icon: "scale" }
   if (pathname.startsWith("/documents/")) return { label: "Documento", icon: "fileText" }
   return ROUTE_META[pathname] ?? { label: pathname.replace(/^\//, "") || "Início", icon: "fileText" }
@@ -55,7 +58,6 @@ export function metaForPath(pathname: string): { label: string; icon: CrmIconNam
 export function activeNavId(pathname: string): string {
   if (pathname === "/") return "inicio"
   const seg = "/" + (pathname.split("/")[1] ?? "")
-  if (seg === "/projetos") return "tarefas" // Projetos é parte do módulo Tarefas
   const item = SIDEBAR.find((s) => s.href === seg)
   return item?.id ?? ""
 }

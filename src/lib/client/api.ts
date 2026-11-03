@@ -58,6 +58,8 @@ export async function apiSend<T = Record<string, unknown>>(
       method,
       headers: raw === undefined ? undefined : { "Content-Type": opts?.contentType ?? "application/json" },
       body: raw,
+      // leitura sempre fresca: um GET logo após salvar nunca pode vir de cache (navegador/proxy)
+      cache: method === "GET" ? "no-store" : undefined,
     })
 
   const exec = async (): Promise<T> => {

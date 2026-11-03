@@ -53,3 +53,9 @@ export function msgTarefaConcluida(p: {
       : `${ddmm(p.concluidoEm)} às ${hhmm(p.concluidoEm)}`
   return `${base} · ${quando}`
 }
+
+/** Tarefa liberada para o responsável (a anterior foi concluída): "Sua vez: X — Protocolo 02". */
+export function msgSuaVez(p: { titulo: string; grupo?: string | null }): string {
+  const grupo = p.grupo ? p.grupo.split(" · ")[0] : null
+  return grupo ? `Sua vez: ${p.titulo} — ${grupo}` : `Sua vez: ${p.titulo}`
+}

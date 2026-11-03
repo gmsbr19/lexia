@@ -1,18 +1,9 @@
-import "@/components/tarefas/tf-theme.css"
-import "@/components/projetos/pj-theme.css"
-import { auth } from "@/lib/auth"
-import type { Role } from "@/lib/auth/session"
-import { getWorkspaceData } from "@/lib/projetos/workspace"
-import { ProjetosWorkspace } from "@/components/projetos/ProjetosWorkspace"
+import { redirect } from "next/navigation"
 
-export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-// Same workspace as /tarefas, opened on the Projetos tab (LexIA "/projetos" + the
-// sidebar deep-link land here).
-export default async function Page() {
-  const session = await auth()
-  const role = (session?.user?.role as Role) ?? "estagiario"
-  const data = await getWorkspaceData(session?.user?.email)
-  return <ProjetosWorkspace dataset={data} role={role} initialTab="projetos" />
+// A lista de projetos (casos dos clientes + projetos internos) é a aba Projetos
+// do módulo Tarefas.
+export default function Page() {
+  redirect("/tarefas?pagina=projetos")
 }

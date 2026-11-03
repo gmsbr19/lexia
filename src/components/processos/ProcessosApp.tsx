@@ -6,8 +6,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { FxTabs, type FxTabDef } from "@/components/crm/crm-kit"
-import type { CrmDataset, CrmNav } from "@/components/crm/crm-types"
-import { CrmCasoModal } from "@/components/crm/pages/CrmCasoModal"
+import type { CrmDataset } from "@/components/crm/crm-types"
 import type { ProcessosDataset } from "@/lib/processos/dataset"
 import type { PublicacaoRow } from "@/lib/processos/types"
 import type { AlertaProcesso } from "@/lib/processos/saude"
@@ -32,17 +31,14 @@ export function ProcessosApp({
   dataset,
   crm,
   initialView,
-  openCaso,
 }: {
   dataset: ProcessosDataset
   crm: CrmDataset
   initialView: ProcView
-  openCaso?: number
 }) {
   const router = useRouter()
   const [view, setView] = useState<ProcView>(initialView)
   const [modal, setModal] = useState<Modal>(null)
-  const [casoModal, setCasoModal] = useState<number | null>(openCaso ?? null)
   const [alertas, setAlertas] = useState<AlertaProcesso[]>([])
 
   useEffect(() => {
@@ -51,15 +47,14 @@ export function ProcessosApp({
       .catch(() => setAlertas([]))
   }, [])
 
-  // Deep-link / voltar-avançar: quando só os search params mudam (link "Ver caso"
-  // da LexIA, redirect de /casos, Spotlight) o componente NÃO remonta — então
-  // sincronizamos a view e o modal do caso com as props vindas do server.
-  useEffect(() => {
+  // Deep-link / voltar-avançar: quando só os search params mudam (link da LexIA,
+  // Spotlight) o componente NÃO remonta — então sincronizamos a view com a prop
+  // (ajuste durante o render, sem efeito).
+  const [lastInitial, setLastInitial] = useState(initialView)
+  if (initialView !== lastInitial) {
+    setLastInitial(initialView)
     setView(initialView)
-  }, [initialView])
-  useEffect(() => {
-    setCasoModal(openCaso ?? null)
-  }, [openCaso])
+  }
 
   const nav: ProcNav = {
     openProcesso: (id) => router.push(`/processos/${id}`),
@@ -71,25 +66,13 @@ export function ProcessosApp({
     refresh: () => router.refresh(),
   }
 
-  const abrirCaso = (id: number) => {
-    setCasoModal(id)
-    router.replace(`/processos?view=processos&caso=${id}`)
-  }
-
-  // Cross-module navigation used by the embedded CRM caso modal.
-  const crmNav: CrmNav = {
-    navPage: (p) => router.push(p === "clientes" ? "/contatos" : `/${p}`),
-    openCliente: (id) => router.push(`/contatos/${id}`),
-    openClienteTab: (id) => router.push(`/contatos/${id}`),
-    openCaso: (id) => abrirCaso(id),
-    openContrato: (id) => router.push(`/contratos?contrato=${id}`),
-    openProcesso: (id) => router.push(`/processos/${id}`),
-  }
+  // O caso tem página própria (/casos/[id]) — independe deste módulo.
+  const abrirCaso = (id: number) => router.push(`/casos/${id}`)
 
   const inbox = dataset.publicacoes.filter((p) => p.statusTriagem === "pendente").length
   const tabs: FxTabDef[] = [
     { id: "painel", label: "Painel", icon: "layoutGrid" },
-    { id: "processos", label: "Casos & processos", icon: "scale" },
+    { id: "processos", label: "Processos", icon: "scale" },
     { id: "prazos", label: "Prazos", icon: "flag" },
     { id: "andamentos", label: "Andamentos", icon: "inbox", badge: inbox || null },
     { id: "saude", label: "Consistência", icon: "checkCircle" },
@@ -136,20 +119,6 @@ export function ProcessosApp({
           responsaveis={dataset.responsaveis}
           onClose={() => setModal(null)}
           onDone={() => router.refresh()}
-        />
-      )}
-
-      {casoModal != null && (
-        <CrmCasoModal
-          casoId={casoModal}
-          role={crm.role}
-          dataset={crm}
-          onClose={() => {
-            setCasoModal(null)
-            router.replace("/processos?view=processos")
-          }}
-          onRefresh={() => router.refresh()}
-          nav={crmNav}
         />
       )}
     </div>

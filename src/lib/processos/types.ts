@@ -264,7 +264,7 @@ export interface DashboardTarefa {
   id: number
   titulo: string
   status: string
-  prio: number
+  prazoFatal: boolean
   prazo: string | null // ISO date
 }
 
