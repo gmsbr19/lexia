@@ -248,8 +248,11 @@ export function UnifiedShell({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  // Páginas públicas sem shell (login + página de ativação do convite).
-  const isLogin = pathname === "/login" || pathname.startsWith("/definir-senha")
+  // Páginas sem shell: as públicas (login + ativação do convite) e a versão
+  // para impressão do relatório financeiro — ela precisa ser um documento solto,
+  // sem sidebar/topbar nem container de scroll, senão o papel sai cortado.
+  const isLogin =
+    pathname === "/login" || pathname.startsWith("/definir-senha") || pathname.startsWith("/financeiro/relatorio")
 
   // No editor de documentos, a sidebar global recolhe automaticamente p/ dar mais
   // espaço ao editor; restaura o estado anterior ao sair. O toggle manual (Recolher

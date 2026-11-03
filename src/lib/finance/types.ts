@@ -467,3 +467,134 @@ export interface ImportSummary {
   anomalias: number
   casosSemFee: number
 }
+
+// ── Relatório financeiro por período ─────────────────────────────────────────
+// Um único objeto serializável, montado no servidor (lib/finance/relatorio.ts)
+// e consumido pelo documento de relatório (tela + impressão). Toda a matemática
+// vive em relatorio-core.ts (pura, testável).
+
+/** Resumo executivo: realizado no período + comparativo com o período anterior. */
+export interface RelatorioKpis {
+  recebidoCents: number // entradas BAIXADAS no período (dataPagamento)
+  recebidoCount: number
+  pagoCents: number // saídas BAIXADAS no período
+  pagoCount: number
+  resultadoCents: number // recebido − pago
+  margemPct: number | null
+  ticketMedioCents: number // recebido ÷ nº de entradas baixadas
+  aReceberCents: number // entradas EM ABERTO com vencimento no período
+  aReceberCount: number
+  vencidoPeriodoCents: number // dessas, as que já venceram (posição de hoje)
+  vencidoPeriodoCount: number
+  aPagarCents: number // saídas em aberto com vencimento no período
+  aPagarCount: number
+  recebidoAnteriorCents: number
+  pagoAnteriorCents: number
+  resultadoAnteriorCents: number
+  recebidoDeltaPct: number | null
+  pagoDeltaPct: number | null
+  resultadoDeltaPct: number | null
+}
+
+export interface RelatorioDreLinha {
+  label: string
+  valorCents: number
+  kind: DreRow["kind"]
+  hint?: string
+}
+
+/** Fatia de uma composição (tipo de honorário, categoria de custo…). */
+export interface RelatorioFatia {
+  chave: string
+  label: string
+  cor: string
+  valorCents: number
+  count: number
+  pct: number // 0..100 sobre o total da composição
+}
+
+export interface RelatorioDevedor {
+  clienteId: number | null
+  cliente: string
+  totalCents: number
+  count: number
+  maiorAtrasoDias: number
+}
+
+/** Extrato de uma conta no período: saldo inicial → movimento → saldo final. */
+export interface RelatorioContaLinha {
+  id: number
+  nome: string
+  titular: string | null
+  kind: ContaKind
+  saldoInicialCents: number
+  entradasCents: number
+  saidasCents: number
+  saldoFinalCents: number
+}
+
+export interface RelatorioEvolucaoPonto {
+  key: string // "YYYY-MM"
+  label: string // "jun/26"
+  entradasCents: number
+  saidasCents: number
+  saldoCents: number
+}
+
+/** Um caso com honorário recebido no período e o rateio aplicado. */
+export interface RelatorioRateioLinha {
+  casoId: number
+  caso: string
+  cliente: string | null
+  recebidoCents: number
+  partes: { contaId: number; nome: string; percentual: number; valorCents: number }[]
+}
+
+export interface RelatorioSocios {
+  /** Desbalanço gerado DENTRO do período (honorários + despesas − transferências do período). */
+  periodo: AcertoSocios
+  /** Posição acumulada de todo o histórico até hoje (o que a aba Contas mostra). */
+  acumulado: AcertoSocios
+  /** Transferências sócio↔sócio ocorridas no período. */
+  transferencias: TransferenciaRow[]
+  /** Casos que geraram honorário recebido no período, com o rateio. */
+  rateios: RelatorioRateioLinha[]
+  /** Falso quando o escritório não tem exatamente 2 contas de sócio. */
+  disponivel: boolean
+}
+
+export interface RelatorioEscritorio {
+  razaoSocial: string | null
+  cnpj: string | null
+  oab: string | null
+}
+
+export interface RelatorioFinanceiro {
+  faixa: { de: string; ate: string }
+  titulo: string // "Junho de 2026" | "Período personalizado"
+  subtitulo: string // "01/06/2026 a 30/06/2026 · 30 dias"
+  anteriorTitulo: string // rótulo do período de comparação
+  geradoEm: string // ISO timestamp da geração
+  hoje: string // ISO date — referência das posições "em aberto"/"vencido"
+  escritorio: RelatorioEscritorio
+  kpis: RelatorioKpis
+  dre: RelatorioDreLinha[]
+  honorarios: RelatorioFatia[]
+  categorias: RelatorioFatia[]
+  inadimplencia: {
+    aging: AgingBucket[]
+    devedores: RelatorioDevedor[]
+    totalCents: number
+    count: number
+  }
+  contas: {
+    linhas: RelatorioContaLinha[]
+    saldoInicialCents: number
+    entradasCents: number
+    saidasCents: number
+    saldoFinalCents: number
+  }
+  socios: RelatorioSocios
+  evolucao: RelatorioEvolucaoPonto[]
+  lancamentos: LancamentoRow[]
+}

@@ -145,7 +145,107 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
-- **Captação: data inválida, gclid visível/exportável + exclusão DEFINITIVA de leads (this session, VERIFIED
+- **Financeiro · RELATÓRIO por período (mês ou faixa livre) — nova aba + rota de impressão (this session,
+  VERIFIED tsc 0 novos erros — só o `tests/cm-meta.test.ts` `temClique` PRÉ-EXISTENTE —, 889/890 testes
+  (+50 novos; a 1 falha é a `notificacoes-links.test.ts` PRÉ-EXISTENTE de sempre), eslint limpo em TODOS os
+  arquivos novos/tocados (os 5 achados restantes são os PRÉ-EXISTENTES de `UnifiedShell.tsx`
+  set-state-in-effect/refs/`overlays` + o aviso `AcertoSocioLado` de `queries.ts`), SEM migração.**
+  Pedido: emitir relatório financeiro de cada mês ou de um período específico, bonito, por seções, com color
+  code, incluindo o balanço de contas entre os sócios. Decisões confirmadas com o usuário: **exportação =
+  Imprimir/PDF do navegador + CSV dos lançamentos** (PDF via puppeteer no servidor foi oferecido e NÃO
+  escolhido) e **todas as 9 seções**.
+  **Período = FAIXA de datas arbitrária, não o mes/periodo do resto do módulo** — núcleo PURO novo
+  [relatorio-periodo.ts](src/lib/finance/relatorio-periodo.ts) (`Faixa {de, ate}` ISO inclusivo nos 2
+  extremos; `normalizeFaixa` — sem params = mês corrente, inválido = mês corrente, `de>ate` INVERTE em vez de
+  rejeitar, um lado só = relatório de 1 dia; `faixaRange` devolve `end` EXCLUSIVO; presets
+  mes/mes-anterior/trimestre/ytd/ano/ultimos-12 + `detectPreset`; `shiftFaixa` **ciente de alinhamento** —
+  faixa que é mês/trimestre/ano completo anda em meses/trimestres/anos com clamp de fim de mês, faixa livre
+  anda pelo próprio comprimento em dias; `faixaLabel` nomeia "Junho de 2026"/"3º trimestre de 2026"/"Ano de
+  2026"/"Período personalizado"; `mesesNaFaixa` dá a cobertura FRACIONÁRIA de meses — usada p/ escalar o
+  pró-labore). A faixa é a ÚNICA fonte da verdade e vive na URL (`?tab=relatorio&de=&ate=`), carregada também
+  pelo `FinanceiroTabStrip` p/ não se perder ao trocar de aba.
+  **Matemática PURA** em [relatorio-core.ts](src/lib/finance/relatorio-core.ts) (`comporKpis` com deltas vs.
+  período anterior comparável, `comporDre`, `comporFatias`/`comporHonorarios`/`comporCategorias`,
+  `faixaAging`/`comporAging`/`comporDevedores`, `comporEvolucao`, `comporExtratoContas`, `comporRateios`,
+  `maxAbs`/`mediaDiaria`) e a montagem em [relatorio.ts](src/lib/finance/relatorio.ts)
+  `getRelatorioFinanceiro(faixa)` — 20 consultas num `Promise.all`, devolvendo UM `RelatorioFinanceiro`
+  serializável (tipos novos no fim de [types.ts](src/lib/finance/types.ts)). Semântica herdada do módulo p/
+  os números baterem com as abas: realizado = `status:'feito'` por `dataPagamento`; em aberto =
+  `status:'aberto'` por `dataVencimento`; `isAnomalia` sempre fora, exceto nos saldos de conta (BALANCE_MOV
+  re-inclui as transferências internas).
+  **Reuso, não duplicação:** `getAcertoSocios(range?)` ganhou um parâmetro OPCIONAL de janela
+  ([queries.ts](src/lib/finance/queries.ts)) — sem range o comportamento histórico da aba Contas é byte a
+  byte o mesmo; com range dá o acerto GERADO NO PERÍODO (o relatório mostra os dois). `REVENUE`/`FEE`/
+  `BALANCE_MOV` passaram a ser exportados. O mapper Lancamento→LancamentoRow saiu de dentro de
+  `getLancamentos` p/ [lancamento-map.ts](src/lib/finance/lancamento-map.ts) (`LANC_SELECT` +
+  `toLancamentoRow`), agora compartilhado pelos dois (ledger interativo e relatório).
+  **9 seções numeradas, com color code declarado numa legenda**
+  ([RelatorioDoc.tsx](src/components/financeiro/relatorio/RelatorioDoc.tsx), server-safe e puramente
+  apresentacional — a MESMA superfície na tela e no papel): 01 Resumo executivo (4 KPIs com delta vs. período
+  anterior + 4 métricas secundárias), 02 Resultado do período (DRE + composição do caixa), 03 Evolução mensal
+  (só em período multi-mês; barras CSS empilhadas), 04 Entradas por tipo de honorário, 05 Custos por
+  categoria, 06 Inadimplência (aging + maiores devedores), 07 Saldo por conta (extrato: saldo inicial →
+  movimento → saldo final), 08 **Balanço entre os sócios** (cartão por sócio com direito/recebido/cota-50%/
+  pagou, veredito do período E da posição acumulada, transferências de acerto do período, e a tabela de
+  **rateio por caso** com o % e o valor de cada sócio), 09 Lançamentos do período. Cores: verde=entrou,
+  vermelho=saiu/vencido, âmbar=atenção, dourado=total do escritório, navy=estrutura.
+  **Impressão:** o documento lê variáveis locais `--rel-*` que na tela apontam p/ os tokens do app (segue
+  claro/escuro) e dentro de `@media print` são **REDEFINIDAS para uma paleta de papel** — imprimir no tema
+  escuro NUNCA sai com fundo navy (padrão verificado empiricamente: o vanilla-extract emite `vars` dentro de
+  `@media`, confirmado rodando o `transformCss` do próprio pacote). `print-color-adjust` é declarado SÓ na
+  forma padrão (o par webkit+padrão à mão é a armadilha do Lightning CSS documentada no §glass). O botão
+  **"Imprimir / PDF"** abre `/financeiro/relatorio?de=&ate=` — **rota BARE** (entrou na lista de rotas sem
+  shell do [UnifiedShell.tsx](src/components/shell/UnifiedShell.tsx), junto de /login e /definir-senha): sem
+  sidebar/topbar e, crucialmente, sem os containers de scroll de altura fixa do app, que cortariam o papel na
+  primeira página. `@page A4` + os resets de `height/overflow` vivem num
+  [print.css](src/app/financeiro/relatorio/print.css) de CSS puro (o `.css.ts` não expressa `@page`);
+  `?print=0` abre sem disparar o diálogo (conferir layout). **CSV** reusa o `rowsToCsv` do DataGrid (o que tem
+  a guarda anti-injeção de fórmula), nome do arquivo via `faixaSlug`.
+  **PASSE DE CONFORMIDADE COM O DESIGN SYSTEM (o usuário perguntou se eu havia garantido; auditei e NÃO
+  havia — 6 desvios reais encontrados e corrigidos):** (1) **a fonte MONO estava sendo usada em todos os
+  valores** — violação direta da regra declarada em `interativo.css.ts §numbers` ("the mono face is reserved
+  for code, never for valores"); todo número do relatório passou a sans + figuras tabulares (`NUM`, cópia de
+  `num`/`money`). NOTA p/ sessões futuras: o repo é dividido — o módulo **comercial** usa mono p/ dinheiro
+  (cx-kit/CmKanban/CmModals), o **financeiro** proíbe; dentro de Financeiro vale a regra do financeiro.
+  (2) raio **12** (fora da escala 6/8/10/14) em 7 superfícies → **14**, o raio de `card`/`tableCard`/`kpiCard`;
+  (3) as superfícies não tinham `boxShadow` → ganharam `tokens.color.shadowSm` (zerada no papel), como toda
+  caixa com borda do módulo; (4) tamanhos fracionários (9.5/10.5/11.5/15/21/30) → a escala da TELA agora é
+  exatamente **{11, 12, 13, 14, 25}**, subconjunto estrito da do app (micro-rótulo 11 uppercase 0.08em =
+  `sectionTitle`; corpo/label 12 = `cell`/`kpiLabel`/`kpiSub`; título de card 14 = `cardTitle`; valor de KPI 25
+  com −0.025em = `kpiValue`; `th` 11 uppercase + padding 9/14 e `td` 12 + padding 8/14 = `th`/`cell`);
+  (5) pílula com raio **999** → **6** + padding 3/9 (= `pill` do módulo), tile de seção 28×28/raio 8
+  (= `totalIcon`); (6) `--rel-navy: "#1F3A6E"` **hardcoded** → o tom "navy" virou **"neutro"** derivado de
+  `bgSunken`/`textMuted`, então nenhuma cor de tela é literal: TODAS saem dos tokens (só a paleta de PAPEL do
+  `@media print` é hex, de propósito). Reauditado por script: 0 mono, 0 hex de tela, 0 `fontSize` inline, só
+  pesos 400/500. **Não verifiquei visualmente** (regra do projeto: quem faz a conferência visual é o usuário).
+  **4 achados do meu próprio código, corrigidos antes de considerar pronto:** (1) `dataVencimento: {gte, lt,
+  lt}` — chave `lt` DUPLICADA no literal (o `lt: end` era sobrescrito), virou `limiteVencido = min(end,
+  hoje)`; (2) spread `{...BALANCE_MOV, OR: [...]}` **sobrescrevia o `OR` do próprio BALANCE_MOV** (que
+  re-inclui as transferências) e traria de volta os artefatos de saldo, dobrando a abertura — o filtro de data
+  foi para dentro de um `AND`; (3) as barras de evolução transbordavam (o teto era o máximo de entradas OU
+  saídas, mas as duas faixas empilham) — teto passou a ser o máximo do TOTAL do mês; (4) as colunas da tabela
+  de rateio vinham de `rateios[0].partes`, então um caso 100% de um sócio esconderia o outro — passam a vir
+  das contas de sócio. **Decisão de reconciliação:** movimentos realizados SEM `dataPagamento` (a importação
+  da Astrea deixa alguns assim) entram no **saldo de abertura** da faixa, senão o saldo final do relatório não
+  fecharia com a aba Contas & Balanço; está dito na nota da própria seção. Tabela de lançamentos capada em
+  **500 linhas** na tela/papel, com os TOTAIS sempre sobre o conjunto inteiro + aviso apontando p/ o CSV.
+  **Testes novos (50):** [finance-relatorio-periodo.test.ts](tests/finance-relatorio-periodo.test.ts) (24 —
+  validação de data inexistente, normalização/inversão, range exclusivo, alinhamento mês/trimestre/ano,
+  presets cruzando o ano, shift com clamp, rótulos, meses fracionários) +
+  [finance-relatorio-core.test.ts](tests/finance-relatorio-core.test.ts) (26 — KPIs/deltas/margem nula, DRE
+  com e sem pró-labore e escalado, composições com ordem canônica e tipo desconhecido→à vista, cortes do
+  aging, devedores só vencidos/agrupados/limitados, evolução com mês vazio, extrato com movimento sem conta,
+  rateio normalizado com a soma fechando no centavo).
+  **User action:** só visual (SEM passo de DB) — `/financeiro` → nova aba **Relatório**: conferir os presets
+  (Este mês / Mês anterior / Trimestre / Ano até hoje / Ano / Últimos 12 meses), as setas ‹ › (num mês andam
+  mês a mês; numa faixa livre andam pelo comprimento dela) e os campos **De/até** p/ um período específico;
+  rolar as 9 seções e conferir o **Balanço entre os sócios** contra a aba Contas & Balanço (a "posição
+  acumulada" do relatório tem de ser idêntica à de lá); **Exportar CSV**; **Imprimir / PDF** → abre a aba
+  limpa e chama a impressão → no diálogo escolher "Salvar como PDF" e manter **"Gráficos de segundo plano"**
+  LIGADO (sem isso o Chrome descarta os fundos coloridos); repetir no tema ESCURO e confirmar que o PDF sai em
+  papel branco. Se o escritório tiver razão social/CNPJ/OAB em Configurações → Escritório, eles aparecem no
+  cabeçalho do relatório.
+- **Captação: data inválida, gclid visível/exportável + exclusão DEFINITIVA de leads (prev session, VERIFIED
   tsc 0 novos erros — só o `tests/cm-meta.test.ts` `temClique` PRÉ-EXISTENTE —, 839/840 testes (+6 novos; a 1
   falha é a `notificacoes-links.test.ts` PRÉ-EXISTENTE de sempre), eslint limpo nos arquivos tocados, SEM
   migração.** 3 pedidos do usuário sobre `/comercial` → aba Captação.

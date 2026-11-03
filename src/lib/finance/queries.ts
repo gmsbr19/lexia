@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db"
 import { computeAcertoSocios, emptyAcerto } from "./acerto"
 import { BUCKET_META, BUCKET_ORDER } from "./composicao"
 import { aggFeeTotals, contratoToRow, lancamentoToHonorarioRow } from "./honorario-map"
+import { LANC_SELECT, toLancamentoRow } from "./lancamento-map"
 import { currentMes, inScope, periodRange } from "./periodo"
 import type {
   AcertoSocioLado,
@@ -72,14 +73,14 @@ function mesToDate(mes?: string | null): Date {
   return new Date()
 }
 
-const REVENUE = { tipo: "entrada", isAnomalia: false } as const
+export const REVENUE = { tipo: "entrada", isAnomalia: false } as const
 // A fee-receivable ("honorário") is a Lancamento entrada with subTipo='honorario'.
 // This is the single source for every honorário read (the Honorario table is dormant).
-const FEE = { tipo: "entrada", subTipo: "honorario", isAnomalia: false } as const
+export const FEE = { tipo: "entrada", subTipo: "honorario", isAnomalia: false } as const
 // Balance-relevant rows: realized (feito) movements, excluding balance artifacts
 // (valor_inicial / "Compensação Sistema") BUT re-including internal transfers,
 // which are flagged isAnomalia=true yet still move an account's balance.
-const BALANCE_MOV: Prisma.LancamentoWhereInput = {
+export const BALANCE_MOV: Prisma.LancamentoWhereInput = {
   status: "feito",
   contaId: { not: null },
   OR: [{ isAnomalia: false }, { subTipo: "transferencia" }],
@@ -681,45 +682,9 @@ export async function getCasoOptions(): Promise<IdNome[]> {
 export async function getLancamentos(mes?: string, periodo: Periodo = "mes"): Promise<LancamentoRow[]> {
   const rows = await prisma.lancamento.findMany({
     where: { isAnomalia: false },
-    select: {
-      id: true,
-      tipo: true,
-      status: true,
-      descricao: true,
-      valorCents: true,
-      dataVencimento: true,
-      dataLancamento: true,
-      dataPagamento: true,
-      pagoPara: true,
-      recorrenteParentId: true,
-      contaId: true,
-      cliente: { select: { nome: true } },
-      caso: { select: { titulo: true } },
-      categoria: { select: { nome: true } },
-      conta: { select: { nome: true } },
-      _count: { select: { recorrenteFilhos: true } },
-    },
+    select: LANC_SELECT,
   })
-  let mapped: LancamentoRow[] = rows.map((r) => {
-    const vencDate = r.dataVencimento ?? r.dataLancamento
-    const recorrente = r.recorrenteParentId != null || r._count.recorrenteFilhos > 0
-    return {
-      id: r.id,
-      dir: r.tipo === "saida" ? "out" : "in",
-      desc: r.descricao ?? "—",
-      party: r.cliente?.nome ?? r.pagoPara ?? null,
-      caso: r.caso?.titulo ?? null,
-      cat: r.categoria?.nome ?? null,
-      venc: vencDate ? vencDate.toISOString() : null,
-      valorCents: Math.abs(r.valorCents),
-      pago: r.status === "feito",
-      pagoData: r.dataPagamento ? r.dataPagamento.toISOString() : null,
-      contaId: r.contaId,
-      conta: r.conta?.nome ?? null,
-      recorrente,
-      grupo: recorrente ? "Recorrente" : null,
-    }
-  })
+  let mapped: LancamentoRow[] = rows.map(toLancamentoRow)
   if (mes) mapped = mapped.filter((r) => inScope(r.venc, mes, periodo))
   return mapped.sort((a, b) => (a.venc ?? "").localeCompare(b.venc ?? ""))
 }
@@ -1025,7 +990,13 @@ export async function getContratoDetail(id: number): Promise<ContratoDetail | nu
 // transfers (which count as settlement). Considers PAID 'in' lançamentos that
 // (a) are linked to a caso WITH a defined split and (b) were received into a
 // sócio account; entitlement is split by the caso's percentuais.
-export async function getAcertoSocios(): Promise<AcertoSocios> {
+// `range` (opcional) restringe o acerto ao que foi PAGO/TRANSFERIDO dentro do
+// intervalo — é o que o relatório por período usa para mostrar "o desbalanço
+// que ESTE período gerou". Sem range o comportamento é o histórico completo
+// (o que a aba Contas & Balanço sempre mostrou).
+export async function getAcertoSocios(range?: { start: Date; end: Date }): Promise<AcertoSocios> {
+  const janelaPag = range ? { dataPagamento: { gte: range.start, lt: range.end } } : {}
+  const janelaMov = range ? { dataMovimento: { gte: range.start, lt: range.end } } : {}
   const socios = await prisma.conta.findMany({
     where: { kind: "socio", ativo: true },
     select: { id: true, nome: true, titular: true, ordem: true },
@@ -1052,6 +1023,7 @@ export async function getAcertoSocios(): Promise<AcertoSocios> {
       isAnomalia: false,
       contaId: { in: [A.id, B.id] },
       casoId: { not: null },
+      ...janelaPag,
     },
     select: {
       valorCents: true,
@@ -1060,7 +1032,7 @@ export async function getAcertoSocios(): Promise<AcertoSocios> {
     },
   })
   const saidas = await prisma.lancamento.findMany({
-    where: { tipo: "saida", status: "feito", isAnomalia: false, contaId: { in: [A.id, B.id] } },
+    where: { tipo: "saida", status: "feito", isAnomalia: false, contaId: { in: [A.id, B.id] }, ...janelaPag },
     select: { valorCents: true, contaId: true },
   })
   const transfers = await prisma.transferencia.findMany({
@@ -1069,6 +1041,7 @@ export async function getAcertoSocios(): Promise<AcertoSocios> {
         { contaOrigemId: A.id, contaDestinoId: B.id },
         { contaOrigemId: B.id, contaDestinoId: A.id },
       ],
+      ...janelaMov,
     },
     select: { valorCents: true, contaOrigemId: true },
   })

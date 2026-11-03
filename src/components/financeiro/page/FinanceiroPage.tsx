@@ -1,6 +1,7 @@
 import { pageShell, tabPanel } from "@/components/documents/page/documents-page.css"
 import { getCasoOptions, getCategoriaOptions, getClienteOptions, getContaOptions, getFornecedorOptions } from "@/lib/finance/queries"
 import { normalizePeriodo } from "@/lib/finance/periodo"
+import { normalizeFaixa } from "@/lib/finance/relatorio-periodo"
 import { FinanceiroTabStrip } from "./FinanceiroTabStrip"
 import { tabStripRow } from "./FinanceiroTabStrip.css"
 import { PERIOD_TABS, normalizeFinanceiroTab, normalizeMes } from "./nav"
@@ -12,6 +13,7 @@ import type { InitialFilter } from "../interativo/LancamentosTable"
 import { FluxoTab } from "./tabs/FluxoTab"
 import { ContasTab } from "./tabs/ContasTab"
 import { CustosTab } from "./tabs/CustosTab"
+import { RelatorioTab } from "./tabs/RelatorioTab"
 import { CasosSemFeeTab } from "./tabs/CasosSemFeeTab"
 import { ImportacaoTab } from "./tabs/ImportacaoTab"
 
@@ -24,6 +26,9 @@ export async function FinanceiroPage({ params }: { params: Params }) {
   const tab = normalizeFinanceiroTab(params.tab)
   const mes = normalizeMes(params.mes)
   const periodo = normalizePeriodo(params.periodo)
+  // A aba Relatório tem seu próprio período: uma FAIXA de datas arbitrária
+  // (?de=&ate=, padrão mês corrente), independente do mês/trimestre/ano.
+  const faixa = normalizeFaixa(params.de, params.ate)
   const isDesignTab = tab === "visao-geral" || tab === "lancamentos" || tab === "fluxo"
 
   let options: LancOptions | null = null
@@ -50,7 +55,7 @@ export async function FinanceiroPage({ params }: { params: Params }) {
     <>
       <div className={pageShell}>
         <div className={tabStripRow}>
-          <FinanceiroTabStrip tab={tab} mes={mes} periodo={periodo} />
+          <FinanceiroTabStrip tab={tab} mes={mes} periodo={periodo} de={faixa.de} ate={faixa.ate} />
         </div>
 
         {PERIOD_TABS.includes(tab) && <PeriodBar tab={tab} mes={mes} periodo={periodo} />}
@@ -61,6 +66,7 @@ export async function FinanceiroPage({ params }: { params: Params }) {
           {tab === "fluxo" && <FluxoTab />}
           {tab === "contas" && <ContasTab />}
           {tab === "custos" && <CustosTab mes={mes} periodo={periodo} />}
+          {tab === "relatorio" && <RelatorioTab faixa={faixa} />}
           {tab === "casos-sem-honorario" && <CasosSemFeeTab />}
           {tab === "importacao" && <ImportacaoTab />}
         </div>

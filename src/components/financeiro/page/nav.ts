@@ -4,6 +4,7 @@ export const FINANCEIRO_TABS = [
   { id: "fluxo", label: "Fluxo de caixa" },
   { id: "contas", label: "Contas & Balanço" },
   { id: "custos", label: "Custos & DRE" },
+  { id: "relatorio", label: "Relatório" },
   { id: "casos-sem-honorario", label: "Casos sem honorário" },
   { id: "importacao", label: "Importação" },
 ] as const

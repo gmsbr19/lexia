@@ -1,0 +1,87 @@
+/* Página de impressão do relatório financeiro — o documento sozinho, sem o
+   shell do app (ver UnifiedShell: /financeiro/relatorio renderiza "bare").
+   Na tela parece uma folha centralizada; em @media print vira A4 de verdade.
+
+   Por que uma folha .css em vez de vanilla-extract: @page e os resets de
+   height/overflow do documento são regras globais que o .css.ts não expressa. */
+
+.rel-print-root {
+  min-height: 100%;
+  background: var(--bg);
+  padding: 22px 20px 72px;
+}
+
+.rel-print-sheet {
+  max-width: 900px;
+  margin: 0 auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 32px 36px 36px;
+  box-shadow: var(--shadow-sm);
+}
+
+.rel-print-bar {
+  max-width: 900px;
+  margin: 0 auto 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.rel-print-hint {
+  font-size: 12px;
+  color: var(--text-subtle);
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 13mm 11mm 15mm;
+  }
+
+  /* Cinto de segurança do color code: sem isto o Chrome descarta fundos e
+     bordas coloridas no papel (a opção "Gráficos de segundo plano"). */
+  * {
+    print-color-adjust: exact !important;
+  }
+
+  /* O app é uma aplicação de altura fixa com containers de scroll; na
+     impressão isso cortaria tudo na primeira página. */
+  html,
+  body {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+    color: #101828 !important;
+  }
+
+  main,
+  #__next {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .rel-print-root {
+    min-height: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  .rel-print-sheet {
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: #ffffff !important;
+    box-shadow: none !important;
+  }
+
+  .rel-print-bar {
+    display: none !important;
+  }
+}
