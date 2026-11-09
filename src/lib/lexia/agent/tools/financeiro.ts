@@ -31,7 +31,7 @@ import { ROLES_FINANCEIRO } from "@/lib/users/types"
 import { dataBr } from "../confirmar"
 import { defineTool } from "../types"
 import { brl, cap, limite } from "./shared"
-
+
 
 /** Contas de SÓCIO ativas — são as únicas que podem receber percentual no rateio. */
 async function contasDeSocio() {
@@ -244,7 +244,8 @@ export const financeiroTools = [
     description:
       "Acerto entre os sócios (direito vs. recebido, despesas rateadas) — quem deve quanto a quem. " +
       "Sem datas, cobre todo o histórico (é o número da aba Contas); com de/ate, só o que foi gerado no período (ex.: desde o último repasse). " +
-      "Com detalhado: true devolve também cada honorário com a parte de cada sócio, cada despesa com a cota, as transferências e o que ficou FORA da conta com o motivo — é o relatório do repasse, pronto, sem SQL.",
+      "Com detalhado: true devolve também cada honorário com a parte de cada sócio, cada despesa com a cota, as transferências e o que ficou FORA da conta com o motivo — é o relatório do repasse, pronto, sem SQL. " +
+      "Num período longo as listas vêm cortadas (os totais, nunca) e o campo 'aviso' diz isso: nesse caso peça de/ate mais curtos, ou vá mês a mês.",
     schema: z.object({
       de: dateStr.optional().describe("Início do período (YYYY-MM-DD), ex.: a data do último repasse"),
       ate: dateStr.optional().describe("Fim do período (YYYY-MM-DD, inclusivo)"),

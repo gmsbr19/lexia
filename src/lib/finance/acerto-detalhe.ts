@@ -21,6 +21,29 @@ import type {
 /** Teto de linhas devolvidas por lista (os TOTAIS são sempre do conjunto inteiro). */
 export const MAX_LINHAS_ACERTO = 200
 
+/**
+ * Teto de CARACTERES por lista. O teto de linhas não basta: a camada MCP corta o
+ * resultado em 100.000 caracteres, e cortar JSON no meio entrega ao chat um blob
+ * que não dá para ler (medido: o histórico inteiro passa de 100 KB, ~350 bytes por
+ * entrada e ~320 por despesa). Então o corte é feito AQUI, com a resposta ainda
+ * válida e um aviso dizendo como ver o resto.
+ */
+export const ORCAMENTO_ACERTO = {
+  entradas: 25_000,
+  despesas: 20_000,
+  transferencias: 8_000,
+  ignorados: 15_000,
+} as const
+
+/** Corta a lista no menor entre o teto de linhas e o orçamento de caracteres. */
+function caber<T>(linhas: T[], orcamento: number): T[] {
+  const porTeto = linhas.slice(0, MAX_LINHAS_ACERTO)
+  const tamanho = JSON.stringify(porTeto).length
+  if (tamanho <= orcamento || porTeto.length <= 1) return porTeto
+  const porLinha = Math.max(1, Math.ceil(tamanho / porTeto.length))
+  return porTeto.slice(0, Math.max(1, Math.floor(orcamento / porLinha)))
+}
+
 export interface DetalheEntradaFonte {
   id: number
   data: string | null // YYYY-MM-DD do pagamento
@@ -215,22 +238,39 @@ export function detalharAcertoSocios(args: DetalharAcertoArgs): AcertoSociosDeta
     transferencias: args.transferencias.length,
     ignorados: ignorados.length,
   }
-  const truncado =
-    contagens.entradas > MAX_LINHAS_ACERTO ||
-    contagens.despesas > MAX_LINHAS_ACERTO ||
-    contagens.transferencias > MAX_LINHAS_ACERTO ||
-    contagens.ignorados > MAX_LINHAS_ACERTO
+  const transferencias = args.transferencias.map(
+    ({ id, valorCents, data, descricao, contaOrigem, contaDestino }): TransferenciaRow => ({
+      id,
+      valorCents,
+      data,
+      descricao,
+      contaOrigem,
+      contaDestino,
+    }),
+  )
+
+  const corte = {
+    entradas: caber(entradas, ORCAMENTO_ACERTO.entradas),
+    despesas: caber(despesas, ORCAMENTO_ACERTO.despesas),
+    transferencias: caber(transferencias, ORCAMENTO_ACERTO.transferencias),
+    ignorados: caber(ignorados, ORCAMENTO_ACERTO.ignorados),
+  }
+  const cortadas = Object.entries(corte)
+    .filter(([k, v]) => v.length < contagens[k as keyof typeof contagens])
+    .map(([k, v]) => `${v.length} de ${contagens[k as keyof typeof contagens]} ${k}`)
 
   return {
     ...totais,
     faixa,
-    entradas: entradas.slice(0, MAX_LINHAS_ACERTO),
-    despesas: despesas.slice(0, MAX_LINHAS_ACERTO),
-    transferencias: args.transferencias
-      .slice(0, MAX_LINHAS_ACERTO)
-      .map(({ id, valorCents, data, descricao, contaOrigem, contaDestino }) => ({ id, valorCents, data, descricao, contaOrigem, contaDestino })),
-    ignorados: ignorados.slice(0, MAX_LINHAS_ACERTO),
+    ...corte,
     contagens,
-    truncado,
+    truncado: cortadas.length > 0,
+    ...(cortadas.length
+      ? {
+          aviso:
+            `Listas cortadas para a resposta caber: ${cortadas.join(", ")}. ` +
+            "Os TOTAIS acima são do período inteiro; para ver todas as linhas, peça um período menor (de/ate).",
+        }
+      : {}),
   }
 }

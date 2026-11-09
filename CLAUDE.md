@@ -211,16 +211,26 @@ This Next (16.2.6) has breaking changes vs. training data — consult
   **`listar_contas`** (todas as ativas com `kind` socio/banco/caixa — era o que faltava para corrigir a conta
   das 3 campanhas do Meta), **`listar_categorias`** e **`listar_campanhas`** (comercial, aberto como o resto do
   módulo). **Contagem:** registry 91→**95**, MCP expõe 86→**90** (34 leitura + 56 escrita) + 2 de SQL = **92
-  ferramentas**. **Baseline da produção ANTES do deploy, para conferir o detalhado depois** (calculado por SQL
-  independente, não pela tool): direito Leandro R$ 121.442,52 / Leonardo R$ 579.400,78; recebido R$ 80.274,97 /
-  R$ 620.568,47; saídas R$ 184.627,33 (TODAS pagas pelo Leonardo); transferido A→B R$ 13.000,00 ⇒ **Leandro
-  deve R$ 38.145,97** (bruto R$ 51.145,97). O `detalhado: true` tem de fechar nesses números. **User action
+  ferramentas**. **CONFERIDO AO VIVO na produção depois do deploy** (92 ferramentas no ar, `/api/health` ok ⇒ a migração
+  aplicou no boot): `acerto_socios {}` devolve **Leandro deve R$ 38.146,11** a Leonardo (bruto R$ 51.146,11,
+  transferido A→B R$ 13.000,00); recebido R$ 80.274,97 / R$ 620.568,47 e cota/pago (R$ 184.627,33 de saídas,
+  TODAS pagas pelo Leonardo) batem EXATAMENTE com a soma independente em SQL. **Correção de um número que eu
+  mesmo havia reportado:** o baseline que medi por SQL antes do deploy dava R$ 38.145,97 — 14 centavos a menos
+  por sócio — porque a MINHA consulta de conferência dividia inteiro (`v * pct / total` com todos integer =
+  divisão truncada no Postgres) enquanto o app arredonda. Provado: 504 partes de rateio, 28 com resto, soma
+  truncada 70.084.330 vs arredondada 70.084.358 = os 28 centavos. O app está certo; a conferência estava errada.
+  **Achado real na verificação ao vivo, já corrigido:** `detalhado: true` sem faixa estourava o teto de
+  `MAX_RESULT_CHARS = 100_000` do [exec.ts](src/lib/mcp/exec.ts) e o chat recebia JSON cortado no meio (medido:
+  >100 KB; ~350 bytes por entrada, ~320 por despesa). O teto de LINHAS não resolve isso, então o corte passou a
+  ser por **orçamento de CARACTERES** por lista (`ORCAMENTO_ACERTO`: 25k entradas / 20k despesas / 15k ignorados
+  / 8k transferências) com `aviso` dizendo o que foi cortado e para pedir de/ate mais curtos — a resposta sai
+  sempre VÁLIDA. Medido depois: junho/2026 = 16 KB, 3 meses = 42 KB, pior caso sintético < 80 KB. **User action
   (REQUIRED — lock do Prisma no Windows):** parar `next dev` → `npx prisma migrate deploy` → `npx prisma
   generate` → `npx tsc --noEmit` (tem de dar **0**; os 17 erros atuais são todos o `socioResponsavelId`/
   `socioResponsavel` que o client ainda não conhece — um `select` inválido derruba a inferência do objeto
   inteiro, daí os erros em cascata em `conta`/`categoria`/`caso`/`cliente`/`campanha` dos MESMOS selects) →
-  `npm run dev`. Em produção a migração roda sozinha no boot (`npm start` = `migrate deploy && next start`).
-  **Depois do deploy, no claude.ai: conversa NOVA** — a lista de ferramentas é buscada quando a conexão é
+  `npm run dev`. Em produção JÁ ESTÁ NO AR (a migração rodou no boot; 92 ferramentas conferidas).
+  **No claude.ai: conversa NOVA** — a lista de ferramentas é buscada quando a conexão é
   feita, então uma conversa antiga continua vendo as 88 antigas (foi exatamente o que aconteceu com o
   `definir_rateio`). Pedir "me dê o acerto detalhado desde o último repasse" e conferir contra a aba Contas.
 - **Servidor MCP do Lexia — conector do claude.ai para inspecionar/organizar os DADOS conversando (this session,

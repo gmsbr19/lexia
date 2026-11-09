@@ -212,14 +212,46 @@ describe("detalharAcertoSocios — forma do resultado", () => {
     expect(r.despesas.map((d) => d.id)).toEqual([11, 10])
   })
 
-  it("corta as listas no teto mas conta o conjunto inteiro, e os totais ficam completos", () => {
+  it("corta as listas no orçamento mas conta o conjunto inteiro, e os totais ficam completos", () => {
     const n = MAX_LINHAS_ACERTO + 25
     const saidas = Array.from({ length: n }, (_, i) => sai({ id: i + 1, valorCents: -1_000 }))
     const r = detalhar({ saidas })
-    expect(r.despesas).toHaveLength(MAX_LINHAS_ACERTO)
+    expect(r.despesas.length).toBeGreaterThan(0)
+    expect(r.despesas.length).toBeLessThanOrEqual(MAX_LINHAS_ACERTO)
     expect(r.contagens.despesas).toBe(n)
     expect(r.truncado).toBe(true)
+    expect(r.aviso).toContain(`${r.despesas.length} de ${n} despesas`)
+    expect(r.aviso).toContain("de/ate")
     expect(r.socios[0].pagoSaidaCents).toBe(n * 1_000) // total sobre TUDO, não sobre a amostra
+  })
+
+  it("a resposta inteira cabe com folga no teto de 100.000 chars do MCP", () => {
+    // Pior caso realista: muitas entradas E muitas despesas E muitos ignorados.
+    const r = detalhar({
+      entradas: [
+        ...Array.from({ length: 400 }, (_, i) => ent({ id: i + 1, data: "2026-05-02" })),
+        ...Array.from({ length: 80 }, (_, i) => ent({ id: 1000 + i, responsaveis: [] })), // viram ignorados
+      ],
+      saidas: Array.from({ length: 400 }, (_, i) => sai({ id: 5000 + i })),
+      transferencias: Array.from({ length: 60 }, (_, i) => ({
+        id: i,
+        valorCents: 1_000,
+        data: "2026-05-05",
+        descricao: "Repasse",
+        contaOrigemId: A.id,
+        contaOrigem: "Leandro",
+        contaDestino: "Leonardo",
+      })),
+    })
+    expect(JSON.stringify(r).length).toBeLessThan(80_000)
+    expect(r.truncado).toBe(true)
+    expect(r.contagens).toEqual({ entradas: 400, despesas: 400, transferencias: 60, ignorados: 80 })
+  })
+
+  it("sem corte não existe aviso", () => {
+    const r = detalhar({ entradas: [ent()], saidas: [sai()] })
+    expect(r.truncado).toBe(false)
+    expect(r.aviso).toBeUndefined()
   })
 
   it("sem exatamente 2 sócios devolve vazio e quitado", () => {

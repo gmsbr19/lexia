@@ -519,8 +519,10 @@ export interface AcertoSociosDetalhado extends AcertoSocios {
   ignorados: AcertoIgnorado[]
   /** Quantidades do conjunto COMPLETO — os arrays acima podem vir cortados. */
   contagens: { entradas: number; despesas: number; transferencias: number; ignorados: number }
-  /** true quando algum array foi cortado no limite de linhas (os totais seguem completos). */
+  /** true quando algum array foi cortado no limite (os totais seguem completos). */
   truncado: boolean
+  /** Presente só quando `truncado`: o que foi cortado e como ver o resto. */
+  aviso?: string
 }
 
 export interface ImportSummary {
