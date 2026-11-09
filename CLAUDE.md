@@ -193,8 +193,11 @@ This Next (16.2.6) has breaking changes vs. training data — consult
   `DATABASE_URL_RO` (role `lexia_ro` só com SELECT) → `sql_consultar` usa um 2º `PrismaClient`. Env novas em [env.ts](src/lib/env.ts)/`.env.example`: `LEXIA_MCP_TOKEN`, `LEXIA_MCP_USER` (default
   `mcp@lexia.local`), `LEXIA_MCP_SQL` (on|off), `DATABASE_URL_RO`. Dev-dep nova: `@electric-sql/pglite`.
   **User action (nesta ordem):** (1) gerar o token com **hex**: `openssl rand -hex 32` — NÃO use `-base64` (pode gerar `/` e `+`,
-  que quebram a forma "token no path"). (2) Pôr `LEXIA_MCP_TOKEN="<token>"` no `.env` local E nas variáveis de ambiente do
-  serviço `lexia` no EasyPanel (depois redeploy). (3) O usuário de serviço `mcp@lexia.local` nasce SOZINHO no
+  que quebram a forma "token no path"). (2) Gerar DOIS tokens DIFERENTES, um por ambiente — nunca o mesmo valor em dev e
+  produção (senão um segredo que escape da máquina de desenvolvimento abre o servidor): um em `LEXIA_MCP_TOKEN` do `.env`
+  local, outro nas variáveis de ambiente do serviço `lexia` no EasyPanel (depois redeploy). Sem `openssl` no Windows, use
+  `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. O valor que a produção usa fica anotado em
+  `.env.mcp-producao` (ignorado pelo git) só para conferência/teste — trocá-lo exige remover e re-adicionar o conector. (3) O usuário de serviço `mcp@lexia.local` nasce SOZINHO no
   boot ([lib/mcp/boot.ts](src/lib/mcp/boot.ts) + [boot-core.ts](src/lib/mcp/boot-core.ts), agendado no
   [instrumentation.ts](src/instrumentation.ts) junto da conversão de casos) — NÃO precisa de SSH. Só age com
   `LEXIA_MCP_TOKEN` definida, roda em 2º plano e nunca derruba o boot. É **CREATE-ONLY**: `User.email` é `@unique` (o
