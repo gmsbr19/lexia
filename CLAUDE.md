@@ -184,10 +184,13 @@ This Next (16.2.6) has breaking changes vs. training data — consult
   como PRIMEIRAS instruções → quem recusa escrita/DDL é o PostgreSQL (sem blacklist); cap 200 linhas (empurrado p/ o banco via
   `LIMIT`), células >500 chars truncadas, auditoria `mcp.sql.consultar` com o SQL. Camada extra (NÃO é a fronteira): allowlist
   da 1ª palavra (SELECT/WITH/TABLE/VALUES/EXPLAIN/SHOW), que barra `COPY … TO PROGRAM` caso o role do app seja superuser.
-  **⚠ NÃO PROVADO contra o Postgres real:** a transação read-only foi provada só em **PGlite** (UPDATE/INSERT/DELETE/DDL/CTE
-  modificadora/voltar a read-write → todos estouram); via Prisma contra o Postgres do app ainda não (o banco local estava
-  desligado). **Plano B já implementado:** setar `DATABASE_URL_RO` (role `lexia_ro` só com SELECT) → `sql_consultar` usa um
-  2º `PrismaClient`. Env novas em [env.ts](src/lib/env.ts)/`.env.example`: `LEXIA_MCP_TOKEN`, `LEXIA_MCP_USER` (default
+  **Garantia read-only PROVADA nas duas pontas:** em **PGlite** nos testes (UPDATE/INSERT/DELETE/DDL/CTE modificadora/voltar
+  a read-write → todos estouram) E contra o **PostgreSQL real via Prisma** (verificado pela sessão gestora no banco local do
+  app): `SET TRANSACTION READ ONLY` É aceito como 1ª instrução do `prisma.$transaction`, e dentro dela o `UPDATE` e o DDL são
+  recusados com **SQLSTATE 25006** (`cannot execute UPDATE/CREATE TABLE in a read-only transaction`); um controle com o MESMO
+  `UPDATE` sem o prelúdio rodou (0 linhas, com rollback), o que descarta erro de schema disfarçado de recusa; o
+  `statement_timeout` também morde (`pg_sleep` estoura). **Plano B (opcional, defesa em profundidade):** setar
+  `DATABASE_URL_RO` (role `lexia_ro` só com SELECT) → `sql_consultar` usa um 2º `PrismaClient`. Env novas em [env.ts](src/lib/env.ts)/`.env.example`: `LEXIA_MCP_TOKEN`, `LEXIA_MCP_USER` (default
   `mcp@lexia.local`), `LEXIA_MCP_SQL` (on|off), `DATABASE_URL_RO`. Dev-dep nova: `@electric-sql/pglite`.
   **User action (nesta ordem):** (1) gerar o token com **hex**: `openssl rand -hex 32` — NÃO use `-base64` (pode gerar `/` e `+`,
   que quebram a forma "token no path"). (2) Pôr `LEXIA_MCP_TOKEN="<token>"` no `.env` local E nas variáveis de ambiente do
@@ -200,10 +203,10 @@ This Next (16.2.6) has breaking changes vs. training data — consult
   alcançável pela internet pública). A config de auth do conector NÃO pode ser editada depois: trocar o token = remover e
   re-adicionar o conector. (5) Conferir o desligado-por-omissão: sem `LEXIA_MCP_TOKEN` (ou com a var vazia),
   `curl -i -X POST https://<dominio>/api/mcp -H 'Content-Type: application/json' -d '{}'` → **404**; com a var setada e sem token
-  → **401**; com `-H 'Origin: https://evil.example'` → **403**. (6) Provar a transação read-only contra o Postgres real: no
-  conector pedir `sql_consultar` com `select 1` e depois com `update "User" set nome = nome` (a 2ª tem de ser recusada); se o
-  Prisma recusar o `SET TRANSACTION READ ONLY`, usar o plano B (`DATABASE_URL_RO`). Em produção, preferir criar o role
-  `lexia_ro` (só `SELECT`) e setar `DATABASE_URL_RO` de qualquer forma. Fora de escopo (não feito): OAuth 2.1 próprio e filtro
+  → **401**; com `-H 'Origin: https://evil.example'` → **403**. (6) ÚNICO ponto que ainda falta verificar (o endpoint
+  nunca subiu de verdade): no conector, pedir `sql_schema` e um `sql_consultar` com `select count(*) from "Cliente"`, e
+  conferir que `update "User" set nome = nome` é recusado (SQLSTATE 25006). Em produção vale criar o role `lexia_ro` (só
+  `SELECT`) e setar `DATABASE_URL_RO` como camada extra. Fora de escopo (não feito): OAuth 2.1 próprio e filtro
   de grupos de ferramentas.
 - **A suíte está 100% VERDE: `npx tsc --noEmit` 0 erros e 930/930 testes (this session, SEM migração).** As 2
   falhas que todos os bullets abaixo citam como "PRÉ-EXISTENTES de sempre" foram corrigidas — eram os TESTES
