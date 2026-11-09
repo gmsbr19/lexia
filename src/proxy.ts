@@ -55,8 +55,12 @@ export const config = {
   // (POST /api/lead — own shared-secret guard, see src/lib/captacao/site-auth.ts;
   // EXACT path only, so /api/leads* and any other route stays gated, and the
   // route itself calls requireUser() when the secret is absent, so a sessionless
-  // caller still gets 401), Next internals and static assets.
+  // caller still gets 401), the MCP server for the claude.ai connector (own
+  // token guard + Origin check — see src/lib/mcp/auth.ts and src/app/api/mcp;
+  // the Anthropic backend carries no session cookie, so the proxy would 401 it;
+  // the route answers 404 when LEXIA_MCP_TOKEN is unset), Next internals and
+  // static assets.
   matcher: [
-    "/((?!login|definir-senha|api/auth|api/convite|api/health|api/jobs|api/captacao|api/lead$|feeds/google-ads|_next/static|_next/image|favicon\\.ico|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|woff2?)$).*)",
+    "/((?!login|definir-senha|api/auth|api/convite|api/health|api/jobs|api/captacao|api/lead$|api/mcp|feeds/google-ads|_next/static|_next/image|favicon\\.ico|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|woff2?)$).*)",
   ],
 }

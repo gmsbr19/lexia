@@ -79,6 +79,23 @@ const envSchema = z.object({
   // (mesmo padrão de JOBS_TOKEN/GADS_FEED_*: só serve quando propositalmente
   // ligado). NUNCA em AppSetting (texto claro no backup) — só aqui.
   LEXIA_SECRET: z.string().optional(),
+  // ── Servidor MCP (conector do claude.ai → POST/GET /api/mcp) ────────────────
+  // Token que autoriza o conector. Aceito em header (`authorization` com/sem
+  // "Bearer ", `x-api-key`, `x-auth-token`) OU como último segmento do path
+  // (/api/mcp/<token>). Sem a var (ou vazia) o endpoint inteiro responde 404 —
+  // desligado por omissão, igual a JOBS_TOKEN. Use hex (`openssl rand -hex 32`):
+  // base64 pode conter "/" e "+", que quebram a forma "token no path".
+  LEXIA_MCP_TOKEN: z.string().optional(),
+  // E-mail do usuário de serviço sob o qual as ações MCP rodam (papel admin, sem
+  // senha). Criado por `npm run mcp:user`. A auditoria (AuditLog.actorEmail) o
+  // distingue do que veio pela UI.
+  LEXIA_MCP_USER: z.string().optional().default("mcp@lexia.local"),
+  // Liga/desliga as ferramentas de SQL somente-leitura (sql_consultar/sql_schema).
+  LEXIA_MCP_SQL: z.enum(["on", "off"]).optional().default("on"),
+  // OPCIONAL (plano B do SQL): URL de um role Postgres só com SELECT (ex. `lexia_ro`).
+  // Quando setada, sql_consultar usa um 2º PrismaClient com ela — defesa em
+  // profundidade além do SET TRANSACTION READ ONLY (que já basta contra escrita).
+  DATABASE_URL_RO: z.string().optional(),
 })
 
 const parsed = envSchema.safeParse(process.env)

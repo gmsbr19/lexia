@@ -64,6 +64,9 @@ const DOC_TOOLS = new Set(["editar_documento_aberto", "detectar_campos_documento
 const PROCESSOS_MODULE_TOOLS = new Set(processosTools.map((t) => t.name))
 
 /**
+ * `selectTools` is the SINGLE source of truth for which tools a role may see
+ * (also used by the MCP adapter, src/lib/mcp/tools.ts); `toApiTools` maps it.
+ *
  * Build the API `tools` array for this user's role. Tools the role can't use
  * (e.g. as financeiras para a "Equipe") são removidas para que o modelo nem as
  * enxergue — o assertRole no loop permanece como defesa em profundidade. A ordem
@@ -80,12 +83,12 @@ const PROCESSOS_MODULE_TOOLS = new Set(processosTools.map((t) => t.name))
  * `processosHabilitado` (default true): quando false, remove por inteiro as
  * ferramentas de Processos — o módulo foi temporariamente desativado (os casos ficam).
  */
-export function toApiTools(
+export function selectTools(
   role: string,
   mode?: "agente" | "pergunta" | "plano",
   docMode?: boolean,
   processosHabilitado = true,
-): Anthropic.Tool[] {
+): AgentTool[] {
   return TOOLS.filter((t) => podeUsar(role, t))
     .filter((t) => (mode === "pergunta" ? t.kind !== "mutation" : true))
     .filter((t) => processosHabilitado || !PROCESSOS_MODULE_TOOLS.has(t.name))
@@ -98,9 +101,18 @@ export function toApiTools(
       if (docMode) return t.kind === "readonly" || t.kind === "pergunta"
       return true
     })
-    .map((t) => ({
-      name: t.name,
-      description: t.description,
-      input_schema: z.toJSONSchema(t.schema) as unknown as Anthropic.Tool.InputSchema,
-    }))
+}
+
+/** `selectTools` mapped to the Anthropic `tools` array. */
+export function toApiTools(
+  role: string,
+  mode?: "agente" | "pergunta" | "plano",
+  docMode?: boolean,
+  processosHabilitado = true,
+): Anthropic.Tool[] {
+  return selectTools(role, mode, docMode, processosHabilitado).map((t) => ({
+    name: t.name,
+    description: t.description,
+    input_schema: z.toJSONSchema(t.schema) as unknown as Anthropic.Tool.InputSchema,
+  }))
 }
