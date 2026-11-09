@@ -1,0 +1,37 @@
+# Build context do EasyPanel/Nixpacks. O `COPY . /app` do build leva para dentro
+# da imagem tudo o que NÃO estiver listado aqui — e cada MB copiado vira camada
+# nova a cada deploy, no disco do VPS. Sem este arquivo, uma pasta node_modules
+# ou .next esquecida no checkout do servidor entra inteira na imagem.
+
+# Dependências e build: o Nixpacks instala/gera DENTRO da imagem; copiar de fora
+# só duplica peso (e pode misturar binários compilados para outra plataforma).
+node_modules
+.next
+out
+build
+
+# Artefatos locais pesados que nunca devem entrar numa imagem.
+# dev.db = resquício do SQLite antigo (o projeto já migrou para PostgreSQL);
+# prisma/backup-*/ = dumps feitos antes de migração, podem ter dezenas de MB.
+prisma/dev.db
+prisma/dev.db-journal
+prisma/dev.db-wal
+prisma/dev.db-shm
+prisma/backup-*/
+coverage
+
+# Segredos. As variáveis de produção vêm do painel do EasyPanel — um .env local
+# jamais deve ser assado numa imagem, que é lida por qualquer um com acesso a ela.
+.env
+.env.*
+!.env.example
+
+# Histórico e ferramentas de desenvolvimento: inúteis em runtime.
+.git
+.github
+.gitignore
+.vscode
+.idea
+.claude
+*.log
+npm-debug.log*
