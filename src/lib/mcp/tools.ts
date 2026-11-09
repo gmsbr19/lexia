@@ -3,7 +3,6 @@
 // server.ts. The role/kill-switch filtering is NOT duplicated here — it comes
 // from `selectTools` (registry.ts), the single source of truth shared with the
 // LexIA chat. SERVER ONLY.
-import { z } from "zod"
 import type { AgentTool } from "@/lib/lexia/agent/types"
 import { selectTools } from "@/lib/lexia/agent/registry"
 
@@ -45,7 +44,3 @@ export function annotationsFor(tool: AgentTool): McpAnnotations {
   }
 }
 
-/** JSON Schema for the tool input (same call `toApiTools` uses). */
-export function inputJsonSchema(tool: AgentTool): unknown {
-  return z.toJSONSchema(tool.schema)
-}

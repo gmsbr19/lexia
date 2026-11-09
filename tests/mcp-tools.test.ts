@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { z } from "zod"
 import { TOOLS, toApiTools } from "@/lib/lexia/agent/registry"
-import { annotationsFor, exposableKind, inputJsonSchema, selectMcpTools } from "@/lib/mcp/tools"
+import { annotationsFor, exposableKind, selectMcpTools } from "@/lib/mcp/tools"
 
 describe("MCP tool surface", () => {
   it("registry has 89 tools; 84 are exposable (client + pergunta excluded)", () => {
@@ -58,7 +58,7 @@ describe("MCP tool surface", () => {
 
   it("JSON Schema is generated for every exposed tool without throwing", () => {
     for (const t of selectMcpTools("admin", true)) {
-      const js = inputJsonSchema(t) as { type?: string }
+      const js = z.toJSONSchema(t.schema) as { type?: string }
       expect(js.type).toBe("object")
       expect(() => z.toJSONSchema(t.schema)).not.toThrow()
     }

@@ -156,6 +156,55 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **Servidor MCP do Lexia — conector do claude.ai para inspecionar/organizar os DADOS conversando (this session,
+  VERIFIED `npx tsc --noEmit` 0 erros, 961/961 testes (+31 em `tests/mcp-{auth,tools,sql,exec}.test.ts`), eslint
+  limpo nos arquivos novos/tocados, SEM migração, SEM push).** Decisões do usuário: reaproveitar as ferramentas tipadas
+  da LexIA + SQL SOMENTE LEITURA (escrita arbitrária por SQL recusada); servidor remoto dentro do Next em `/api/mcp`
+  protegido por token; ações rodam como o usuário de serviço `mcp@lexia.local` (papel `admin`, `passwordHash` nulo → nunca
+  loga pela UI). **Rota** `src/app/api/mcp/[[...token]]/route.ts` (Streamable HTTP via `mcp-handler@2.3.1` +
+  `@modelcontextprotocol/server@2.4.0`, stateless: GET/DELETE de sessão → 405; runtime nodejs, force-dynamic). Guards, nesta
+  ordem: `LEXIA_MCP_TOKEN` ausente/vazia ⇒ **404** (desligado por omissão); `Origin` presente e ≠ `x-forwarded-host ?? host`
+  ⇒ **403** (spec MCP anti DNS-rebinding; substitui o cinto CSRF do proxy — a Anthropic server-a-server não manda Origin);
+  token errado ⇒ **401**. Token ([lib/mcp/auth.ts](src/lib/mcp/auth.ts), puro) aceito em `authorization` (com/sem `Bearer `),
+  `x-api-key`, `x-auth-token` OU último segmento do path (`/api/mcp/<token>`), tempo constante com checagem de tamanho antes;
+  nunca loga token/path. `api/mcp` entrou na exclusão do matcher de [proxy.ts](src/proxy.ts). A execução vai embrulhada em
+  `withRequestOrigin(resolveRequestOrigin(req))` (como a rota do chat) — sem isso os links absolutos de notificação/e-mail das
+  mutações (ex.: atribuir tarefa) saem sem origem. **Ferramentas:** `selectTools()` extraída de `toApiTools` em
+  [registry.ts](src/lib/lexia/agent/registry.ts) (UMA fonte de verdade p/ papel + kill-switch de Processos; `toApiTools` é só o
+  mapeamento, saída idêntica → cache de prompt da LexIA intacto); [lib/mcp/tools.ts](src/lib/mcp/tools.ts) exclui `client`/
+  `pergunta` → **84** do registry (30 leitura + 54 escrita) + `sql_consultar`/`sql_schema` (só MCP; `LEXIA_MCP_SQL=off`
+  desliga). Anotações: `readOnlyHint` (leitura), `destructiveHint` (`excluir*`/`anonimizar*`), `title`. Execução
+  ([lib/mcp/exec.ts](src/lib/mcp/exec.ts), deps injetadas): papel → rate limit (`mcp.<tool>`) → mutação: `montarConfirmacao`
+  (cosmético; lançar não derruba) + `run()` DIRETO (a aprovação é a do próprio chat do Claude) + `writeAudit(mcp@…,
+  {action:"mcp.<tool>", entity, payload:input})` → resultado `{ok, resumo, resultado}`; leitura NUNCA audita. Erros: `UserError`/
+  `ForbiddenError`/`RateLimitError` com a mensagem pt-BR; o resto → log + mensagem genérica. **Confirmado por grafo de imports**
+  (121 arquivos alcançáveis dos tools): nenhuma ferramenta nem o `lib/` que chamam usa `auth()`/`requireUser()`/`next-auth` →
+  `AgentCtx` sintético (`conversaId: 0`) basta, sem shim de sessão. **SQL** ([sql-core.ts](src/lib/mcp/sql-core.ts) puro +
+  [sql.ts](src/lib/mcp/sql.ts)): dentro de `prisma.$transaction`, `SET TRANSACTION READ ONLY` + `SET LOCAL statement_timeout='5s'`
+  como PRIMEIRAS instruções → quem recusa escrita/DDL é o PostgreSQL (sem blacklist); cap 200 linhas (empurrado p/ o banco via
+  `LIMIT`), células >500 chars truncadas, auditoria `mcp.sql.consultar` com o SQL. Camada extra (NÃO é a fronteira): allowlist
+  da 1ª palavra (SELECT/WITH/TABLE/VALUES/EXPLAIN/SHOW), que barra `COPY … TO PROGRAM` caso o role do app seja superuser.
+  **⚠ NÃO PROVADO contra o Postgres real:** a transação read-only foi provada só em **PGlite** (UPDATE/INSERT/DELETE/DDL/CTE
+  modificadora/voltar a read-write → todos estouram); via Prisma contra o Postgres do app ainda não (o banco local estava
+  desligado). **Plano B já implementado:** setar `DATABASE_URL_RO` (role `lexia_ro` só com SELECT) → `sql_consultar` usa um
+  2º `PrismaClient`. Env novas em [env.ts](src/lib/env.ts)/`.env.example`: `LEXIA_MCP_TOKEN`, `LEXIA_MCP_USER` (default
+  `mcp@lexia.local`), `LEXIA_MCP_SQL` (on|off), `DATABASE_URL_RO`. Dev-dep nova: `@electric-sql/pglite`.
+  **User action (nesta ordem):** (1) gerar o token com **hex**: `openssl rand -hex 32` — NÃO use `-base64` (pode gerar `/` e `+`,
+  que quebram a forma "token no path"). (2) Pôr `LEXIA_MCP_TOKEN="<token>"` no `.env` local E nas variáveis de ambiente do
+  serviço `lexia` no EasyPanel (depois redeploy). (3) Criar o usuário de serviço: `npm run mcp:user` (local; em produção rodar
+  o mesmo no console do serviço). (4) No claude.ai → Configurações → Conectores → **Add custom connector**, **Authentication =
+  "No sign in"** sempre; URL em UMA das formas: **(a) header** (se o diálogo mostrar "Request headers", é beta e pode não
+  aparecer): URL `https://lexia.ncm.adv.br/api/mcp` + header `authorization` com valor `Bearer <token>` (digitar o prefixo
+  `Bearer ` inteiro — o valor é enviado literalmente; `x-api-key`/`x-auth-token` com o token puro também valem); **(b) token no
+  path**: URL `https://lexia.ncm.adv.br/api/mcp/<token>`. Em dev use a URL do ngrok no lugar do domínio (o servidor tem de ser
+  alcançável pela internet pública). A config de auth do conector NÃO pode ser editada depois: trocar o token = remover e
+  re-adicionar o conector. (5) Conferir o desligado-por-omissão: sem `LEXIA_MCP_TOKEN` (ou com a var vazia),
+  `curl -i -X POST https://<dominio>/api/mcp -H 'Content-Type: application/json' -d '{}'` → **404**; com a var setada e sem token
+  → **401**; com `-H 'Origin: https://evil.example'` → **403**. (6) Provar a transação read-only contra o Postgres real: no
+  conector pedir `sql_consultar` com `select 1` e depois com `update "User" set nome = nome` (a 2ª tem de ser recusada); se o
+  Prisma recusar o `SET TRANSACTION READ ONLY`, usar o plano B (`DATABASE_URL_RO`). Em produção, preferir criar o role
+  `lexia_ro` (só `SELECT`) e setar `DATABASE_URL_RO` de qualquer forma. Fora de escopo (não feito): OAuth 2.1 próprio e filtro
+  de grupos de ferramentas.
 - **A suíte está 100% VERDE: `npx tsc --noEmit` 0 erros e 930/930 testes (this session, SEM migração).** As 2
   falhas que todos os bullets abaixo citam como "PRÉ-EXISTENTES de sempre" foram corrigidas — eram os TESTES
   que estavam obsoletos, não o código. (1) `tests/cm-meta.test.ts`: a fixture `lead()` não tinha os 2 campos
