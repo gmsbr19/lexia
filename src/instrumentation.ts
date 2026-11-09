@@ -11,6 +11,8 @@ export async function register() {
     try {
       const { agendarConversaoCasosNoBoot } = await import("./lib/casos/boot")
       agendarConversaoCasosNoBoot()
+      const { agendarUsuarioMcpNoBoot } = await import("./lib/mcp/boot")
+      agendarUsuarioMcpNoBoot()
     } catch {
       /* nunca bloqueia o boot */
     }

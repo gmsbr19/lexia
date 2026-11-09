@@ -157,8 +157,8 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 
 ## 11. Latest state & user action
 - **Servidor MCP do Lexia — conector do claude.ai para inspecionar/organizar os DADOS conversando (this session,
-  VERIFIED `npx tsc --noEmit` 0 erros, 961/961 testes (+31 em `tests/mcp-{auth,tools,sql,exec}.test.ts`), eslint
-  limpo nos arquivos novos/tocados, SEM migração, SEM push).** Decisões do usuário: reaproveitar as ferramentas tipadas
+  VERIFIED `npx tsc --noEmit` 0 erros, 967/967 testes (+37 em `tests/mcp-{auth,tools,sql,exec,boot}.test.ts`), eslint
+  limpo nos arquivos novos/tocados, SEM migração; empurrado para `origin/master`).** Decisões do usuário: reaproveitar as ferramentas tipadas
   da LexIA + SQL SOMENTE LEITURA (escrita arbitrária por SQL recusada); servidor remoto dentro do Next em `/api/mcp`
   protegido por token; ações rodam como o usuário de serviço `mcp@lexia.local` (papel `admin`, `passwordHash` nulo → nunca
   loga pela UI). **Rota** `src/app/api/mcp/[[...token]]/route.ts` (Streamable HTTP via `mcp-handler@2.3.1` +
@@ -194,8 +194,14 @@ This Next (16.2.6) has breaking changes vs. training data — consult
   `mcp@lexia.local`), `LEXIA_MCP_SQL` (on|off), `DATABASE_URL_RO`. Dev-dep nova: `@electric-sql/pglite`.
   **User action (nesta ordem):** (1) gerar o token com **hex**: `openssl rand -hex 32` — NÃO use `-base64` (pode gerar `/` e `+`,
   que quebram a forma "token no path"). (2) Pôr `LEXIA_MCP_TOKEN="<token>"` no `.env` local E nas variáveis de ambiente do
-  serviço `lexia` no EasyPanel (depois redeploy). (3) Criar o usuário de serviço: `npm run mcp:user` (local; em produção rodar
-  o mesmo no console do serviço). (4) No claude.ai → Configurações → Conectores → **Add custom connector**, **Authentication =
+  serviço `lexia` no EasyPanel (depois redeploy). (3) O usuário de serviço `mcp@lexia.local` nasce SOZINHO no
+  boot ([lib/mcp/boot.ts](src/lib/mcp/boot.ts) + [boot-core.ts](src/lib/mcp/boot-core.ts), agendado no
+  [instrumentation.ts](src/instrumentation.ts) junto da conversão de casos) — NÃO precisa de SSH. Só age com
+  `LEXIA_MCP_TOKEN` definida, roda em 2º plano e nunca derruba o boot. É **CREATE-ONLY**: `User.email` é `@unique` (o
+  Postgres recusa duplicata — verificado: `duplicate key value violates unique constraint "User_email_key"`), e um usuário
+  **DESATIVADO nunca é ressuscitado** — desativá-lo em Configurações → Usuários é o jeito de REVOGAR o MCP (o boot só
+  avisa em `log.warn`). Corrida entre instâncias cai no P2002 e é tratada como sucesso. `npm run mcp:user` continua para o
+  caso explícito (esse SIM reativa e reaplica o papel). (4) No claude.ai → Configurações → Conectores → **Add custom connector**, **Authentication =
   "No sign in"** sempre; URL em UMA das formas: **(a) header** (se o diálogo mostrar "Request headers", é beta e pode não
   aparecer): URL `https://lexia.ncm.adv.br/api/mcp` + header `authorization` com valor `Bearer <token>` (digitar o prefixo
   `Bearer ` inteiro — o valor é enviado literalmente; `x-api-key`/`x-auth-token` com o token puro também valem); **(b) token no
@@ -203,10 +209,15 @@ This Next (16.2.6) has breaking changes vs. training data — consult
   alcançável pela internet pública). A config de auth do conector NÃO pode ser editada depois: trocar o token = remover e
   re-adicionar o conector. (5) Conferir o desligado-por-omissão: sem `LEXIA_MCP_TOKEN` (ou com a var vazia),
   `curl -i -X POST https://<dominio>/api/mcp -H 'Content-Type: application/json' -d '{}'` → **404**; com a var setada e sem token
-  → **401**; com `-H 'Origin: https://evil.example'` → **403**. (6) ÚNICO ponto que ainda falta verificar (o endpoint
-  nunca subiu de verdade): no conector, pedir `sql_schema` e um `sql_consultar` com `select count(*) from "Cliente"`, e
-  conferir que `update "User" set nome = nome` é recusado (SQLSTATE 25006). Em produção vale criar o role `lexia_ro` (só
-  `SELECT`) e setar `DATABASE_URL_RO` como camada extra. Fora de escopo (não feito): OAuth 2.1 próprio e filtro
+  → **401**; com `-H 'Origin: https://evil.example'` → **403**. (6) **Endpoint JÁ VERIFICADO ao vivo** (sessão gestora, dev em
+  :3001, por HTTP direto): sem token → 401; token errado de mesmo tamanho → 401; `Origin` forasteiro → 403; token por
+  header → 200; token no path → 200; `initialize` → `serverInfo {name:"lexia",version:"1.0.0"}`; `tools/list` → **86**
+  ferramentas (84 do registry + 2 de SQL; `readOnlyHint` 32, `destructiveHint` 11; `navegar`/`perguntar_usuario` ausentes
+  como esperado); `sql_consultar` com `select count(*) from "Cliente"` → 703. **3 camadas independentes barrando escrita,
+  cada uma provada por um caso diferente:** `update …` direto → allowlist da 1ª palavra; `with x as (update … returning 1)
+  select * from x` → o wrapper `SELECT * FROM (…)` tira a CTE do nível superior; `explain analyze update …` (não é
+  embrulhado, chega cru ao banco) → **PostgreSQL com SQLSTATE 25006**. CTE de leitura legítima continua funcionando. Em
+  produção vale criar o role `lexia_ro` (só `SELECT`) e setar `DATABASE_URL_RO` como camada extra. Fora de escopo (não feito): OAuth 2.1 próprio e filtro
   de grupos de ferramentas.
 - **A suíte está 100% VERDE: `npx tsc --noEmit` 0 erros e 930/930 testes (this session, SEM migração).** As 2
   falhas que todos os bullets abaixo citam como "PRÉ-EXISTENTES de sempre" foram corrigidas — eram os TESTES
