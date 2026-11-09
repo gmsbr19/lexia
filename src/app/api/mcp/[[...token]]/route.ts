@@ -26,7 +26,7 @@ const mcp = createMcpHandler(registerLexiaTools, {
 
 async function handle(req: Request): Promise<Response> {
   if (!env.LEXIA_MCP_TOKEN) return NextResponse.json({ error: "MCP desabilitado (defina LEXIA_MCP_TOKEN)" }, { status: 404 })
-  if (!originOk(req)) return NextResponse.json({ error: "Origem inválida" }, { status: 403 })
+  if (!originOk(req, env.LEXIA_MCP_ORIGENS)) return NextResponse.json({ error: "Origem inválida" }, { status: 403 })
   if (!mcpTokenOk(req, env.LEXIA_MCP_TOKEN)) return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
   // Notification/e-mail links derive the public URL from the request origin (as in the chat route).
   return withRequestOrigin(resolveRequestOrigin(req), () => mcp(req))

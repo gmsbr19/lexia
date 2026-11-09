@@ -86,6 +86,11 @@ const envSchema = z.object({
   // desligado por omissão, igual a JOBS_TOKEN. Use hex (`openssl rand -hex 32`):
   // base64 pode conter "/" e "+", que quebram a forma "token no path".
   LEXIA_MCP_TOKEN: z.string().optional(),
+  // Origens extras aceitas no header `Origin` do /api/mcp, separadas por vírgula
+  // (ex.: "claude.site,meu-proxy.exemplo"). Sem Origin, Origin igual ao host e os
+  // domínios do Claude já passam por padrão — ver lib/mcp/auth.ts originOk, que
+  // explica por que o Origin não é a fronteira de segurança desta rota.
+  LEXIA_MCP_ORIGENS: z.string().optional(),
   // E-mail do usuário de serviço sob o qual as ações MCP rodam (papel admin, sem
   // senha). Criado por `npm run mcp:user`. A auditoria (AuditLog.actorEmail) o
   // distingue do que veio pela UI.

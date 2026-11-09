@@ -53,4 +53,18 @@ describe("originOk", () => {
     expect(originOk(req({ origin: "not a url", host: "lexia.ncm.adv.br" }))).toBe(false)
     expect(originOk(req({ origin: "https://lexia.ncm.adv.br", host: "localhost:3000", "x-forwarded-host": "other.test" }))).toBe(false)
   })
+  it("allows the Claude connector origins (the real cause of the connector failing)", () => {
+    expect(originOk(req({ origin: "https://claude.ai", host: "lexia.ncm.adv.br" }))).toBe(true)
+    expect(originOk(req({ origin: "https://claude.com", host: "lexia.ncm.adv.br" }))).toBe(true)
+    expect(originOk(req({ origin: "https://api.anthropic.com", host: "lexia.ncm.adv.br" }))).toBe(true)
+    expect(originOk(req({ origin: "https://CLAUDE.AI", host: "lexia.ncm.adv.br" }))).toBe(true)
+  })
+  it("a lookalike domain does NOT pass (the leading dot matters)", () => {
+    expect(originOk(req({ origin: "https://evilclaude.ai", host: "lexia.ncm.adv.br" }))).toBe(false)
+    expect(originOk(req({ origin: "https://claude.ai.evil.test", host: "lexia.ncm.adv.br" }))).toBe(false)
+  })
+  it("honours extra origins handed in from the env", () => {
+    expect(originOk(req({ origin: "https://proxy.test", host: "lexia.ncm.adv.br" }), "proxy.test, outro.test")).toBe(true)
+    expect(originOk(req({ origin: "https://nao.test", host: "lexia.ncm.adv.br" }), "proxy.test")).toBe(false)
+  })
 })

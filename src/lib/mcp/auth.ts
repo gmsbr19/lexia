@@ -45,20 +45,38 @@ export function mcpTokenOk(req: Request, expected: string | undefined): boolean 
   return ok
 }
 
+/** Domínios de onde o conector do claude.ai legitimamente chama. */
+const ORIGENS_CLAUDE = ["claude.ai", "claude.com", "anthropic.com"]
+
 /**
- * DNS-rebinding / CSRF belt (MCP spec: servers MUST validate Origin). The route is
- * outside src/proxy.ts, so this replaces the proxy's check. No Origin header
- * (server-to-server from Anthropic) ⇒ allowed; present ⇒ must match the real host.
+ * Guarda de Origin (o spec do MCP pede validá-lo contra DNS rebinding). ATENÇÃO:
+ * aqui o Origin NÃO é a fronteira de segurança — esta rota fica fora do
+ * src/proxy.ts e não tem credencial ambiente (sem cookie de sessão): quem
+ * autentica é o token. Uma página hostil não conhece o token, então sem ele a
+ * resposta já é 401 e o Origin não acrescenta proteção. O ataque que o spec
+ * mira (rebinding contra servidor LOCAL que confia no localhost) não se aplica a
+ * um endpoint público autenticado por bearer.
+ *
+ * Por isso a regra é permissiva com quem tem motivo de chamar: sem Origin
+ * (servidor-a-servidor) passa; Origin igual ao host real passa; os domínios do
+ * Claude passam (o backend do claude.ai manda `Origin: https://claude.ai`, e
+ * recusá-lo derruba o conector com 'Problema de conexão'); `extras` (env
+ * LEXIA_MCP_ORIGENS, separada por vírgula) permite acrescentar hosts sem deploy.
+ * Qualquer outro Origin explícito continua recusado com 403.
  */
-export function originOk(req: Request): boolean {
+export function originOk(req: Request, extras?: string): boolean {
   const origin = req.headers.get("origin")
-  if (!origin) return true
+  if (!origin) return true // servidor-a-servidor não manda Origin
   let originHost: string
   try {
-    originHost = new URL(origin).host
+    originHost = new URL(origin).host.toLowerCase()
   } catch {
-    return false
+    return false // Origin malformado
   }
-  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? new URL(req.url).host
-  return originHost === host
+  const host = (req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? new URL(req.url).host).toLowerCase()
+  if (originHost === host) return true
+  const lista = (extras ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
+  if (lista.includes(originHost)) return true
+  // `.claude.ai` com o ponto: um host tipo `evilclaude.ai` NÃO casa.
+  return ORIGENS_CLAUDE.some((d) => originHost === d || originHost.endsWith(`.${d}`))
 }

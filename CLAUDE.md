@@ -163,8 +163,12 @@ This Next (16.2.6) has breaking changes vs. training data — consult
   protegido por token; ações rodam como o usuário de serviço `mcp@lexia.local` (papel `admin`, `passwordHash` nulo → nunca
   loga pela UI). **Rota** `src/app/api/mcp/[[...token]]/route.ts` (Streamable HTTP via `mcp-handler@2.3.1` +
   `@modelcontextprotocol/server@2.4.0`, stateless: GET/DELETE de sessão → 405; runtime nodejs, force-dynamic). Guards, nesta
-  ordem: `LEXIA_MCP_TOKEN` ausente/vazia ⇒ **404** (desligado por omissão); `Origin` presente e ≠ `x-forwarded-host ?? host`
-  ⇒ **403** (spec MCP anti DNS-rebinding; substitui o cinto CSRF do proxy — a Anthropic server-a-server não manda Origin);
+  ordem: `LEXIA_MCP_TOKEN` ausente/vazia ⇒ **404** (desligado por omissão); `Origin` presente que não seja o host real, nem um domínio do
+  Claude (`claude.ai`/`claude.com`/`anthropic.com` e subdomínios), nem um host de `LEXIA_MCP_ORIGENS` ⇒ **403**.
+  **ARMADILHA JÁ PAGA:** a 1ª versão exigia Origin == host e o conector morria com "Problema de conexão", porque o
+  backend do claude.ai MANDA `Origin: https://claude.ai` (medido; todo o resto — protocolo, 405 no GET, 204 no OPTIONS
+  — estava certo). Aqui o Origin NÃO é fronteira de segurança: a rota não tem credencial ambiente (sem cookie), quem
+  autentica é o token, e o rebinding que o spec mira é contra servidor LOCAL;
   token errado ⇒ **401**. Token ([lib/mcp/auth.ts](src/lib/mcp/auth.ts), puro) aceito em `authorization` (com/sem `Bearer `),
   `x-api-key`, `x-auth-token` OU último segmento do path (`/api/mcp/<token>`), tempo constante com checagem de tamanho antes;
   nunca loga token/path. `api/mcp` entrou na exclusão do matcher de [proxy.ts](src/proxy.ts). A execução vai embrulhada em
