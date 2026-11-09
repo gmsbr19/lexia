@@ -484,3 +484,59 @@ describe("rateio do caso e vínculo de lançamento ao caso", () => {
     expect(s.safeParse({ id: 1, casoId: -3 }).success).toBe(false)
   })
 })
+
+describe("edição completa de lançamento, acerto detalhado e mesclagem de contatos", () => {
+  const nomes = (role: string) => new Set(toApiTools(role).map((t) => t.name))
+
+  it("editar_lancamento cobre conta, categoria, contato, campanha, série e sócio responsável", () => {
+    const s = TOOLS_BY_NAME.get("editar_lancamento")!.schema
+    for (const campo of ["contaId", "categoriaId", "clienteId", "campanhaId", "recorrenteParentId", "socioResponsavelId"]) {
+      expect(s.safeParse({ id: 1, [campo]: 5 }).success, `${campo} = id`).toBe(true)
+      expect(s.safeParse({ id: 1, [campo]: null }).success, `${campo} = null (limpa)`).toBe(true)
+      expect(s.safeParse({ id: 1, [campo]: 0 }).success, `${campo} = 0`).toBe(false)
+    }
+    // anomalia é booleano: marca movimento de saldo, não "tira do rateio"
+    expect(s.safeParse({ id: 1, isAnomalia: true }).success).toBe(true)
+    expect(s.safeParse({ id: 1, isAnomalia: "sim" }).success).toBe(false)
+  })
+
+  it("pagar_lancamento aceita a conta da baixa", () => {
+    const s = TOOLS_BY_NAME.get("pagar_lancamento")!.schema
+    expect(s.safeParse({ id: 1 }).success).toBe(true)
+    expect(s.safeParse({ id: 1, contaId: 3 }).success).toBe(true)
+    expect(s.safeParse({ id: 1, contaId: 3, dataPagamento: "2026-06-10" }).success).toBe(true)
+  })
+
+  it("acerto_socios aceita período e detalhamento, e segue só de sócio", () => {
+    const t = TOOLS_BY_NAME.get("acerto_socios")!
+    expect(t.kind).toBe("readonly")
+    expect(t.schema.safeParse({}).success).toBe(true)
+    expect(t.schema.safeParse({ de: "2026-06-01", ate: "2026-06-30", detalhado: true }).success).toBe(true)
+    expect(t.schema.safeParse({ detalhado: "sim" }).success).toBe(false)
+    expect(nomes("socio").has("acerto_socios")).toBe(true)
+    expect(nomes("financeiro").has("acerto_socios")).toBe(false)
+  })
+
+  it("os lookups de id seguem o gate do Financeiro; campanhas é aberto como o resto do Comercial", () => {
+    for (const nome of ["listar_contas", "listar_categorias"]) {
+      expect(TOOLS_BY_NAME.get(nome)?.kind, nome).toBe("readonly")
+      for (const role of ["socio", "financeiro", "admin"]) expect(nomes(role).has(nome), `${nome}/${role}`).toBe(true)
+      for (const role of ["staff", "estagiario", "advogado"]) expect(nomes(role).has(nome), `${nome}/${role}`).toBe(false)
+    }
+    expect(TOOLS_BY_NAME.get("listar_campanhas")?.kind).toBe("readonly")
+    for (const role of ["socio", "staff", "estagiario"]) expect(nomes(role).has("listar_campanhas"), role).toBe(true)
+  })
+
+  it("mesclar_clientes é mutação só de sócio e exige os dois ids", () => {
+    const t = TOOLS_BY_NAME.get("mesclar_clientes")!
+    expect(t.kind).toBe("mutation")
+    expect(t.schema.safeParse({ destinoId: 1, origemId: 2 }).success).toBe(true)
+    expect(t.schema.safeParse({ destinoId: 1 }).success).toBe(false)
+    expect(t.schema.safeParse({ destinoId: 1, origemId: 0 }).success).toBe(false)
+    expect(nomes("socio").has("mesclar_clientes")).toBe(true)
+    expect(nomes("admin").has("mesclar_clientes")).toBe(true)
+    for (const role of ["financeiro", "staff", "estagiario", "advogado"]) {
+      expect(nomes(role).has("mesclar_clientes"), role).toBe(false)
+    }
+  })
+})

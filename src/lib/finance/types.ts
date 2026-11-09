@@ -456,6 +456,73 @@ export interface AcertoSocios {
   quitado: boolean
 }
 
+// ── Acerto DETALHADO ────────────────────────────────────────────────────────
+// Os mesmos totais de `AcertoSocios`, acompanhados das linhas que os produziram
+// e do que ficou FORA da conta (com o motivo). É o que permite emitir o relatório
+// do repasse sem recalcular nada à mão.
+
+/** A parte de um sócio num honorário recebido (pelo rateio do caso). */
+export interface AcertoParte {
+  contaId: number
+  nome: string
+  percentual: number
+  valorCents: number // o direito deste sócio nesta entrada
+}
+
+/** Um honorário recebido que entra no acerto. */
+export interface AcertoEntradaLinha {
+  id: number
+  data: string | null // YYYY-MM-DD do pagamento
+  descricao: string | null
+  casoId: number | null
+  caso: string | null
+  cliente: string | null
+  contaRecebeuId: number | null
+  contaRecebeu: string | null
+  valorCents: number
+  partes: AcertoParte[] // o direito de cada sócio (soma = valorCents)
+}
+
+/** Uma despesa que entra no acerto, com a cota de cada sócio. */
+export interface AcertoDespesaLinha {
+  id: number
+  data: string | null // YYYY-MM-DD do pagamento
+  descricao: string | null
+  categoria: string | null
+  contaId: number | null // conta que PAGOU
+  conta: string | null
+  valorCents: number
+  responsavelId: number | null // null = compartilhada 50/50
+  responsavel: string | null
+  cotas: AcertoParte[] // a cota de cada sócio (soma = valorCents)
+}
+
+/** Por que uma linha ficou de fora do acerto. */
+export type AcertoMotivoIgnorado = "anomalia" | "sem_conta" | "conta_nao_socio" | "sem_caso" | "sem_rateio"
+
+export interface AcertoIgnorado {
+  id: number
+  tipo: "entrada" | "saida"
+  data: string | null
+  descricao: string | null
+  valorCents: number
+  motivo: AcertoMotivoIgnorado
+  detalhe: string // frase pronta em pt-BR, inclusive o que fazer a respeito
+}
+
+export interface AcertoSociosDetalhado extends AcertoSocios {
+  /** Janela considerada (null = todo o histórico). */
+  faixa: { de: string | null; ate: string | null }
+  entradas: AcertoEntradaLinha[]
+  despesas: AcertoDespesaLinha[]
+  transferencias: TransferenciaRow[]
+  ignorados: AcertoIgnorado[]
+  /** Quantidades do conjunto COMPLETO — os arrays acima podem vir cortados. */
+  contagens: { entradas: number; despesas: number; transferencias: number; ignorados: number }
+  /** true quando algum array foi cortado no limite de linhas (os totais seguem completos). */
+  truncado: boolean
+}
+
 export interface ImportSummary {
   clientes: number
   casos: number

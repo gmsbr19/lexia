@@ -4,19 +4,19 @@ import { TOOLS, toApiTools } from "@/lib/lexia/agent/registry"
 import { annotationsFor, exposableKind, selectMcpTools } from "@/lib/mcp/tools"
 
 describe("MCP tool surface", () => {
-  it("registry has 91 tools; 86 are exposable (client + pergunta excluded)", () => {
-    expect(TOOLS).toHaveLength(91)
+  it("registry has 95 tools; 90 are exposable (client + pergunta excluded)", () => {
+    expect(TOOLS).toHaveLength(95)
     const exposable = TOOLS.filter(exposableKind)
-    expect(exposable).toHaveLength(86)
-    expect(exposable.filter((t) => t.kind === "readonly")).toHaveLength(31)
-    expect(exposable.filter((t) => t.kind === "mutation")).toHaveLength(55)
+    expect(exposable).toHaveLength(90)
+    expect(exposable.filter((t) => t.kind === "readonly")).toHaveLength(34)
+    expect(exposable.filter((t) => t.kind === "mutation")).toHaveLength(56)
     expect(TOOLS.filter((t) => t.kind === "client")).toHaveLength(4)
     expect(TOOLS.filter((t) => t.kind === "pergunta")).toHaveLength(1)
   })
 
-  it("admin sees all 86; never a client/pergunta tool", () => {
+  it("admin sees all 90; never a client/pergunta tool", () => {
     const tools = selectMcpTools("admin", true)
-    expect(tools).toHaveLength(86)
+    expect(tools).toHaveLength(90)
     expect(tools.some((t) => t.kind === "client" || t.kind === "pergunta")).toBe(false)
     expect(tools.some((t) => t.name === "navegar" || t.name === "perguntar_usuario")).toBe(false)
   })
@@ -48,12 +48,12 @@ describe("MCP tool surface", () => {
     for (const t of selectMcpTools("admin", true)) {
       const a = annotationsFor(t)
       expect(a.readOnlyHint).toBe(t.kind === "readonly")
-      expect(a.destructiveHint).toBe(t.kind === "mutation" && /^(excluir|anonimizar)/.test(t.name))
+      expect(a.destructiveHint).toBe(t.kind === "mutation" && /^(excluir|anonimizar|mesclar)/.test(t.name))
       expect(a.title.length).toBeGreaterThan(0)
     }
     const destructive = selectMcpTools("admin", true).filter((t) => annotationsFor(t).destructiveHint)
     expect(destructive.length).toBeGreaterThan(0)
-    expect(destructive.every((t) => /^(excluir|anonimizar)/.test(t.name))).toBe(true)
+    expect(destructive.every((t) => /^(excluir|anonimizar|mesclar)/.test(t.name))).toBe(true)
   })
 
   it("JSON Schema is generated for every exposed tool without throwing", () => {

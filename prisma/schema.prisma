@@ -126,6 +126,7 @@ model Conta {
   transferenciasOrigem  Transferencia[]   @relation("TransfOrigem")
   transferenciasDestino Transferencia[]   @relation("TransfDestino")
   casosResponsavel      CasoResponsavel[]
+  despesasResponsavel   Lancamento[]      @relation("DespesaSocioResponsavel")
 }
 
 model CentroCusto {
@@ -340,6 +341,10 @@ model Lancamento {
   metodoPagamento         String? // Astrea "Pagamento" method
   campanhaId              Int? // ad-spend attribution (Comercial module)
   campanha                Campanha?      @relation(fields: [campanhaId], references: [id])
+  // Despesa 100% de UM sócio (pró-labore, OAB, custa de caso de um só): o acerto
+  // entre sócios lança a cota INTEIRA nele em vez de dividir 50/50. null = compartilhada.
+  socioResponsavelId      Int?
+  socioResponsavel        Conta?         @relation("DespesaSocioResponsavel", fields: [socioResponsavelId], references: [id])
   leads                   Lead[]         @relation("LeadLancamento")
   transferenciaSaida      Transferencia? @relation("TransfSaida")
   transferenciaEntrada    Transferencia? @relation("TransfEntrada")
@@ -354,6 +359,7 @@ model Lancamento {
   @@index([campanhaId])
   @@index([clienteId])
   @@index([casoId])
+  @@index([socioResponsavelId])
 }
 
 // Operator-entered (NOT in the Astrea backup). Powers the DRE pró-labore

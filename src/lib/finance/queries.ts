@@ -5,13 +5,16 @@
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/db"
 import { computeAcertoSocios, emptyAcerto } from "./acerto"
+import { detalharAcertoSocios, type DetalheEntradaFonte, type DetalheSaidaFonte } from "./acerto-detalhe"
 import { BUCKET_META, BUCKET_ORDER } from "./composicao"
 import { aggFeeTotals, contratoToRow, lancamentoToHonorarioRow } from "./honorario-map"
 import { LANC_SELECT, toLancamentoRow } from "./lancamento-map"
 import { currentMes, inScope, periodRange } from "./periodo"
+import { faixaRange, normalizeFaixa, type Faixa } from "./relatorio-periodo"
 import type {
   AcertoSocioLado,
   AcertoSocios,
+  AcertoSociosDetalhado,
   AgingBucket,
   CasoRow,
   CasoSemFeeRow,
@@ -1043,7 +1046,7 @@ export async function getAcertoSocios(range?: { start: Date; end: Date }): Promi
   })
   const saidas = await prisma.lancamento.findMany({
     where: { tipo: "saida", status: "feito", isAnomalia: false, contaId: { in: [A.id, B.id] }, ...janelaPag },
-    select: { valorCents: true, contaId: true },
+    select: { valorCents: true, contaId: true, socioResponsavelId: true },
   })
   const transfers = await prisma.transferencia.findMany({
     where: {
@@ -1063,4 +1066,128 @@ export async function getAcertoSocios(range?: { start: Date; end: Date }): Promi
     saidas,
     transfers,
   )
+}
+
+/**
+ * O MESMO acerto, linha a linha: cada honorário com a parte de cada sócio, cada
+ * despesa com a cota de cada um, as transferências do período e o que ficou de
+ * FORA (com o motivo e o que fazer). Sem faixa, cobre todo o histórico.
+ *
+ * Os totais vêm do mesmo `computeAcertoSocios` da tela — o detalhamento só
+ * classifica e reparte, nunca recalcula por conta própria.
+ */
+export async function getAcertoSociosDetalhado(faixaIn?: { de?: string; ate?: string }): Promise<AcertoSociosDetalhado> {
+  // Sem nenhuma data = histórico inteiro (é o acerto que a aba Contas mostra).
+  const temFaixa = !!(faixaIn?.de || faixaIn?.ate)
+  const faixa: Faixa | null = temFaixa ? normalizeFaixa(faixaIn?.de, faixaIn?.ate) : null
+  const range = faixa ? faixaRange(faixa) : null
+  const janelaPag = range ? { dataPagamento: { gte: range.start, lt: range.end } } : {}
+  const janelaMov = range ? { dataMovimento: { gte: range.start, lt: range.end } } : {}
+
+  const socios = await prisma.conta.findMany({
+    where: { kind: "socio", ativo: true },
+    select: { id: true, nome: true, titular: true, ordem: true },
+    orderBy: [{ ordem: "asc" }, { nome: "asc" }],
+  })
+  const faixaOut = { de: faixa?.de ?? null, ate: faixa?.ate ?? null }
+  if (socios.length !== 2) {
+    return detalharAcertoSocios({ socios, entradas: [], saidas: [], transferencias: [], faixa: faixaOut })
+  }
+  const [A, B] = socios
+
+  // Deliberadamente SEM os filtros de anomalia/conta/caso: é o detalhamento que
+  // classifica cada linha e explica por que ela ficou fora.
+  const [entradas, saidas, transfers] = await Promise.all([
+    prisma.lancamento.findMany({
+      where: { tipo: "entrada", status: "feito", ...janelaPag },
+      select: {
+        id: true,
+        descricao: true,
+        valorCents: true,
+        dataPagamento: true,
+        contaId: true,
+        isAnomalia: true,
+        casoId: true,
+        conta: { select: { nome: true, titular: true } },
+        cliente: { select: { nome: true } },
+        caso: { select: { titulo: true, responsaveis: { select: { contaId: true, percentual: true } } } },
+      },
+    }),
+    prisma.lancamento.findMany({
+      where: { tipo: "saida", status: "feito", ...janelaPag },
+      select: {
+        id: true,
+        descricao: true,
+        valorCents: true,
+        dataPagamento: true,
+        contaId: true,
+        isAnomalia: true,
+        socioResponsavelId: true,
+        conta: { select: { nome: true, titular: true } },
+        categoria: { select: { nome: true } },
+      },
+    }),
+    prisma.transferencia.findMany({
+      where: {
+        OR: [
+          { contaOrigemId: A.id, contaDestinoId: B.id },
+          { contaOrigemId: B.id, contaDestinoId: A.id },
+        ],
+        ...janelaMov,
+      },
+      select: {
+        id: true,
+        valorCents: true,
+        dataMovimento: true,
+        descricao: true,
+        contaOrigemId: true,
+        contaOrigem: { select: { nome: true } },
+        contaDestino: { select: { nome: true } },
+      },
+      orderBy: { dataMovimento: "desc" },
+    }),
+  ])
+  const dia = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null)
+
+  return detalharAcertoSocios({
+    socios,
+    entradas: entradas.map(
+      (e): DetalheEntradaFonte => ({
+        id: e.id,
+        data: dia(e.dataPagamento),
+        descricao: e.descricao,
+        valorCents: e.valorCents,
+        contaId: e.contaId,
+        conta: e.conta ? (e.conta.titular ?? e.conta.nome) : null,
+        isAnomalia: e.isAnomalia,
+        casoId: e.casoId,
+        caso: e.caso?.titulo ?? null,
+        cliente: e.cliente?.nome ?? null,
+        responsaveis: e.caso?.responsaveis ?? [],
+      }),
+    ),
+    saidas: saidas.map(
+      (x): DetalheSaidaFonte => ({
+        id: x.id,
+        data: dia(x.dataPagamento),
+        descricao: x.descricao,
+        valorCents: x.valorCents,
+        contaId: x.contaId,
+        conta: x.conta ? (x.conta.titular ?? x.conta.nome) : null,
+        isAnomalia: x.isAnomalia,
+        categoria: x.categoria?.nome ?? null,
+        socioResponsavelId: x.socioResponsavelId,
+      }),
+    ),
+    transferencias: transfers.map((t) => ({
+      id: t.id,
+      valorCents: t.valorCents,
+      data: dia(t.dataMovimento),
+      descricao: t.descricao,
+      contaOrigemId: t.contaOrigemId,
+      contaOrigem: t.contaOrigem.nome,
+      contaDestino: t.contaDestino.nome,
+    })),
+    faixa: faixaOut,
+  })
 }

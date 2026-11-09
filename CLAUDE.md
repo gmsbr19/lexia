@@ -156,6 +156,73 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **MCP · o que o chat pediu para conseguir fechar o repasse: `editar_lancamento` completo, baixa com conta,
+  despesa FORA do rateio 50/50 e `acerto_socios` DETALHADO (this session, VERIFIED 1004/1004 testes (+37 novos),
+  eslint só o aviso PRÉ-EXISTENTE `AcertoSocioLado` de `queries.ts`, migração ADITIVA
+  `20261109120000_lancamento_socio_responsavel` validada contra o banco real — o `prisma migrate diff` do
+  próprio Prisma sai BYTE A BYTE igual ao SQL escrito à mão, e o diff não mostra mais nada (sem drift) —, NÃO
+  aplicada ainda; `tsc` tem 17 erros que são TODOS o campo novo ainda não gerado, ver User action).** O usuário
+  trouxe uma lista de 5 pedidos do próprio chat do claude.ai, que estava corrigindo dados e travou em cada um.
+  **(1) `editar_lancamento` ganhou os vínculos que faltavam** — `contaId` (pedido "essencial": corrigir a conta
+  sem recriar o lançamento, que perdia histórico/série/campanha), `categoriaId`, `clienteId`, `campanhaId`,
+  `recorrenteParentId` (religa parcela recriada à série) e `isAnomalia`; o backend `updateLancamento` já
+  suportava conta/categoria/cliente — faltava EXPOR —, os outros 4 entraram no `LancamentoPatch`. Guard novo
+  `assertVinculosLancamento` (substitui o `assertCasoCompativel`): valida caso×cliente pelo estado DEPOIS do
+  patch (trocar só o cliente não pode deixar pendurado um caso de outra pessoa — manda corrigir os dois na
+  MESMA chamada), confere existência de conta/categoria/campanha/contato com mensagem pt-BR apontando o
+  lookup certo (senão um FK solto voltaria ao chat como erro genérico), recusa `socioResponsavelId` em ENTRADA,
+  e `assertSerieSemCiclo` (mutations.ts) impede A→B→A na série. **(2) `pagar_lancamento` ignorava o `contaId`
+  — era bug na FERRAMENTA, não no backend:** `pagarLancamento(id, {contaId})` sempre gravou, mas o `run` fazia
+  `input as {id, dataPagamento}` e descartava a conta. Corrigido (+ a conta aparece no cartão, + checagem de
+  conta ativa). **(3) Despesa fora do rateio — escolhida a opção COMPLETA do pedido, `socioResponsavelId`, e
+  recusada a simples (`isAnomalia` como chave de rateio):** `isAnomalia` NÃO é "fora do rateio", é "fora de
+  TUDO" — o DRE (`getDre` custos), `getCostsByCategoria` e os KPIs todos filtram `isAnomalia: false`, então
+  marcar o pró-labore assim o apagaria dos relatórios de custo. Coluna nova `Lancamento.socioResponsavelId`
+  (FK Conta, SetNull): a cota INTEIRA vai nesse sócio em vez de dividir 50/50 — quando ele é o próprio pagador
+  a despesa sai do acerto por construção (cota = pago), que é o caso do pró-labore, e quando A paga algo 100%
+  de B o B passa a dever o valor INTEIRO, não a metade (anuidade da OAB, Custas Mauro). Responsável que não
+  seja um dos 2 sócios ativos volta ao 50/50 — dinheiro nunca desaparece do acerto em silêncio. `isAnomalia`
+  TAMBÉM foi exposto, mas pelo que ele é ("movimento de SALDO, sai de todos os relatórios") e com a descrição
+  mandando usar `socioResponsavelId` para despesa real: é a semântica que o próprio app usa, pois
+  `createTransferencia` já nasce com `isAnomalia: true` nas DUAS pernas — então um "Repasse" lançado à mão
+  como saída fica consistente com os repasses feitos pelo painel de Transferências. **NÃO** fiz o acerto
+  respeitar o rateio do caso em despesa com `casoId` (3ª alternativa do pedido): medido na produção, existe
+  **1** saída com caso (R$ 33.596,99) — mexer no número do dinheiro em silêncio por causa de uma linha não se
+  paga, e o `socioResponsavelId` resolve essa linha explicitamente. **Matemática** (`acerto.ts`): a cota agora
+  ACUMULA (`+=`) em vez de ser atribuída, e o balde compartilhado mantém o MESMO arredondamento único sobre a
+  soma → com a coluna nula o resultado é byte a byte o de antes (há teste afirmando `null` ≡ campo ausente).
+  **(4) `acerto_socios` detalhado:** novo `getAcertoSociosDetalhado({de, ate})` (queries.ts) + núcleo PURO
+  [acerto-detalhe.ts](src/lib/finance/acerto-detalhe.ts) `detalharAcertoSocios` — devolve os totais de sempre
+  MAIS `entradas[]` (cada honorário com a parte de cada sócio), `despesas[]` (cada uma com a cota de cada um e
+  o responsável), `transferencias[]` e **`ignorados[]`** com 5 motivos e frase pronta dizendo o que fazer
+  (`anomalia` / `sem_conta` / `conta_nao_socio` / `sem_caso` / `sem_rateio` → "defina com definir_rateio"). O
+  detalhamento **não recalcula nada**: ele classifica (mesmo predicado dos filtros SQL de `getAcertoSocios`,
+  agora em TS, num lugar só) e manda o que conta para o MESMO `computeAcertoSocios` da tela. Como o 50/50 é
+  arredondado UMA vez sobre a soma, a cota por linha sairia diferente do total por alguns centavos — então
+  `repartirCotaCompartilhada` (acerto.ts, maior resto, troco para as linhas de valor ímpar) reparte sem perder
+  centavo, e há **teste de INVARIANTE**: a soma das cotas por linha é EXATAMENTE a `cotaSaidaCents` dos totais
+  (idem partes × `direitoCents`). Listas capadas em 200 linhas com `contagens` do conjunto inteiro +
+  `truncado` (os TOTAIS são sempre sobre tudo). A tool ganhou `de`/`ate`/`detalhado` (padrão false: "quem deve
+  quanto?" continua custando pouco; com faixa e sem detalhado devolve só os totais do período via
+  `getAcertoSocios(range)`, que já existia). **(5) Opcionais do pedido, todos feitos:** `mesclar_clientes`
+  (`destinoId` fica / `origemId` é excluído; reaproveita o `mesclarClientes` que a UI já usava; `roles:
+  ["socio"]` como a rota; cartão mostra quantos lançamentos/casos/contratos/leads trocam de dono; `mesclar`
+  entrou no `DESTRUCTIVE_RE` do MCP) + os lookups que faltavam para a IA descobrir id sem SQL:
+  **`listar_contas`** (todas as ativas com `kind` socio/banco/caixa — era o que faltava para corrigir a conta
+  das 3 campanhas do Meta), **`listar_categorias`** e **`listar_campanhas`** (comercial, aberto como o resto do
+  módulo). **Contagem:** registry 91→**95**, MCP expõe 86→**90** (34 leitura + 56 escrita) + 2 de SQL = **92
+  ferramentas**. **Baseline da produção ANTES do deploy, para conferir o detalhado depois** (calculado por SQL
+  independente, não pela tool): direito Leandro R$ 121.442,52 / Leonardo R$ 579.400,78; recebido R$ 80.274,97 /
+  R$ 620.568,47; saídas R$ 184.627,33 (TODAS pagas pelo Leonardo); transferido A→B R$ 13.000,00 ⇒ **Leandro
+  deve R$ 38.145,97** (bruto R$ 51.145,97). O `detalhado: true` tem de fechar nesses números. **User action
+  (REQUIRED — lock do Prisma no Windows):** parar `next dev` → `npx prisma migrate deploy` → `npx prisma
+  generate` → `npx tsc --noEmit` (tem de dar **0**; os 17 erros atuais são todos o `socioResponsavelId`/
+  `socioResponsavel` que o client ainda não conhece — um `select` inválido derruba a inferência do objeto
+  inteiro, daí os erros em cascata em `conta`/`categoria`/`caso`/`cliente`/`campanha` dos MESMOS selects) →
+  `npm run dev`. Em produção a migração roda sozinha no boot (`npm start` = `migrate deploy && next start`).
+  **Depois do deploy, no claude.ai: conversa NOVA** — a lista de ferramentas é buscada quando a conexão é
+  feita, então uma conversa antiga continua vendo as 88 antigas (foi exatamente o que aconteceu com o
+  `definir_rateio`). Pedir "me dê o acerto detalhado desde o último repasse" e conferir contra a aba Contas.
 - **Servidor MCP do Lexia — conector do claude.ai para inspecionar/organizar os DADOS conversando (this session,
   VERIFIED `npx tsc --noEmit` 0 erros, 967/967 testes (+37 em `tests/mcp-{auth,tools,sql,exec,boot}.test.ts`), eslint
   limpo nos arquivos novos/tocados, SEM migração; empurrado para `origin/master`).** Decisões do usuário: reaproveitar as ferramentas tipadas

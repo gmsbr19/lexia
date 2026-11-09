@@ -5,7 +5,9 @@
 // Model: (a) honorários: each paid honorário with a caso split generates a
 // *direito* (entitlement) per sócio vs the *recebido* by the account that
 // actually received it; (b) despesas: every saída paid from a sócio account is
-// shared 50/50 (*cota* vs *pago*); sócio↔sócio transfers settle the imbalance.
+// shared 50/50 (*cota* vs *pago*) UNLESS it names a `socioResponsavelId`, in
+// which case the whole cota lands on that sócio; sócio↔sócio transfers settle
+// the imbalance.
 import type { AcertoSocioLado, AcertoSocios } from "./types"
 
 export interface AcertoSocioConta {
@@ -23,6 +25,11 @@ export interface AcertoHonoRow {
 export interface AcertoSaidaRow {
   valorCents: number
   contaId: number | null
+  /**
+   * Despesa 100% deste sócio (pró-labore, anuidade da OAB, custa de um caso só
+   * dele). Ausente/null = despesa do escritório, rateada 50/50 como sempre.
+   */
+  socioResponsavelId?: number | null
 }
 
 export interface AcertoTransferRow {
@@ -76,17 +83,24 @@ export function computeAcertoSocios(
   }
 
   // Every despesa (saída) paid from a sócio account is shared 50/50: whoever
-  // paid it covered the other's half, so the other owes them that half.
-  let totalSaida = 0
+  // paid it covered the other's half, so the other owes them that half. A
+  // despesa with `socioResponsavelId` is NOT shared — the whole cota goes to
+  // that sócio (so when he is also the payer it nets to zero and the despesa
+  // leaves the acerto, which is what pró-labore needs). A responsável that is
+  // not one of the two active sócios falls back to the shared bucket, so money
+  // never silently disappears from the acerto.
+  let compartilhadoCents = 0
   for (const s of saidas) {
     const v = Math.abs(s.valorCents)
-    totalSaida += v
     const i = s.contaId != null ? idxById.get(s.contaId) : undefined
     if (i !== undefined) lados[i].pagoSaidaCents += v
+    const r = s.socioResponsavelId != null ? idxById.get(s.socioResponsavelId) : undefined
+    if (r !== undefined) lados[r].cotaSaidaCents += v
+    else compartilhadoCents += v
   }
-  const cotaB = Math.round(totalSaida / 2)
-  lados[1].cotaSaidaCents = cotaB
-  lados[0].cotaSaidaCents = totalSaida - cotaB
+  const cotaB = Math.round(compartilhadoCents / 2)
+  lados[1].cotaSaidaCents += cotaB
+  lados[0].cotaSaidaCents += compartilhadoCents - cotaB
 
   let transfBtoA = 0
   let transfAtoB = 0
@@ -119,4 +133,28 @@ export function computeAcertoSocios(
     credorNome: quitado ? null : credor.titular ?? credor.nome,
     quitado,
   }
+}
+
+/**
+ * Reparte a cota COMPARTILHADA entre as linhas que a compõem, de modo que a soma
+ * feche EXATAMENTE no total agregado do acerto (método do maior resto).
+ *
+ * `computeAcertoSocios` arredonda a metade UMA vez, sobre a soma. Arredondar cada
+ * linha isolada daria um total diferente por alguns centavos — e um relatório que
+ * não fecha com o acerto não serve. Devolve a cota do sócio B (índice 1) por linha;
+ * a do sócio A é `valor - cotaB`.
+ */
+export function repartirCotaCompartilhada(valores: number[], cotaTotalB: number): number[] {
+  const cotas = valores.map((v) => Math.floor(Math.abs(v) / 2))
+  let resto = cotaTotalB - cotas.reduce((a, b) => a + b, 0)
+  // O floor tirou meio centavo exatamente das linhas de valor ímpar: são elas que
+  // recebem o troco de volta, uma a uma, até o total fechar.
+  for (let i = 0; i < valores.length && resto > 0; i++) {
+    if (Math.abs(valores[i]) % 2 !== 0) {
+      cotas[i] += 1
+      resto -= 1
+    }
+  }
+  if (resto !== 0 && cotas.length) cotas[0] += resto // rede de segurança: nunca perde centavo
+  return cotas
 }

@@ -109,6 +109,19 @@ export const comercialTools = [
     }),
   }),
   defineTool({
+    name: "listar_campanhas",
+    kind: "readonly",
+    description:
+      "Lista as campanhas de anúncio (id, nome, plataforma, status). Use para descobrir o campanhaId ao registrar ou corrigir um gasto de mídia.",
+    schema: z.object({}),
+    run: async () => ({
+      campanhas: await prisma.campanha.findMany({
+        select: { id: true, nome: true, plataforma: true, status: true, ativo: true, dataInicio: true, dataFim: true },
+        orderBy: [{ ativo: "desc" }, { nome: "asc" }],
+      }),
+    }),
+  }),
+  defineTool({
     name: "criar_campanha",
     kind: "mutation",
     description: "Cria uma campanha de marketing (google_ads/meta_ads/outro) no funil comercial. Use para 'crie uma campanha de Google Ads para a área trabalhista'.",

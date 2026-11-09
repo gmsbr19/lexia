@@ -152,6 +152,28 @@ export interface LancamentoPatch {
   categoriaId?: number | null
   clienteId?: number | null
   casoId?: number | null
+  campanhaId?: number | null // atribuição de gasto de anúncio (Comercial)
+  recorrenteParentId?: number | null // religa uma parcela à série (null = solta)
+  socioResponsavelId?: number | null // despesa 100% de um sócio (null = 50/50)
+  isAnomalia?: boolean // movimento de SALDO, não despesa/receita: sai de TODOS os relatórios
+}
+
+/**
+ * A série de recorrência é uma ÁRVORE: religar uma parcela não pode fechar um
+ * ciclo (A→B→A faria qualquer leitura que sobe a cadeia girar para sempre).
+ */
+async function assertSerieSemCiclo(id: number, paiId: number) {
+  if (paiId === id) throw new UserError("Um lançamento não pode ser a própria parcela-mãe")
+  let cursor: number | null = paiId
+  for (let i = 0; i < 50 && cursor != null; i++) {
+    if (cursor === id) throw new UserError("Esse vínculo criaria um ciclo na série de parcelas")
+    const row: { recorrenteParentId: number | null } | null = await prisma.lancamento.findUnique({
+      where: { id: cursor },
+      select: { recorrenteParentId: true },
+    })
+    if (!row) throw new UserError("Parcela-mãe não encontrada")
+    cursor = row.recorrenteParentId
+  }
 }
 
 export async function updateLancamento(id: number, patch: LancamentoPatch) {
@@ -175,6 +197,13 @@ export async function updateLancamento(id: number, patch: LancamentoPatch) {
   if (patch.categoriaId !== undefined) data.categoriaId = patch.categoriaId
   if (patch.clienteId !== undefined) data.clienteId = patch.clienteId
   if (patch.casoId !== undefined) data.casoId = patch.casoId
+  if (patch.campanhaId !== undefined) data.campanhaId = patch.campanhaId
+  if (patch.socioResponsavelId !== undefined) data.socioResponsavelId = patch.socioResponsavelId
+  if (patch.isAnomalia !== undefined) data.isAnomalia = patch.isAnomalia
+  if (patch.recorrenteParentId !== undefined) {
+    if (patch.recorrenteParentId != null) await assertSerieSemCiclo(id, patch.recorrenteParentId)
+    data.recorrenteParentId = patch.recorrenteParentId
+  }
   const result = await prisma.lancamento.update({ where: { id }, data })
   // Captação: o valor de um contrato JÁ ENVIADO como contrato_assinado mudou
   // → RESTATE (lê o novo valor direto daqui, nunca recalcula — mesma

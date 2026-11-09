@@ -7,7 +7,7 @@ import type { AgentTool } from "@/lib/lexia/agent/types"
 import { selectTools } from "@/lib/lexia/agent/registry"
 
 /** Names that are destructive by convention (hint for the client's approval UI). */
-export const DESTRUCTIVE_RE = /^(excluir|anonimizar)/
+export const DESTRUCTIVE_RE = /^(excluir|anonimizar|mesclar)/
 
 /**
  * `client` tools (navigate / open-document edits) and `pergunta` only make sense

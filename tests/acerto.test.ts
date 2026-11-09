@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { computeAcertoSocios, type AcertoSocioConta } from "@/lib/finance/acerto"
+import { computeAcertoSocios, repartirCotaCompartilhada, type AcertoSocioConta } from "@/lib/finance/acerto"
 
 const A: AcertoSocioConta = { id: 1, nome: "Leandro", titular: "Leandro" }
 const B: AcertoSocioConta = { id: 2, nome: "Leonardo", titular: "Leonardo" }
@@ -125,5 +125,77 @@ describe("computeAcertoSocios — guard rails", () => {
     expect(computeAcertoSocios([A], [], [], []).quitado).toBe(true)
     expect(computeAcertoSocios([], [], [], []).quitado).toBe(true)
     expect(computeAcertoSocios([A], [], [], []).devedorId).toBeNull()
+  })
+})
+
+describe("computeAcertoSocios — despesa com sócio responsável (fora do rateio 50/50)", () => {
+  it("pró-labore: quem paga é o próprio responsável → a despesa sai do acerto", () => {
+    // A tira 10k de pró-labore da própria conta: cota 10k e pago 10k, net zero.
+    const r = computeAcertoSocios(socios, [], [{ valorCents: -10_000, contaId: 1, socioResponsavelId: 1 }], [])
+    expect(r.socios[0].cotaSaidaCents).toBe(10_000)
+    expect(r.socios[0].pagoSaidaCents).toBe(10_000)
+    expect(r.socios[1].cotaSaidaCents).toBe(0)
+    expect(r.quitado).toBe(true)
+  })
+
+  it("A paga uma despesa 100% de B → B deve o VALOR INTEIRO, não a metade", () => {
+    const r = computeAcertoSocios(socios, [], [{ valorCents: -8_000, contaId: 1, socioResponsavelId: 2 }], [])
+    expect(r.socios[1].cotaSaidaCents).toBe(8_000)
+    expect(r.socios[0].cotaSaidaCents).toBe(0)
+    expect(r.devedorId).toBe(B.id)
+    expect(r.valorCents).toBe(8_000)
+  })
+
+  it("responsável que não é sócio ativo volta ao rateio 50/50 (nada desaparece)", () => {
+    const r = computeAcertoSocios(socios, [], [{ valorCents: -40_000, contaId: 1, socioResponsavelId: 99 }], [])
+    expect(r.socios[0].cotaSaidaCents).toBe(20_000)
+    expect(r.socios[1].cotaSaidaCents).toBe(20_000)
+  })
+
+  it("mistura: a compartilhada divide, a do responsável não", () => {
+    const r = computeAcertoSocios(
+      socios,
+      [],
+      [
+        { valorCents: -40_000, contaId: 1 }, // escritório: 20k/20k
+        { valorCents: -10_000, contaId: 1, socioResponsavelId: 2 }, // 100% de B
+      ],
+      [],
+    )
+    expect(r.socios[0].cotaSaidaCents).toBe(20_000)
+    expect(r.socios[1].cotaSaidaCents).toBe(30_000)
+    expect(r.socios[0].pagoSaidaCents).toBe(50_000)
+    expect(r.valorCents).toBe(30_000) // B deve sua metade (20k) + sua despesa (10k)
+    expect(r.devedorId).toBe(B.id)
+  })
+
+  it("null/ausente é indistinguível do comportamento antigo", () => {
+    const comNull = computeAcertoSocios(socios, [], [{ valorCents: -33_333, contaId: 1, socioResponsavelId: null }], [])
+    const semCampo = computeAcertoSocios(socios, [], [{ valorCents: -33_333, contaId: 1 }], [])
+    expect(comNull).toEqual(semCampo)
+  })
+})
+
+describe("repartirCotaCompartilhada", () => {
+  it("a soma das cotas por linha fecha EXATAMENTE no total agregado", () => {
+    const valores = [33_333, 1, 999, 10_000, 7]
+    const total = Math.round(valores.reduce((a, b) => a + b, 0) / 2)
+    const cotas = repartirCotaCompartilhada(valores, total)
+    expect(cotas.reduce((a, b) => a + b, 0)).toBe(total)
+  })
+
+  it("o troco do arredondamento vai para as linhas de valor ímpar", () => {
+    // 3 linhas de 1 centavo: o total arredonda para 2, então 2 das 3 recebem 1.
+    const cotas = repartirCotaCompartilhada([1, 1, 1], 2)
+    expect(cotas.reduce((a, b) => a + b, 0)).toBe(2)
+    expect(cotas).toEqual([1, 1, 0])
+  })
+
+  it("valores pares são metade exata, sem troco", () => {
+    expect(repartirCotaCompartilhada([40_000, 10_000], 25_000)).toEqual([20_000, 5_000])
+  })
+
+  it("lista vazia não quebra", () => {
+    expect(repartirCotaCompartilhada([], 0)).toEqual([])
   })
 })
