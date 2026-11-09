@@ -176,12 +176,19 @@ This Next (16.2.6) has breaking changes vs. training data — consult
   mutações (ex.: atribuir tarefa) saem sem origem. **Ferramentas:** `selectTools()` extraída de `toApiTools` em
   [registry.ts](src/lib/lexia/agent/registry.ts) (UMA fonte de verdade p/ papel + kill-switch de Processos; `toApiTools` é só o
   mapeamento, saída idêntica → cache de prompt da LexIA intacto); [lib/mcp/tools.ts](src/lib/mcp/tools.ts) exclui `client`/
-  `pergunta` → **84** do registry (30 leitura + 54 escrita) + `sql_consultar`/`sql_schema` (só MCP; `LEXIA_MCP_SQL=off`
+  `pergunta` → **86** do registry (31 leitura + 55 escrita) + `sql_consultar`/`sql_schema` (só MCP; `LEXIA_MCP_SQL=off`
   desliga). Anotações: `readOnlyHint` (leitura), `destructiveHint` (`excluir*`/`anonimizar*`), `title`. Execução
   ([lib/mcp/exec.ts](src/lib/mcp/exec.ts), deps injetadas): papel → rate limit (`mcp.<tool>`) → mutação: `montarConfirmacao`
   (cosmético; lançar não derruba) + `run()` DIRETO (a aprovação é a do próprio chat do Claude) + `writeAudit(mcp@…,
   {action:"mcp.<tool>", entity, payload:input})` → resultado `{ok, resumo, resultado}`; leitura NUNCA audita. Erros: `UserError`/
-  `ForbiddenError`/`RateLimitError` com a mensagem pt-BR; o resto → log + mensagem genérica. **Confirmado por grafo de imports**
+  `ForbiddenError`/`RateLimitError` com a mensagem pt-BR; o resto → log + mensagem genérica. **Vínculo lançamento↔caso e RATEIO (pedido do usuário, já com o conector no ar):**
+    `editar_lancamento` ganhou `casoId` (null desvincula) — o `updateLancamento` já suportava, faltava expor; o `run` valida que o
+    caso existe, está vivo e é do MESMO cliente do lançamento (dinheiro no caso do cliente errado é caro de desfazer).
+    `criar_lancamento` já aceitava `casoId` via `novoLancamentoSchema`. Tools novas: `listar_socios` (leitura,
+    ROLES_FINANCEIRO — dá os `contaId` das contas `kind:"socio"` ativas) e `definir_rateio` (mutação, `roles:["socio"]` como a
+    rota `/api/financeiro/casos/[id]/responsaveis`) sobre o `setCasoResponsaveis` existente: SUBSTITUI o rateio inteiro, soma
+    dos percentuais tem de ser exatamente 100 (`.refine`), cartão mostra antes→depois por sócio e quem sai do rateio.
+    **Confirmado por grafo de imports**
   (121 arquivos alcançáveis dos tools): nenhuma ferramenta nem o `lib/` que chamam usa `auth()`/`requireUser()`/`next-auth` →
   `AgentCtx` sintético (`conversaId: 0`) basta, sem shim de sessão. **SQL** ([sql-core.ts](src/lib/mcp/sql-core.ts) puro +
   [sql.ts](src/lib/mcp/sql.ts)): dentro de `prisma.$transaction`, `SET TRANSACTION READ ONLY` + `SET LOCAL statement_timeout='5s'`

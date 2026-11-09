@@ -446,3 +446,41 @@ describe("date helpers", () => {
     expect(addDiasISO("2026-03-01", -1)).toBe("2026-02-28")
   })
 })
+
+describe("rateio do caso e vínculo de lançamento ao caso", () => {
+  const nomes = (role: string) => new Set(toApiTools(role).map((t) => t.name))
+
+  it("definir_rateio é mutação só de sócio; listar_socios segue o gate do Financeiro", () => {
+    expect(TOOLS_BY_NAME.get("definir_rateio")?.kind).toBe("mutation")
+    expect(TOOLS_BY_NAME.get("listar_socios")?.kind).toBe("readonly")
+    // rateio mexe no que cada sócio recebe: mesma régua da rota (roles: ['socio'])
+    expect(nomes("socio").has("definir_rateio")).toBe(true)
+    expect(nomes("admin").has("definir_rateio")).toBe(true)
+    expect(nomes("financeiro").has("definir_rateio")).toBe(false)
+    for (const role of ["staff", "estagiario", "advogado"]) {
+      expect(nomes(role).has("definir_rateio"), role).toBe(false)
+      expect(nomes(role).has("listar_socios"), role).toBe(false)
+    }
+    for (const role of ["socio", "financeiro", "admin"]) expect(nomes(role).has("listar_socios"), role).toBe(true)
+  })
+
+  it("o rateio só passa com soma exatamente 100", () => {
+    const s = TOOLS_BY_NAME.get("definir_rateio")!.schema
+    const partes = (...p: number[]) => ({ casoId: 1, partes: p.map((percentual, i) => ({ contaId: i + 1, percentual })) })
+    expect(s.safeParse(partes(50, 50)).success).toBe(true)
+    expect(s.safeParse(partes(100)).success).toBe(true)
+    expect(s.safeParse(partes(70, 30)).success).toBe(true)
+    expect(s.safeParse(partes(50, 30)).success).toBe(false) // soma 80
+    expect(s.safeParse(partes(60, 60)).success).toBe(false) // soma 120
+    expect(s.safeParse({ casoId: 1, partes: [] }).success).toBe(false)
+  })
+
+  it("editar_lancamento aceita casoId para vincular e null para desvincular", () => {
+    const s = TOOLS_BY_NAME.get("editar_lancamento")!.schema
+    expect(s.safeParse({ id: 1, casoId: 7 }).success).toBe(true)
+    expect(s.safeParse({ id: 1, casoId: null }).success).toBe(true)
+    expect(s.safeParse({ id: 1 }).success).toBe(true) // ausente = não mexe no vínculo
+    expect(s.safeParse({ id: 1, casoId: 0 }).success).toBe(false)
+    expect(s.safeParse({ id: 1, casoId: -3 }).success).toBe(false)
+  })
+})

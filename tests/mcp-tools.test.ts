@@ -4,19 +4,19 @@ import { TOOLS, toApiTools } from "@/lib/lexia/agent/registry"
 import { annotationsFor, exposableKind, selectMcpTools } from "@/lib/mcp/tools"
 
 describe("MCP tool surface", () => {
-  it("registry has 89 tools; 84 are exposable (client + pergunta excluded)", () => {
-    expect(TOOLS).toHaveLength(89)
+  it("registry has 91 tools; 86 are exposable (client + pergunta excluded)", () => {
+    expect(TOOLS).toHaveLength(91)
     const exposable = TOOLS.filter(exposableKind)
-    expect(exposable).toHaveLength(84)
-    expect(exposable.filter((t) => t.kind === "readonly")).toHaveLength(30)
-    expect(exposable.filter((t) => t.kind === "mutation")).toHaveLength(54)
+    expect(exposable).toHaveLength(86)
+    expect(exposable.filter((t) => t.kind === "readonly")).toHaveLength(31)
+    expect(exposable.filter((t) => t.kind === "mutation")).toHaveLength(55)
     expect(TOOLS.filter((t) => t.kind === "client")).toHaveLength(4)
     expect(TOOLS.filter((t) => t.kind === "pergunta")).toHaveLength(1)
   })
 
-  it("admin sees all 84; never a client/pergunta tool", () => {
+  it("admin sees all 86; never a client/pergunta tool", () => {
     const tools = selectMcpTools("admin", true)
-    expect(tools).toHaveLength(84)
+    expect(tools).toHaveLength(86)
     expect(tools.some((t) => t.kind === "client" || t.kind === "pergunta")).toBe(false)
     expect(tools.some((t) => t.name === "navegar" || t.name === "perguntar_usuario")).toBe(false)
   })

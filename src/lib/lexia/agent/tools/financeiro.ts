@@ -17,15 +17,57 @@ import {
   criarLancamentos,
   deleteLancamento,
   pagarLancamento,
+  setCasoResponsaveis,
   updateLancamento,
 } from "@/lib/finance/mutations"
 import { novoLancamentoSchema, pagarLancamentoSchema } from "@/lib/finance/schemas"
 import { prisma } from "@/lib/db"
+import { UserError } from "@/lib/errors"
 import { dateStr, idReq, money } from "@/lib/validation"
 import { ROLES_FINANCEIRO } from "@/lib/users/types"
 import { dataBr } from "../confirmar"
 import { defineTool } from "../types"
 import { brl, cap, limite } from "./shared"
+
+
+/** Contas de SÓCIO ativas — são as únicas que podem receber percentual no rateio. */
+async function contasDeSocio() {
+  return prisma.conta.findMany({ where: { kind: "socio", ativo: true }, select: { id: true, nome: true }, orderBy: { nome: "asc" } })
+}
+
+/** O caso existe, está vivo e é do mesmo cliente do lançamento? */
+async function assertCasoCompativel(lancamentoId: number, casoId: number) {
+  const [lanc, caso] = await Promise.all([
+    prisma.lancamento.findUnique({ where: { id: lancamentoId }, select: { clienteId: true } }),
+    prisma.caso.findUnique({ where: { id: casoId }, select: { excluidoEm: true, clientePrincipalId: true } }),
+  ])
+  if (!caso || caso.excluidoEm) throw new UserError("Caso não encontrado (ou excluído).")
+  if (lanc?.clienteId && caso.clientePrincipalId && lanc.clienteId !== caso.clientePrincipalId) {
+    throw new UserError(
+      "Esse caso é de outro cliente. Escolha um caso do mesmo cliente do lançamento, ou corrija antes o cliente do lançamento.",
+    )
+  }
+}
+
+const rateioSchema = z
+  .object({
+    casoId: idReq.describe("Id do caso cujo rateio será definido"),
+    partes: z
+      .array(
+        z.object({
+          contaId: idReq.describe("Id da conta de SÓCIO (via listar_socios)"),
+          percentual: z.number().int().min(0).max(100).describe("Percentual do sócio neste caso (0–100)"),
+        }),
+      )
+      .min(1)
+      .max(10)
+      .describe("Partes do rateio. A soma tem de ser exatamente 100; quem fica com 0% pode ser omitido."),
+  })
+  .refine((v) => v.partes.reduce((s, p) => s + p.percentual, 0) === 100, {
+    message: "A soma dos percentuais do rateio tem de ser exatamente 100",
+    path: ["partes"],
+  })
+type RateioIn = z.infer<typeof rateioSchema>
 
 const mesArg = z
   .string()
@@ -42,6 +84,11 @@ const editarLancamentoSchema = z.object({
   dataVencimento: dateStr.nullish().describe("Novo vencimento (YYYY-MM-DD)"),
   dataPagamento: dateStr.nullish().describe("Data de pagamento (YYYY-MM-DD) — prefira pagar_lancamento p/ dar baixa"),
   status: z.enum(["aberto", "feito"]).optional().describe("'feito' = pago, 'aberto' = em aberto"),
+  casoId: idReq
+    .nullish()
+    .describe(
+      "Vincula o lançamento a um caso (id do caso). null DESVINCULA. Obtenha o id via buscar, listar_casos ou detalhe_cliente.",
+    ),
 })
 type EditarLancamentoIn = z.infer<typeof editarLancamentoSchema>
 
@@ -200,10 +247,16 @@ export const financeiroTools = [
       if (v.valorCents !== undefined) det.push({ label: "Valor", valor: `${l ? brl(Math.abs(l.valorCents)) + " → " : ""}${brl(v.valorCents)}` })
       if (v.dataVencimento !== undefined) det.push({ label: "Vencimento", valor: v.dataVencimento ? dataBr(v.dataVencimento) : "—" })
       if (v.status !== undefined) det.push({ label: "Status", valor: v.status === "feito" ? "Pago" : "Em aberto" })
+      if (v.casoId !== undefined) {
+        const caso = v.casoId == null ? null : await prisma.caso.findUnique({ where: { id: v.casoId }, select: { titulo: true } })
+        det.push({ label: "Caso", valor: v.casoId == null ? "— (desvincular)" : (caso?.titulo ?? `#${v.casoId}`) })
+      }
       return { resumo: `Editar lançamento: ${l?.descricao ?? `#${v.id}`}`, detalhes: det }
     },
     run: async (_ctx, input) => {
       const { id, ...patch } = input as EditarLancamentoIn
+      // Vincular dinheiro ao caso do cliente ERRADO é caro de desfazer: valida antes.
+      if (patch.casoId != null) await assertCasoCompativel(id, patch.casoId)
       return updateLancamento(id, patch)
     },
   }),
@@ -229,6 +282,53 @@ export const financeiroTools = [
       return { resumo: `Excluir ${v.ids.length} lançamento(s)`, detalhes: det }
     },
     run: async (_ctx, input) => bulkLancamentos((input as z.infer<typeof excluirLancamentosSchema>).ids, "excluir"),
+  }),
+  defineTool({
+    name: "listar_socios",
+    kind: "readonly",
+    roles: ROLES_FINANCEIRO,
+    description:
+      "Lista as contas de SÓCIO ativas (id e nome). São elas que recebem percentual no rateio de um caso — use antes de definir_rateio para descobrir os contaId.",
+    schema: z.object({}),
+    run: async () => ({ socios: await contasDeSocio() }),
+  }),
+  defineTool({
+    name: "definir_rateio",
+    kind: "mutation",
+    roles: ["socio"],
+    description:
+      "Define o rateio de um caso entre os sócios, SUBSTITUINDO o rateio atual por inteiro. A soma dos percentuais tem de ser 100 " +
+      "(ex.: 50/50, 70/30, ou 100 para um sócio só). Veja o rateio atual em detalhe_caso e os ids das contas em listar_socios.",
+    schema: rateioSchema,
+    resumo: (i) => `Definir rateio do caso #${(i as RateioIn).casoId}`,
+    montarConfirmacao: async (_ctx, input) => {
+      const v = input as RateioIn
+      const [caso, socios, atual] = await Promise.all([
+        prisma.caso.findUnique({ where: { id: v.casoId }, select: { titulo: true } }),
+        contasDeSocio(),
+        prisma.casoResponsavel.findMany({ where: { casoId: v.casoId }, select: { contaId: true, percentual: true } }),
+      ])
+      const nome = (id: number) => socios.find((s) => s.id === id)?.nome ?? `Conta #${id}`
+      const antes = new Map(atual.map((r) => [r.contaId, r.percentual]))
+      const det: { label: string; valor: string; valorAntigo?: string }[] = v.partes.map((p) => ({
+        label: nome(p.contaId),
+        valor: `${p.percentual}%`,
+        valorAntigo: antes.has(p.contaId) ? `${antes.get(p.contaId)}%` : undefined,
+      }))
+      // Sócio que estava no rateio e não aparece na lista nova sai dele.
+      for (const r of atual) {
+        if (!v.partes.some((p) => p.contaId === r.contaId)) {
+          det.push({ label: nome(r.contaId), valor: "0% (sai do rateio)", valorAntigo: `${r.percentual}%` })
+        }
+      }
+      return { resumo: `Rateio de "${caso?.titulo ?? `caso #${v.casoId}`}"`, detalhes: det }
+    },
+    run: async (_ctx, input) => {
+      const v = input as RateioIn
+      const caso = await prisma.caso.findUnique({ where: { id: v.casoId }, select: { excluidoEm: true } })
+      if (!caso || caso.excluidoEm) throw new UserError("Caso não encontrado (ou excluído).")
+      return setCasoResponsaveis(v.casoId, v.partes)
+    },
   }),
   // NB: honorários são lançamentos (subTipo='honorario') — editar/excluir usam as
   // tools de lançamento (editar_lancamento / excluir_lancamento / excluir_lancamentos).
