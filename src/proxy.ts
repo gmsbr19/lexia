@@ -58,9 +58,16 @@ export const config = {
   // caller still gets 401), the MCP server for the claude.ai connector (own
   // token guard + Origin check — see src/lib/mcp/auth.ts and src/app/api/mcp;
   // the Anthropic backend carries no session cookie, so the proxy would 401 it;
-  // the route answers 404 when LEXIA_MCP_TOKEN is unset), Next internals and
-  // static assets.
+  // the route answers 404 when LEXIA_MCP_TOKEN is unset), the OAuth endpoints
+  // the MCP client talks to WITHOUT a session — the /.well-known metadata
+  // documents plus /oauth/{register,token,revoke} (server-to-server calls with
+  // no cookie and with `Origin: https://claude.ai`, so both the 401 and the
+  // cross-origin CSRF belt above would break the connector; each has its own
+  // guard — see src/lib/oauth/*). NOTE /oauth/authorize is deliberately NOT
+  // excluded: the consent screen NEEDS the session, and the redirect to
+  // /login?callbackUrl=… is what carries the user through the login first.
+  // Next internals and static assets.
   matcher: [
-    "/((?!login|definir-senha|api/auth|api/convite|api/health|api/jobs|api/captacao|api/lead$|api/mcp|feeds/google-ads|_next/static|_next/image|favicon\\.ico|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|woff2?)$).*)",
+    "/((?!login|definir-senha|api/auth|api/convite|api/health|api/jobs|api/captacao|api/lead$|api/mcp|\\.well-known|oauth/register|oauth/token|oauth/revoke|feeds/google-ads|_next/static|_next/image|favicon\\.ico|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|woff2?)$).*)",
   ],
 }

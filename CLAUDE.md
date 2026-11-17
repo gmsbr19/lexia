@@ -156,6 +156,116 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **WhatsApp (Baileys) · FASE 1 — OAuth 2.1 no servidor MCP, para cada chamada saber QUEM está do outro lado
+  (this session, VERIFIED `npx tsc --noEmit` 0 erros, 1034/1034 testes (+28 novos em
+  `tests/oauth-core.test.ts`), eslint limpo em TODOS os arquivos novos/tocados (o `set-state-in-effect` da linha
+  237 e o `overlays` do `UnifiedShell.tsx` são os PRÉ-EXISTENTES de sempre), migração ADITIVA
+  `20261117120000_oauth_mcp` escrita à mão e conferida BYTE A BYTE contra o `prisma migrate diff` do próprio
+  Prisma — **NÃO aplicada ainda**, ver User action).** O usuário trouxe o brief "Integração WhatsApp (Baileys)
+  no Lexia" (módulo multiusuário: cada advogado conecta o próprio WhatsApp por QR, as conversas escolhidas são
+  gravadas, e o MCP expõe leitura delas para o Claude organizar pendências). O brief manda conferir 7 itens no
+  repositório antes de codar; o resultado dessa conferência está abaixo porque **três achados mudam o desenho
+  das fases seguintes**:
+  **(1) O app conecta no Postgres como `postgres`, SUPERUSER** (conferido ao vivo: `rolsuper = true`, PG 17.11,
+  banco `ncm`). Então o plano do brief de "revogar as tabelas `Whatsapp*`/`OAuth*` do papel usado pelo
+  `sql_consultar`" **não funciona como está escrito** — superuser ignora privilégio de tabela. O único caminho é
+  o plano B já cabeado: criar `lexia_ro` (`NOSUPERUSER`, SELECT só no permitido) e setar `DATABASE_URL_RO`
+  ([sql.ts](src/lib/mcp/sql.ts) `client()` já troca de client sozinho). De quebra isso fecha o `COPY … TO
+  PROGRAM`, hoje barrado só pela allowlist da 1ª palavra porque o papel É superuser.
+  **(2) O Lexia NÃO tem storage de arquivos nem link assinado.** Não há S3, disco, volume nem helper de HMAC:
+  tudo é base64 inline no Postgres (`LexiaAnexo.data`, `TarefaAnexo.data` com teto de 10 MB, `Timbrado.imagem`
+  como data URL) e o backend `onedrive` de [anexos/storage.ts](src/lib/lexia/anexos/storage.ts) é esqueleto que
+  LANÇA erro. Logo "salva no storage que o Lexia já usa" e "link assinado de 15 min" do brief são código NOVO —
+  e mídia de WhatsApp (25 MB/arquivo × meses) em base64 infla todo dump/backup. Decisão pendente: MinIO/S3 no
+  EasyPanel (recomendado, dá link assinado nativo) ou volume em disco + rota com token HMAC curto.
+  **(3) Não existe processo contínuo hoje:** o app é request-driven e os jobs são cron externo → `POST
+  /api/jobs/*` com `X-Job-Token` (DEPLOY.md §6c). O worker do Baileys será o PRIMEIRO sidecar — cabe como 2º
+  serviço no mesmo projeto EasyPanel (produção é EasyPanel/Nixpacks, Node ≥22, `npm start` = `prisma migrate
+  deploy && next start`; o `DEPLOY.md` inteiro é runbook OBSOLETO da era SQLite/TurboCloud/Caddy/systemd —
+  ignore). **`pg` não é dependência e o Prisma não faz `LISTEN`**, então o `LISTEN/NOTIFY` do brief exige a lib
+  `pg` no worker (o app web publica via `$executeRaw NOTIFY`); `pg_advisory_xact_lock` já é usado via Prisma em
+  [tarefas/mutations.ts](src/lib/tarefas/mutations.ts) — há precedente para o lock de instância única.
+  **Os outros 4 itens:** login/sessão = Auth.js v5 **só Credentials + JWT stateless**, sem tabela de sessão
+  (`authorize` já recusa `ativo=false` e `passwordHash` nulo, então a regra do brief sai de graça);
+  `Cliente.telefones` é texto livre documentado como `';'-joined` mas **nenhuma linha usa `;`** (394 dos 746
+  clientes têm telefone: 353 `(NN) NNNNN-NNNN`, 25 crus de 11 dígitos, 10 `+NN NN NNNNN-NNNN`, 2 fixos de 10, e
+  4 linhas sujas de 12/13/14 dígitos) → normalizador: só dígitos, 10/11 prefixa `55`, 12/13 já tem DDI, a de 14
+  é caso manual; **Baileys não tem 7.x estável** (tag `latest` = `7.0.0-rc14`, `legacy` = `6.7.24`; LID só
+  existe na série 7.x rc, com problema de performance registrado na rc.6 e notas de migração FORA do repo, em
+  `whiskey.so/migrate-latest`) → recomendação registrada: fixar `7.0.0-rc14` exata, porque o vínculo
+  conversa↔cliente depende de resolver LID→número.
+  **O que a fase 1 entregou.** O MCP deixou de ter um único usuário de serviço anônimo: agora o Lexia é TAMBÉM
+  servidor de autorização OAuth 2.1, e o caminho novo resolve cada chamada para um `User.id`.
+  **Modelo** (3 tabelas, nenhuma coluna existente tocada): `OAuthClient` (nasce pelo registro dinâmico;
+  `clientSecretHash` nulo = cliente PÚBLICO, que é como o claude.ai opera), `OAuthCode` (uso único, 5 min,
+  amarrado ao desafio PKCE) e `OAuthToken` (`tipo` access|refresh, `resource`, `rotacionadoEm`). **Só o sha256
+  é persistido** em código, access, refresh e client_secret — mesmo padrão de `ConviteAcesso.tokenHash`.
+  **Núcleo PURO** [oauth/core.ts](src/lib/oauth/core.ts) (sem Prisma, sem env — o chamador passa os extras,
+  como `lib/mcp/auth.ts`): PKCE **S256 obrigatório** (`plain` recusado; verifier fora de 43–128 do alfabeto
+  url-safe é recusado ANTES do hash), URIs canônicas/`resource` (RFC 8707), documentos de metadados e o header
+  `WWW-Authenticate`. **Decisão: token OPACO, não JWT** — a linha de `OAuthToken` carrega usuário, cliente e
+  `resource`, então a validação de audiência que o spec exige é a própria consulta (sem assinatura, sem chave
+  para rodar, e revogar é um UPDATE). **Fluxo** [oauth/fluxo.ts](src/lib/oauth/fluxo.ts): DCR, emissão de
+  código, troca, **refresh ROTATIVO** (reusar um refresh já rotacionado revoga a família inteira daquele
+  cliente+usuário) e `resolverAccessToken` (recusa expirado/revogado/de outro recurso/**de usuário desativado**
+  → desativar em Configurações → Usuários corta o MCP na hora); faxina oportunista de códigos e de tokens
+  vencidos há mais de 7 dias, para as tabelas não crescerem sem teto. **Rotas:** metadados RFC 9728/8414
+  servidos por **rewrite** no [next.config.ts](next.config.ts) (pasta com ponto no app router é frágil) nas
+  DUAS formas que o cliente tenta — `/.well-known/oauth-protected-resource/api/mcp` (path-aware, a preferida) e
+  a da raiz —, `POST /oauth/register` (público, rate-limit 10/min por IP), `/oauth/token` (form-urlencoded +
+  JSON + `client_secret_basic`), `/oauth/revoke`, a tela `/oauth/authorize` e `POST /api/oauth/autorizar`.
+  **`issuer` é derivado do ORIGIN DA REQUISIÇÃO, nunca de `APP_BASE_URL`**: o spec diz que ele tem de ser
+  idêntico à base que o cliente usou para montar a URL do well-known, senão o cliente MUST NOT usar o documento
+  (e o conector morreria sem explicação) — isso também faz o fluxo funcionar atrás do ngrok sem var nova. Novo
+  `originFromHeaders` em [request-origin.ts](src/lib/request-origin.ts) (Server Component tem `headers()`, não
+  um Request). **ALLOWLIST de redirect_uri** ([core.ts](src/lib/oauth/core.ts) `redirectUriPermitido`): o DCR é
+  um endpoint ABERTO na internet, então sem ela qualquer um registraria um redirect próprio e o
+  `/oauth/authorize` viraria open redirector vazando código — aceita o callback publicado pela Anthropic
+  (`https://claude.ai/api/mcp/auth_callback`, idem claude.com/anthropic.com e subdomínios, **caminho exato**),
+  loopback (Claude Code/mcp-remote) e o que o admin puser em `LEXIA_OAUTH_REDIRECTS`; `evilclaude.ai` e
+  `claude.ai/outro/caminho` são recusados (com teste). Comparação de redirect no authorize é EXATA, nunca por
+  prefixo. **Tela de consentimento** reaproveita login+sessão: o gate do [proxy.ts](src/proxy.ts) já manda para
+  `/login?callbackUrl=…` preservando a query, então os parâmetros do OAuth sobrevivem ao login; erro de
+  parâmetro é mostrado NA TELA, nunca redirecionado (redirecionar para uma `redirect_uri` ainda não validada é
+  justamente o vazamento). `/oauth/authorize` renderiza sem shell ([UnifiedShell.tsx](src/components/shell/UnifiedShell.tsx)).
+  **`/api/mcp` agora autentica por DOIS caminhos** ([route.ts](src/app/api/mcp/[[...token]]/route.ts)): bearer
+  OAuth → roda como a **pessoa real, com o papel dela** (`selectMcpTools(role)`, então um estagiário nem vê as
+  ferramentas que não pode chamar); token estático → segue como o usuário de serviço admin, **byte a byte o
+  comportamento de hoje** (é a transição do brief: desligar depois é esvaziar `LEXIA_MCP_TOKEN`). O 401 sem
+  token agora leva `WWW-Authenticate: Bearer resource_metadata="…"` — é ele que faz o cliente iniciar o fluxo
+  sozinho; token apresentado e inválido devolve 401 com `error="invalid_token"`. `registerLexiaTools` virou
+  `criarRegistrador(chamada)` em [mcp/server.ts](src/lib/mcp/server.ts) (o registro de ferramentas depende de
+  QUEM chama, então o handler é montado por requisição — o servidor é stateless mesmo). **Ferramenta nova
+  `quem_sou_eu`** ([mcp/identidade.ts](src/lib/mcp/identidade.ts), só do MCP): devolve nome/e-mail/papel + COMO
+  a chamada se autenticou, e no caminho legado avisa que está rodando como usuário de serviço. Contagem:
+  **93 ferramentas** (92 + `quem_sou_eu`). **Env novas** ([env.ts](src/lib/env.ts) + `.env.example`):
+  `LEXIA_MCP_OAUTH` (on|off, padrão **on**; com off os metadados e `/oauth/{register,token,revoke}` respondem
+  404 e só o token estático autentica — caminho de volta sem deploy) e `LEXIA_OAUTH_REDIRECTS`. **Proxy:**
+  `\.well-known` e `oauth/{register,token,revoke}` entraram nas exclusões do matcher (são chamadas
+  servidor-a-servidor, sem cookie e com `Origin: https://claude.ai`, então tanto o 401 quanto o cinto
+  anti-CSRF derrubariam o conector); **`/oauth/authorize` NÃO foi excluída de propósito** — a tela PRECISA da
+  sessão. **Testes (28 novos):** [oauth-core.test.ts](tests/oauth-core.test.ts), incluindo o **vetor de teste
+  do RFC 7636** (garante que o nosso S256 é o S256 do mundo), verifier curto/longo/com caractere inválido,
+  allowlist (domínio parecido, caminho errado, loopback, http público, fragmento), redirect exato vs. prefixo,
+  `issuer` sem barra final e o formato literal do `WWW-Authenticate`. **User action (REQUIRED, nesta ordem —
+  lock do Prisma no Windows):** parar `next dev` → `npx prisma migrate deploy` (aplica
+  `20261117120000_oauth_mcp`; em produção roda no boot) → `npx prisma generate` → `npm run dev`. Depois, no
+  **claude.ai → Conectores → Add custom connector**, adicionar um conector NOVO apontando para
+  `https://lexia.ncm.adv.br/api/mcp` **sem token no path** e deixando o OAuth acontecer (o diálogo deve
+  oferecer "Register automatically"/identidade publicada do Claude; NÃO use mais "No sign in" para o conector
+  novo) → a tela do Lexia pede login e mostra "Autorizar" → numa **conversa NOVA** (a lista de ferramentas é
+  buscada na conexão) pedir "quem sou eu?" e conferir que volta o SEU usuário com `autenticacao: "oauth"`;
+  repetir com um segundo usuário e conferir que cada um recebe o próprio. O conector ANTIGO (token no path)
+  deve continuar funcionando em paralelo, respondendo `autenticacao: "token-estatico"`. Conferir também
+  `curl -s https://lexia.ncm.adv.br/.well-known/oauth-protected-resource/api/mcp` (JSON com
+  `authorization_servers`) e `curl -i -X POST https://lexia.ncm.adv.br/api/mcp -H 'Content-Type:
+  application/json' -d '{}'` → **401 com o header `WWW-Authenticate`**. **Não verificado por mim** (regra do
+  projeto: a conferência visual/ao vivo é do usuário): o fluxo ponta a ponta contra o claude.ai, porque o
+  Postgres local estava parado nesta sessão e a migração ainda não foi aplicada. **Decisões ainda pendentes
+  para as fases 2-3:** storage de mídia (MinIO/S3 vs. disco+HMAC), versão do Baileys (`7.0.0-rc14` vs.
+  `6.7.24`), criar `lexia_ro`+`DATABASE_URL_RO` (único jeito de isolar `Whatsapp*`/`OAuth*` do `sql_consultar`),
+  e se as 92 ferramentas existentes devem passar a rodar com o papel da pessoa quando acessadas por OAuth (é o
+  que acontece hoje no caminho novo — o antigo segue admin).
 - **MCP · o que o chat pediu para conseguir fechar o repasse: `editar_lancamento` completo, baixa com conta,
   despesa FORA do rateio 50/50 e `acerto_socios` DETALHADO (this session, VERIFIED 1004/1004 testes (+37 novos),
   eslint só o aviso PRÉ-EXISTENTE `AcertoSocioLado` de `queries.ts`, migração ADITIVA

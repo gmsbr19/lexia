@@ -248,11 +248,13 @@ export function UnifiedShell({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  // Páginas sem shell: as públicas (login + ativação do convite) e a versão
+  // Páginas sem shell: as públicas (login + ativação do convite), a tela de
+  // consentimento OAuth (/oauth/authorize — é um passo de autenticação, não um
+  // lugar do app, e a sidebar só distrairia) e a versão
   // para impressão do relatório financeiro — ela precisa ser um documento solto,
   // sem sidebar/topbar nem container de scroll, senão o papel sai cortado.
   const isLogin =
-    pathname === "/login" || pathname.startsWith("/definir-senha") || pathname.startsWith("/financeiro/relatorio")
+    pathname === "/login" || pathname.startsWith("/definir-senha") || pathname.startsWith("/financeiro/relatorio") || pathname.startsWith("/oauth/")
 
   // No editor de documentos e no módulo de Tarefas (que tem a própria barra
   // lateral), a sidebar global recolhe automaticamente ao ENTRAR; restaura o

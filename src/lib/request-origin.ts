@@ -23,10 +23,20 @@ export function currentRequestOrigin(): string | null {
  * Falls back to req.url origin when no forwarded headers are present (direct access).
  */
 export function resolveRequestOrigin(req: Request): string {
-  const fwdHost = req.headers.get("x-forwarded-host")
-  if (fwdHost) {
-    const proto = req.headers.get("x-forwarded-proto") ?? "https"
-    return `${proto.split(",")[0].trim()}://${fwdHost.split(",")[0].trim()}`
-  }
-  return new URL(req.url).origin
+  return originFromHeaders(req.headers) ?? new URL(req.url).origin
+}
+
+/**
+ * Mesma derivação a partir de um `Headers` solto — para Server Components, que
+ * têm `headers()` mas não um Request. Usada pela tela de autorização OAuth, onde
+ * a origem precisa bater EXATAMENTE com o issuer dos metadados.
+ * Sem `x-forwarded-host` cai no `host` (acesso direto, ex.: dev em localhost),
+ * e o protocolo só assume http quando o host é claramente local.
+ */
+export function originFromHeaders(h: Headers): string | null {
+  const host = (h.get("x-forwarded-host") ?? h.get("host"))?.split(",")[0]?.trim()
+  if (!host) return null
+  const fwdProto = h.get("x-forwarded-proto")?.split(",")[0]?.trim()
+  const local = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(host)
+  return `${fwdProto ?? (local ? "http" : "https")}://${host}`
 }

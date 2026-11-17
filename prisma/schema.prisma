@@ -53,6 +53,8 @@ model User {
   processos               Processo[]              @relation("ProcessoResponsavel")
   prazos                  Prazo[]                 @relation("PrazoResponsavel")
   convites                ConviteAcesso[] // one-time access links (set/reset the own password)
+  oauthCodes              OAuthCode[] // códigos de autorização OAuth emitidos para este usuário
+  oauthTokens             OAuthToken[] // tokens OAuth (access/refresh) deste usuário
   projetos                Projeto[]               @relation("ProjetoResponsavel") // projects this user leads
   comentarios             TarefaComentario[] // comentários que este usuário escreveu em tarefas
   tarefaHistorico         TarefaHistorico[]       @relation("TarefaHistoricoAutor") // linhas de histórico de tarefa que este usuário gerou
@@ -1438,4 +1440,72 @@ model AreaDireito {
   updatedAt  DateTime  @updatedAt
 
   @@index([excluidoEm])
+}
+
+// ── OAuth 2.1 — servidor de autorização do MCP (conector do claude.ai) ───────
+// O Lexia é ao mesmo tempo Resource Server (/api/mcp) e Authorization Server:
+// cada pessoa autoriza com o PRÓPRIO login e toda chamada ao MCP resolve para
+// um User.id. Nenhum segredo fica em claro — só o sha256 (mesmo padrão de
+// ConviteAcesso.tokenHash). Ver src/lib/oauth/*.
+
+// Cliente OAuth. Nasce pelo Registro Dinâmico (RFC 7591, endpoint PÚBLICO), que
+// é o caminho padrão do claude.ai; os redirect_uris propostos passam por uma
+// allowlist (ver oauth/core.ts) para o endpoint aberto não virar open redirector.
+model OAuthClient {
+  id               Int          @id @default(autoincrement())
+  clientId         String       @unique
+  // sha256 hex do client_secret; null = cliente PÚBLICO (autentica só por PKCE,
+  // que é como o claude.ai opera quando o secret é deixado em branco).
+  clientSecretHash String?
+  nome             String
+  redirectUris     String // separados por espaço; a comparação no authorize é EXATA
+  criadoEm         DateTime     @default(now())
+  ultimoUsoEm      DateTime?
+  codes            OAuthCode[]
+  tokens           OAuthToken[]
+}
+
+// Código de autorização: vida curta, USO ÚNICO (reivindicado por updateMany com
+// usadoEm nulo, como o convite) e amarrado ao desafio PKCE.
+model OAuthCode {
+  id            Int         @id @default(autoincrement())
+  codeHash      String      @unique // sha256 hex; o código bruto NUNCA é persistido
+  clientId      String
+  client        OAuthClient @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  userId        Int
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  redirectUri   String
+  codeChallenge String // PKCE S256: base64url(sha256(code_verifier))
+  resource      String? // RFC 8707 — a URI canônica do MCP para a qual o token vale
+  scope         String?
+  expiraEm      DateTime
+  usadoEm       DateTime?
+  criadoEm      DateTime    @default(now())
+
+  @@index([userId])
+  @@index([clientId])
+}
+
+// Access e refresh token. O access é opaco (não é JWT): a própria linha carrega
+// usuário, cliente e resource, então a validação de audiência que o spec do MCP
+// exige é a própria consulta. Refresh ROTATIVO: usar um refresh marca
+// rotacionadoEm e emite outro; reusar um já rotacionado revoga a família toda.
+model OAuthToken {
+  id            Int         @id @default(autoincrement())
+  tokenHash     String      @unique // sha256 hex; o token bruto NUNCA é persistido
+  tipo          String // 'access' | 'refresh'
+  clientId      String
+  client        OAuthClient @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  userId        Int
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resource      String?
+  scope         String?
+  expiraEm      DateTime
+  revogadoEm    DateTime?
+  rotacionadoEm DateTime? // refresh: instante em que foi trocado por um novo
+  criadoEm      DateTime    @default(now())
+
+  @@index([userId])
+  @@index([clientId])
+  @@index([tipo, expiraEm])
 }

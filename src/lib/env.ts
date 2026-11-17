@@ -100,6 +100,18 @@ const envSchema = z.object({
   // OPCIONAL (plano B do SQL): URL de um role Postgres só com SELECT (ex. `lexia_ro`).
   // Quando setada, sql_consultar usa um 2º PrismaClient com ela — defesa em
   // profundidade além do SET TRANSACTION READ ONLY (que já basta contra escrita).
+  // Redirect URIs extras aceitas no Registro Dinamico do OAuth do MCP,
+  // separadas por virgula (ex.: um proxy do escritorio). O callback dos
+  // aplicativos do Claude (https://claude.ai/api/mcp/auth_callback) e os
+  // enderecos de loopback JA sao aceitos por padrao — ver lib/oauth/core.ts
+  // redirectUriPermitido. O endpoint de registro e publico, entao esta lista
+  // e o que impede um terceiro de registrar um redirect proprio.
+  // Liga/desliga o servidor de autorizacao OAuth do MCP (metadados,
+  // /oauth/register, /oauth/token, /oauth/revoke e o bearer no /api/mcp).
+  // Com "off", essas rotas respondem 404 e so o token estatico autentica —
+  // util para voltar atras sem deploy. Default "on".
+  LEXIA_MCP_OAUTH: z.enum(["on", "off"]).optional().default("on"),
+  LEXIA_OAUTH_REDIRECTS: z.string().optional(),
   DATABASE_URL_RO: z.string().optional(),
 })
 
