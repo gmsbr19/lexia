@@ -5,6 +5,7 @@ import {
   CODIGO,
   backoffMs,
   decidirFechamento,
+  decidirRetomada,
   ehGrupo,
   ehLid,
   jidParaNumero,
@@ -70,6 +71,24 @@ describe("decidirFechamento", () => {
     expect(decidirFechamento(CODIGO.connectionClosed, 0).esperaMs).toBe(1_000)
     expect(decidirFechamento(CODIGO.connectionLost, 3).esperaMs).toBe(8_000)
     expect(decidirFechamento(undefined, 0).acao).toBe("reconectar")
+  })
+})
+
+describe("decidirRetomada", () => {
+  // Regressao do primeiro pareamento real: o 515 chega ANTES de a sessao ter
+  // aberto uma vez, e tratá-lo como "codigo expirou" travava o pareamento para
+  // sempre — o celular ficava girando e o worker parava.
+  it("515 e REINICIO mesmo numa sessao que nunca foi pareada", () => {
+    expect(decidirRetomada(CODIGO.restartRequired, false)).toBe("reinicio")
+    expect(decidirRetomada(CODIGO.restartRequired, true)).toBe("reinicio")
+  })
+  it("queda sem nunca ter pareado e expiracao do codigo", () => {
+    expect(decidirRetomada(CODIGO.connectionClosed, false)).toBe("expirou")
+    expect(decidirRetomada(undefined, false)).toBe("expirou")
+  })
+  it("sessao real que cai reconecta", () => {
+    expect(decidirRetomada(CODIGO.connectionClosed, true)).toBe("reconectar")
+    expect(decidirRetomada(CODIGO.connectionLost, true)).toBe("reconectar")
   })
 })
 

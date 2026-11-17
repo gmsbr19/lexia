@@ -31,7 +31,7 @@ import makeWASocket, {
 import { Client } from "pg"
 import pino from "pino"
 import { prisma } from "../db"
-import { decidirFechamento, jidParaNumero, lerComando, truncarErro } from "./core"
+import { decidirFechamento, decidirRetomada, jidParaNumero, lerComando, truncarErro } from "./core"
 import { cifrar, contextoAuth, decifrar, lerChaveAuth } from "./cripto"
 import {
   apagarAuth,
@@ -167,13 +167,23 @@ class Sessao {
   private pareamentoPendente: string | null = null
   /** true depois de pedir o código: para de publicar QR, que não serve mais. */
   private modoPareamento = false
-  /** A sessão já foi pareada alguma vez (creds.registered)? Distingue "queda de
-   *  uma sessão real" de "o QR expirou sem ninguém ler". */
-  private registrada = false
+  /** As creds VIVAS do socket atual. Lidas na hora (e não copiadas para um
+   *  booleano na abertura) porque `registered` vira true DURANTE o pareamento:
+   *  um retrato tirado na abertura diria "nunca pareada" justamente no close do
+   *  515, que é o passo que conclui a leitura do QR. */
+  private creds: AuthenticationCreds | null = null
+  /** Fila das gravações de creds. O reinício do 515 precisa ESPERAR por ela:
+   *  reabrir o socket com a credencial pela metade faz o WhatsApp responder 401
+   *  e a sessão ser jogada fora no meio do pareamento. */
+  private gravacao: Promise<void> = Promise.resolve()
   private abrindo = false
 
   constructor(userId: number) {
     this.userId = userId
+  }
+
+  private get registrada(): boolean {
+    return !!this.creds?.registered
   }
 
   /** Reemite o que a página precisa ver agora (sem reabrir a conexão). */
@@ -223,11 +233,10 @@ class Sessao {
   }
 
   private async abrir(): Promise<void> {
+    // Nunca reabre por cima de uma gravação de creds em curso (ver `gravacao`).
+    await this.gravacao
     const { creds, keys, saveCreds } = await authStatePostgres(this.userId)
-    // Sessão já pareada antes? Decide o que fazer quando a conexão cai sem
-    // nunca ter aberto (ver aoAtualizar): credencial velha reconecta, QR
-    // expirado não.
-    this.registrada = !!creds.registered
+    this.creds = creds
     const versao = await versaoWa()
 
     const sock = makeWASocket({
@@ -240,8 +249,12 @@ class Sessao {
       // (o WhatsApp passa a considerar este cliente o ativo).
       markOnlineOnConnect: false,
       // Não puxa o histórico inteiro (volume + a v1 só grava o que for marcado).
+      // `shouldSyncHistoryMessage` NÃO é sobrescrito de propósito: devolver
+      // false para tudo faz o Baileys 7 avisar, em letras maiúsculas, que isso
+      // impede o acesso aos mapeamentos iniciais de LID e causa erro de sessão
+      // — e o LID é exatamente do que a fase 3 depende. Com syncFullHistory
+      // false o aparelho só manda o conjunto recente, e a fase 2 ignora tudo.
       syncFullHistory: false,
-      shouldSyncHistoryMessage: () => false,
       // Status/stories e newsletters nem são decifrados.
       shouldIgnoreJid: (jid) => jid === "status@broadcast" || jid.endsWith("@newsletter"),
       // Somente leitura: nada é enviado, então não há mensagem para reenviar.
@@ -250,7 +263,11 @@ class Sessao {
     this.sock = sock
 
     sock.ev.on("creds.update", () => {
-      void saveCreds().catch((e) => log.error({ userId: this.userId, err: truncarErro(e) }, "falha ao salvar creds"))
+      // Enfileirado, não disparado e esquecido: a reabertura do 515 espera por
+      // esta promessa, senão leria do banco uma credencial incompleta.
+      this.gravacao = this.gravacao
+        .then(() => saveCreds())
+        .catch((e) => log.error({ userId: this.userId, err: truncarErro(e) }, "falha ao salvar creds"))
     })
 
     // Os handlers só valem para o socket ATUAL. Um socket que acabou de ser
@@ -279,7 +296,6 @@ class Sessao {
 
     if (u.connection === "open") {
       this.tentativa = 0
-      this.registrada = true
       this.ultimoQr = null
       this.modoPareamento = false
       this.pareamentoPendente = null
@@ -324,10 +340,9 @@ class Sessao {
         sessoes.delete(this.userId)
         return
       }
-      // Caiu SEM nunca ter sido pareada: é o QR/código que expirou, não uma
-      // queda de rede. Reconectar geraria QR para sempre, para uma tela que
-      // ninguém está olhando — então para e espera o usuário clicar "Conectar".
-      if (!this.registrada) {
+      const retomada = decidirRetomada(codigo, this.registrada)
+      if (retomada === "expirou") {
+        log.warn({ userId: this.userId, codigo }, "código expirou sem ser lido — sessão encerrada")
         await salvarSessao(this.userId, {
           status: "desconectado",
           pareamento: null,
@@ -335,6 +350,14 @@ class Sessao {
         })
         await publicarEvento({ tipo: "status", userId: this.userId, status: "desconectado" })
         sessoes.delete(this.userId)
+        return
+      }
+      if (retomada === "reinicio") {
+        // Pareamento concluindo: a tela NÃO pode piscar "Com problema" aqui.
+        // Reabre na hora — `abrir()` espera a gravação das creds novas.
+        log.info({ userId: this.userId }, "reinício pedido pelo WhatsApp — reabrindo a sessão")
+        await salvarSessao(this.userId, { status: "aguardando_qr", ultimoErro: null })
+        this.agendarReconexao(0)
         return
       }
       this.tentativa++

@@ -60,6 +60,24 @@ export function decidirFechamento(codigo: number | undefined, tentativa: number)
   }
 }
 
+/**
+ * Para um close que NÃO é `deslogar` nem `parar`, o que fazer:
+ *  • `reinicio`    — o 515 (`restartRequired`). É o passo que CONCLUI a leitura
+ *    do QR: o WhatsApp manda reabrir o socket, agora como sessão registrada.
+ *    Nunca é erro, e nunca é expiração — tratá-lo como tal trava o primeiro
+ *    pareamento para sempre (foi o que aconteceu no primeiro teste real).
+ *  • `expirou`     — caiu sem a sessão NUNCA ter sido pareada: o código na tela
+ *    expirou. Reconectar geraria QR para sempre, para uma tela que ninguém está
+ *    olhando, então para e espera o usuário clicar em Conectar.
+ *  • `reconectar`  — sessão real que caiu: volta com backoff.
+ */
+export type Retomada = "reinicio" | "expirou" | "reconectar"
+
+export function decidirRetomada(codigo: number | undefined, registrada: boolean): Retomada {
+  if (codigo === CODIGO.restartRequired) return "reinicio"
+  return registrada ? "reconectar" : "expirou"
+}
+
 function motivoDeCodigo(codigo: number | undefined): string {
   switch (codigo) {
     case CODIGO.connectionClosed:
