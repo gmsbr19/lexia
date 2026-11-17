@@ -24,6 +24,9 @@ export const SIDEBAR: SidebarItem[] = [
   { id: "contratos", label: "Contratos", icon: "receipt", href: "/contratos" },
   { id: "processos", label: "Processos", icon: "scale", href: "/processos" },
   { id: "agenda", label: "Agenda", icon: "calendar", href: "/agenda" },
+  // WhatsApp pessoal (Baileys): cada um conecta o PRÓPRIO aparelho. O href é
+  // /whatsapp (que redireciona) para o realce da barra casar com as subpáginas.
+  { id: "whatsapp", label: "WhatsApp", icon: "messageCircle", href: "/whatsapp" },
   // LexIA is no longer a sidebar "place" — the global LexIA bar (⌘K / dock pill)
   // is the single AI surface. The /lexia full page stays reachable from the bar's
   // "Expandir" action (and still has tab metadata below).
@@ -40,6 +43,8 @@ const ROUTE_META: Record<string, { label: string; icon: CrmIconName }> = {
   "/casos": { label: "Casos", icon: "briefcase" },
   "/processos": { label: "Processos", icon: "scale" },
   "/agenda": { label: "Agenda", icon: "calendar" },
+  "/whatsapp": { label: "WhatsApp", icon: "messageCircle" },
+  "/whatsapp/conectar": { label: "WhatsApp", icon: "messageCircle" },
   "/plano-acao": { label: "Plano de ação", icon: "target" },
   "/lexia": { label: "LexIA", icon: "sparkles" },
   "/notificacoes": { label: "Notificações", icon: "bell" },

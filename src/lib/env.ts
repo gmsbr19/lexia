@@ -113,6 +113,15 @@ const envSchema = z.object({
   LEXIA_MCP_OAUTH: z.enum(["on", "off"]).optional().default("on"),
   LEXIA_OAUTH_REDIRECTS: z.string().optional(),
   DATABASE_URL_RO: z.string().optional(),
+  // ── WhatsApp (Baileys, multiusuário) ───────────────────────────────────────
+  // Chave de 32 bytes (hex de 64 caracteres ou base64) que cifra o auth state do
+  // Baileys em WhatsappAuth.valor — quem tem aquela linha + esta chave TEM o
+  // WhatsApp da pessoa, então ela vive só aqui, NUNCA no banco. Sem a var, o
+  // módulo inteiro fica desligado (as rotas e a página respondem "não
+  // configurado" e o worker se recusa a subir) — mesmo padrão de LEXIA_MCP_TOKEN:
+  // só serve quando propositalmente ligado. Trocar a chave invalida as sessões
+  // já gravadas (todos leem o QR de novo).
+  WHATSAPP_AUTH_KEY: z.string().optional(),
 })
 
 const parsed = envSchema.safeParse(process.env)
