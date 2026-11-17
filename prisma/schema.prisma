@@ -63,6 +63,10 @@ model User {
   leadsResp               Lead[]                  @relation("LeadResponsavelUser") // oportunidades das quais este usuário é dono
   oportunidadeAtividades  OportunidadeAtividade[] // atividades de oportunidade que este usuário registrou
   landingPagesResponsavel LandingPage[]           @relation("LandingPageResponsavel") // landing pages onde este usuário é o responsável padrão
+  whatsappSessao          WhatsappSessao? // conexão do PRÓPRIO WhatsApp deste usuário (1:1)
+  whatsappAuth            WhatsappAuth[] // auth state cifrado da sessão Baileys deste usuário
+  whatsappChats           WhatsappChat[] // conversas visíveis no aparelho deste usuário
+  whatsappMensagens       WhatsappMensagem[] // mensagens gravadas das conversas monitoradas por ele
 }
 
 // One-time access link issued when an admin creates a user (or resends the
@@ -168,6 +172,7 @@ model Cliente {
   partes          Parte[] // process parties that are this registered cliente
   anotacoes       ClienteAnotacao[]
   projetos        Projeto[]
+  whatsappChats   WhatsappChat[] // conversas de WhatsApp vinculadas a este contato
 
   @@index([tipo])
   @@index([classificacao])
@@ -1508,4 +1513,95 @@ model OAuthToken {
   @@index([userId])
   @@index([clientId])
   @@index([tipo, expiraEm])
+}
+
+// ── WhatsApp (Baileys, multiusuário, somente leitura) ────────────────────────
+// Cada advogado conecta o PRÓPRIO WhatsApp por QR. Toda tabela aqui tem
+// `userId`, porque o isolamento por usuário é a regra central do módulo: nem
+// sócio nem admin lê a conversa de outro. A conexão em si vive num worker Node
+// separado (`npm run whatsapp:worker`) — o app web nunca fala com o WhatsApp,
+// só manda comandos e lê o banco. Ver docs/whatsapp-baileys.md. SERVER ONLY.
+
+// Uma linha por usuário: o estado da conexão que o worker mantém, e a única
+// fonte que a página /whatsapp/conectar e a ferramenta MCP whatsapp_status leem.
+// O worker é quem escreve; o app web só muda `comando`/`comandoEm` (via NOTIFY).
+model WhatsappSessao {
+  id          Int       @id @default(autoincrement())
+  userId      Int       @unique
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status      String    @default("desconectado") // desconectado | aguardando_qr | conectado | erro | deslogado
+  numero      String? // número do aparelho conectado, só dígitos com DDI
+  conectadoEm DateTime?
+  ultimoErro  String?
+  // Código de pareamento (8 caracteres) que o worker acabou de pedir ao
+  // WhatsApp, para a página mostrar. Efêmero: expira junto com a tentativa.
+  pareamento  String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+// Auth state do Baileys (o `useMultiFileAuthState` do upstream, em Postgres):
+// `chave` = "creds" ou "<tipo>-<id>" das signal keys.
+// ATENÇÃO: `valor` guarda as chaves de criptografia da sessão — quem tem isso
+// TEM o WhatsApp do usuário. Por isso é gravado cifrado com AES-256-GCM
+// (WHATSAPP_AUTH_KEY, só em variável de ambiente, NUNCA no banco) e nunca sai
+// daqui: nenhuma rota, ferramenta MCP ou página lê esta tabela.
+model WhatsappAuth {
+  userId    Int
+  chave     String
+  valor     String // JSON (BufferJSON do Baileys) cifrado — ver lib/whatsapp/cripto.ts
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  updatedAt DateTime @updatedAt
+
+  @@id([userId, chave])
+}
+
+// Uma conversa (1:1 ou grupo) vista pelo aparelho do usuário. Metadado de TODAS
+// as conversas é mantido (para o usuário poder escolher), mas só as marcadas
+// `monitorar` têm mensagens gravadas — minimização é regra do módulo.
+model WhatsappChat {
+  id               Int                @id @default(autoincrement())
+  userId           Int
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jid              String // ...@s.whatsapp.net, ...@g.us ou ...@lid
+  telefone         String? // normalizado (só dígitos com DDI), quando conhecido
+  nome             String?
+  grupo            Boolean            @default(false)
+  monitorar        Boolean            @default(false)
+  clienteId        Int?
+  cliente          Cliente?           @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  vinculo          String? // sugerido | confirmado | manual
+  ultimaMensagemEm DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  mensagens        WhatsappMensagem[]
+
+  @@unique([userId, jid])
+  @@index([userId, ultimaMensagemEm])
+}
+
+// Uma mensagem gravada. `userId` é denormalizado de propósito: toda consulta do
+// módulo filtra por ele (defesa em profundidade contra um chatId de outro
+// usuário) e é o que torna o índice por data útil.
+model WhatsappMensagem {
+  id        Int          @id @default(autoincrement())
+  userId    Int
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chatId    Int
+  chat      WhatsappChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  msgId     String
+  deMim     Boolean
+  autorJid  String? // em grupos: quem escreveu
+  autorNome String?
+  tipo      String // texto | imagem | audio | video | documento | outro
+  texto     String? // texto ou legenda da mídia
+  midiaPath String?
+  midiaMime String?
+  midiaNome String?
+  enviadaEm DateTime
+  tratadaEm DateTime? // marcada como já organizada (whatsapp_marcar_tratadas)
+  createdAt DateTime     @default(now())
+
+  @@unique([chatId, msgId])
+  @@index([userId, enviadaEm])
 }
