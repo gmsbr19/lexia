@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest"
 import { z } from "zod"
 import { ForbiddenError, UserError } from "@/lib/errors"
 import { defineTool } from "@/lib/lexia/agent/types"
-import { executeTool, type ExecDeps } from "@/lib/mcp/exec"
+import { conteudoMcp, executeTool, MAX_RESULT_CHARS, type ExecDeps } from "@/lib/mcp/exec"
 import { RateLimitError } from "@/lib/rate-limit"
 import { currentRequestOrigin, resolveRequestOrigin, withRequestOrigin } from "@/lib/request-origin"
 
@@ -78,6 +78,32 @@ describe("executeTool", () => {
     const r = await executeTool(falha(new Error("prisma P2002 secret stack")), { id: 1 }, user, signal, deps())
     expect(r.isError).toBe(true)
     expect(body(r)).not.toMatch(/prisma|secret/)
+  })
+
+  it("a read may return CONTENT blocks, delivered untouched (no JSON, no truncation)", async () => {
+    // whatsapp_anexo: a imagem iria para o lixo se o base64 passasse pelo
+    // JSON.stringify + corte de MAX_RESULT_CHARS.
+    const base64 = "A".repeat(MAX_RESULT_CHARS + 500)
+    const anexo = defineTool({
+      name: "whatsapp_anexo",
+      description: "d",
+      schema,
+      kind: "readonly",
+      run: async () => conteudoMcp([{ type: "text", text: "{}" }, { type: "image", data: base64, mimeType: "image/png" }]),
+    })
+    const d = deps()
+    const r = await executeTool(anexo, { id: 1 }, user, signal, d)
+    expect(r.isError).toBeUndefined()
+    expect(r.content).toHaveLength(2)
+    expect(r.content[1]).toEqual({ type: "image", data: base64, mimeType: "image/png" })
+    expect(d.audit).not.toHaveBeenCalled() // a própria ferramenta se audita
+  })
+
+  it("a read that returns plain JSON is still serialized and truncated", async () => {
+    const grande = defineTool({ ...leitura, run: async () => ({ s: "x".repeat(MAX_RESULT_CHARS + 100) }) } as never)
+    const out = body(await executeTool(grande, { id: 1 }, user, signal, deps()))
+    expect(out.length).toBeLessThan(MAX_RESULT_CHARS + 300)
+    expect(out).toContain("resultado truncado")
   })
 
   it("role gate (defense in depth) and rate limit run before the tool", async () => {

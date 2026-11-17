@@ -17,10 +17,12 @@ import { writeAudit } from "@/lib/finance/api"
 import type { AgentTool } from "@/lib/lexia/agent/types"
 import { assertRateLimit } from "@/lib/rate-limit"
 import { getModulosConfig, processosHabilitado } from "@/lib/settings"
+import { whatsappHabilitado } from "@/lib/whatsapp/sessoes"
 import { executeTool, type ExecDeps } from "./exec"
 import { identidadeTools, type IdentidadeDaChamada } from "./identidade"
 import { sqlTools } from "./sql"
-import { annotationsFor, selectMcpTools } from "./tools"
+import { annotationsFor, expoeWhatsapp, selectMcpTools } from "./tools"
+import { whatsappTools } from "./whatsapp"
 
 const deps: ExecDeps = { audit: writeAudit, rateLimit: assertRateLimit }
 
@@ -34,6 +36,13 @@ export async function loadServiceUser(): Promise<SessionUser | null> {
 export interface ChamadaMcp {
   /** Resolved caller; null only on the legacy path when the service user is missing. */
   user: SessionUser | null
+  /**
+   * `User.id` do chamador — só existe no caminho OAuth (o token resolve para uma
+   * PESSOA). É a condição para as ferramentas de WhatsApp aparecerem: no caminho
+   * legado a chamada roda como o usuário de serviço admin, e expor o WhatsApp de
+   * alguém ali é justamente o que o brief proíbe (docs/whatsapp-baileys.md).
+   */
+  userId?: number | null
   identidade: IdentidadeDaChamada
 }
 
@@ -44,12 +53,14 @@ export interface ChamadaMcp {
  */
 export function criarRegistrador(chamada: ChamadaMcp): (server: McpServer) => Promise<void> {
   return async function registerLexiaTools(server: McpServer): Promise<void> {
-    const { user, identidade } = chamada
+    const { user, userId, identidade } = chamada
     const processosOk = processosHabilitado(await getModulosConfig())
     const registry = user ? selectMcpTools(user.role, processosOk) : []
     const tools: AgentTool[] = [
       ...registry,
       ...(env.LEXIA_MCP_SQL === "on" ? sqlTools : []),
+      // Fase 4: só com usuário REAL (OAuth) e com o módulo configurado.
+      ...(expoeWhatsapp(userId, whatsappHabilitado()) ? whatsappTools(userId!, deps.audit) : []),
       ...identidadeTools(identidade),
     ]
 

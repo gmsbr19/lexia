@@ -5,8 +5,9 @@
 //   role gate → rate limit → [mutation: readable summary] → run → [mutation: audit].
 // Mutations run DIRECTLY (no LexIA confirmation card): the approval step is the
 // Claude chat's own tool-approval prompt, and the audit entry + the pt-BR summary
-// returned in the result leave the trail. Reads are never audited (except the SQL
-// tools, which audit themselves). Errors map to MCP error results keeping the
+// returned in the result leave the trail. Reads are never audited here (the SQL
+// and WhatsApp tools audit themselves, each for its own reason). A read may also
+// return CONTENT instead of JSON — see conteudoMcp. Errors map to MCP error results keeping the
 // PT-BR message of UserError/ForbiddenError/RateLimitError; anything else is
 // logged and answered generically — never a stack or a Prisma message.
 import type { CallToolResult } from "@modelcontextprotocol/server"
@@ -32,6 +33,25 @@ function checkRole(user: SessionUser, roles?: Role[]) {
 
 function text(s: string, isError = false): CallToolResult {
   return { content: [{ type: "text", text: s }], ...(isError ? { isError: true } : {}) }
+}
+
+/**
+ * Escotilha para a ferramenta que não devolve JSON, e sim CONTEÚDO: uma imagem
+ * ou um arquivo que o Claude lê (whatsapp_anexo). Um `run` que devolve isto tem
+ * os blocos entregues como vieram — sem JSON.stringify e, sobretudo, sem o
+ * corte de MAX_RESULT_CHARS, que picaria um base64 no meio.
+ *
+ * Fica aqui, e não na ferramenta, porque exec.ts é o único lugar que monta o
+ * CallToolResult: a alternativa era cada ferramenta poder falsear o envelope.
+ */
+export type ConteudoMcp = { __mcpContent: CallToolResult["content"] }
+
+export function conteudoMcp(blocos: CallToolResult["content"]): ConteudoMcp {
+  return { __mcpContent: blocos }
+}
+
+function ehConteudoMcp(v: unknown): v is ConteudoMcp {
+  return !!v && typeof v === "object" && Array.isArray((v as ConteudoMcp).__mcpContent)
 }
 
 function serialize(value: unknown): string {
@@ -70,7 +90,10 @@ export async function executeTool(
   try {
     checkRole(user, tool.roles)
     deps.rateLimit(user.email, `mcp.${tool.name}`)
-    if (tool.kind !== "mutation") return text(serialize(await tool.run!(ctx, input)))
+    if (tool.kind !== "mutation") {
+      const r = await tool.run!(ctx, input)
+      return ehConteudoMcp(r) ? { content: r.__mcpContent } : text(serialize(r))
+    }
 
     const resumo = await resumoDaMutacao(tool, ctx, input)
     const result = await tool.run!(ctx, input)

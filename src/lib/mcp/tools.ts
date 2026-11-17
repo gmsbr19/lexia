@@ -22,6 +22,17 @@ export function selectMcpTools(role: string, processosHabilitado: boolean): Agen
   return selectTools(role, undefined, false, processosHabilitado).filter(exposableKind)
 }
 
+/**
+ * As ferramentas de WhatsApp aparecem SÓ quando a chamada resolveu para uma
+ * PESSOA (bearer OAuth → `userId`) e o módulo está configurado. No caminho
+ * legado do token estático não há pessoa: a chamada roda como o usuário de
+ * serviço admin, e o brief é explícito em manter aquela rota "sem nenhuma
+ * ferramenta de WhatsApp nela" (docs/whatsapp-baileys.md § Pré-requisito).
+ */
+export function expoeWhatsapp(userId: number | null | undefined, moduloConfigurado: boolean): boolean {
+  return !!userId && moduloConfigurado
+}
+
 /** "criar_lancamento" → "Criar lançamento". */
 export function titleFor(name: string): string {
   const s = name.replace(/_/g, " ")

@@ -197,15 +197,59 @@ não só pelo filtro de nome.
 > tabela sensível no futuro, `REVOKE` explícito **e** acrescentar o prefixo em
 > `PREFIXOS_BLOQUEADOS` (`sql-core.ts`).
 
-## 7. Pendências conhecidas (fase 4)
+## 7. Ferramentas MCP (fase 4)
 
-- As 7 ferramentas MCP de leitura (`whatsapp_status`, `whatsapp_conversas`,
-  `whatsapp_ler_conversa`, `whatsapp_pendencias`, `whatsapp_anexo`,
-  `whatsapp_marcar_tratadas`, `whatsapp_vincular_cliente`).
-- O envelope de resultado do MCP hoje só devolve **texto**, com teto de 100 mil caracteres
-  (`MAX_RESULT_CHARS` em [`src/lib/mcp/exec.ts`](../src/lib/mcp/exec.ts)) — ~75 KB em
-  base64. Entregar um PDF ao Claude exige ou estender o `exec` para blocos de imagem/recurso
-  do MCP, ou dar a ele o link assinado da mídia para buscar. A decisão é da fase 4.
-- `WhatsappMensagem.tratadaEm` e `WhatsappMensagem.midiaPath` já existem e **não são usados
-  ainda**: o primeiro é o "já organizei isto" da fase 4; o segundo é o ponteiro para um
-  storage externo (OneDrive/S3), se os bytes um dia saírem do banco.
+As 7 ferramentas vivem em [`src/lib/mcp/whatsapp.ts`](../src/lib/mcp/whatsapp.ts) e o núcleo
+puro delas (filtros, cursor, datas, decisão de anexo) em
+[`src/lib/whatsapp/mcp-core.ts`](../src/lib/whatsapp/mcp-core.ts).
+
+| Ferramenta | Para que serve |
+| --- | --- |
+| `whatsapp_status` | Conexão deste usuário; desconectada, devolve o link de `/whatsapp/conectar` |
+| `whatsapp_conversas` | As conversas MONITORADAS: nome, contato, última mensagem, não tratadas |
+| `whatsapp_ler_conversa` | Mensagens de uma conversa, cronológicas, paginadas por cursor |
+| `whatsapp_pendencias` | Conversas esperando resposta há ≥ N horas (padrão 24) + o que não foi organizado |
+| `whatsapp_anexo` | O arquivo: imagem/PDF até 5 MB como conteúdo, o resto como link assinado |
+| `whatsapp_marcar_tratadas` | Marca `tratadaEm` depois de virar tarefa/prazo/evento/anotação |
+| `whatsapp_vincular_cliente` | Liga (ou desliga) a conversa a um contato do Lexia |
+
+**Só aparecem no caminho OAuth.** O registro depende de um `User.id`, que só o bearer OAuth
+resolve (`expoeWhatsapp` em [`src/lib/mcp/tools.ts`](../src/lib/mcp/tools.ts)). Pelo token
+estático antigo a chamada roda como o usuário de serviço admin — e ali o módulo
+simplesmente não existe, como o brief exige. Sem `WHATSAPP_AUTH_KEY` também não aparecem.
+
+**Nenhuma envia mensagem** e nenhuma aceita `userId`: o id vem da sessão OAuth e TODO filtro
+de consulta é montado em `mcp-core.ts`, que o exige na assinatura. Um `chatId`/`mensagemId`
+de outra pessoa responde **"não encontrada"**, nunca "sem permissão".
+
+**Texto de terceiros.** O texto das mensagens sai sempre no campo `conteudoExterno`, e as
+descrições + um `avisoConteudo` na resposta dizem que é dado para interpretar, nunca
+instrução para seguir.
+
+**"Não tratada" vale para os dois lados** da conversa, inclusive o que o próprio usuário
+escreveu: esconder a resposta dele faria o Claude abrir tarefa para algo já respondido.
+
+**Auditoria** em `AuditLog` a cada chamada (`mcp.whatsapp_*`), com ids, filtros e contagens —
+**nunca** com o conteúdo. As leituras se auditam dentro da própria ferramenta, porque o
+`exec.ts` só audita mutação.
+
+**Anexo como conteúdo.** `exec.ts` ganhou uma escotilha (`conteudoMcp`) para a ferramenta
+devolver blocos de conteúdo do MCP em vez de JSON — é o que entrega a imagem sem passar pelo
+`JSON.stringify` nem pelo corte de `MAX_RESULT_CHARS`, que picaria o base64. PDF vai como
+recurso embutido **e** com o link no bloco de texto: se o cliente MCP ignorar o recurso,
+ainda sobra um caminho para o arquivo. O link é absoluto, assinado e vale 15 min — ele
+depende da origem da requisição (ou de `APP_BASE_URL`); sem isso a resposta diz que não deu
+para montar o link.
+
+### Aceite da fase (o que falta é no claude.ai)
+
+Numa **conversa nova** (a lista de ferramentas é buscada na conexão), pelo conector com
+OAuth: "o que está pendente no meu WhatsApp?" → `whatsapp_pendencias`; depois "cria uma
+tarefa para isso" (`criar_tarefa`) e "marca como tratada". Conferir com um SEGUNDO usuário
+que cada um só vê o próprio, e que no conector ANTIGO (token no caminho) as ferramentas
+`whatsapp_*` **não aparecem**.
+
+## 8. Pendência conhecida
+
+- `WhatsappMensagem.midiaPath` existe e **não é usado**: é o ponteiro para um storage
+  externo (OneDrive/S3), se os bytes um dia saírem do banco.

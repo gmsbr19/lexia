@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { z } from "zod"
 import { TOOLS, toApiTools } from "@/lib/lexia/agent/registry"
-import { annotationsFor, exposableKind, selectMcpTools } from "@/lib/mcp/tools"
+import { annotationsFor, expoeWhatsapp, exposableKind, selectMcpTools } from "@/lib/mcp/tools"
 
 describe("MCP tool surface", () => {
   it("registry has 95 tools; 90 are exposable (client + pergunta excluded)", () => {
@@ -54,6 +54,21 @@ describe("MCP tool surface", () => {
     const destructive = selectMcpTools("admin", true).filter((t) => annotationsFor(t).destructiveHint)
     expect(destructive.length).toBeGreaterThan(0)
     expect(destructive.every((t) => /^(excluir|anonimizar|mesclar)/.test(t.name))).toBe(true)
+  })
+
+  it("o registry NUNCA traz ferramenta de WhatsApp (elas são só do MCP, por fábrica)", () => {
+    for (const role of ["admin", "socio", "advogado", "estagiario", "financeiro", "staff"]) {
+      expect(selectMcpTools(role, true).some((t) => t.name.startsWith("whatsapp_"))).toBe(false)
+    }
+  })
+
+  it("expoeWhatsapp: só com usuário real (OAuth) e módulo configurado", () => {
+    expect(expoeWhatsapp(12, true)).toBe(true)
+    // Caminho legado do token estático: não há pessoa, logo não há WhatsApp.
+    expect(expoeWhatsapp(null, true)).toBe(false)
+    expect(expoeWhatsapp(undefined, true)).toBe(false)
+    // Módulo sem WHATSAPP_AUTH_KEY: para o MCP ele simplesmente não existe.
+    expect(expoeWhatsapp(12, false)).toBe(false)
   })
 
   it("JSON Schema is generated for every exposed tool without throwing", () => {
