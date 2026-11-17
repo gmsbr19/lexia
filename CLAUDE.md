@@ -167,7 +167,10 @@ This Next (16.2.6) has breaking changes vs. training data — consult
   Postgres real, sem escrever linha nenhuma:** o `pg_notify` publicado pelo app chega ao `LISTEN` do bus e é
   entregue parseado; payload lixo no mesmo canal é descartado sem derrubar o listener; **evento de outro usuário
   NÃO chega ao assinante**; o advisory lock 7333 é exclusivo (a 2ª conexão não o toma, e toma depois do
-  `unlock`); e o worker **sobe de fato** — pega o lock, ouve o canal, restaura 0 sessões e bate o heartbeat.)** Aceite da fase (do brief
+  `unlock`); e o worker **sobe de fato** — pega o lock, ouve o canal, restaura 0 sessões e bate o heartbeat. **E, com o usuário, o PAREAMENTO REAL ponta a ponta: QR lido no
+  celular → `conectado` com o número certo, 2.214 linhas de auth gravadas e TODAS cifradas (prefixo `g1:`, nada
+  legível em claro), 0 conversas e 0 mensagens gravadas (a fase 2 não ingere nada) e, o aceite que mais importa,
+  **Ctrl-C no worker + subir de novo restaurou a sessão em ~1s SEM novo QR** (`sessoes:1` → `sessão conectada`).)** Aceite da fase (do brief
   `docs/whatsapp-baileys.md`): conectar por QR e por código de pareamento, reiniciar o worker restaurando a
   sessão SEM novo QR, deslogar no celular apagando as credenciais, o celular seguir recebendo notificações e o
   contato NÃO ver confirmação de leitura.
@@ -255,6 +258,25 @@ This Next (16.2.6) has breaking changes vs. training data — consult
   **Env nova** ([env.ts](src/lib/env.ts) + `.env.example`): `WHATSAPP_AUTH_KEY`. `tsx` **saiu de devDependencies
   para dependencies** (o serviço do worker em produção o executa). Doc operacional nova
   [docs/whatsapp-operacao.md](docs/whatsapp-operacao.md) — o `DEPLOY.md` segue obsoleto e NÃO foi tocado.
+  **2 BUGS que SÓ o pareamento real revelou (corrigidos, com 3 testes de regressão) — leia antes de mexer no
+  worker:** (1) **o `515 restartRequired` é o passo que CONCLUI a leitura do QR** (o WhatsApp manda reabrir o
+  socket, agora como sessão registrada), e ele chega ANTES de a sessão ter aberto uma vez — então a guarda
+  "caiu sem nunca ter sido pareada ⇒ o código expirou" que eu havia adicionado na revisão **engolia o
+  pareamento**: o celular ficava girando e o worker parava, em SILÊNCIO (o branch não logava nada; só o
+  `ultimoErro` no banco entregou). A decisão virou função PURA `decidirRetomada(codigo, registrada)` em
+  [core.ts](src/lib/whatsapp/core.ts) — `reinicio` | `expirou` | `reconectar` — com teste afirmando que **515 é
+  reinício mesmo numa sessão nunca pareada**; e `registered` passou a ser lido AO VIVO das creds, não de um
+  retrato tirado na abertura (ele vira true DURANTE o pareamento, justo no close do 515). O 515 também não pinta
+  mais "Com problema" na tela: não é erro. (2) **corrida entre a reabertura e a gravação das creds** — o
+  `saveCreds()` era disparado e esquecido e a reconexão do 515 é imediata, então o socket reabria lendo do banco
+  uma credencial pela metade e o WhatsApp respondia **401**, o que fazia o caminho "deslogado" apagar tudo no
+  meio do pareamento. As gravações agora são uma FILA (`this.gravacao`) que `abrir()` **espera**.
+  **Aviso do upstream atendido:** o log do Baileys 7 grita `DANGER: DISABLING ALL SYNC BY shouldSyncHistoryMsg
+  PREVENTS BAILEYS FROM ACCESSING INITIAL LID MAPPINGS, LEADING TO INSTABILITY AND SESSION ERRORS` — então o
+  `shouldSyncHistoryMessage: () => false` FOI REMOVIDO (só `syncFullHistory: false` ficou). Confirmado depois no
+  banco: existem linhas `lid-mapping-*` no auth state, que é exatamente o que a fase 3 precisa.
+  **Achado de ambiente:** o `:3000` desta máquina é OUTRO projeto do usuário ("Modron", Next 16.4 + pnpm); o
+  **Lexia roda em `:3001`**.
   **User action (REQUIRED, nesta ordem — lock do Prisma no Windows):** (1) gerar a chave:
   `openssl rand -hex 32` (ou `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`) e pôr
   em `WHATSAPP_AUTH_KEY` no `.env` local — **valor DIFERENTE** nas variáveis do serviço no EasyPanel; (2) a
@@ -268,9 +290,11 @@ This Next (16.2.6) has breaking changes vs. training data — consult
   usuário e conferir que cada um só vê a própria sessão; (8) testar o caminho do **código de pareamento** com o
   Lexia aberto no celular; (9) em produção, criar o **2º serviço** no mesmo projeto do EasyPanel com start
   `npm run whatsapp:worker`, as mesmas variáveis, sem porta publicada e com reinício automático (docs/whatsapp-operacao.md §2).
-  **Não verificado por mim** (regra do projeto): o **pareamento real contra o WhatsApp** (depende de ler o QR no
-  celular) e a conferência visual da página. Todo o resto — schema, transporte, lock, subida do worker — foi
-  exercitado contra o Postgres real nesta sessão.
+  **Não verificado por mim** (depende de olhar o celular/aparelho): que o celular SEGUE recebendo notificações,
+  que o contato NÃO vê "visto", e o caminho "remover o Lexia em Aparelhos conectados → `deslogado` + auth
+  apagado". Por inspeção, `readMessages`/`sendReceipt`/`sendPresenceUpdate` não aparecem em NENHUM arquivo do
+  módulo e `markOnlineOnConnect` é `false`. O resto — schema, transporte, lock, worker, pareamento e restauração
+  sem QR — foi exercitado de verdade nesta sessão.
   **Pendências que a fase 3 encosta:** criar `lexia_ro` + `DATABASE_URL_RO` é **NECESSÁRIO ANTES** de gravar
   conversa (o app conecta como `postgres`, SUPERUSER, então o `sql_consultar` do MCP lê as tabelas `Whatsapp*` e
   revogar privilégio de tabela não adianta); decidir o storage de mídia (MinIO/S3 vs. disco + token HMAC — o
