@@ -66,8 +66,15 @@ export const config = {
   // guard — see src/lib/oauth/*). NOTE /oauth/authorize is deliberately NOT
   // excluded: the consent screen NEEDS the session, and the redirect to
   // /login?callbackUrl=… is what carries the user through the login first.
+  // Also the WhatsApp media download (GET /api/whatsapp/midia/<id>?t=<token>),
+  // whose whole point is a link that works WITHOUT a cookie: the token carries
+  // the (mensagemId, userId) pair HMAC-signed with a 15-minute expiry, which is
+  // what the MCP hands the Claude connector (see src/lib/whatsapp/midia-link.ts).
+  // Without a valid token the route itself falls back to requireUser(), so a
+  // sessionless caller still gets 401 — and every other /api/whatsapp route
+  // stays gated, because all of them NEED the session.
   // Next internals and static assets.
   matcher: [
-    "/((?!login|definir-senha|api/auth|api/convite|api/health|api/jobs|api/captacao|api/lead$|api/mcp|\\.well-known|oauth/register|oauth/token|oauth/revoke|feeds/google-ads|_next/static|_next/image|favicon\\.ico|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|woff2?)$).*)",
+    "/((?!login|definir-senha|api/auth|api/convite|api/health|api/jobs|api/captacao|api/lead$|api/mcp|api/whatsapp/midia|\\.well-known|oauth/register|oauth/token|oauth/revoke|feeds/google-ads|_next/static|_next/image|favicon\\.ico|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|woff2?)$).*)",
   ],
 }

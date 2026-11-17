@@ -99,9 +99,18 @@ export function ehGrupo(jid: string): boolean {
   return jid.endsWith("@g.us")
 }
 
-/** Contato identificado só por LID: o telefone NÃO vem no jid. */
+/**
+ * Contato identificado só por LID: o telefone NÃO vem no jid. Cobre também
+ * `@hosted.lid` — que NÃO termina em "@lid" e, sem esta linha, passaria por um
+ * telefone, gerando vínculo com o cliente errado.
+ */
 export function ehLid(jid: string): boolean {
-  return jid.endsWith("@lid")
+  return jid.endsWith("@lid") || jid.endsWith("@hosted.lid")
+}
+
+/** Conversa que não é de pessoa: lista de transmissão, status, canal, bot. */
+export function ehDifusao(jid: string): boolean {
+  return jid.endsWith("@broadcast") || jid.endsWith("@newsletter") || jid.endsWith("@bot")
 }
 
 /**
@@ -171,7 +180,7 @@ export function lerComando(payload: string): WhatsappComando | null {
   if (!o) return null
   const userId = idValido(o.userId)
   if (!userId) return null
-  if (o.tipo === "iniciar" || o.tipo === "desconectar") return { tipo: o.tipo, userId }
+  if (o.tipo === "iniciar" || o.tipo === "desconectar" || o.tipo === "recarregar") return { tipo: o.tipo, userId }
   if (o.tipo === "pareamento") {
     const numero = numeroParaPareamento(typeof o.numero === "string" ? o.numero : null)
     return numero ? { tipo: "pareamento", userId, numero } : null

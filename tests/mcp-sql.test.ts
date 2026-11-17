@@ -6,6 +6,7 @@ import {
   prepareSql,
   runReadOnlySql,
   sanitizeCell,
+  SCHEMA_QUERY,
   SqlRejectedError,
   type SqlRunner,
 } from "@/lib/mcp/sql-core"
@@ -106,5 +107,47 @@ describe("prepareSql / sanitizeCell / groupSchemaRows", () => {
         { table_name: "A", column_name: "n", data_type: "text", is_nullable: "YES" },
       ]),
     ).toEqual([{ tabela: "A", colunas: ["id integer", "n text?"] }])
+  })
+})
+
+// As conversas de WhatsApp são isoladas POR USUÁRIO; sem este bloqueio
+// `sql_consultar` seria um atalho para o WhatsApp dos colegas. Não é a fronteira
+// de segurança (o papel do app é superusuário — ver o comentário em sql-core),
+// mas barra o caminho direto e recusa de forma explícita.
+describe("tabelas bloqueadas (Whatsapp*/OAuth*)", () => {
+  it("recusa ler as tabelas do módulo de WhatsApp e do OAuth", () => {
+    for (const s of [
+      'select * from "WhatsappMensagem"',
+      'SELECT dados FROM "WhatsappMidia"',
+      "select * from whatsappchat",
+      'select * from public."WhatsappAuth"',
+      'with x as (select * from "OAuthToken") select * from x',
+      'select * from "Cliente" c join "WhatsappChat" w on w."clienteId" = c.id',
+      'table "WhatsappSessao"',
+      'select * from "OAuthClient"',
+    ]) {
+      expect(() => prepareSql(s), s).toThrow(SqlRejectedError)
+    }
+  })
+
+  it("a mensagem diz o que fazer em vez de só recusar", () => {
+    expect(() => prepareSql('select * from "WhatsappChat"')).toThrow(/ferramentas de WhatsApp/)
+  })
+
+  it("NÃO recusa um literal de texto 'whatsapp' (o enum de atividade usa esse valor)", () => {
+    // Era o falso positivo óbvio: OportunidadeAtividade.tipo pode ser 'whatsapp'.
+    expect(prepareSql(`select * from "OportunidadeAtividade" where tipo = 'whatsapp'`).first).toBe("select")
+    expect(prepareSql(`select 'oauth' as x`).first).toBe("select")
+    expect(prepareSql(`select * from "Lancamento" -- whatsapp`).first).toBe("select")
+  })
+
+  it("não recusa tabelas de nome parecido que não são do módulo", () => {
+    expect(prepareSql('select * from "Lancamento"').first).toBe("select")
+    expect(prepareSql('select * from "Cliente"').first).toBe("select")
+  })
+
+  it("o schema introspectado não lista as tabelas bloqueadas", () => {
+    expect(SCHEMA_QUERY).toMatch(/NOT ILIKE 'whatsapp%'/)
+    expect(SCHEMA_QUERY).toMatch(/NOT ILIKE 'oauth%'/)
   })
 })

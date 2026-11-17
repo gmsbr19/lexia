@@ -156,6 +156,90 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **WhatsApp (Baileys) · FASE 3 — ingestão, página de conversas e vínculo com cliente (this session, VERIFIED
+  `npx tsc --noEmit` 0 erros, 1106/1106 testes (+42 novos em `tests/whatsapp-ingestao.test.ts` e no
+  `tests/mcp-sql.test.ts`), eslint limpo em TODOS os arquivos novos/tocados, migração ADITIVA
+  `20261117190000_whatsapp_ingestao` escrita à mão a partir do `prisma migrate diff`, **APLICADA no banco local**
+  com `migrate diff` voltando vazio = ZERO drift, e a ingestão **exercitada AO VIVO contra o Postgres real** (48
+  conferências num usuário descartável, criado e apagado na mesma rodada — base de volta ao baseline 0/0/0).**
+  Decisões do usuário nesta sessão: **só a fase 3** (as 7 ferramentas MCP são a fase 4) e, sobre mídia, a **caixa
+  de entrada no banco** — o usuário queria que "o Claude baixe, trie e salve no OneDrive", e a restrição que
+  decidiu o desenho é física: **a mídia do WhatsApp é cifrada com chaves que vivem na própria mensagem e a URL do
+  CDN expira**, então só o worker consegue baixar, e só na hora que a mensagem chega; a pergunta real era onde os
+  bytes descansam entre a chegada e a triagem.
+  **Modelo** (1 tabela nova, 2 colunas nullable, 2 índices — nada existente tocado): **`WhatsappMidia`**
+  (`mensagemId` PK, `userId`, `dados` base64, `tamanho`, Cascade de mensagem e de User) em tabela PRÓPRIA de
+  propósito, para que um `findMany` sem `select` nas mensagens nunca arraste megabytes; `WhatsappMensagem.midiaTamanho`
+  (vem declarado na mensagem, então é conhecido mesmo sem baixar: bytes ausentes + tamanho presente = "não
+  guardada"); `WhatsappChat.monitoradoEm`; índice `(chatId, enviadaEm)`. Teto **10 MB/arquivo** (igual a
+  TarefaAnexo/LexiaAnexo). Retenção: **30 dias** para bytes não reclamados (metadado fica) e **24 meses** para
+  mensagens, numa faxina diária pendurada no heartbeat do worker (é o único processo contínuo do Lexia).
+  **Núcleo PURO** [mensagens-core.ts](src/lib/whatsapp/mensagens-core.ts) (sem prisma/baileys/env/relógio; a forma
+  da mensagem é descrita ESTRUTURALMENTE porque o app web não pode importar o Baileys): `classificarMensagem`
+  (descasca envelopes efêmera/viewOnce/documentWithCaption/deviceSent; devolve **null** para reação, protocolo,
+  chave de grupo, metadado e conteúdo vazio — nunca uma linha sem texto nem mídia; mídia primeiro, com a legenda
+  como texto; contato/localização/enquete viram "outro" com rótulo legível), `paraNumero` (Long do protobuf em
+  duas metades de 32 bits), `dataDaMensagem`, `nomeDeArquivo` (saneado: nada de caminho nem de separador do
+  Windows), `extensaoDeMime`, `truncarTexto` (4.000 chars, para a fase 4), **`variantesTelefone`** (as duas formas
+  do MESMO celular brasileiro, com e sem o nono dígito; **fixo nunca ganha o 9** e número estrangeiro não ganha
+  variante nenhuma) e `escolherVinculo` (match ÚNICO vincula; zero ou mais de um não vincula — dois clientes com o
+  mesmo telefone é ambiguidade real). Hardening em [core.ts](src/lib/whatsapp/core.ts): **`@hosted.lid` NÃO
+  termina em "@lid"** e, sem a correção, passaria por telefone e geraria vínculo com o cliente errado; novo
+  `ehDifusao`.
+  **Ingestão** [ingestao.ts](src/lib/whatsapp/ingestao.ts) (`.ts`, sem Baileys, compartilhado com o app):
+  **índice de telefones EM MEMÓRIA** com TTL de 5 min, reconstruído em vez de sincronizado — a normalização certa
+  já existe testada em `normalizarTelefone`, e reescrevê-la em `regexp_replace` criaria uma segunda fonte da
+  verdade (medido na base real: **714 telefones indexados em 36 ms, 0 ambíguos**; a tabela derivada que o brief
+  sugeria não se paga). `salvarChat` com `criar: false` para **contatos**: `contacts.*` é a AGENDA INTEIRA do
+  aparelho, então só ATUALIZA o que já existe — criar uma linha por contato encheria a página de gente que nunca
+  escreveu. Nome só é sobrescrito quando chega valor novo; `ultimaMensagemEm` **nunca anda para trás** (a
+  sincronização entrega mensagens antigas depois das novas); `monitorar` jamais é tocado pelo worker.
+  **Worker** [worker.mts](src/lib/whatsapp/worker.mts): handlers de `chats.upsert/update`, `contacts.upsert/update`,
+  `messages.upsert` e `messaging-history.set`, todos por uma **fila serializada por sessão** (dois eventos do mesmo
+  jid novo veriam ambos "não existe" e um bateria na unicidade) e com a guarda `this.sock !== sock`. **Identidade
+  da conversa** resolve `:device` e **LID → número** por `sock.signalRepository.lidMapping.getPNForLID` — é para
+  isso que o `shouldSyncHistoryMessage` segue não sobrescrito; sem os mapeamentos iniciais o mesmo contato
+  apareceria como duas linhas. Comando novo **`recarregar`** (app → worker) derruba o cache de chats quando o
+  interruptor muda, com TTL de 60 s como rede de segurança. `downloadMediaMessage` na chegada, com o teto;
+  **`readMessages` continua não existindo em lugar nenhum**.
+  **App** [conversas.ts](src/lib/whatsapp/conversas.ts) + rotas `GET /api/whatsapp/conversas`,
+  `GET|PATCH /api/whatsapp/conversas/[id]`, `DELETE .../mensagens` e `GET /api/whatsapp/midia/[id]`. Isolamento:
+  **nenhuma aceita userId**, e chat de outro usuário responde **"não encontrada"**, nunca "sem permissão" (que já
+  revelaria que existe). Busca acento-insensível em memória (um `contains` do Postgres acharia "Joao" e não
+  "João"). `vinculo` é DERIVADO e não aceito do cliente: escolher o mesmo cliente sugerido vira `confirmado`,
+  outro vira `manual` — deixar o cliente mandar nessa coluna permitiria marcar como confirmado o que ninguém
+  confirmou. A leitura da conversa **nunca** devolve bytes, só metadado + link.
+  **Link assinado** [midia-link.ts](src/lib/whatsapp/midia-link.ts): HMAC com chave **DERIVADA** da
+  `WHATSAPP_AUTH_KEY` (assinar e cifrar com a mesma chave é o atalho que transforma vazamento de assinatura em
+  vazamento de credencial), validade 15 min, par (mensagemId, userId) dentro da assinatura, comparação em tempo
+  constante. `api/whatsapp/midia` é a **única** rota do módulo fora do gate do [proxy.ts](src/proxy.ts) — o link
+  precisa funcionar sem cookie (fase 4); sem token válido ela mesma cai no `requireUser()` e devolve 401.
+  **UI** [ConversasApp.tsx](src/components/whatsapp/ConversasApp.tsx) + `/whatsapp/conversas`: busca com respiro,
+  "Só monitoradas", interruptor por conversa (grupo nasce desligado), vínculo com **sugerido em destaque** +
+  confirmar/trocar/remover (lista de contatos carregada só ao abrir o seletor, como o CmMergeModal), painel de
+  mensagens para conferir a gravação, "gravando desde X — mensagens anteriores não ficaram guardadas", e ao
+  desligar o monitoramento a **oferta de apagar** o que já foi guardado (irreversível, com confirmação). A página
+  de conexão deixou de dizer "em desenvolvimento" e agora leva para cá.
+  **`sql_consultar` bloqueado** (exigência do brief antes de gravar conversa): `prepareSql` recusa consulta que
+  mencione tabela `Whatsapp*`/`OAuth*` e o `sql_schema` não as lista — **com os literais de texto removidos
+  ANTES da busca**, senão `… WHERE tipo = 'whatsapp'` (valor real do enum de OportunidadeAtividade) seria
+  recusado. **Isto NÃO é a fronteira**: o filtro é por nome e o app conecta como superusuário (que tem
+  `pg_read_file`). A fronteira é o papel `lexia_ro` + `DATABASE_URL_RO` — o SQL pronto está em
+  docs/whatsapp-operacao.md §6; **tentei criar o papel no banco local e o classificador do modo automático
+  recusou (mexer em privilégio de banco), então segue como ação do usuário**, nos DOIS ambientes.
+  **User action:** (1) parar o `next dev` → `npx prisma generate` (os TIPOS já foram regenerados nesta sessão,
+  mas o rename da DLL do engine falhou com EPERM por causa do dev server) → `npm run dev`; a migração já está
+  aplicada no banco local e em produção roda no boot. (2) Criar `lexia_ro` e setar `DATABASE_URL_RO` (doc §6),
+  local e produção. (3) Subir o worker (`npm run whatsapp:worker`) e conferir o aceite da fase: em
+  `/whatsapp/conversas` as conversas aparecem com nome/telefone; **marcar uma** e mandar uma mensagem de cada
+  tipo (texto, foto, áudio, PDF) → aparecem no painel e o anexo abre pelo link; conferir que uma conversa **não**
+  marcada não gravou nada (`SELECT count(*) FROM "WhatsappMensagem" m JOIN "WhatsappChat" c ON c.id = m."chatId"
+  WHERE c.monitorar = false` → 0); conferir o **vínculo sugerido** num contato cujo cadastro tenha o número com e
+  sem o nono dígito; conferir que **grupo** não foi vinculado; desmarcar e aceitar apagar. **Não verificado por
+  mim** (depende de mensagem real chegando pelo celular): a classificação de mídia de verdade, o download pelo
+  CDN e a resolução LID → número ao vivo. O resto — schema, cascade, match de telefone na base real, isolamento
+  entre usuários, dedupe, teto de mídia, retenção, listagem/busca/vínculo e o link assinado — foi exercitado de
+  verdade contra o Postgres nesta sessão.
 - **WhatsApp (Baileys) · FASE 2 — schema, worker e página de conexão (this session, VERIFIED `npx tsc --noEmit`
   0 erros, 1064/1064 testes (+30 novos em `tests/whatsapp-core.test.ts`), eslint limpo em TODOS os arquivos
   novos/tocados, migração ADITIVA `20261117160000_whatsapp_sessoes` escrita à mão e VALIDADA num Postgres

@@ -67,6 +67,7 @@ model User {
   whatsappAuth            WhatsappAuth[] // auth state cifrado da sessão Baileys deste usuário
   whatsappChats           WhatsappChat[] // conversas visíveis no aparelho deste usuário
   whatsappMensagens       WhatsappMensagem[] // mensagens gravadas das conversas monitoradas por ele
+  whatsappMidias          WhatsappMidia[] // bytes das mídias dessas mensagens (caixa de entrada temporária)
 }
 
 // One-time access link issued when an admin creates a user (or resends the
@@ -1568,6 +1569,10 @@ model WhatsappChat {
   nome             String?
   grupo            Boolean            @default(false)
   monitorar        Boolean            @default(false)
+  // Quando o monitoramento foi LIGADO. Mensagens anteriores a esta data não
+  // existem no banco (o Baileys não entrega histórico sob demanda) — a página
+  // usa isto para dizer isso ao usuário em vez de parecer que faltou gravar.
+  monitoradoEm     DateTime?
   clienteId        Int?
   cliente          Cliente?           @relation(fields: [clienteId], references: [id], onDelete: SetNull)
   vinculo          String? // sugerido | confirmado | manual
@@ -1595,13 +1600,39 @@ model WhatsappMensagem {
   autorNome String?
   tipo      String // texto | imagem | audio | video | documento | outro
   texto     String? // texto ou legenda da mídia
+  // Ponteiro para um storage EXTERNO (OneDrive/S3), quando houver. Hoje é
+  // sempre null: os bytes ficam em WhatsappMidia (ver abaixo).
   midiaPath String?
   midiaMime String?
   midiaNome String?
+  // Tamanho declarado na própria mensagem (`fileLength`), então é conhecido
+  // mesmo quando os bytes NÃO foram guardados (acima do teto, ou falha no
+  // download). Bytes ausentes + tamanho presente = mídia não guardada.
+  midiaTamanho Int?
   enviadaEm DateTime
   tratadaEm DateTime? // marcada como já organizada (whatsapp_marcar_tratadas)
   createdAt DateTime     @default(now())
+  midia     WhatsappMidia?
 
   @@unique([chatId, msgId])
   @@index([userId, enviadaEm])
+  // Ler uma conversa é sempre "deste chat, nesta ordem" (página e MCP).
+  @@index([chatId, enviadaEm])
+}
+
+// Os BYTES de uma mídia, em tabela PRÓPRIA de propósito: assim nenhuma consulta
+// de mensagem arrasta megabytes por descuido (um findMany sem `select` traria
+// todas as colunas da linha). É uma CAIXA DE ENTRADA, não um arquivo: o Claude
+// baixa pelo MCP, arquiva onde quiser (OneDrive) e os bytes são apagados,
+// ficando só o metadado na mensagem. O worker também limpa bytes antigos.
+model WhatsappMidia {
+  mensagemId Int              @id
+  mensagem   WhatsappMensagem @relation(fields: [mensagemId], references: [id], onDelete: Cascade)
+  userId     Int
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dados      String // base64 (sem prefixo data-URL)
+  tamanho    Int // bytes do arquivo decodificado
+  criadoEm   DateTime         @default(now())
+
+  @@index([userId, criadoEm])
 }

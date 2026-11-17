@@ -46,6 +46,7 @@ const ROUTE_META: Record<string, { label: string; icon: CrmIconName }> = {
   // fica porque é ele que nomeia a aba de rota quando a página está aberta.
   "/whatsapp": { label: "WhatsApp", icon: "messageCircle" },
   "/whatsapp/conectar": { label: "WhatsApp", icon: "messageCircle" },
+  "/whatsapp/conversas": { label: "Conversas do WhatsApp", icon: "messageCircle" },
   "/plano-acao": { label: "Plano de ação", icon: "target" },
   "/lexia": { label: "LexIA", icon: "sparkles" },
   "/notificacoes": { label: "Notificações", icon: "bell" },

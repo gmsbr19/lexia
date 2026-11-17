@@ -26,6 +26,14 @@ export type WhatsappComando =
   /** `numero`: só dígitos com DDI (ver numeroParaPareamento em ./core). */
   | { tipo: "pareamento"; userId: number; numero: string }
   | { tipo: "desconectar"; userId: number }
+  /**
+   * "Reler as conversas deste usuário no banco." O worker guarda em memória
+   * quais chats estão marcados `monitorar` (senão cada mensagem custaria uma
+   * consulta), e é isto que invalida esse cache quando o usuário mexe no
+   * interruptor da página. Há também um TTL como rede de segurança, para o caso
+   * de o NOTIFY se perder com o worker fora do ar.
+   */
+  | { tipo: "recarregar"; userId: number }
 
 /** Evento do worker → app web (via `pg_notify`), consumido pelo SSE da página. */
 export type WhatsappEvento =
@@ -53,6 +61,9 @@ export type SessaoView = {
 // app roda numa instância só (ver docs/whatsapp-baileys.md § Worker).
 export const CANAL_COMANDO = "lexia_whatsapp_cmd"
 export const CANAL_EVENTO = "lexia_whatsapp_evt"
+
+/** Validade do cache de conversas do worker (rede de segurança do `recarregar`). */
+export const CHATS_CACHE_TTL_MS = 60_000
 
 /** Chave do AppSetting onde o worker bate o ponto (heartbeat). */
 export const CHAVE_WORKER = "whatsapp.worker"

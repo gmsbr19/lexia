@@ -26,6 +26,46 @@ const WRAPPABLE_FIRST = new Set(["select", "with", "table", "values"])
 
 export class SqlRejectedError extends Error {}
 
+/**
+ * Tabelas que esta ferramenta NÃO pode ler, por prefixo de nome:
+ *  • `Whatsapp*` — conversas sob sigilo profissional, isoladas POR USUÁRIO.
+ *    Sem este bloqueio, `sql_consultar` seria um atalho para o WhatsApp dos
+ *    colegas, contornando todo o escopo por usuário do módulo.
+ *  • `OAuth*` — códigos e tokens do servidor de autorização do MCP.
+ *
+ * ATENÇÃO, e isto é importante: esta lista NÃO é a fronteira de segurança. Ela
+ * é por NOME, e o app conecta no Postgres como superusuário, que tem outros
+ * caminhos (`pg_read_file`, por exemplo) que nenhum filtro de texto cobre. A
+ * fronteira de verdade é o papel `lexia_ro` em `DATABASE_URL_RO` — ver
+ * src/lib/mcp/sql.ts e docs/whatsapp-operacao.md. Esta camada barra o caminho
+ * direto e deixa a recusa explícita para quem chama.
+ */
+export const PREFIXOS_BLOQUEADOS = ["whatsapp", "oauth"] as const
+
+/**
+ * Tira comentários e LITERAIS de texto. Os literais têm de sair antes da busca
+ * por nome de tabela, senão uma consulta legítima como
+ * `… WHERE tipo = 'whatsapp'` (o enum de OportunidadeAtividade usa esse valor)
+ * seria recusada.
+ */
+export function stripLiterals(sql: string): string {
+  return sql
+    .replace(/--[^\n]*/g, " ")
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/'(?:[^']|'')*'/g, " '' ")
+}
+
+/** O identificador bloqueado que aparece na consulta, ou null. */
+export function blockedTable(sql: string): string | null {
+  const texto = stripLiterals(sql)
+  for (const prefixo of PREFIXOS_BLOQUEADOS) {
+    const re = new RegExp('(^|[^a-z0-9_"])"?(' + prefixo + '[a-z]*)"?', "i")
+    const m = re.exec(texto)
+    if (m) return m[2]
+  }
+  return null
+}
+
 function firstKeyword(sql: string): string {
   // Skip leading whitespace/comments, then read the first word.
   const stripped = sql.replace(/^(\s+|--[^\n]*\n?|\/\*[\s\S]*?\*\/)+/, "")
@@ -40,6 +80,14 @@ export function prepareSql(raw: string): { sql: string; first: string } {
   const first = firstKeyword(sql)
   if (!ALLOWED_FIRST.has(first)) {
     throw new SqlRejectedError("Só são aceitas consultas de leitura (SELECT, WITH, TABLE, VALUES, EXPLAIN, SHOW).")
+  }
+  const bloqueada = blockedTable(sql)
+  if (bloqueada) {
+    throw new SqlRejectedError(
+      "A tabela " +
+        bloqueada +
+        " não pode ser consultada por aqui: conversas de WhatsApp e tokens de acesso são isolados por usuário. Use as ferramentas de WhatsApp, que respondem só sobre o seu próprio.",
+    )
   }
   return { sql, first }
 }
@@ -103,7 +151,12 @@ export function groupSchemaRows(
   return [...map].map(([tabela, colunas]) => ({ tabela, colunas }))
 }
 
+// As tabelas bloqueadas (PREFIXOS_BLOQUEADOS) também não aparecem no schema: se
+// a ferramenta não as lê, descrevê-las só convidaria a tentar.
 export const SCHEMA_QUERY = `SELECT table_name, column_name, data_type, is_nullable
 FROM information_schema.columns
-WHERE table_schema = 'public' AND table_name NOT LIKE '\\_prisma%'
+WHERE table_schema = 'public'
+  AND table_name NOT LIKE '\\_prisma%'
+  AND table_name NOT ILIKE 'whatsapp%'
+  AND table_name NOT ILIKE 'oauth%'
 ORDER BY table_name, ordinal_position`

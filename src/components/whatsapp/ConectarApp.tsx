@@ -338,11 +338,14 @@ export function ConectarApp({ inicial }: { inicial: SessaoView }) {
       {conectado && (
         <section style={cartao}>
           <h2 style={{ margin: "0 0 6px", fontSize: 14, fontWeight: 500 }}>Próximo passo</h2>
-          <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)" }}>
-            Escolher quais conversas serão gravadas (e vinculá-las a contatos) é a próxima etapa do módulo, ainda em
-            desenvolvimento. Até lá, <strong>nenhuma mensagem é gravada</strong>: a conexão só mantém o aparelho
-            pareado.
+          <p style={{ margin: "0 0 12px", fontSize: 13, color: "var(--text-muted)" }}>
+            Escolha quais conversas o Lexia deve gravar. Enquanto você não marcar nenhuma,{" "}
+            <strong>nenhuma mensagem é guardada</strong> — a conexão só mantém o aparelho pareado e a lista de conversas
+            em dia.
           </p>
+          <a href="/whatsapp/conversas" style={{ ...botao, textDecoration: "none", display: "inline-flex", gap: 6, alignItems: "center" }}>
+            <Icon name="messageCircle" size={14} /> Escolher conversas
+          </a>
         </section>
       )}
 
