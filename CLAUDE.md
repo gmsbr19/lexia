@@ -156,6 +156,126 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **WhatsApp (Baileys) · FASE 2 — schema, worker e página de conexão (this session, VERIFIED `npx tsc --noEmit`
+  0 erros, 1064/1064 testes (+30 novos em `tests/whatsapp-core.test.ts`), eslint limpo em TODOS os arquivos
+  novos/tocados, migração ADITIVA `20261117160000_whatsapp_sessoes` escrita à mão e VALIDADA num Postgres
+  embutido (PGlite: aplica, índices/PKs conferidos, cascade do User e SET NULL do Cliente exercitados, unicidade
+  `(userId,jid)` recusando duplicata e aceitando o MESMO jid em outro usuário) e, depois que o usuário subiu o
+  Postgres no meio da sessão, **APLICADA no banco local** (`prisma migrate deploy` — junto das 2 pendentes de
+  sessões anteriores, `lancamento_socio_responsavel` e `oauth_mcp`) com **`prisma migrate diff` voltando vazio =
+  ZERO drift**, e as 6 FKs lidas de volta do banco real com as regras certas. **Verificado AO VIVO contra o
+  Postgres real, sem escrever linha nenhuma:** o `pg_notify` publicado pelo app chega ao `LISTEN` do bus e é
+  entregue parseado; payload lixo no mesmo canal é descartado sem derrubar o listener; **evento de outro usuário
+  NÃO chega ao assinante**; o advisory lock 7333 é exclusivo (a 2ª conexão não o toma, e toma depois do
+  `unlock`); e o worker **sobe de fato** — pega o lock, ouve o canal, restaura 0 sessões e bate o heartbeat.)** Aceite da fase (do brief
+  `docs/whatsapp-baileys.md`): conectar por QR e por código de pareamento, reiniciar o worker restaurando a
+  sessão SEM novo QR, deslogar no celular apagando as credenciais, o celular seguir recebendo notificações e o
+  contato NÃO ver confirmação de leitura.
+  **Decisão do usuário nesta sessão: Baileys fixado em `7.0.0-rc14` EXATA** (sem `^`) — é a série que traz o LID
+  (`@lid`), de que a fase 3 depende para resolver LID→número e vincular conversa↔cliente; `6.7.24` (legacy) foi
+  recusada por não ter LID. Conferido no npm: `latest = 7.0.0-rc14`, `legacy = 6.7.24`.
+  **ARMADILHA JÁ PAGA (medida, não suposta): o Baileys 7 é ESM-only e carrega WASM** (`whatsapp-rust-bridge`,
+  portável — não é binário nativo), e o `package.json` dele só declara a condição `import`. Importado de um
+  módulo CJS — que é o que um `.ts` É neste pacote — a resolução estoura
+  `ERR_PACKAGE_PATH_NOT_EXPORTED`. Então **todo arquivo que toca o Baileys é `.mts`** (ESM; o `tsconfig` já
+  incluía `**/*.mts`) e o resto do módulo fica em `.ts` normal, compartilhado com o app web — que **nunca**
+  importa o Baileys. Testado nas 4 direções: `.ts`→baileys FALHA; `.mts`→baileys OK; `.mts`→`.mts` (especificador
+  `.mjs`) OK; `.mts`→`.ts`/alias `@/` OK. O entry usa **import DINÂMICO** depois do `loadEnv()`, senão o import
+  estático seria içado para antes dele e o `src/lib/env.ts` validaria com o `.env` ainda não lido.
+  **Modelo** (migração ADITIVA, 4 tabelas NOVAS, nenhuma coluna existente tocada): `WhatsappSessao` (1:1 com
+  User, dona do estado `desconectado|aguardando_qr|conectado|erro|deslogado` + `numero`/`conectadoEm`/
+  `ultimoErro`/`pareamento`), `WhatsappAuth` (auth state do Baileys, PK `[userId, chave]`), `WhatsappChat`
+  (`@@unique([userId,jid])`, `clienteId` SetNull) e `WhatsappMensagem` (`@@unique([chatId,msgId])`) — estas duas
+  últimas **já nascem, mas a INGESTÃO é a fase 3**: hoje nenhuma mensagem é gravada. Tudo com `userId` e
+  Cascade a partir de `User` (desativar/apagar um usuário leva sessão, credenciais, conversas e mensagens).
+  **`WhatsappAuth.valor` é CIFRADO** ([cripto.ts](src/lib/whatsapp/cripto.ts)): AES-256-**GCM** (autenticado —
+  byte alterado FALHA em vez de devolver lixo que o Baileys interpretaria), chave de 32 bytes só em
+  `WHATSAPP_AUTH_KEY` (hex ou base64), **nunca no banco** → dump sem o `.env` é inútil; e o `contexto`
+  (`userId`+`chave` da linha) entra como **AAD**, então a linha não pode ser movida de um usuário para outro nem
+  de `creds` para uma signal key (3 testes). Chave ausente = **módulo desligado por omissão** (rotas 404, página
+  avisa, worker se recusa a subir — mesmo padrão de `LEXIA_MCP_TOKEN`); presente e malformada **LANÇA**.
+  **Núcleo PURO** [core.ts](src/lib/whatsapp/core.ts) (sem prisma/baileys/env/relógio): `backoffMs` 1s→60s,
+  `decidirFechamento` com **TRÊS** ações e não duas — `deslogar` (401/403/411: credencial morta, apaga
+  `WhatsappAuth`), **`parar`** (440 `connectionReplaced`: outra instância assumiu; reconectar faria as duas se
+  derrubarem em laço) e `reconectar` (515 na hora, resto com backoff) —, `jidParaNumero` (grupo/LID → null),
+  `normalizarTelefone` (10/11 dígitos prefixa 55; 12/13 já tem DDI; resto → null, medido na base real),
+  `numeroParaPareamento`, `workerOnline` e os parses DEFENSIVOS `lerComando`/`lerEvento` (payload estranho é
+  descartado em silêncio em vez de derrubar o listener). Os códigos do `DisconnectReason` estão **duplicados**
+  em `core.ts` de propósito (o arquivo é puro e o bundle do Next não pode puxar o pacote ESM) e há **teste que
+  os afere um a um contra o enum real da versão instalada** — se o upstream mudar um valor, o teste quebra em
+  vez de o worker reconectar para sempre com credencial morta.
+  **Transporte app↔worker = `LISTEN/NOTIFY`** (sem infra nova): canal `lexia_whatsapp_cmd` (app→worker:
+  `iniciar`/`pareamento`/`desconectar`) e `lexia_whatsapp_evt` (worker→app: `qr`/`pareamento`/`conectado`/
+  `erro`/`deslogado`/`status`). O app publica por `prisma.$executeRaw` com `pg_notify` (tagged template =
+  parâmetro de verdade) e **ouve** com um client `pg` dedicado ([bus.ts](src/lib/whatsapp/bus.ts), fixado em
+  `globalThis` como o bus de notificações, aberto só na 1ª inscrição, com reconexão) → EventEmitter por usuário
+  → SSE `GET /api/whatsapp/eventos`. O Prisma NÃO serve para `LISTEN` (devolve a conexão ao pool e mata a
+  inscrição); `pg` entrou como dependência e em `serverExternalPackages` do [next.config.ts](next.config.ts)
+  (ele exige `pg-native` por require opcional, que empacotado quebra o build). A string do QR **não é
+  persistida**: vai só no payload do evento e é desenhada no navegador (`qrcode`).
+  **Worker** [worker.mts](src/lib/whatsapp/worker.mts) + entry [scripts/whatsapp-worker.mts](scripts/whatsapp-worker.mts)
+  (`npm run whatsapp:worker`): `authStatePostgres(userId)` no molde do `useMultiFileAuthState` (creds +
+  `keys.get/set` com `BufferJSON`, leitura em lote, cifrado antes de gravar; nome SEM o prefixo `use` porque o
+  eslint trataria a função como hook de React) embrulhado em `makeCacheableSignalKeyStore`. Socket:
+  **`markOnlineOnConnect: false`** (com `true` o celular PARA de notificar), **`readMessages` NUNCA é chamado em
+  lugar nenhum** (o contato não pode ver "visto" por causa do Lexia), `syncFullHistory: false`,
+  `shouldSyncHistoryMessage: () => false`, `shouldIgnoreJid` descartando `status@broadcast` e `@newsletter`,
+  `browser: Browsers.ubuntu("Lexia")` (é como aparece em Aparelhos conectados) e logger pino `warn` **sem
+  conteúdo de mensagem**. Pareamento: o PRIMEIRO `qr` é o sinal de que o socket está pronto e não registrado →
+  `requestPairingCode`, e a partir daí o QR para de ser publicado (o código já está na tela). **Instância
+  ÚNICA:** `pg_try_advisory_lock(7333)` (7331/7332 são o grafo de tarefas) tentado por ~60 s — um container
+  antigo pode estar saindo — e **sai com código 1** se não conseguir; a MESMA conexão faz o lock e o `LISTEN`,
+  e se ela cair o worker **sai** (o lock é liberado junto, e seguir vivo permitiria duas instâncias brigando).
+  **Heartbeat** a cada 30 s no `AppSetting` `whatsapp.worker` → a página avisa "serviço fora do ar" acima de
+  ~95 s, e aí o **Desconectar revoga localmente** (apaga `WhatsappAuth` + marca `deslogado`): quem pediu para
+  desconectar não fica com a credencial guardada só porque um processo caiu. Usuário `ativo = false` não conecta
+  (sessão encerrada + credenciais apagadas). `SIGINT/SIGTERM` fecham os sockets **deixando o status
+  `conectado`** — é isso que faz o reinício restaurar sem novo QR.
+  **Rotas** (todas derivam o `userId` da SESSÃO via [acesso.ts](src/lib/whatsapp/acesso.ts) — **nenhuma aceita
+  userId da URL ou do corpo**, que é como o isolamento é garantido: não há por onde pedir o WhatsApp de outro):
+  `GET /api/whatsapp/status`, `POST /api/whatsapp/{conectar,pareamento,desconectar}` (via `runMutation`, com
+  auditoria `whatsapp.*`; o payload da auditoria NÃO leva o telefone) e o SSE `GET /api/whatsapp/eventos`.
+  **Nenhuma** entrou nas exclusões do [proxy.ts](src/proxy.ts) — de propósito: todas PRECISAM da sessão.
+  **UI** [ConectarApp.tsx](src/components/whatsapp/ConectarApp.tsx) + `/whatsapp/conectar` (`/whatsapp`
+  redireciona): status com número/data, QR desenhado no navegador a cada evento, caminho alternativo por código
+  de pareamento (o prático quando o Lexia está aberto no próprio celular), instruções "WhatsApp › Aparelhos
+  conectados", **aviso curto de risco de banimento** (Baileys é conexão não oficial), confirmação para
+  desconectar e item **WhatsApp** na sidebar (ícone `messageCircle` novo em `crm-icons`). Como `/whatsapp/conversas`
+  é a fase 3, ao conectar a página NÃO redireciona: mostra "próximo passo" dizendo que nenhuma mensagem é
+  gravada ainda.
+  **3 achados do meu próprio código, corrigidos antes de considerar pronto:** (1) restaurar no boot as sessões
+  em `aguardando_qr` (e não só `conectado`) geraria **QR em laço** para quem nunca terminou de ler, numa tela
+  que ninguém está olhando → restaura só `conectado`, e uma queda ANTES do primeiro `open` (`creds.registered`
+  false) agora **para** com "o tempo para ler o código terminou" em vez de reconectar; (2) o socket substituído
+  (reabertura, troca para pareamento) ainda emite o próprio `close`, que era lido como queda e agendava
+  reconexão por cima da conexão nova → guarda `if (this.sock !== sock) return`; (3) falha em `abrir()` não
+  incrementava a tentativa → com o banco fora reabriria de segundo em segundo, sem backoff. Mais 2 de lint, não
+  silenciados: `setState` síncrono dentro de efeito (a imagem do QR passou a ser guardada JUNTO do QR que a
+  gerou, e o render descarta a velha) e a regra `rules-of-hooks` pegando `usePostgresAuthState` pelo prefixo.
+  **Env nova** ([env.ts](src/lib/env.ts) + `.env.example`): `WHATSAPP_AUTH_KEY`. `tsx` **saiu de devDependencies
+  para dependencies** (o serviço do worker em produção o executa). Doc operacional nova
+  [docs/whatsapp-operacao.md](docs/whatsapp-operacao.md) — o `DEPLOY.md` segue obsoleto e NÃO foi tocado.
+  **User action (REQUIRED, nesta ordem — lock do Prisma no Windows):** (1) gerar a chave:
+  `openssl rand -hex 32` (ou `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`) e pôr
+  em `WHATSAPP_AUTH_KEY` no `.env` local — **valor DIFERENTE** nas variáveis do serviço no EasyPanel; (2) a
+  migração JÁ ESTÁ APLICADA no banco local e o client foi gerado — só reiniciar o `next dev` para ele carregar
+  as rotas novas (em produção a migração roda no boot); (3) em OUTRO terminal, `npm run whatsapp:worker`; (4) `/whatsapp` →
+  **Conectar** → ler o QR no celular → conferir que o status vira Conectado com o número certo, que o **celular
+  continua recebendo notificações** e que o contato **não** vê "visto"; (5) matar o worker (Ctrl+C) e subir de
+  novo → a sessão tem de voltar **sem novo QR**; (6) no celular, WhatsApp › Aparelhos conectados › remover o
+  "Lexia" → a página tem de mostrar "Desconectado no celular" e as linhas de `WhatsappAuth` daquele usuário
+  desaparecerem (`SELECT count(*) FROM "WhatsappAuth" WHERE "userId" = <id>` → 0); (7) repetir com um SEGUNDO
+  usuário e conferir que cada um só vê a própria sessão; (8) testar o caminho do **código de pareamento** com o
+  Lexia aberto no celular; (9) em produção, criar o **2º serviço** no mesmo projeto do EasyPanel com start
+  `npm run whatsapp:worker`, as mesmas variáveis, sem porta publicada e com reinício automático (docs/whatsapp-operacao.md §2).
+  **Não verificado por mim** (regra do projeto): o **pareamento real contra o WhatsApp** (depende de ler o QR no
+  celular) e a conferência visual da página. Todo o resto — schema, transporte, lock, subida do worker — foi
+  exercitado contra o Postgres real nesta sessão.
+  **Pendências que a fase 3 encosta:** criar `lexia_ro` + `DATABASE_URL_RO` é **NECESSÁRIO ANTES** de gravar
+  conversa (o app conecta como `postgres`, SUPERUSER, então o `sql_consultar` do MCP lê as tabelas `Whatsapp*` e
+  revogar privilégio de tabela não adianta); decidir o storage de mídia (MinIO/S3 vs. disco + token HMAC — o
+  Lexia não tem storage nem link assinado hoje); e `npm audit` segue com o mesmo baseline de antes (o `ws` que o
+  Baileys usa já vinha do puppeteer, deduplicado — a instalação não acrescentou achado novo).
 - **WhatsApp (Baileys) · FASE 1 — OAuth 2.1 no servidor MCP, para cada chamada saber QUEM está do outro lado
   (this session, VERIFIED `npx tsc --noEmit` 0 erros, 1034/1034 testes (+28 novos em
   `tests/oauth-core.test.ts`), eslint limpo em TODOS os arquivos novos/tocados (o `set-state-in-effect` da linha
