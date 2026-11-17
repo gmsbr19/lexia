@@ -5,6 +5,7 @@
 // mutation endpoints (runMutation) return { ok, result } → unwrapped to result.
 import { apiSend } from "@/lib/client/api"
 import type { LexiaPrefs, LexiaPrefsResolved } from "@/lib/lexia/preferencias-core"
+import type { SessaoView } from "@/lib/whatsapp/tipos"
 import type { ConsumoData, ConsumoInterno, ConsumoOrcamento, ConsumoPeriodo } from "@/lib/consumo/types"
 import type {
   AgendaDataset,
@@ -161,6 +162,10 @@ export const getEscritorio = () => get<EscritorioConfig>(`/api/settings/escritor
 export const putEscritorio = (body: EscritorioConfig) => mut(`/api/settings/escritorio`, "PUT", body)
 export const getModulosConfig = () => get<ModulosConfig>(`/api/settings/modulos`)
 export const putModulosConfig = (body: ModulosConfig) => mut(`/api/settings/modulos`, "PUT", body)
+// WhatsApp — estado da conexão DO USUÁRIO LOGADO. Responde 404 quando o módulo
+// não está configurado (sem WHATSAPP_AUTH_KEY no ambiente): quem chama trata o
+// 404 como "não configurado", não como erro.
+export const getWhatsappStatus = () => get<SessaoView>(`/api/whatsapp/status`)
 export const getNotificacoesConfig = () => get<NotificacoesConfig>(`/api/settings/notificacoes`)
 export const putNotificacoesConfig = (body: NotificacoesConfig) => mut(`/api/settings/notificacoes`, "PUT", body)
 export const getPipelineConfig = () => get<PipelineConfig>(`/api/comercial/pipeline`)

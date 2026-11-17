@@ -7,6 +7,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { CrmAvatar, CrmBadge, CrmEmpty, FxInput, FxLabel, FxSegmented, FxSelect, useCrmToast } from "../crm-kit"
 import { useModalGuard } from "@/lib/client/modal-guard"
+import { ApiError } from "@/lib/client/api"
+import type { SessaoView, WhatsappStatus } from "@/lib/whatsapp/tipos"
 import { Icon, type CrmIconName } from "../crm-icons"
 import { crmDate, crmMoney, crmTime } from "../crm-fmt"
 import { lexGlass, lexGlassStrong } from "@/styles/glass.css"
@@ -22,6 +24,7 @@ import {
   getEscritorio,
   getImportacao,
   getModulosConfig,
+  getWhatsappStatus,
   putModulosConfig,
   getMotivosConfig,
   putMotivosConfig,
@@ -106,6 +109,7 @@ type SecId =
   | "perfil"
   | "aparencia"
   | "notificacoes"
+  | "whatsapp"
   | "usuarios"
   | "areas"
   | "pipeline"
@@ -124,6 +128,9 @@ const SECTIONS: { id: SecId; label: string; icon: CrmIconName; roles: Role[] }[]
   { id: "perfil", label: "Perfil", icon: "user", roles: ["admin", "socio", "advogado", "estagiario", "financeiro", "staff"] },
   { id: "aparencia", label: "Aparência", icon: "sun", roles: ["admin", "socio", "advogado", "estagiario", "financeiro", "staff"] },
   { id: "notificacoes", label: "Notificações", icon: "bell", roles: ["admin", "socio", "advogado", "estagiario", "financeiro", "staff"] },
+  // Conexão PESSOAL: qualquer usuário ativo liga o próprio aparelho, e ninguém vê
+  // o de outro. Não tem item de sidebar de propósito — a entrada é aqui.
+  { id: "whatsapp", label: "WhatsApp", icon: "messageCircle", roles: ["admin", "socio", "advogado", "estagiario", "financeiro", "staff"] },
   { id: "usuarios", label: "Usuários & permissões", icon: "users", roles: ["admin"] },
   { id: "areas", label: "Áreas do Direito", icon: "scale", roles: ["admin"] },
   { id: "pipeline", label: "Pipeline comercial", icon: "funnel", roles: ["admin", "socio"] },
@@ -276,6 +283,7 @@ export function CrmSettings({
             {sec === "perfil" && <PerfilSection userName={userName} userEmail={userEmail} />}
             {sec === "aparencia" && <AparenciaSection dark={dark} onToggleTheme={onToggleTheme} />}
             {sec === "notificacoes" && <NotificacoesSection />}
+            {sec === "whatsapp" && <WhatsappSection />}
             {sec === "usuarios" && <UsuariosSection />}
             {sec === "areas" && <AreasSection />}
             {sec === "pipeline" && <PipelineSection />}
@@ -2510,6 +2518,81 @@ export function CrmSettings({
   }
 
   // ─────────────────────────── Módulos (kill-switches temporários) ───────────────────────────
+  // ─────────────────────────── WhatsApp (conexão pessoal) ───────────────────────────
+  function WhatsappSection() {
+    const [estado, setEstado] = useState<SessaoView | null>(null)
+    // null = carregando; "off" = módulo não configurado no ambiente (404).
+    const [situacao, setSituacao] = useState<"carregando" | "off" | "ok" | "erro">("carregando")
+
+    useEffect(() => {
+      let alive = true
+      getWhatsappStatus()
+        .then((v) => {
+          if (!alive) return
+          setEstado(v)
+          setSituacao("ok")
+        })
+        .catch((e) => {
+          if (!alive) return
+          // 404 não é falha: é o módulo desligado por omissão (sem WHATSAPP_AUTH_KEY).
+          setSituacao(e instanceof ApiError && e.status === 404 ? "off" : "erro")
+        })
+      return () => {
+        alive = false
+      }
+    }, [])
+
+    const rotulo: Record<WhatsappStatus, string> = {
+      desconectado: "Desconectado",
+      aguardando_qr: "Aguardando leitura do código",
+      conectado: "Conectado",
+      erro: "Com problema",
+      deslogado: "Desconectado no celular",
+    }
+
+    return (
+      <div style={{ maxWidth: 560 }}>
+        <SectionSub>
+          Conecte o seu WhatsApp para que a LexIA e o Claude possam organizar pendências a partir das conversas que
+          você escolher. A conexão é pessoal: cada pessoa liga o próprio aparelho e ninguém vê o WhatsApp de outro.
+        </SectionSub>
+        <div className="card" style={{ overflow: "hidden" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px" }}>
+            <Icon name="messageCircle" size={16} style={{ color: "var(--text-muted)" }} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>Meu WhatsApp</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                {situacao === "carregando" && "Verificando…"}
+                {situacao === "off" && "O módulo ainda não foi configurado neste ambiente."}
+                {situacao === "erro" && "Não foi possível verificar o estado da conexão."}
+                {situacao === "ok" && estado && (
+                  <>
+                    {rotulo[estado.status]}
+                    {estado.numero ? " · " + estado.numero : ""}
+                    {!estado.workerOnline && " · serviço de conexão fora do ar"}
+                  </>
+                )}
+              </div>
+            </div>
+            {situacao !== "off" && (
+              <a
+                href="/whatsapp/conectar"
+                className="btn"
+                style={{ fontSize: 12, textDecoration: "none", whiteSpace: "nowrap" }}
+              >
+                Abrir
+              </a>
+            )}
+          </div>
+        </div>
+        <SectionSub>
+          O endereço direto é <code style={{ fontFamily: "var(--font-mono)" }}>/whatsapp/conectar</code> — é ele que
+          se manda para quem vai ligar o conector do Claude.
+        </SectionSub>
+      </div>
+    )
+  }
+
   function ModulosSection() {
     const [cfg, setCfg] = useState<ModulosConfig | null>(null)
     const [busy, setBusy] = useState(false)

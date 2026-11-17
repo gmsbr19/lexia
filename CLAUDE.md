@@ -243,7 +243,12 @@ This Next (16.2.6) has breaking changes vs. training data — consult
   redireciona): status com número/data, QR desenhado no navegador a cada evento, caminho alternativo por código
   de pareamento (o prático quando o Lexia está aberto no próprio celular), instruções "WhatsApp › Aparelhos
   conectados", **aviso curto de risco de banimento** (Baileys é conexão não oficial), confirmação para
-  desconectar e item **WhatsApp** na sidebar (ícone `messageCircle` novo em `crm-icons`). Como `/whatsapp/conversas`
+  desconectar. **SEM item de sidebar, por decisão do usuário:** WhatsApp é conexão PESSOAL, não um lugar do app —
+  a entrada é **Configurações → WhatsApp** (seção nova, todos os papéis, mostra o estado da conexão e abre a
+  página; trata o **404 do módulo desligado como "não configurado"**, não como erro) ou o **link direto
+  `/whatsapp/conectar`**, que é o que se manda para quem vai ligar o conector do Claude. O `ROUTE_META` da rota
+  fica (é ele que nomeia a aba quando a página está aberta) e o ícone `messageCircle` é novo em `crm-icons`.
+  Como `/whatsapp/conversas`
   é a fase 3, ao conectar a página NÃO redireciona: mostra "próximo passo" dizendo que nenhuma mensagem é
   gravada ainda.
   **3 achados do meu próprio código, corrigidos antes de considerar pronto:** (1) restaurar no boot as sessões
