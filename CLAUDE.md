@@ -156,6 +156,51 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **WhatsApp · marcar uma conversa agora busca o passado dela sozinho, por uma FILA drenada aos poucos
+  (this session, VERIFIED `npx tsc --noEmit` 0 erros, 1193 testes passando (+12 em
+  `tests/whatsapp-historico.test.ts`), eslint limpo nos arquivos tocados, migração ADITIVA
+  `20261118160000_whatsapp_historico_fila` escrita à mão a partir do `prisma migrate diff`, **APLICADA no
+  banco local** com o diff voltando vazio = ZERO drift.)**
+  **ATENÇÃO, árvore compartilhada:** no fim desta sessão 2 testes falhavam em `tests/mcp-tools.test.ts`
+  (registry com 97 em vez de 95) por causa de trabalho CONCORRENTE de outra sessão, que acrescentou
+  `comentarios_tarefa`/`comentar_tarefa` em `lexia/agent/tools/tarefas.ts` sem atualizar a contagem. Não é
+  regressão do WhatsApp e não foi mexido.
+  **A fila mora no BANCO** (`WhatsappChat.historicoFila`, null = fora dela) e não na memória do worker, por
+  dois motivos: a PÁGINA precisa mostrar o progresso (ela fala com o banco, não com o worker) e uma fila em
+  memória se perderia num restart logo depois de alguém marcar dezenas de conversas. O app marca a coluna e
+  publica o comando novo `historico-fila` — só um TOQUE: se o NOTIFY se perder, o worker drena na próxima
+  conexão do mesmo jeito, e por isso enfileirar **não exige conexão no ar** (marcar com o celular desconectado
+  deixa o trabalho pronto; o `drenarFilaHistorico` é chamado também no `connection: "open"`). O worker drena
+  **uma por vez** com `HISTORICO_FILA_INTERVALO_MS = 15_000` entre elas; marcação avulsa sai em seguida, pois
+  o intervalo só separa pedidos consecutivos. **Cada conversa sai da fila ANTES do pedido** (falha não vira
+  laço de tentativas, e o "Anteriores" continua à mão), conversa desmarcada no meio do caminho é retirada SEM
+  pedido — e desmarcar limpa a coluna, senão a tela diria "buscando" para sempre. Erro no `fetchMessageHistory`
+  **pára** a drenagem em vez de esvaziar a fila com pedidos que não saem. `HISTORICO_FILA_MAX = 200` limita o
+  que UMA marcação em lote enfileira (válvula contra o patológico, não a cadência). Regra única
+  `podePedirHistorico({monitorar, temAncora})` usada pelo app ao enfileirar e pelo worker ao drenar.
+  **Tela:** faixa com "Buscando as mensagens anteriores de N conversa(s)", auto-atualização a cada 10 s
+  enquanto `naFila > 0` (`ListaConversas.naFila` conta o conjunto INTEIRO, como o número da sugestão) e
+  "Buscando anteriores…" no lugar do botão na linha enfileirada (`ConversaView.naFila`).
+  **(Substitui o desenho da primeira versão desta mesma sessão, que disparava os pedidos na hora com teto de
+  10 — o usuário pediu para drenar o resto aos poucos, com retorno claro na tela.)**
+  **Contratos:** `definirMonitoramento` devolve `Marcada {conversa, enfileirado}`, o PATCH devolve
+  `{conversa, enfileirado}`, `monitorarSugeridas` devolve `{ligadas, enfileiradas}` e `whatsapp_monitorar`
+  devolve `historicoNaFila`.
+  **Origem (diagnóstico de produção, medido nesta sessão** — as tabelas `Whatsapp*` são bloqueadas no
+  `sql_consultar`, então a conferência é por `psql` no servidor**):** o iPhone do chefe só enxergava da
+  mensagem de teste em diante porque o despejo do pareamento passa ANTES de qualquer conversa estar marcada e
+  a ingestão só grava conversa marcada. Por usuário: duas contas com 1.008 e 387 âncoras indo até **nov/2025**
+  (pareadas DEPOIS do deploy do `syncFullHistory`) e quase nada marcado; a terceira com 52 marcadas e só 4
+  âncoras, a mais antiga de 12/11 — pareamento ANTIGO. **`WhatsappSessao.conectadoEm` é a ÚLTIMA conexão, não
+  o pareamento** (o worker reescreve no `connection: "open"`), então não serve para datar pareamento; quem
+  data é o alcance das âncoras. Conclusão: conta sem âncora não se resolve pelo "Anteriores" — é marcar as
+  conversas e **parear de novo**.
+  **User action:** parar o `next dev` → `npx prisma generate` (os TIPOS já foram regenerados nesta sessão,
+  mas o rename da DLL falhou com EPERM por causa do dev server) → `npm run dev`; a migração já está aplicada
+  localmente e em produção roda no boot. Deploy do `lexia` **e do worker** (a drenagem é dele). Conferir:
+  marcar uma conversa com âncora → faixa "Buscando as mensagens anteriores de 1 conversa(s)" e, em segundos,
+  mensagens antigas; marcar em lote pela faixa de sugestões → o número da fila cai sozinho a cada ~15 s.
+  **Não verificado por mim:** a drenagem ao vivo (depende de celular real).
 - **WhatsApp · sugestão em lote + HISTÓRICO anterior à marcação (this session, VERIFIED `npx tsc --noEmit`
   0 erros, 1171/1171 testes (+19 novos em `tests/whatsapp-sugestao.test.ts` e `tests/whatsapp-historico.test.ts`),
   eslint limpo no módulo inteiro, migração ADITIVA `20261118120000_whatsapp_ancora` escrita à mão a partir do

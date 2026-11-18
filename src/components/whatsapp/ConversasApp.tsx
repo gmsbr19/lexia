@@ -20,10 +20,12 @@ type ClienteOpt = { id: number; nome: string }
 export function ConversasApp({
   inicial,
   sugeridasIniciais,
+  naFilaInicial,
   sessao,
 }: {
   inicial: ConversaView[]
   sugeridasIniciais: number
+  naFilaInicial: number
   sessao: SessaoView
 }) {
   const [conversas, setConversas] = useState<ConversaView[]>(inicial)
@@ -31,6 +33,9 @@ export function ConversasApp({
   // Vem do servidor sobre o conjunto INTEIRO, não só sobre as linhas na tela.
   const [sugeridas, setSugeridas] = useState(sugeridasIniciais)
   const [ligandoSugeridas, setLigandoSugeridas] = useState(false)
+  // Quantas conversas esperam o worker buscar o passado delas. Também vem do
+  // conjunto inteiro: a fila é drenada em segundo plano, uma de cada vez.
+  const [naFila, setNaFila] = useState(naFilaInicial)
   const [busca, setBusca] = useState("")
   const [soMonitoradas, setSoMonitoradas] = useState(false)
   const [carregando, setCarregando] = useState(false)
@@ -56,10 +61,11 @@ export function ConversasApp({
           "/api/whatsapp/conversas?busca=" + encodeURIComponent(q) + (monitoradas ? "&monitoradas=1" : "")
         const r = await fetch(url, { cache: "no-store" })
         if (!r.ok) throw new Error("falha")
-        const dados = (await r.json()) as { conversas: ConversaView[]; sugeridas: number }
+        const dados = (await r.json()) as { conversas: ConversaView[]; sugeridas: number; naFila: number }
         if (meu === seq.current) {
           setConversas(dados.conversas)
           setSugeridas(dados.sugeridas)
+          setNaFila(dados.naFila)
         }
       } catch {
         if (meu === seq.current) toast("Não foi possível carregar as conversas")
@@ -75,6 +81,15 @@ export function ConversasApp({
     const t = setTimeout(() => void recarregar(busca, soMonitoradas), busca ? 300 : 0)
     return () => clearTimeout(t)
   }, [busca, soMonitoradas, recarregar])
+
+  // Enquanto a fila anda, a página se atualiza sozinha. Quem trabalha é o
+  // worker, em segundo plano: sem isto o usuário ficaria olhando um número
+  // parado, sem saber se alguma coisa está acontecendo.
+  useEffect(() => {
+    if (naFila === 0) return
+    const t = setInterval(() => void recarregar(busca, soMonitoradas), 10_000)
+    return () => clearInterval(t)
+  }, [naFila, busca, soMonitoradas, recarregar])
 
   const abrir = useCallback(async (c: ConversaView) => {
     if (abertaId === c.id) {
@@ -111,12 +126,12 @@ export function ConversasApp({
   const patch = async (id: number, corpo: { monitorar?: boolean; clienteId?: number | null }) => {
     setOcupadoId(id)
     try {
-      const r = await apiSend<{ ok: boolean; result: ConversaView | null }>(
+      const r = await apiSend<{ ok: boolean; result: { conversa: ConversaView | null; enfileirado: boolean } }>(
         "/api/whatsapp/conversas/" + id,
         "PATCH",
         corpo,
       )
-      aplicar(r.result)
+      aplicar(r.result.conversa)
       return r.result
     } catch {
       return null
@@ -126,28 +141,43 @@ export function ConversasApp({
   }
 
   const alternarMonitorar = async (c: ConversaView) => {
-    const v = await patch(c.id, { monitorar: !c.monitorar })
+    const r = await patch(c.id, { monitorar: !c.monitorar })
+    const v = r?.conversa
     if (!v) return
     if (!v.monitorar && c.gravadas > 0) {
       // Desligar não apaga sozinho — o usuário decide (minimização é regra do
       // módulo, mas apagar conversa é irreversível).
       setApagarId(c.id)
-    } else {
-      toast(v.monitorar ? "Esta conversa passa a ser gravada" : "Esta conversa não será mais gravada")
+      return
     }
+    if (!v.monitorar) {
+      toast("Esta conversa não será mais gravada")
+      return
+    }
+    if (!r.enfileirado) {
+      toast("Esta conversa passa a ser gravada")
+      return
+    }
+    // O pedido está na fila do worker; as mensagens chegam por ele, não por
+    // esta resposta. A faixa de progresso cuida de atualizar a lista sozinha.
+    toast("Esta conversa passa a ser gravada — buscando as mensagens anteriores…")
+    setNaFila((n) => n + 1)
   }
 
   const ligarSugeridas = async () => {
     setLigandoSugeridas(true)
     try {
-      const r = await apiSend<{ ok: boolean; result: { ligadas: number } }>(
+      const r = await apiSend<{ ok: boolean; result: { ligadas: number; enfileiradas: number } }>(
         "/api/whatsapp/conversas/sugeridas",
         "POST",
       )
+      const { ligadas, enfileiradas } = r.result
       toast(
-        r.result.ligadas === 0
+        ligadas === 0
           ? "Nenhuma conversa nova para gravar"
-          : r.result.ligadas + " conversa(s) passam a ser gravadas",
+          : ligadas +
+              " conversa(s) passam a ser gravadas" +
+              (enfileiradas > 0 ? " — buscando o passado de " + enfileiradas + " delas" : ""),
       )
       await recarregar(busca, soMonitoradas)
     } catch {
@@ -253,6 +283,17 @@ export function ConversasApp({
         </Faixa>
       )}
 
+      {naFila > 0 && (
+        <Faixa>
+          <Icon name="clock" size={14} />
+          <span style={{ flex: 1 }}>
+            Buscando as mensagens anteriores de <strong>{naFila}</strong> conversa(s) — uma de cada vez, em
+            segundo plano. Pode fechar esta página; o que chegar fica gravado.
+            {!conectado && " Começa quando o WhatsApp reconectar."}
+          </span>
+        </Faixa>
+      )}
+
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <div style={{ position: "relative", flex: "1 1 240px", minWidth: 200 }}>
           <span style={{ position: "absolute", left: 10, top: 9, color: "var(--text-subtle)" }}>
@@ -333,7 +374,21 @@ export function ConversasApp({
                 >
                   <Icon name="eye" size={13} /> {abertaId === c.id ? "Fechar" : "Mensagens"}
                 </button>
-                {c.monitorar && c.podeHistorico && (
+                {c.monitorar && c.naFila && (
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      fontSize: 12,
+                      color: "var(--text-subtle)",
+                    }}
+                    title="Esta conversa está na fila: o pedido sai em instantes e as mensagens chegam depois."
+                  >
+                    <Icon name="clock" size={13} /> Buscando anteriores…
+                  </span>
+                )}
+                {c.monitorar && !c.naFila && c.podeHistorico && (
                   <button
                     type="button"
                     style={botaoSec}

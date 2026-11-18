@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest"
-import { MENSAGENS_HISTORICO, SYNC, diasDoHistorico, lerComando, limiteDoHistorico } from "@/lib/whatsapp/core"
+import {
+  HISTORICO_FILA_INTERVALO_MS,
+  HISTORICO_FILA_MAX,
+  MENSAGENS_HISTORICO,
+  SYNC,
+  aEnfileirarHistorico,
+  diasDoHistorico,
+  lerComando,
+  limiteDoHistorico,
+  podePedirHistorico,
+} from "@/lib/whatsapp/core"
 import { HISTORICO_DIAS_MAX, HISTORICO_DIAS_MIN, HISTORICO_SYNC_DIAS } from "@/lib/whatsapp/tipos"
 import { lerChaveAncora, montarChaveAncora } from "@/lib/whatsapp/mensagens-core"
 
@@ -120,5 +130,60 @@ describe("janela do sync", () => {
     expect(SYNC.full).toBe(real.FULL)
     expect(SYNC.recent).toBe(real.RECENT)
     expect(SYNC.onDemand).toBe(real.ON_DEMAND)
+  })
+})
+
+describe("fila do histórico", () => {
+  const chat = (id: number, temAncora = true) => ({ id, temAncora })
+
+  it("enfileira só as conversas que têm âncora", () => {
+    // Sem âncora o WhatsApp não tem de onde contar para trás: o pedido sairia
+    // e a resposta viria vazia.
+    expect(aEnfileirarHistorico([chat(1), chat(2, false), chat(3)])).toEqual([1, 3])
+  })
+
+  it("filtra ANTES de cortar — conversa sem âncora não gasta vaga", () => {
+    expect(aEnfileirarHistorico([chat(9, false), chat(1), chat(2)], 2)).toEqual([1, 2])
+  })
+
+  it("preserva a ordem que o chamador entregou (mais recentes primeiro)", () => {
+    expect(aEnfileirarHistorico([chat(7), chat(2), chat(5)], 2)).toEqual([7, 2])
+  })
+
+  it("o teto é só válvula contra o caso patológico, não a cadência", () => {
+    // Quem segura a rajada é o intervalo do worker; o teto evita que marcar mil
+    // conversas vire mil pedidos de uma sentada.
+    expect(HISTORICO_FILA_MAX).toBe(200)
+    expect(aEnfileirarHistorico(Array.from({ length: 250 }, (_, i) => chat(i + 1)))).toHaveLength(200)
+  })
+
+  it("o intervalo entre pedidos é de segundos, não de milissegundos", () => {
+    expect(HISTORICO_FILA_INTERVALO_MS).toBeGreaterThanOrEqual(5_000)
+  })
+
+  it("lista vazia, ou nenhuma com âncora, não enfileira nada", () => {
+    expect(aEnfileirarHistorico([])).toEqual([])
+    expect(aEnfileirarHistorico([chat(1, false), chat(2, false)])).toEqual([])
+  })
+
+  it("teto zero ou negativo não enfileira nada (nunca a lista inteira)", () => {
+    expect(aEnfileirarHistorico([chat(1), chat(2)], 0)).toEqual([])
+    expect(aEnfileirarHistorico([chat(1), chat(2)], -3)).toEqual([])
+  })
+
+  it("a regra do pedido é a mesma no app e no worker", () => {
+    // Entre enfileirar e drenar o usuário pode ter desmarcado a conversa — aí o
+    // worker tira da fila sem pedir, porque a ingestão descartaria o resultado.
+    expect(podePedirHistorico({ monitorar: true, temAncora: true })).toBe(true)
+    expect(podePedirHistorico({ monitorar: false, temAncora: true })).toBe(false)
+    expect(podePedirHistorico({ monitorar: true, temAncora: false })).toBe(false)
+  })
+
+  it("o toque da fila é aceito, e sem userId é descartado", () => {
+    expect(lerComando(JSON.stringify({ tipo: "historico-fila", userId: 3 }))).toEqual({
+      tipo: "historico-fila",
+      userId: 3,
+    })
+    expect(lerComando(JSON.stringify({ tipo: "historico-fila" }))).toBeNull()
   })
 })

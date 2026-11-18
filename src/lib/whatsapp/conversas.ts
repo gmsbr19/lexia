@@ -9,7 +9,7 @@
 import { prisma } from "@/lib/db"
 import { UserError } from "@/lib/errors"
 import { contemNormalizado } from "@/lib/text"
-import { clientesComCasoAtivo, sugereMonitorar } from "./core"
+import { aEnfileirarHistorico, clientesComCasoAtivo, podePedirHistorico, sugereMonitorar } from "./core"
 import { formatarTelefone, truncarTexto, type TipoMensagem } from "./mensagens-core"
 import { assinarMidia, caminhoMidia, derivarChaveMidia } from "./midia-link"
 import { chaveAuth, getSessaoView, publicarComando } from "./sessoes"
@@ -48,6 +48,8 @@ export type ConversaView = {
    * para trás.
    */
   podeHistorico: boolean
+  /** Na fila do worker para buscar o passado (o pedido sai em instantes). */
+  naFila: boolean
   /** A mensagem mais antiga que o Lexia já viu nesta conversa. */
   historicoDesde: string | null
 }
@@ -76,6 +78,7 @@ const SELECT_CHAT = {
   ultimaMensagemEm: true,
   ancoraChave: true,
   ancoraEm: true,
+  historicoFila: true,
   cliente: { select: { nome: true } },
   _count: { select: { mensagens: true } },
 } as const
@@ -93,6 +96,7 @@ type ChatRow = {
   ultimaMensagemEm: Date | null
   ancoraChave: string | null
   ancoraEm: Date | null
+  historicoFila: Date | null
   cliente: { nome: string } | null
   _count: { mensagens: number }
 }
@@ -115,6 +119,7 @@ function paraView(c: ChatRow, sugerida = false): ConversaView {
     gravadas: c._count.mensagens,
     sugerida,
     podeHistorico: !!c.ancoraChave && !!c.ancoraEm,
+    naFila: !!c.historicoFila,
     historicoDesde: c.ancoraEm?.toISOString() ?? null,
   }
 }
@@ -163,6 +168,12 @@ export type ListaConversas = {
    * tela (ou o que sobrou do filtro "só monitoradas") mentiria.
    */
   sugeridas: number
+  /**
+   * Quantas conversas estão na fila do histórico NO TOTAL — o número da faixa
+   * de progresso. Como o da sugestão, é do conjunto inteiro: a fila é drenada
+   * em segundo plano e contar só as linhas da tela esconderia o trabalho.
+   */
+  naFila: number
 }
 
 export async function listarConversas(
@@ -176,9 +187,12 @@ export async function listarConversas(
     orderBy: [{ ultimaMensagemEm: { sort: "desc", nulls: "last" } }, { id: "desc" }],
     take: busca ? MAX_VARRIDAS : MAX_CONVERSAS,
   })
-  const sugeridas = await chatsSugeridos(userId)
+  const [sugeridas, naFila] = await Promise.all([
+    chatsSugeridos(userId),
+    prisma.whatsappChat.count({ where: { userId, historicoFila: { not: null } } }),
+  ])
   const views = rows.map((c) => paraView(c, sugeridas.has(c.id)))
-  if (!busca) return { conversas: views, sugeridas: sugeridas.size }
+  if (!busca) return { conversas: views, sugeridas: sugeridas.size, naFila }
   const digitos = busca.replace(/\D/g, "")
   const achadas = views
     .filter(
@@ -187,7 +201,7 @@ export async function listarConversas(
         (!!digitos && !!c.telefone && c.telefone.includes(digitos)),
     )
     .slice(0, MAX_CONVERSAS)
-  return { conversas: achadas, sugeridas: sugeridas.size }
+  return { conversas: achadas, sugeridas: sugeridas.size, naFila }
 }
 
 /** A conversa, conferindo o dono. Lança "não encontrada" para qualquer outra. */
@@ -252,27 +266,73 @@ export async function lerConversa(
   return { conversa: paraView(chat), mensagens }
 }
 
+/** Resultado de marcar: a conversa e se o passado dela entrou na fila. */
+export type Marcada = { conversa: ConversaView; enfileirado: boolean }
+
+/**
+ * Põe na FILA o pedido de histórico das conversas que acabaram de ser marcadas.
+ * Quem drena é o worker, uma de cada vez, com intervalo — aqui só se marca a
+ * coluna e se dá um toque no canal de comando.
+ *
+ * É BEST-EFFORT por decisão: marcar não pode falhar porque o passado não pôde
+ * ser pedido. Por isso NÃO reusa `pedirHistorico`, que recusa com mensagem de
+ * erro — aqui a ausência de âncora é silêncio, não erro.
+ *
+ * E, diferente do pedido avulso, enfileirar NÃO exige conexão no ar: a fila
+ * está no banco, então marcar conversas com o celular desconectado deixa o
+ * trabalho pronto para quando ele voltar. O `historico-fila` é só um toque; se
+ * ele se perder, o worker drena na próxima conexão do mesmo jeito.
+ */
+async function enfileirarHistorico(userId: number, ids: readonly number[]): Promise<number> {
+  if (ids.length === 0) return 0
+  const chats = await prisma.whatsappChat.findMany({
+    // `historicoFila: null` evita reenfileirar o que já está esperando (marcar,
+    // desmarcar e marcar de novo não multiplica pedidos).
+    where: { id: { in: [...ids] }, userId, historicoFila: null },
+    orderBy: { ultimaMensagemEm: { sort: "desc", nulls: "last" } },
+    select: { id: true, monitorar: true, ancoraChave: true, ancoraEm: true },
+  })
+  const alvos = aEnfileirarHistorico(
+    chats
+      .filter((c) => podePedirHistorico({ monitorar: c.monitorar, temAncora: !!c.ancoraChave && !!c.ancoraEm }))
+      .map((c) => ({ id: c.id, temAncora: true })),
+  )
+  if (alvos.length === 0) return 0
+  await prisma.whatsappChat.updateMany({
+    where: { id: { in: alvos }, userId },
+    data: { historicoFila: new Date() },
+  })
+  await publicarComando({ tipo: "historico-fila", userId })
+  return alvos.length
+}
+
 /**
  * Liga/desliga a gravação desta conversa. Avisa o worker na hora (`recarregar`)
- * para a próxima mensagem já cair na regra nova, em vez de esperar o TTL.
+ * para a próxima mensagem já cair na regra nova, em vez de esperar o TTL — e
+ * esse aviso vai ANTES do pedido de histórico de propósito: a resposta do
+ * WhatsApp passa pela ingestão, que só grava conversa monitorada, então o
+ * worker precisa já ter soltado o cache quando ela chegar.
  *
- * Mensagens anteriores a ligar o monitoramento NÃO foram gravadas, e hoje não
- * há como recuperá-las: `monitoradoEm` registra o momento para a página poder
- * dizer isso. (CORREÇÃO de um comentário anterior: o Baileys 7 TEM busca de
- * histórico sob demanda — `sock.fetchMessageHistory(count, chaveMaisAntiga,
- * timestamp)` —, mas ela exige uma mensagem-âncora daquela conversa, e nós não
- * guardamos nenhuma das conversas não monitoradas. Trazer histórico é trabalho
- * de verdade, não um parâmetro esquecido.)
+ * Marcar também ENFILEIRA o pedido do passado da conversa, quando há âncora: o
+ * despejo do pareamento passa antes de qualquer conversa estar marcada, então
+ * sem isto marcar hoje só guardaria o futuro, e o usuário teria de descobrir
+ * sozinho que existe um botão "Anteriores". `monitoradoEm` segue registrando
+ * desde quando a gravação vale, que é o que a página mostra.
+ *
+ * DESmarcar tira da fila: um pedido que o worker fosse disparar depois teria o
+ * resultado descartado pela ingestão, e a tela ficaria dizendo "buscando" para
+ * uma conversa que o usuário acabou de dispensar.
  */
-export async function definirMonitoramento(userId: number, chatId: number, monitorar: boolean): Promise<ConversaView> {
+export async function definirMonitoramento(userId: number, chatId: number, monitorar: boolean): Promise<Marcada> {
   await minhaConversa(userId, chatId)
   await prisma.whatsappChat.update({
     where: { id: chatId },
-    data: { monitorar, monitoradoEm: monitorar ? new Date() : null },
+    data: { monitorar, monitoradoEm: monitorar ? new Date() : null, ...(monitorar ? {} : { historicoFila: null }) },
   })
   await publicarComando({ tipo: "recarregar", userId })
+  const enfileirado = monitorar ? (await enfileirarHistorico(userId, [chatId])) > 0 : false
   const atual = await minhaConversa(userId, chatId)
-  return paraView(atual, await ehSugerida(atual))
+  return { conversa: paraView(atual, await ehSugerida(atual)), enfileirado }
 }
 
 /**
@@ -281,17 +341,20 @@ export async function definirMonitoramento(userId: number, chatId: number, monit
  * sobre o conjunto inteiro (não só sobre as linhas que a página mostra).
  *
  * Como mexe na coluna que o worker consulta por mensagem, avisa ele para soltar
- * o cache de chats (o TTL de 60 s é só a rede de segurança).
+ * o cache de chats (o TTL de 60 s é só a rede de segurança) e, como no
+ * interruptor avulso, enfileira o passado das que têm âncora — o worker drena
+ * aos poucos, então marcar dezenas de uma vez não vira uma rajada de pedidos ao
+ * aparelho.
  */
-export async function monitorarSugeridas(userId: number): Promise<{ ligadas: number }> {
+export async function monitorarSugeridas(userId: number): Promise<{ ligadas: number; enfileiradas: number }> {
   const ids = [...(await chatsSugeridos(userId))]
-  if (ids.length === 0) return { ligadas: 0 }
+  if (ids.length === 0) return { ligadas: 0, enfileiradas: 0 }
   const r = await prisma.whatsappChat.updateMany({
     where: { id: { in: ids }, userId },
     data: { monitorar: true, monitoradoEm: new Date() },
   })
   await publicarComando({ tipo: "recarregar", userId })
-  return { ligadas: r.count }
+  return { ligadas: r.count, enfileiradas: await enfileirarHistorico(userId, ids) }
 }
 
 /**

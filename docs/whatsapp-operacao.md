@@ -125,9 +125,9 @@ de conversa) e `messages.upsert`/`messaging-history.set` (conteúdo). A regra:
 
 Ligar/desligar o interruptor na página publica `recarregar` no canal de comando, que derruba
 o cache de conversas do worker (há um TTL de 60 s como rede de segurança). **Mensagens
-anteriores a ligar o monitoramento não existem** e não há como recuperá-las: o Baileys não
-oferece busca de histórico sob demanda. `WhatsappChat.monitoradoEm` registra o momento, e a
-página diz isso na linha da conversa.
+anteriores a ligar o monitoramento não foram gravadas**, mas podem ser buscadas — ver
+"Histórico anterior à marcação" abaixo; `WhatsappChat.monitoradoEm` registra desde quando a
+gravação vale, e a página diz isso na linha da conversa.
 
 ### Mídia: caixa de entrada, não arquivo
 
@@ -172,6 +172,36 @@ dizia (erradamente) que não existia.
    `historico`; o worker chama `sock.fetchMessageHistory(50, âncora, data)` e a resposta
    volta como `messaging-history.set` (tipo `ON_DEMAND`), pela ingestão normal. Cada clique
    caminha mais para trás, porque a âncora anda junto.
+3. **Ao MARCAR, sozinho, por uma FILA.** Marcar uma conversa (o interruptor, o botão da
+   faixa de sugestões ou `whatsapp_monitorar`) põe o pedido do item 2 numa fila, para as
+   conversas que têm âncora. É o momento em que alguém diz "esta conversa me interessa", e o
+   despejo do pareamento passa antes de qualquer conversa estar marcada — sem isto, marcar
+   hoje só guardaria o futuro.
+
+   A fila é a coluna `WhatsappChat.historicoFila` (null = fora da fila), e **mora no banco**
+   por dois motivos: a página precisa mostrar o progresso (ela fala com o banco, não com o
+   worker), e uma fila em memória se perderia num restart logo depois de alguém marcar
+   dezenas de conversas. O app marca a coluna e publica `historico-fila` — só um toque; se o
+   NOTIFY se perder, o worker drena na próxima conexão do mesmo jeito. Por isso enfileirar
+   **não exige conexão no ar**: marcar com o celular desconectado deixa o trabalho pronto.
+
+   O worker drena **uma conversa por vez**, com `HISTORICO_FILA_INTERVALO_MS` (**15 s**)
+   entre elas — cada pedido é uma operação enviada ao aparelho, que responde um trecho por
+   vez, e uma rajada é o tipo de coisa que põe em risco uma conexão não oficial. Uma marcação
+   avulsa sai em seguida (o intervalo só separa pedidos consecutivos). Cada conversa **sai da
+   fila antes** do pedido: se ele falhar, ela não fica presa num laço, e o "Anteriores"
+   continua à mão. Conversa desmarcada no meio do caminho é retirada **sem** pedido (a
+   ingestão descartaria o resultado) — por isso desmarcar também limpa a coluna, senão a tela
+   diria "buscando" para sempre. `HISTORICO_FILA_MAX` (**200**) limita o que UMA marcação em
+   lote enfileira; é válvula contra o caso patológico, não a cadência.
+
+   A ordem do comando importa: `recarregar` vai ANTES, para o worker já ter soltado o cache
+   quando a resposta chegar — senão a ingestão veria a conversa como não monitorada e
+   descartaria tudo.
+
+   Na tela: uma faixa diz quantas conversas estão na fila e a página se atualiza sozinha a
+   cada 10 s enquanto ela anda; a linha de cada conversa enfileirada mostra "Buscando
+   anteriores…" no lugar do botão.
 
 A **âncora** (`WhatsappChat.ancoraChave` + `ancoraEm`) é a mensagem mais ANTIGA que o worker
 já viu na conversa. É guardada para TODA conversa, inclusive as não monitoradas, porque sem

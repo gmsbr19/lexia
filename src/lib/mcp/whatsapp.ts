@@ -593,7 +593,9 @@ export function whatsappTools(userId: number, audit: ExecDeps["audit"]): AgentTo
         "Liga (ou desliga) a GRAVAÇÃO de uma conversa de WhatsApp. Enquanto uma conversa não está marcada, " +
         "nada dela é guardado — nem o que já passou —, então é isto que você usa quando o usuário quer que uma " +
         "conversa passe a ser acompanhada. Desligar não apaga o que já foi gravado. " +
-        "Depois de ligar, `whatsapp_buscar_anteriores` traz o que veio antes.",
+        "Ligar já coloca o passado da conversa na FILA de busca quando há de onde partir, e isso é ASSÍNCRONO: " +
+        "as mensagens antigas chegam em segundos (ou em alguns minutos, se houver fila), então leia a conversa " +
+        "de novo depois. `whatsapp_buscar_anteriores` caminha mais para trás.",
       schema: z
         .object({
           chatId: z.number().int().positive().describe("Id da conversa"),
@@ -606,13 +608,17 @@ export function whatsappTools(userId: number, audit: ExecDeps["audit"]): AgentTo
         return i.monitorar ? `Passar a gravar a conversa #${i.chatId}` : `Parar de gravar a conversa #${i.chatId}`
       },
       async run(_ctx, input) {
-        const c = await definirMonitoramento(userId, input.chatId, input.monitorar)
+        const { conversa: c, enfileirado } = await definirMonitoramento(userId, input.chatId, input.monitorar)
         return {
           chatId: c.id,
           nome: c.nome,
           monitorar: c.monitorar,
           gravadas: c.gravadas,
           podeHistorico: c.podeHistorico,
+          historicoNaFila: enfileirado,
+          aviso: enfileirado
+            ? "O passado desta conversa entrou na fila de busca. Espere alguns segundos e leia a conversa de novo."
+            : undefined,
         }
       },
     }),

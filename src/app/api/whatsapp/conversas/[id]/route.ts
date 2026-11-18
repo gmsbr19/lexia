@@ -10,7 +10,7 @@ import { UserError } from "@/lib/errors"
 import { readJson, runMutation } from "@/lib/finance/api"
 import { parseBody } from "@/lib/validation"
 import { moduloDesligado, userIdDaSessao } from "@/lib/whatsapp/acesso"
-import { definirMonitoramento, lerConversa, vincularCliente } from "@/lib/whatsapp/conversas"
+import { definirMonitoramento, lerConversa, vincularCliente, type ConversaView } from "@/lib/whatsapp/conversas"
 import { conversaPatchSchema } from "@/lib/whatsapp/schemas"
 
 export const runtime = "nodejs"
@@ -48,10 +48,18 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       const patch = parseBody(conversaPatchSchema, body)
       const chatId = idDaUrl(id)
       const userId = await userIdDaSessao()
-      let conversa = null
-      if (patch.monitorar !== undefined) conversa = await definirMonitoramento(userId, chatId, patch.monitorar)
+      let conversa: ConversaView | null = null
+      // `enfileirado` conta se marcar pôs o passado da conversa na fila — é o
+      // que deixa a página explicar por que mensagens antigas vão aparecer
+      // sozinhas daqui a pouco, em vez de o usuário achar que travou.
+      let enfileirado = false
+      if (patch.monitorar !== undefined) {
+        const r = await definirMonitoramento(userId, chatId, patch.monitorar)
+        conversa = r.conversa
+        enfileirado = r.enfileirado
+      }
       if (patch.clienteId !== undefined) conversa = await vincularCliente(userId, chatId, patch.clienteId)
-      return conversa
+      return { conversa, enfileirado }
     },
     // Auditoria SEM conteúdo: registra quem mexeu em qual conversa e o que
     // pediu (monitorar/vincular). O que foi DITO nas conversas nunca entra no

@@ -190,7 +190,9 @@ export function lerComando(payload: string): WhatsappComando | null {
   if (!o) return null
   const userId = idValido(o.userId)
   if (!userId) return null
-  if (o.tipo === "iniciar" || o.tipo === "desconectar" || o.tipo === "recarregar") return { tipo: o.tipo, userId }
+  if (o.tipo === "iniciar" || o.tipo === "desconectar" || o.tipo === "recarregar" || o.tipo === "historico-fila") {
+    return { tipo: o.tipo, userId }
+  }
   if (o.tipo === "historico") {
     const chatId = idValido(o.chatId)
     return chatId ? { tipo: "historico", userId, chatId } : null
@@ -285,6 +287,55 @@ export function limiteDoHistorico(
  * pedir de novo caminha mais para trás, porque a âncora anda junto.
  */
 export const MENSAGENS_HISTORICO = 50
+
+/**
+ * Teto de conversas que UMA marcação em lote põe na fila de uma vez. Não é o
+ * freio da rajada — esse é o `HISTORICO_FILA_INTERVALO_MS`, no worker —, é só
+ * uma válvula contra o caso patológico: marcar mil conversas enfileiraria mil
+ * pedidos, horas de trabalho de fundo que ninguém pediu conscientemente.
+ */
+export const HISTORICO_FILA_MAX = 200
+
+/**
+ * Intervalo entre dois pedidos de histórico da fila. Cada pedido é uma operação
+ * enviada ao APARELHO do usuário, que responde um trecho por vez; os clientes
+ * oficiais pedem histórico na cadência de alguém rolando a conversa para cima.
+ * Disparar tudo junto é o tipo de comportamento que põe em risco uma conexão
+ * não oficial — e não há pressa: a fila é trabalho de fundo, sobrevive a
+ * restart e a página mostra o quanto falta.
+ */
+export const HISTORICO_FILA_INTERVALO_MS = 15_000
+
+/**
+ * Se dá para pedir o passado desta conversa. Regra única, usada pelo APP ao
+ * enfileirar e pelo WORKER ao drenar — entre um e outro o usuário pode ter
+ * desmarcado a conversa, e aí o pedido sairia só para a ingestão descartar o
+ * resultado (ela só grava conversa monitorada). Sem âncora o WhatsApp não tem
+ * de onde contar para trás.
+ */
+export function podePedirHistorico(chat: { monitorar: boolean; temAncora: boolean }): boolean {
+  return chat.monitorar && chat.temAncora
+}
+
+/**
+ * Quais das conversas recém-marcadas entram na fila: só as que têm âncora, e no
+ * máximo `teto` delas.
+ *
+ * O filtro vem ANTES do corte de propósito: conversa sem âncora não pode gastar
+ * uma vaga. A ordem é a que o chamador entrega (mensagem mais recente
+ * primeiro), que é a ordem em que o passado costuma importar — e, como a fila é
+ * drenada nessa mesma ordem, é também a ordem em que ele vai chegando.
+ */
+export function aEnfileirarHistorico(
+  chats: readonly { id: number; temAncora: boolean }[],
+  teto: number = HISTORICO_FILA_MAX,
+): number[] {
+  return chats
+    .filter((c) => c.temAncora)
+    .slice(0, Math.max(0, teto))
+    .map((c) => c.id)
+}
+
 
 // ── Sugestão de monitoramento ────────────────────────────────────────────────
 // A página oferece ligar em lote as conversas que claramente são de trabalho:

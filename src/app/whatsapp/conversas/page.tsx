@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic"
 export default async function Page() {
   // Módulo não configurado: a página de conexão é quem explica o que falta.
   if (!whatsappHabilitado()) redirect("/whatsapp/conectar")
-  let lista: ListaConversas = { conversas: [], sugeridas: 0 }
+  let lista: ListaConversas = { conversas: [], sugeridas: 0, naFila: 0 }
   let sessao: SessaoView = SESSAO_VAZIA
   try {
     const userId = await userIdDaSessao()
@@ -23,5 +23,12 @@ export default async function Page() {
   } catch (e) {
     if (!(e instanceof AuthError)) throw e // sem sessão o proxy já teria redirecionado
   }
-  return <ConversasApp inicial={lista.conversas} sugeridasIniciais={lista.sugeridas} sessao={sessao} />
+  return (
+    <ConversasApp
+      inicial={lista.conversas}
+      sugeridasIniciais={lista.sugeridas}
+      naFilaInicial={lista.naFila}
+      sessao={sessao}
+    />
+  )
 }

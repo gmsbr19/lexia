@@ -35,6 +35,13 @@ export type WhatsappComando =
    */
   | { tipo: "recarregar"; userId: number }
   /**
+   * "Há conversas na fila do histórico deste usuário — comece a drenar." A fila
+   * em si está no banco (`WhatsappChat.historicoFila`), não neste comando: ele
+   * é só um toque para o worker não esperar o próximo gatilho. Se o NOTIFY se
+   * perder, a fila é drenada na próxima conexão do mesmo jeito.
+   */
+  | { tipo: "historico-fila"; userId: number }
+  /**
    * "Peça ao WhatsApp as mensagens anteriores às que já temos nesta conversa."
    * O worker chama `fetchMessageHistory` a partir da âncora guardada no chat; a
    * resposta volta pelo MESMO caminho do histórico do pareamento

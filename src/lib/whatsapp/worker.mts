@@ -36,7 +36,7 @@ import makeWASocket, {
 import { Client } from "pg"
 import pino from "pino"
 import { prisma } from "../db"
-import { MENSAGENS_HISTORICO, decidirFechamento, limiteDoHistorico, decidirRetomada, ehDifusao, ehGrupo, ehLid, jidParaNumero, lerComando, normalizarTelefone, truncarErro } from "./core"
+import { HISTORICO_FILA_INTERVALO_MS, MENSAGENS_HISTORICO, decidirFechamento, limiteDoHistorico, decidirRetomada, ehDifusao, ehGrupo, ehLid, jidParaNumero, lerComando, normalizarTelefone, podePedirHistorico, truncarErro } from "./core"
 import { cifrar, contextoAuth, decifrar, lerChaveAuth } from "./cripto"
 import {
   carregarChats,
@@ -208,6 +208,8 @@ class Sessao {
   /** Cache jid → {id, monitorar}. Sem ele, cada mensagem recebida custaria uma
    *  consulta só para descobrir se o chat é monitorado. Invalidado pelo comando
    *  `recarregar` (quando o usuário mexe no interruptor) e por TTL. */
+  /** Uma drenagem por sessão: duas em paralelo dobrariam a cadência de pedidos. */
+  private drenando = false
   private chats: Map<string, ChatCache> | null = null
   private chatsEm = 0
   /** Toda a ingestão é SERIALIZADA nesta fila. Dois eventos sobre o mesmo jid
@@ -580,6 +582,58 @@ class Sessao {
   }
 
   /**
+   * Drena a fila de histórico desta sessão: UMA conversa por vez, com intervalo
+   * entre elas. É o que faz marcar dezenas de conversas não virar uma rajada de
+   * pedidos ao aparelho do usuário.
+   *
+   * A fila está no banco, então ela sobrevive a restart e a queda de conexão —
+   * o que não foi pedido continua lá e é drenado na próxima conexão. Por isso o
+   * laço pára assim que o socket some, em vez de insistir.
+   *
+   * Cada conversa SAI da fila antes do pedido: se o pedido falhar, ela não fica
+   * presa num laço de tentativas, e o botão "Anteriores" continua à mão. Por
+   * isso também a conversa desmarcada no meio do caminho é só retirada — sem o
+   * pedido, cujo resultado a ingestão descartaria, e sem deixar a tela dizendo
+   * "buscando" para sempre.
+   */
+  async drenarFilaHistorico(): Promise<void> {
+    if (this.drenando) return
+    this.drenando = true
+    try {
+      while (this.sock) {
+        const chat = await prisma.whatsappChat.findFirst({
+          where: { userId: this.userId, historicoFila: { not: null } },
+          // Mesma ordem em que o app enfileira: conversa com mensagem mais
+          // recente primeiro, que é por onde o passado costuma importar.
+          orderBy: [{ ultimaMensagemEm: { sort: "desc", nulls: "last" } }, { id: "asc" }],
+          select: { id: true, monitorar: true, ancoraChave: true, ancoraEm: true },
+        })
+        if (!chat) return
+        await prisma.whatsappChat.updateMany({
+          where: { id: chat.id, userId: this.userId },
+          data: { historicoFila: null },
+        })
+        const vale = podePedirHistorico({
+          monitorar: chat.monitorar,
+          temAncora: !!chat.ancoraChave && !!chat.ancoraEm,
+        })
+        if (!vale) continue
+        try {
+          await this.pedirHistorico(chat.id)
+        } catch (e) {
+          // Socket ruim no meio da fila: pára e deixa o resto para a próxima
+          // conexão, em vez de esvaziar a fila com pedidos que não saem.
+          log.warn({ userId: this.userId, chatId: chat.id, err: truncarErro(e) }, "fila de histórico interrompida")
+          return
+        }
+        await new Promise((res) => setTimeout(res, HISTORICO_FILA_INTERVALO_MS))
+      }
+    } finally {
+      this.drenando = false
+    }
+  }
+
+  /**
    * Baixa e guarda os bytes. O arquivo no CDN do WhatsApp é CIFRADO com chaves
    * que vivem na própria mensagem, e a URL expira — então é agora ou nunca:
    * ninguém (nem o Claude depois, pelo MCP) consegue baixar isto mais tarde.
@@ -629,6 +683,11 @@ class Sessao {
       })
       await publicarEvento({ tipo: "conectado", userId: this.userId, numero })
       log.info({ userId: this.userId }, "sessão conectada")
+      // O que ficou na fila (restart do worker, queda de conexão, ou conversas
+      // marcadas com o celular desconectado) é drenado agora.
+      void this.drenarFilaHistorico().catch((e) =>
+        log.warn({ userId: this.userId, err: truncarErro(e) }, "fila de histórico falhou"),
+      )
       return
     }
 
@@ -797,6 +856,15 @@ async function tratarComando(cmd: WhatsappComando): Promise<void> {
     }
     case "historico":
       await sessoes.get(cmd.userId)?.pedirHistorico(cmd.chatId)
+      return
+    case "historico-fila":
+      // Não é esperado: a drenagem leva minutos (um pedido a cada
+      // HISTORICO_FILA_INTERVALO_MS) e o listener de comandos não pode ficar
+      // preso nela. Quem acompanha o progresso é a página, pela coluna.
+      void sessoes
+        .get(cmd.userId)
+        ?.drenarFilaHistorico()
+        .catch((e) => log.warn({ userId: cmd.userId, err: truncarErro(e) }, "fila de histórico falhou"))
       return
     case "desconectar": {
       const s = sessoes.get(cmd.userId)

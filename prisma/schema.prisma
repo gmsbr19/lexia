@@ -1587,6 +1587,19 @@ model WhatsappChat {
   // src/lib/whatsapp/mensagens-core.ts.
   ancoraChave      String?
   ancoraEm         DateTime?
+  // FILA do pedido de histórico: quando esta conversa entrou na fila do worker
+  // (null = fora da fila). Marcar uma conversa enfileira o pedido do passado
+  // dela, e o worker drena a fila UMA conversa por vez, com intervalo — cada
+  // pedido é uma operação enviada ao aparelho do usuário, e uma rajada é o tipo
+  // de coisa que põe em risco uma conexão não oficial.
+  //
+  // Mora no banco, e não na memória do worker, por dois motivos: a PÁGINA
+  // precisa mostrar o progresso (ela fala com o banco, não com o worker), e uma
+  // fila em memória se perderia num restart, logo depois de o usuário marcar
+  // dezenas de conversas. O worker limpa a coluna ao pedir — e também quando
+  // pula (conversa desmarcada no meio do caminho), senão a tela diria
+  // "buscando" para sempre.
+  historicoFila    DateTime?
   clienteId        Int?
   cliente          Cliente?           @relation(fields: [clienteId], references: [id], onDelete: SetNull)
   vinculo          String? // sugerido | confirmado | manual
