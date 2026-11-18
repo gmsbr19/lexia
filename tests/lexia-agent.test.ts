@@ -334,6 +334,30 @@ describe("registry — deterministic, valid tool schemas", () => {
       for (const n of ["criar_tarefas_lote", "concluir_tarefa", "ligar_tarefas"]) expect(nomes.has(n), `${role}:${n}`).toBe(true)
     }
   })
+
+  it("comentar em nome do usuário: comentar_tarefa é mutação sem gate de papel; ler a thread é leitura", () => {
+    expect(TOOLS_BY_NAME.get("comentar_tarefa")?.kind).toBe("mutation")
+    expect(TOOLS_BY_NAME.get("comentarios_tarefa")?.kind).toBe("readonly")
+    expect(TOOLS_BY_NAME.get("comentar_tarefa")?.roles).toBeUndefined()
+    for (const role of ["estagiario", "staff", "advogado", "socio", "admin"]) {
+      const nomes = new Set(toApiTools(role).map((t) => t.name))
+      expect(nomes.has("comentar_tarefa"), role).toBe(true)
+      expect(nomes.has("comentarios_tarefa"), role).toBe(true)
+    }
+    // modo 'pergunta' (somente leitura) não publica comentário, mas segue lendo a conversa
+    const pergunta = new Set(toApiTools("socio", "pergunta").map((t) => t.name))
+    expect(pergunta.has("comentar_tarefa")).toBe(false)
+    expect(pergunta.has("comentarios_tarefa")).toBe(true)
+  })
+
+  it("comentar_tarefa valida a entrada: texto obrigatório, até 10 menções", () => {
+    const sch = TOOLS_BY_NAME.get("comentar_tarefa")!.schema
+    expect(sch.safeParse({ tarefaId: 1, texto: "Protocolado hoje." }).success).toBe(true)
+    expect(sch.safeParse({ tarefaId: 1, texto: "oi", mencionar: [3, 4] }).success).toBe(true)
+    expect(sch.safeParse({ tarefaId: 1, texto: "" }).success).toBe(false)
+    expect(sch.safeParse({ texto: "sem tarefa" }).success).toBe(false)
+    expect(sch.safeParse({ tarefaId: 1, texto: "x", mencionar: Array.from({ length: 11 }, (_, i) => i + 1) }).success).toBe(false)
+  })
 })
 
 describe("deveAutoExecutar — política do modo automático (sem confirmar cada criação)", () => {

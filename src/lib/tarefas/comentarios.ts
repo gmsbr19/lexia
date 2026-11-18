@@ -1,11 +1,13 @@
 // Comentários de tarefa — read + write layer. SERVER ONLY. Autor = usuário da
 // sessão (User FK). Leitura/edição/exclusão são ESCOPADAS ao `tarefaId` (anti-IDOR:
 // um id de comentário da tarefa A não é atingível pela URL da tarefa B). As
-// mutações recebem `actorEmail` (da rota) e a criação dispara a notificação
-// fire-and-forget (uma falha de notificação nunca quebra o comentário).
-import { ForbiddenError } from "@/lib/auth/session"
+// mutações recebem `actorEmail` (da rota, ou do MCP/LexIA — comentar_tarefa) e a
+// criação dispara a notificação fire-and-forget (uma falha de notificação nunca
+// quebra o comentário). `ForbiddenError` vem de lib/errors, NÃO de auth/session:
+// este arquivo é alcançável pelo registry da LexIA, e next-auth no grafo quebraria
+// o tests/lexia-agent.test.ts.
 import { prisma } from "@/lib/db"
-import { UserError } from "@/lib/errors"
+import { ForbiddenError, UserError } from "@/lib/errors"
 import { userIdPorEmail, usuarioPorEmail } from "@/lib/notificacoes/recipients"
 import { notificarComentarioTarefa } from "@/lib/notificacoes/triggers"
 import { RegistroAcao } from "./acoes"

@@ -108,3 +108,35 @@ export function destinatariosComentario(i: DestinatariosInput): number[] {
   set.delete(i.autorId)
   return [...set]
 }
+
+/** Uma pessoa a mencionar num comentário escrito fora do composer. */
+export interface PessoaMencao {
+  id: number
+  nome: string
+}
+
+/**
+ * Insere menções num texto escrito POR FORA do composer (a ferramenta do MCP /
+ * da LexIA, que não tem autocomplete): aproveita o `@Nome` já escrito no texto
+ * quando ele está lá — nome completo, senão o primeiro nome — e, quando não
+ * está, ACRESCENTA o token no fim. A menção é o que NOTIFICA quem não é
+ * participante da tarefa, então perdê-la em silêncio seria pior que a estética
+ * de um "@Fulano" no fim da linha. Quem já está mencionado é ignorado (idempotente).
+ */
+export function inserirMencoes(texto: string, pessoas: PessoaMencao[]): string {
+  let out = texto
+  for (const p of pessoas) {
+    if (parseMencoes(out).ids.includes(p.id)) continue
+    const nome = p.nome.trim()
+    for (const label of [nome, nome.split(/\s+/)[0]]) {
+      if (!label) continue
+      const tentativa = serializeMencoes(out, [{ label, id: p.id }])
+      if (tentativa !== out) {
+        out = tentativa
+        break
+      }
+    }
+    if (!parseMencoes(out).ids.includes(p.id)) out = `${out.trimEnd()} @[${p.id}]`
+  }
+  return out
+}

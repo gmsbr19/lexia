@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   destinatariosComentario,
+  inserirMencoes,
   parseMencoes,
   segmentosComentario,
   serializeMencoes,
@@ -94,5 +95,40 @@ describe("destinatariosComentario", () => {
         comentaristasAnteriores: [],
       }),
     ).toEqual([])
+  })
+})
+
+describe("inserirMencoes — menções num texto escrito fora do composer (MCP/LexIA)", () => {
+  const ana = { id: 5, nome: "Ana Souza" }
+
+  it("usa o @Nome completo já escrito no texto", () => {
+    expect(inserirMencoes("@Ana Souza pode ver isso?", [ana])).toBe("@[5] pode ver isso?")
+  })
+
+  it("cai para o primeiro nome quando é assim que o texto cita", () => {
+    expect(inserirMencoes("combinei com a @Ana ontem", [ana])).toBe("combinei com a @[5] ontem")
+  })
+
+  it("sem @Nome no texto, acrescenta o token no fim (a menção NOTIFICA — não pode se perder)", () => {
+    expect(inserirMencoes("protocolo feito hoje", [ana])).toBe("protocolo feito hoje @[5]")
+  })
+
+  it("não duplica quem já está mencionado", () => {
+    expect(inserirMencoes("oi @[5], tudo bem?", [ana])).toBe("oi @[5], tudo bem?")
+  })
+
+  it("várias pessoas, cada uma pelo seu caminho", () => {
+    const r = inserirMencoes("@Bruno confere com a Ana?", [{ id: 7, nome: "Bruno Lima" }, ana])
+    expect(r).toBe("@[7] confere com a Ana? @[5]")
+    expect(parseMencoes(r).ids.sort()).toEqual([5, 7])
+  })
+
+  it("não casa prefixo de outro nome (@Ana dentro de @Anabelle)", () => {
+    const r = inserirMencoes("pergunta para @Anabelle", [ana])
+    expect(r).toBe("pergunta para @Anabelle @[5]")
+  })
+
+  it("lista vazia é no-op", () => {
+    expect(inserirMencoes("texto puro", [])).toBe("texto puro")
   })
 })

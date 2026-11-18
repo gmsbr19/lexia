@@ -25,3 +25,19 @@ export function dataExtenso(): string {
     year: "numeric",
   }).format(new Date())
 }
+
+/** "12/06/2026 14:35" em São Paulo — para a saída das ferramentas com hora. */
+export function dataHoraBr(valor: Date | string): string {
+  const d = valor instanceof Date ? valor : new Date(valor)
+  if (Number.isNaN(d.getTime())) return String(valor)
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: TZ,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+    .format(d)
+    .replace(", ", " ")
+}
