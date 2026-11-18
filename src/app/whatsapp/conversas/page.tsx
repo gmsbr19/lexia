@@ -5,7 +5,7 @@ import { redirect } from "next/navigation"
 import { AuthError } from "@/lib/auth/session"
 import { ConversasApp } from "@/components/whatsapp/ConversasApp"
 import { userIdDaSessao } from "@/lib/whatsapp/acesso"
-import { listarConversas, type ConversaView } from "@/lib/whatsapp/conversas"
+import { listarConversas, type ListaConversas } from "@/lib/whatsapp/conversas"
 import { getSessaoView, whatsappHabilitado } from "@/lib/whatsapp/sessoes"
 import { SESSAO_VAZIA, type SessaoView } from "@/lib/whatsapp/tipos"
 
@@ -15,13 +15,13 @@ export const dynamic = "force-dynamic"
 export default async function Page() {
   // Módulo não configurado: a página de conexão é quem explica o que falta.
   if (!whatsappHabilitado()) redirect("/whatsapp/conectar")
-  let conversas: ConversaView[] = []
+  let lista: ListaConversas = { conversas: [], sugeridas: 0 }
   let sessao: SessaoView = SESSAO_VAZIA
   try {
     const userId = await userIdDaSessao()
-    ;[conversas, sessao] = await Promise.all([listarConversas(userId), getSessaoView(userId)])
+    ;[lista, sessao] = await Promise.all([listarConversas(userId), getSessaoView(userId)])
   } catch (e) {
     if (!(e instanceof AuthError)) throw e // sem sessão o proxy já teria redirecionado
   }
-  return <ConversasApp inicial={conversas} sessao={sessao} />
+  return <ConversasApp inicial={lista.conversas} sugeridasIniciais={lista.sugeridas} sessao={sessao} />
 }

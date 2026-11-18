@@ -156,6 +156,61 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **WhatsApp · sugestão em lote + HISTÓRICO anterior à marcação (this session, VERIFIED `npx tsc --noEmit`
+  0 erros, 1171/1171 testes (+19 novos em `tests/whatsapp-sugestao.test.ts` e `tests/whatsapp-historico.test.ts`),
+  eslint limpo no módulo inteiro, migração ADITIVA `20261118120000_whatsapp_ancora` escrita à mão a partir do
+  `prisma migrate diff`, **APLICADA no banco local** com o diff voltando vazio = ZERO drift.)** Dois pedidos do
+  usuário com a conexão já no ar em produção.
+  **(1) Sugestão em lote:** a página destaca as conversas de contato vinculado a **cliente com caso ATIVO** que
+  ainda não gravam — faixa com "gravar essas N" + etiqueta `caso ativo` na linha. **Não é automático** (gravar
+  conversa de cliente continua sendo clique do usuário, a regra do módulo desde a fase 3 — o usuário escolheu
+  "sugerir em lote" entre as 3 opções oferecidas). Núcleo puro em [core.ts](src/lib/whatsapp/core.ts)
+  (`clientesComCasoAtivo` + `sugereMonitorar`): o status do caso passa pelo **`casoStatusBucket`** do app, não
+  por `status = 'Ativo'` em SQL — o texto é livre por herança do Astrea e um SQL perderia `"ativo"` minúsculo e
+  os nulos (que contam como ativo). `listarConversas` virou `{conversas, sugeridas}` com a contagem sobre o
+  conjunto INTEIRO (contar só as linhas da tela mentiria no botão); `POST /api/whatsapp/conversas/sugeridas`
+  liga todas no servidor e **publica `recarregar`** para o worker soltar o cache de chats.
+  **(2) Histórico (correção de uma nota minha da fase 3):** eu havia escrito que o Baileys não tem busca de
+  histórico sob demanda. **Tem** — `sock.fetchMessageHistory(count, chave, timestampMs)` no 7.0.0-rc14, que
+  manda um `historySyncOnDemandRequest` para a PRÓPRIA conta e devolve o resultado por
+  `messaging-history.set` tipo `ON_DEMAND` (confirmado lendo `Utils/process-message.js` e `Utils/history.js`),
+  ou seja, pela ingestão que já existe. **ARMADILHA PAGA:** o padrão do Baileys é
+  `shouldSyncHistoryMessage: ({syncType}) => syncType !== FULL`, então ligar `syncFullHistory: true` SOZINHO
+  faria o aparelho mandar tudo e a biblioteca descartar tudo — o sync completo ligado no papel e sem efeito.
+  Agora o worker tem os dois (`() => true` é seguro; o perigoso segue sendo o `() => false` da fase 2, que
+  impede os mapeamentos de LID). **JANELA no pareamento, CONFIGURÁVEL** (pedido do usuário, "para não pesar
+  tanto"; padrão **15 dias**, escolhido na página de conexão e guardado em `WhatsappSessao.historicoDias` —
+  migração ADITIVA `20261118140000_whatsapp_historico_dias`, aplicada no banco local, lida a CADA trecho do
+  sync para mudar sem reconectar; `diasDoHistorico` apara em 1..365 e valor quebrado cai no padrão, nunca em
+  zero): `limiteDoHistorico(syncType, agora, escolha)` (puro, em core.ts) devolve `agora - dias` para
+  todo sync **menos** o ON_DEMAND, que é ilimitado de propósito — ali o passado é o que se pede. Mensagem fora
+  da janela **nem toca no banco**: o worker resolve a conversa pelo cache em memória e só anda com a âncora,
+  então o despejo do pareamento custa uma busca em mapa por mensagem, não uma consulta (é isso que torna o
+  sync completo acessível). Tipo de sync desconhecido cai na janela, nunca no ilimitado — um `syncType` novo
+  do upstream não pode virar "grave tudo" por omissão. `SYNC` duplica o enum `HistorySyncType` (core.ts é
+  puro) com teste aferindo contra o real, como o `CODIGO` do DisconnectReason. **Âncora** (`WhatsappChat.ancoraChave` JSON + `ancoraEm`, 2 colunas nullable):
+  a mensagem mais ANTIGA já vista, guardada para TODA conversa **inclusive as não monitoradas** — sem ela,
+  marcar uma conversa hoje não daria acesso nenhum ao passado dela. É metadado (id opaco + autoria + data),
+  nunca conteúdo. Escrita UMA vez por conversa por lote (`registrarAncora`, `updateMany` com a condição "só
+  anda para trás" no WHERE — sem leitura antes), porque um trecho de histórico traz milhares de mensagens e
+  uma escrita por mensagem seria uma consulta por mensagem. Botão **Anteriores** por conversa →
+  `POST /api/whatsapp/conversas/[id]/historico` → comando `historico` → worker; recusa explícita (e com texto
+  útil) quando a conversa não está marcada (o resultado seria descartado), quando não há âncora, e quando o
+  worker está fora do ar (o NOTIFY se perderia em silêncio). Cada clique anda mais para trás porque a âncora
+  anda junto. **RETENÇÃO 24 meses → 1 MÊS** (decisão do usuário nesta sessão):
+  `MENSAGEM_RETENCAO_MESES = 1`. É também o teto do que o "Anteriores" consegue MANTER — buscar mais velho
+  funciona, mas a faxina do dia seguinte apaga; se o passado profundo passar a importar, é esse número que
+  sobe, não o do sync. (O brief sugeria 24 meses.) **Limites honestos, documentados:** quanto o aparelho entrega é decisão dele; **mídia antiga em
+  geral não vem** (chave e URL do CDN expiram) — conte com texto; e buscar mais velho que a retenção de 24
+  meses é desperdício, a faxina do dia seguinte apaga. **User action:** (1) parar o `next dev` →
+  `npx prisma generate` (os TIPOS já foram regenerados nesta sessão, mas o rename da DLL falhou com EPERM por
+  causa do dev server) → `npm run dev`; a migração já está aplicada localmente e em produção roda no boot.
+  (2) Em produção: deploy do `lexia` E **do worker** (o `syncFullHistory` é do worker). (3) Marcar as conversas
+  pelo botão da faixa e só então **desvincular o Lexia no celular e ler o QR de novo** — o histórico do
+  pareamento só passa pelo fio uma vez. (4) Depois, usar **Anteriores** nas conversas que precisarem de mais
+  passado. **Não verificado por mim:** nada do histórico ao vivo (depende de aparelho real) — o que está
+  exercitado por teste é a âncora (serialização, grupo, ida e volta, lixo), o parser do comando e as regras da
+  sugestão.
 - **`lexia_ro` — a revogação das tabelas sensíveis virou AUTOMÁTICA, no boot (this session, VERIFIED
   `npx tsc --noEmit` 0 erros, 1152/1152 testes (+12 novos em `tests/mcp-ro.test.ts`), eslint limpo nos
   arquivos novos/tocados, SEM migração.)** O usuário foi criar o papel `lexia_ro` em produção e o
@@ -323,6 +378,12 @@ This Next (16.2.6) has breaking changes vs. training data — consult
   `pg_read_file`). A fronteira é o papel `lexia_ro` + `DATABASE_URL_RO` — o SQL pronto está em
   docs/whatsapp-operacao.md §6; **tentei criar o papel no banco local e o classificador do modo automático
   recusou (mexer em privilégio de banco), então segue como ação do usuário**, nos DOIS ambientes.
+  **MCP: 7 → 9 ferramentas** (pedido do usuário, "o Claude precisa ter liberdade de buscar o que queremos"):
+  **`whatsapp_monitorar`** (liga/desliga a gravação de uma conversa — sem isso o Claude dependia de alguém
+  marcar na página antes) e **`whatsapp_buscar_anteriores`** (o mesmo `pedirHistorico` da página, com o aviso
+  explícito de que é ASSÍNCRONO: volta na hora e as mensagens chegam depois, então leia a conversa de novo).
+  As duas reusam as funções da página, então as validações (conversa não marcada, sem âncora, worker fora do
+  ar) viram mensagem útil para o modelo. `INSTRUCOES` do servidor atualizada.
   **User action:** (1) parar o `next dev` → `npx prisma generate` (os TIPOS já foram regenerados nesta sessão,
   mas o rename da DLL do engine falhou com EPERM por causa do dev server) → `npm run dev`; a migração já está
   aplicada no banco local e em produção roda no boot. (2) Criar `lexia_ro` e setar `DATABASE_URL_RO` (doc §6),

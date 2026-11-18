@@ -1,4 +1,4 @@
-// WhatsApp fase 4 — as 7 ferramentas MCP de leitura/organização das conversas.
+// WhatsApp fase 4 — as ferramentas MCP de leitura/organização das conversas.
 // SERVER ONLY.
 //
 // SÓ DO MCP, como sqlTools: NÃO entram no registry da LexIA. Dois motivos, e o
@@ -28,7 +28,7 @@ import { UserError } from "@/lib/errors"
 import { defineTool, type AgentCtx, type AgentTool } from "@/lib/lexia/agent/types"
 import { baseUrl } from "@/lib/notificacoes/email/mailer"
 import { contemNormalizado } from "@/lib/text"
-import { vincularCliente } from "@/lib/whatsapp/conversas"
+import { definirMonitoramento, pedirHistorico, vincularCliente } from "@/lib/whatsapp/conversas"
 import * as core from "@/lib/whatsapp/mcp-core"
 import { formatarTelefone, truncarTexto, type TipoMensagem } from "@/lib/whatsapp/mensagens-core"
 import { assinarMidia, caminhoMidia, derivarChaveMidia, MIDIA_LINK_TTL_MS } from "@/lib/whatsapp/midia-link"
@@ -584,6 +584,58 @@ export function whatsappTools(userId: number, audit: ExecDeps["audit"]): AgentTo
         // regra só, e duas cópias dela divergiriam.
         const c = await vincularCliente(userId, input.chatId, input.clienteId)
         return { chatId: c.id, nome: c.nome, clienteId: c.clienteId, clienteNome: c.clienteNome, vinculo: c.vinculo }
+      },
+    }),
+
+    defineTool({
+      name: "whatsapp_monitorar",
+      description:
+        "Liga (ou desliga) a GRAVAÇÃO de uma conversa de WhatsApp. Enquanto uma conversa não está marcada, " +
+        "nada dela é guardado — nem o que já passou —, então é isto que você usa quando o usuário quer que uma " +
+        "conversa passe a ser acompanhada. Desligar não apaga o que já foi gravado. " +
+        "Depois de ligar, `whatsapp_buscar_anteriores` traz o que veio antes.",
+      schema: z
+        .object({
+          chatId: z.number().int().positive().describe("Id da conversa"),
+          monitorar: z.boolean().describe("true grava daqui em diante; false para de gravar"),
+        })
+        .strict(),
+      kind: "mutation",
+      resumo: (input) => {
+        const i = input as { chatId: number; monitorar: boolean }
+        return i.monitorar ? `Passar a gravar a conversa #${i.chatId}` : `Parar de gravar a conversa #${i.chatId}`
+      },
+      async run(_ctx, input) {
+        const c = await definirMonitoramento(userId, input.chatId, input.monitorar)
+        return {
+          chatId: c.id,
+          nome: c.nome,
+          monitorar: c.monitorar,
+          gravadas: c.gravadas,
+          podeHistorico: c.podeHistorico,
+        }
+      },
+    }),
+
+    defineTool({
+      name: "whatsapp_buscar_anteriores",
+      description:
+        "Pede ao WhatsApp as mensagens ANTERIORES às que já estão guardadas de uma conversa — é como se alcança " +
+        "o passado dela. A conversa precisa estar marcada (veja `whatsapp_monitorar`). " +
+        "O pedido é ASSÍNCRONO: ele volta na hora, mas as mensagens chegam em alguns segundos, então leia a " +
+        "conversa de novo depois. Chamar outra vez caminha mais para trás. " +
+        "O aparelho decide quanto entrega (pode vir pouco, ou nada, se não tiver mais aquele trecho) e mídia " +
+        "antiga em geral não vem, só o texto. Nada é enviado a quem quer que seja.",
+      schema: z.object({ chatId: z.number().int().positive().describe("Id da conversa") }).strict(),
+      kind: "mutation",
+      resumo: (input) => `Buscar mensagens antigas da conversa #${(input as { chatId: number }).chatId}`,
+      async run(_ctx, input) {
+        await pedirHistorico(userId, input.chatId)
+        return {
+          pedido: true,
+          aviso:
+            "Pedido enviado ao WhatsApp. Espere alguns segundos e leia a conversa de novo para ver o que chegou.",
+        }
       },
     }),
   ]

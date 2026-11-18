@@ -17,8 +17,20 @@ import type { SessaoView } from "@/lib/whatsapp/tipos"
 
 type ClienteOpt = { id: number; nome: string }
 
-export function ConversasApp({ inicial, sessao }: { inicial: ConversaView[]; sessao: SessaoView }) {
+export function ConversasApp({
+  inicial,
+  sugeridasIniciais,
+  sessao,
+}: {
+  inicial: ConversaView[]
+  sugeridasIniciais: number
+  sessao: SessaoView
+}) {
   const [conversas, setConversas] = useState<ConversaView[]>(inicial)
+  // Quantas conversas de cliente com caso ativo ainda não estão sendo gravadas.
+  // Vem do servidor sobre o conjunto INTEIRO, não só sobre as linhas na tela.
+  const [sugeridas, setSugeridas] = useState(sugeridasIniciais)
+  const [ligandoSugeridas, setLigandoSugeridas] = useState(false)
   const [busca, setBusca] = useState("")
   const [soMonitoradas, setSoMonitoradas] = useState(false)
   const [carregando, setCarregando] = useState(false)
@@ -44,8 +56,11 @@ export function ConversasApp({ inicial, sessao }: { inicial: ConversaView[]; ses
           "/api/whatsapp/conversas?busca=" + encodeURIComponent(q) + (monitoradas ? "&monitoradas=1" : "")
         const r = await fetch(url, { cache: "no-store" })
         if (!r.ok) throw new Error("falha")
-        const dados = (await r.json()) as { conversas: ConversaView[] }
-        if (meu === seq.current) setConversas(dados.conversas)
+        const dados = (await r.json()) as { conversas: ConversaView[]; sugeridas: number }
+        if (meu === seq.current) {
+          setConversas(dados.conversas)
+          setSugeridas(dados.sugeridas)
+        }
       } catch {
         if (meu === seq.current) toast("Não foi possível carregar as conversas")
       } finally {
@@ -85,6 +100,10 @@ export function ConversasApp({ inicial, sessao }: { inicial: ConversaView[]; ses
   /** Aplica no lugar a conversa que o servidor devolveu (sem recarregar a lista). */
   const aplicar = (v: ConversaView | null) => {
     if (!v) return
+    // A faixa de sugestões conta o conjunto inteiro; manter o número em dia
+    // aqui evita uma recarga da lista a cada clique.
+    const antes = conversas.find((c) => c.id === v.id)
+    if (antes && antes.sugerida !== v.sugerida) setSugeridas((n) => Math.max(0, n + (v.sugerida ? 1 : -1)))
     setConversas((atual) => atual.map((c) => (c.id === v.id ? v : c)))
     setLeitura((l) => (l && l.conversa.id === v.id ? { ...l, conversa: v } : l))
   }
@@ -115,6 +134,44 @@ export function ConversasApp({ inicial, sessao }: { inicial: ConversaView[]; ses
       setApagarId(c.id)
     } else {
       toast(v.monitorar ? "Esta conversa passa a ser gravada" : "Esta conversa não será mais gravada")
+    }
+  }
+
+  const ligarSugeridas = async () => {
+    setLigandoSugeridas(true)
+    try {
+      const r = await apiSend<{ ok: boolean; result: { ligadas: number } }>(
+        "/api/whatsapp/conversas/sugeridas",
+        "POST",
+      )
+      toast(
+        r.result.ligadas === 0
+          ? "Nenhuma conversa nova para gravar"
+          : r.result.ligadas + " conversa(s) passam a ser gravadas",
+      )
+      await recarregar(busca, soMonitoradas)
+    } catch {
+      /* o apiSend já avisou */
+    } finally {
+      setLigandoSugeridas(false)
+    }
+  }
+
+  const buscarHistorico = async (c: ConversaView) => {
+    setOcupadoId(c.id)
+    try {
+      await apiSend<{ ok: boolean; result: { pedido: true } }>(
+        "/api/whatsapp/conversas/" + c.id + "/historico",
+        "POST",
+      )
+      toast("Pedido enviado ao WhatsApp. As mensagens antigas aparecem em instantes.")
+      // A resposta chega pelo worker, não por esta requisição: recarrega depois
+      // de um respiro para a contagem já refletir o que entrou.
+      setTimeout(() => void recarregar(busca, soMonitoradas), 6000)
+    } catch {
+      /* o apiSend já avisou */
+    } finally {
+      setOcupadoId(null)
     }
   }
 
@@ -183,6 +240,19 @@ export function ConversasApp({ inicial, sessao }: { inicial: ConversaView[]; ses
         </Faixa>
       )}
 
+      {sugeridas > 0 && (
+        <Faixa>
+          <Icon name="briefcase" size={14} />
+          <span style={{ flex: 1 }}>
+            <strong>{sugeridas}</strong> conversa(s) de contatos com <strong>caso ativo</strong> ainda não estão
+            sendo gravadas.
+          </span>
+          <button type="button" style={botaoSec} disabled={ligandoSugeridas} onClick={() => void ligarSugeridas()}>
+            {ligandoSugeridas ? "Ligando…" : "Gravar essas " + sugeridas}
+          </button>
+        </Faixa>
+      )}
+
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <div style={{ position: "relative", flex: "1 1 240px", minWidth: 200 }}>
           <span style={{ position: "absolute", left: 10, top: 9, color: "var(--text-subtle)" }}>
@@ -236,6 +306,7 @@ export function ConversasApp({ inicial, sessao }: { inicial: ConversaView[]; ses
                       <Icon name="check" size={11} /> gravando
                     </Etiqueta>
                   )}
+                  {c.sugerida && <Etiqueta>caso ativo</Etiqueta>}
                 </div>
                 <div style={{ fontSize: 12, color: "var(--text-subtle)", display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {c.telefoneFmt && <span style={{ fontVariantNumeric: "tabular-nums" }}>{c.telefoneFmt}</span>}
@@ -262,6 +333,20 @@ export function ConversasApp({ inicial, sessao }: { inicial: ConversaView[]; ses
                 >
                   <Icon name="eye" size={13} /> {abertaId === c.id ? "Fechar" : "Mensagens"}
                 </button>
+                {c.monitorar && c.podeHistorico && (
+                  <button
+                    type="button"
+                    style={botaoSec}
+                    disabled={ocupadoId === c.id}
+                    onClick={() => void buscarHistorico(c)}
+                    title={
+                      "Pedir ao WhatsApp as mensagens anteriores a " +
+                      (c.historicoDesde ? dataBr(c.historicoDesde) : "as que já temos")
+                    }
+                  >
+                    <Icon name="clock" size={13} /> Anteriores
+                  </button>
+                )}
                 <Interruptor
                   ligado={c.monitorar}
                   ocupado={ocupadoId === c.id}
@@ -273,7 +358,10 @@ export function ConversasApp({ inicial, sessao }: { inicial: ConversaView[]; ses
 
             {c.monitorar && c.monitoradoEm && (
               <p style={{ margin: "10px 0 0", fontSize: 11.5, color: "var(--text-subtle)" }}>
-                Gravando desde {dataBr(c.monitoradoEm)}. Mensagens anteriores a isso não ficaram guardadas.
+                Gravando desde {dataBr(c.monitoradoEm)}.{" "}
+                {c.podeHistorico
+                  ? "Para o que veio antes, use “Anteriores” — o WhatsApp entrega o que o aparelho ainda tiver."
+                  : "Mensagens anteriores a isso não ficaram guardadas."}
               </p>
             )}
 

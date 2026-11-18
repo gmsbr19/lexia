@@ -12,7 +12,13 @@ import QRCode from "qrcode"
 import { Icon } from "@/components/crm/crm-icons"
 import { apiSend } from "@/lib/client/api"
 import { toast } from "@/lib/client/toast"
-import type { SessaoView, WhatsappEvento, WhatsappStatus } from "@/lib/whatsapp/tipos"
+import {
+  HISTORICO_DIAS_MAX,
+  HISTORICO_DIAS_MIN,
+  type SessaoView,
+  type WhatsappEvento,
+  type WhatsappStatus,
+} from "@/lib/whatsapp/tipos"
 
 const ROTULO: Record<WhatsappStatus, string> = {
   desconectado: "Desconectado",
@@ -41,6 +47,8 @@ export function ConectarApp({ inicial }: { inicial: SessaoView }) {
   const [modoCodigo, setModoCodigo] = useState(false)
   const [ocupado, setOcupado] = useState(false)
   const [confirmando, setConfirmando] = useState(false)
+  const [dias, setDias] = useState(String(inicial.historicoDias))
+  const [salvandoDias, setSalvandoDias] = useState(false)
   const conectadoAntes = useRef(inicial.status === "conectado")
 
   // ── SSE: estado + QR + código, em tempo real ───────────────────────────────
@@ -165,6 +173,27 @@ export function ConectarApp({ inicial }: { inicial: SessaoView }) {
       setOcupado(false)
     }
   }, [numero])
+
+  const salvarDias = useCallback(async () => {
+    const n = Number(dias)
+    if (!Number.isInteger(n) || n < HISTORICO_DIAS_MIN || n > HISTORICO_DIAS_MAX) {
+      toast("Escolha um número de dias entre " + HISTORICO_DIAS_MIN + " e " + HISTORICO_DIAS_MAX)
+      return
+    }
+    setSalvandoDias(true)
+    try {
+      const r = await apiSend<{ ok: boolean; result: { dias: number } }>("/api/whatsapp/historico-dias", "PUT", {
+        dias: n,
+      })
+      setSessao((s) => ({ ...s, historicoDias: r.result.dias }))
+      setDias(String(r.result.dias))
+      toast("Histórico ao conectar: " + r.result.dias + " dias")
+    } catch {
+      /* o apiSend já avisou */
+    } finally {
+      setSalvandoDias(false)
+    }
+  }, [dias])
 
   const desconectar = useCallback(async () => {
     setOcupado(true)
@@ -334,6 +363,35 @@ export function ConectarApp({ inicial }: { inicial: SessaoView }) {
           )}
         </section>
       )}
+
+      <section style={cartao}>
+        <h2 style={{ margin: "0 0 6px", fontSize: 14, fontWeight: 500 }}>Histórico ao conectar</h2>
+        <p style={{ margin: "0 0 12px", fontSize: 13, color: "var(--text-muted)" }}>
+          Ao parear, o celular entrega o passado das conversas. O Lexia guarda os últimos{" "}
+          <strong>{sessao.historicoDias} dias</strong> — e só das conversas que você marcar. O que for mais antigo
+          pode ser buscado depois, uma conversa por vez, pelo botão <strong>Anteriores</strong> na página de
+          conversas.
+        </p>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <input
+            type="number"
+            min={HISTORICO_DIAS_MIN}
+            max={HISTORICO_DIAS_MAX}
+            value={dias}
+            onChange={(e) => setDias(e.target.value)}
+            aria-label="Dias de histórico a guardar ao conectar"
+            style={{ ...campo, width: 110 }}
+          />
+          <span style={{ fontSize: 13, color: "var(--text-muted)" }}>dias</span>
+          <button type="button" style={botaoSec} disabled={salvandoDias} onClick={salvarDias}>
+            {salvandoDias ? "Salvando…" : "Salvar"}
+          </button>
+        </div>
+        <p style={{ margin: "10px 0 0", fontSize: 11.5, color: "var(--text-subtle)" }}>
+          Vale a partir do próximo trecho de sincronização — não precisa reconectar para mudar. Guardar muito além
+          do prazo de retenção não adianta: a faxina diária apaga o que passar dele.
+        </p>
+      </section>
 
       {conectado && (
         <section style={cartao}>

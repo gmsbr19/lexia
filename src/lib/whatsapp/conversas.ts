@@ -9,9 +9,10 @@
 import { prisma } from "@/lib/db"
 import { UserError } from "@/lib/errors"
 import { contemNormalizado } from "@/lib/text"
+import { clientesComCasoAtivo, sugereMonitorar } from "./core"
 import { formatarTelefone, truncarTexto, type TipoMensagem } from "./mensagens-core"
 import { assinarMidia, caminhoMidia, derivarChaveMidia } from "./midia-link"
-import { chaveAuth, publicarComando } from "./sessoes"
+import { chaveAuth, getSessaoView, publicarComando } from "./sessoes"
 
 /** Teto de conversas devolvidas para a página (a lista é navegada por busca). */
 const MAX_CONVERSAS = 300
@@ -36,6 +37,19 @@ export type ConversaView = {
   ultimaMensagemEm: string | null
   /** Quantas mensagens desta conversa estão gravadas. */
   gravadas: number
+  /**
+   * Candidata a ser monitorada: contato vinculado a um cliente com caso ATIVO,
+   * e ainda não gravando. É só uma SUGESTÃO — quem liga é o usuário.
+   */
+  sugerida: boolean
+  /**
+   * Dá para pedir as mensagens anteriores: existe âncora (alguma mensagem desta
+   * conversa já passou pelo worker). Sem ela o WhatsApp não tem de onde contar
+   * para trás.
+   */
+  podeHistorico: boolean
+  /** A mensagem mais antiga que o Lexia já viu nesta conversa. */
+  historicoDesde: string | null
 }
 
 export type MensagemView = {
@@ -60,6 +74,8 @@ const SELECT_CHAT = {
   clienteId: true,
   vinculo: true,
   ultimaMensagemEm: true,
+  ancoraChave: true,
+  ancoraEm: true,
   cliente: { select: { nome: true } },
   _count: { select: { mensagens: true } },
 } as const
@@ -75,11 +91,13 @@ type ChatRow = {
   clienteId: number | null
   vinculo: string | null
   ultimaMensagemEm: Date | null
+  ancoraChave: string | null
+  ancoraEm: Date | null
   cliente: { nome: string } | null
   _count: { mensagens: number }
 }
 
-function paraView(c: ChatRow): ConversaView {
+function paraView(c: ChatRow, sugerida = false): ConversaView {
   return {
     id: c.id,
     // Sem nome salvo, o número formatado serve de rótulo; sem os dois (LID), o
@@ -95,7 +113,40 @@ function paraView(c: ChatRow): ConversaView {
     vinculo: (c.vinculo as VinculoChat | null) ?? null,
     ultimaMensagemEm: c.ultimaMensagemEm?.toISOString() ?? null,
     gravadas: c._count.mensagens,
+    sugerida,
+    podeHistorico: !!c.ancoraChave && !!c.ancoraEm,
+    historicoDesde: c.ancoraEm?.toISOString() ?? null,
   }
+}
+
+/**
+ * Os ids das conversas que a página vai sugerir monitorar. Duas consultas
+ * leves: os chats vinculados e ainda desligados, e os casos desses clientes.
+ * O filtro de status é feito em TS de propósito (ver `clientesComCasoAtivo`).
+ */
+async function chatsSugeridos(userId: number): Promise<Set<number>> {
+  const candidatos = await prisma.whatsappChat.findMany({
+    where: { userId, monitorar: false, grupo: false, clienteId: { not: null } },
+    select: { id: true, grupo: true, monitorar: true, clienteId: true },
+  })
+  if (candidatos.length === 0) return new Set()
+  const clienteIds = [...new Set(candidatos.map((c) => c.clienteId!))]
+  const casos = await prisma.caso.findMany({
+    where: { clientePrincipalId: { in: clienteIds }, excluidoEm: null },
+    select: { clientePrincipalId: true, status: true },
+  })
+  const ativos = clientesComCasoAtivo(casos)
+  return new Set(candidatos.filter((c) => sugereMonitorar(c, ativos)).map((c) => c.id))
+}
+
+/** A mesma decisão para UMA conversa (depois de ligar/desligar ou vincular). */
+async function ehSugerida(c: ChatRow): Promise<boolean> {
+  if (c.grupo || c.monitorar || c.clienteId == null) return false
+  const casos = await prisma.caso.findMany({
+    where: { clientePrincipalId: c.clienteId, excluidoEm: null },
+    select: { clientePrincipalId: true, status: true },
+  })
+  return sugereMonitorar(c, clientesComCasoAtivo(casos))
 }
 
 /**
@@ -104,10 +155,20 @@ function paraView(c: ChatRow): ConversaView {
  * resto do app, via contemNormalizado) — um `contains` do Postgres acharia
  * "Joao" mas não "João".
  */
+export type ListaConversas = {
+  conversas: ConversaView[]
+  /**
+   * Quantas conversas entram na sugestão NO TOTAL — não só entre as linhas
+   * devolvidas. É o número da faixa da página, então contar só o que coube na
+   * tela (ou o que sobrou do filtro "só monitoradas") mentiria.
+   */
+  sugeridas: number
+}
+
 export async function listarConversas(
   userId: number,
   opts: { busca?: string | null; apenasMonitoradas?: boolean } = {},
-): Promise<ConversaView[]> {
+): Promise<ListaConversas> {
   const busca = (opts.busca ?? "").trim()
   const rows = await prisma.whatsappChat.findMany({
     where: { userId, ...(opts.apenasMonitoradas ? { monitorar: true } : {}) },
@@ -115,16 +176,18 @@ export async function listarConversas(
     orderBy: [{ ultimaMensagemEm: { sort: "desc", nulls: "last" } }, { id: "desc" }],
     take: busca ? MAX_VARRIDAS : MAX_CONVERSAS,
   })
-  const views = rows.map(paraView)
-  if (!busca) return views
+  const sugeridas = await chatsSugeridos(userId)
+  const views = rows.map((c) => paraView(c, sugeridas.has(c.id)))
+  if (!busca) return { conversas: views, sugeridas: sugeridas.size }
   const digitos = busca.replace(/\D/g, "")
-  return views
+  const achadas = views
     .filter(
       (c) =>
         contemNormalizado(busca, c.nome, c.clienteNome) ||
         (!!digitos && !!c.telefone && c.telefone.includes(digitos)),
     )
     .slice(0, MAX_CONVERSAS)
+  return { conversas: achadas, sugeridas: sugeridas.size }
 }
 
 /** A conversa, conferindo o dono. Lança "não encontrada" para qualquer outra. */
@@ -193,9 +256,13 @@ export async function lerConversa(
  * Liga/desliga a gravação desta conversa. Avisa o worker na hora (`recarregar`)
  * para a próxima mensagem já cair na regra nova, em vez de esperar o TTL.
  *
- * Mensagens anteriores a ligar o monitoramento NÃO existem e não podem ser
- * recuperadas: o Baileys não oferece busca de histórico sob demanda. `monitoradoEm`
- * registra o momento para a página poder dizer isso.
+ * Mensagens anteriores a ligar o monitoramento NÃO foram gravadas, e hoje não
+ * há como recuperá-las: `monitoradoEm` registra o momento para a página poder
+ * dizer isso. (CORREÇÃO de um comentário anterior: o Baileys 7 TEM busca de
+ * histórico sob demanda — `sock.fetchMessageHistory(count, chaveMaisAntiga,
+ * timestamp)` —, mas ela exige uma mensagem-âncora daquela conversa, e nós não
+ * guardamos nenhuma das conversas não monitoradas. Trazer histórico é trabalho
+ * de verdade, não um parâmetro esquecido.)
  */
 export async function definirMonitoramento(userId: number, chatId: number, monitorar: boolean): Promise<ConversaView> {
   await minhaConversa(userId, chatId)
@@ -204,7 +271,27 @@ export async function definirMonitoramento(userId: number, chatId: number, monit
     data: { monitorar, monitoradoEm: monitorar ? new Date() : null },
   })
   await publicarComando({ tipo: "recarregar", userId })
-  return paraView(await minhaConversa(userId, chatId))
+  const atual = await minhaConversa(userId, chatId)
+  return paraView(atual, await ehSugerida(atual))
+}
+
+/**
+ * Liga o monitoramento de TODAS as conversas sugeridas de uma vez — o botão da
+ * faixa da página. É a mesma decisão de `chatsSugeridos`, aplicada no servidor
+ * sobre o conjunto inteiro (não só sobre as linhas que a página mostra).
+ *
+ * Como mexe na coluna que o worker consulta por mensagem, avisa ele para soltar
+ * o cache de chats (o TTL de 60 s é só a rede de segurança).
+ */
+export async function monitorarSugeridas(userId: number): Promise<{ ligadas: number }> {
+  const ids = [...(await chatsSugeridos(userId))]
+  if (ids.length === 0) return { ligadas: 0 }
+  const r = await prisma.whatsappChat.updateMany({
+    where: { id: { in: ids }, userId },
+    data: { monitorar: true, monitoradoEm: new Date() },
+  })
+  await publicarComando({ tipo: "recarregar", userId })
+  return { ligadas: r.count }
 }
 
 /**
@@ -224,7 +311,39 @@ export async function vincularCliente(
   }
   const vinculo = clienteId == null ? null : clienteId === chat.clienteId ? "confirmado" : "manual"
   await prisma.whatsappChat.update({ where: { id: chatId }, data: { clienteId, vinculo } })
-  return paraView(await minhaConversa(userId, chatId))
+  const atual = await minhaConversa(userId, chatId)
+  return paraView(atual, await ehSugerida(atual))
+}
+
+/**
+ * Pede ao WhatsApp as mensagens ANTERIORES às que já temos nesta conversa.
+ *
+ * Quem fala com o WhatsApp é o worker (o app web não tem socket), então aqui a
+ * função só valida e publica o comando; a resposta chega depois, pela ingestão
+ * normal, e aparece quando a página recarregar. Não há o que esperar de volta.
+ *
+ * As três recusas são deliberadas: sem conversa marcada o pedido seria feito e
+ * o resultado descartado (a ingestão só grava conversa monitorada); sem âncora
+ * o WhatsApp não tem de onde contar para trás; e com o worker fora do ar o
+ * NOTIFY se perderia em silêncio, o que pareceria um botão quebrado.
+ */
+export async function pedirHistorico(userId: number, chatId: number): Promise<{ pedido: true }> {
+  const chat = await minhaConversa(userId, chatId)
+  if (!chat.monitorar) {
+    throw new UserError("Marque esta conversa para ser gravada antes de buscar o histórico.")
+  }
+  if (!chat.ancoraChave || !chat.ancoraEm) {
+    throw new UserError(
+      "Ainda não dá para buscar: nenhuma mensagem desta conversa passou pelo Lexia. Assim que chegar uma mensagem nova, o botão funciona.",
+    )
+  }
+  const sessao = await getSessaoView(userId)
+  if (sessao.status !== "conectado") throw new UserError("Conecte o WhatsApp para buscar o histórico.")
+  if (!sessao.workerOnline) {
+    throw new UserError("O serviço de conexão não está respondendo agora — tente de novo em instantes.")
+  }
+  await publicarComando({ tipo: "historico", userId, chatId })
+  return { pedido: true }
 }
 
 /**

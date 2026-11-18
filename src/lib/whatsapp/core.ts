@@ -1,7 +1,17 @@
 // WhatsApp (Baileys) — decisões PURAS do módulo: nada de prisma, baileys, env ou
 // relógio ambiente (quem chama passa `agora`). É o que os testes exercitam, e o
 // que app web e worker compartilham.
-import { STATUS_VALIDOS, WORKER_TTL_MS, type WhatsappComando, type WhatsappEvento, type WhatsappStatus } from "./tipos"
+import { casoStatusBucket } from "@/lib/casos/status"
+import {
+  HISTORICO_DIAS_MAX,
+  HISTORICO_DIAS_MIN,
+  HISTORICO_SYNC_DIAS,
+  STATUS_VALIDOS,
+  WORKER_TTL_MS,
+  type WhatsappComando,
+  type WhatsappEvento,
+  type WhatsappStatus,
+} from "./tipos"
 
 // ── Códigos de desconexão ────────────────────────────────────────────────────
 // Espelham o enum `DisconnectReason` do Baileys. Repetidos aqui (em vez de
@@ -181,6 +191,10 @@ export function lerComando(payload: string): WhatsappComando | null {
   const userId = idValido(o.userId)
   if (!userId) return null
   if (o.tipo === "iniciar" || o.tipo === "desconectar" || o.tipo === "recarregar") return { tipo: o.tipo, userId }
+  if (o.tipo === "historico") {
+    const chatId = idValido(o.chatId)
+    return chatId ? { tipo: "historico", userId, chatId } : null
+  }
   if (o.tipo === "pareamento") {
     const numero = numeroParaPareamento(typeof o.numero === "string" ? o.numero : null)
     return numero ? { tipo: "pareamento", userId, numero } : null
@@ -222,4 +236,87 @@ function parseObj(payload: string): Record<string, unknown> | null {
   } catch {
     return null
   }
+}
+
+/**
+ * Espelha `proto.HistorySync.HistorySyncType` do Baileys. Duplicado aqui pelo
+ * mesmo motivo de CODIGO (este arquivo é PURO e o pacote é ESM-only), e
+ * aferido contra o enum real em tests/whatsapp-historico.test.ts.
+ */
+export const SYNC = { initialBootstrap: 0, full: 2, recent: 3, onDemand: 6 } as const
+
+/**
+ * Os dias a usar: a escolha do usuário, aparada na faixa, ou o padrão. Valor
+ * quebrado no banco (de uma versão futura, de um script) cai no padrão em vez
+ * de virar uma janela absurda — nem zero, que não gravaria nada e pareceria o
+ * módulo quebrado.
+ */
+export function diasDoHistorico(escolha: number | null | undefined): number {
+  if (typeof escolha !== "number" || !Number.isFinite(escolha)) return HISTORICO_SYNC_DIAS
+  const inteiro = Math.trunc(escolha)
+  if (inteiro < HISTORICO_DIAS_MIN) return HISTORICO_DIAS_MIN
+  if (inteiro > HISTORICO_DIAS_MAX) return HISTORICO_DIAS_MAX
+  return inteiro
+}
+
+/**
+ * Até onde gravar as mensagens de um trecho de histórico — `null` = sem limite.
+ *
+ * O sync do pareamento despeja tudo o que o aparelho tiver, e guardar isso
+ * inteiro pesa à toa: o que interessa no dia a dia é a última semana. O que fica
+ * de fora não se perde para sempre — a âncora continua andando para trás, e o
+ * botão "Anteriores" alcança esse passado quando alguém quiser.
+ *
+ * O pedido SOB DEMANDA não tem limite, justamente porque ali o usuário está
+ * pedindo o passado de propósito.
+ */
+export function limiteDoHistorico(
+  syncType: number | null | undefined,
+  agora: Date,
+  escolha?: number | null,
+): Date | null {
+  if (syncType === SYNC.onDemand) return null
+  return new Date(agora.getTime() - diasDoHistorico(escolha) * 86_400_000)
+}
+
+/**
+ * Quantas mensagens antigas pedir por vez. O WhatsApp decide quanto entrega de
+ * fato (pode vir menos, ou nada, se o aparelho não tiver mais aquele trecho);
+ * pedir de novo caminha mais para trás, porque a âncora anda junto.
+ */
+export const MENSAGENS_HISTORICO = 50
+
+// ── Sugestão de monitoramento ────────────────────────────────────────────────
+// A página oferece ligar em lote as conversas que claramente são de trabalho:
+// contato JÁ vinculado a um cliente que tem caso ativo. É sugestão, nunca
+// automático — gravar conversa de cliente continua sendo escolha explícita do
+// usuário, que é a regra do módulo desde a fase 3.
+
+/**
+ * Os clientes com ao menos um caso ATIVO. O status do caso é texto livre por
+ * herança do Astrea, então a decisão passa por `casoStatusBucket` (a mesma do
+ * resto do app, tolerante a caixa/acento/sinônimo e que trata vazio como
+ * ativo) — um `status = 'Ativo'` em SQL perderia "ativo" e os nulos.
+ */
+export function clientesComCasoAtivo(
+  casos: readonly { clientePrincipalId: number | null; status: string | null }[],
+): Set<number> {
+  const ativos = new Set<number>()
+  for (const c of casos) {
+    if (c.clientePrincipalId == null) continue
+    if (casoStatusBucket(c.status) === "ativo") ativos.add(c.clientePrincipalId)
+  }
+  return ativos
+}
+
+/**
+ * A conversa entra na sugestão? Grupo nunca entra (não é de um cliente, e nasce
+ * desligado de propósito), nem conversa já monitorada ou sem contato vinculado.
+ */
+export function sugereMonitorar(
+  chat: { grupo: boolean; monitorar: boolean; clienteId: number | null },
+  clientesAtivos: ReadonlySet<number>,
+): boolean {
+  if (chat.grupo || chat.monitorar || chat.clienteId == null) return false
+  return clientesAtivos.has(chat.clienteId)
 }

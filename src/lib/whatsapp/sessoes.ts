@@ -8,7 +8,7 @@ import { prisma } from "@/lib/db"
 import { env } from "@/lib/env"
 import { log } from "@/lib/log"
 import { getSetting, setSetting } from "@/lib/settings"
-import { truncarErro, workerOnline } from "./core"
+import { diasDoHistorico, truncarErro, workerOnline } from "./core"
 import { lerChaveAuth } from "./cripto"
 import {
   CANAL_COMANDO,
@@ -41,11 +41,26 @@ export function chaveAuth(): Buffer | null {
 type Heartbeat = { batidaEm?: string }
 
 /** Estado da conexão DESTE usuário + se o worker está vivo. */
+/**
+ * Grava quantos dias de histórico o pareamento deve guardar. Vale do PRÓXIMO
+ * trecho de sincronização em diante (o worker lê a cada trecho), então mudar o
+ * número no meio de um despejo não exige reconectar.
+ */
+export async function definirHistoricoDias(userId: number, dias: number): Promise<number> {
+  const valor = diasDoHistorico(dias)
+  await prisma.whatsappSessao.upsert({
+    where: { userId },
+    create: { userId, historicoDias: valor },
+    update: { historicoDias: valor },
+  })
+  return valor
+}
+
 export async function getSessaoView(userId: number): Promise<SessaoView> {
   const [s, hb] = await Promise.all([
     prisma.whatsappSessao.findUnique({
       where: { userId },
-      select: { status: true, numero: true, conectadoEm: true, ultimoErro: true, pareamento: true },
+      select: { status: true, numero: true, conectadoEm: true, ultimoErro: true, pareamento: true, historicoDias: true },
     }),
     getSetting<Heartbeat>(CHAVE_WORKER),
   ])
@@ -58,6 +73,7 @@ export async function getSessaoView(userId: number): Promise<SessaoView> {
     ultimoErro: s.ultimoErro,
     pareamento: s.pareamento,
     workerOnline: online,
+    historicoDias: diasDoHistorico(s.historicoDias),
   }
 }
 

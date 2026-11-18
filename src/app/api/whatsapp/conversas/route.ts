@@ -21,11 +21,13 @@ export async function GET(req: Request) {
   try {
     const userId = await userIdDaSessao()
     const url = new URL(req.url)
-    const conversas = await listarConversas(userId, {
+    // { conversas, sugeridas } — a contagem de sugeridas é global, não só das
+    // linhas devolvidas (é o número da faixa "monitorar essas N").
+    const lista = await listarConversas(userId, {
       busca: url.searchParams.get("busca"),
       apenasMonitoradas: url.searchParams.get("monitoradas") === "1",
     })
-    return NextResponse.json({ conversas })
+    return NextResponse.json(lista)
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: "Não autenticado" }, { status: 401 })
     throw e

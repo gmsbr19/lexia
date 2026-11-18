@@ -36,13 +36,14 @@ import makeWASocket, {
 import { Client } from "pg"
 import pino from "pino"
 import { prisma } from "../db"
-import { decidirFechamento, decidirRetomada, ehDifusao, ehGrupo, ehLid, jidParaNumero, lerComando, normalizarTelefone, truncarErro } from "./core"
+import { MENSAGENS_HISTORICO, decidirFechamento, limiteDoHistorico, decidirRetomada, ehDifusao, ehGrupo, ehLid, jidParaNumero, lerComando, normalizarTelefone, truncarErro } from "./core"
 import { cifrar, contextoAuth, decifrar, lerChaveAuth } from "./cripto"
 import {
   carregarChats,
   faxinaRetencao,
   gravarMensagem,
   limparIndiceTelefones,
+  registrarAncora,
   salvarChat,
   salvarMidia,
   type ChatCache,
@@ -54,6 +55,8 @@ import {
   classificarMensagem,
   dataDaMensagem,
   ehMinha,
+  lerChaveAncora,
+  montarChaveAncora,
   nomeDeArquivo,
   paraNumero,
   type MensagemWa,
@@ -282,13 +285,21 @@ class Sessao {
       // CRÍTICO: com `true` o celular do advogado PARA de receber notificações
       // (o WhatsApp passa a considerar este cliente o ativo).
       markOnlineOnConnect: false,
-      // Não puxa o histórico inteiro (volume + a v1 só grava o que for marcado).
-      // `shouldSyncHistoryMessage` NÃO é sobrescrito de propósito: devolver
-      // false para tudo faz o Baileys 7 avisar, em letras maiúsculas, que isso
-      // impede o acesso aos mapeamentos iniciais de LID e causa erro de sessão
-      // — e o LID é exatamente do que a fase 3 depende. Com syncFullHistory
-      // false o aparelho só manda o conjunto recente, e a fase 2 ignora tudo.
-      syncFullHistory: false,
+      // Puxa TODO o histórico que o aparelho tiver no pareamento. O volume NÃO
+      // vira banco: a ingestão grava só conteúdo de conversa MONITORADA e,
+      // dentro dela, só a última semana (limiteDoHistorico) — do resto fica
+      // apenas a âncora, que é o que deixa "Anteriores" alcançar esse passado
+      // depois, sob demanda. É o sync completo que dá âncora para TODA conversa
+      // de uma vez; o que ele custa é processamento no pareamento, uma vez.
+      syncFullHistory: true,
+      // Sobrescrito porque o PADRÃO do Baileys 7 é
+      // `({syncType}) => syncType !== FULL`: com `syncFullHistory: true` o
+      // aparelho manda FULL e o padrão DESCARTARIA tudo — o sync completo seria
+      // ligado no papel e não traria nada. `() => true` é seguro; o perigoso é
+      // o `() => false` que estava aqui na fase 2, que faz o Baileys avisar em
+      // letras maiúsculas que isso impede os mapeamentos iniciais de LID (dos
+      // quais a fase 3 depende) e causa erro de sessão.
+      shouldSyncHistoryMessage: () => true,
       // Status/stories e newsletters nem são decifrados.
       shouldIgnoreJid: (jid) => jid === "status@broadcast" || jid.endsWith("@newsletter"),
       // Somente leitura: nada é enviado, então não há mensagem para reenviar.
@@ -331,10 +342,17 @@ class Sessao {
       this.enfileirar(sock, async () => {
         await this.aoChats(h.chats ?? [])
         await this.aoContatos(h.contacts ?? [])
-        await this.aoMensagens(h.messages ?? [])
+        // A janela é escolha do usuário (página de conexão). Lida por trecho:
+        // são poucos trechos, e assim trocar o número não espera reconexão.
+        const sessao = await prisma.whatsappSessao.findUnique({
+          where: { userId: this.userId },
+          select: { historicoDias: true },
+        })
+        await this.aoMensagens(h.messages ?? [], limiteDoHistorico(h.syncType, new Date(), sessao?.historicoDias))
       }),
     )
-    sock.ev.on("messages.upsert", (u) => this.enfileirar(sock, () => this.aoMensagens(u.messages ?? [])))
+    // Mensagem que acabou de chegar não tem janela: é o presente.
+    sock.ev.on("messages.upsert", (u) => this.enfileirar(sock, () => this.aoMensagens(u.messages ?? [], null)))
   }
 
   // ── Ingestão ───────────────────────────────────────────────────────────────
@@ -438,7 +456,11 @@ class Sessao {
     }
   }
 
-  private async aoMensagens(msgs: WAMessage[]): Promise<void> {
+  private async aoMensagens(msgs: WAMessage[], limite: Date | null): Promise<void> {
+    // Âncora por conversa, acumulada e gravada UMA vez no fim: um trecho do
+    // histórico traz milhares de mensagens, e escrever a cada uma seria uma
+    // consulta por mensagem só para andar um passo para trás.
+    const ancoras = new Map<number, { chave: string; quando: Date }>()
     for (const msg of msgs) {
       const jidCru = this.aproveitavel(msg.key?.remoteJid)
       if (!jidCru) continue
@@ -449,6 +471,26 @@ class Sessao {
       const grupo = ehGrupo(jid)
       const minha = ehMinha(msg.key ?? null)
       const quando = dataDaMensagem(msg.messageTimestamp as never, new Date())
+
+      // A âncora é guardada mesmo em conversa NÃO monitorada (nada do conteúdo
+      // é) — é ela que permite pedir o passado depois de marcar a conversa. Só
+      // de mensagem de verdade: reação, protocolo e metadado não servem de
+      // ponto de partida para o `fetchMessageHistory`.
+      const marcarAncora = (chatId: number) => {
+        if (!classificada) return
+        const chave = montarChaveAncora(msg.key ?? null)
+        const atual = ancoras.get(chatId)
+        if (chave && (!atual || quando < atual.quando)) ancoras.set(chatId, { chave, quando })
+      }
+
+      // Fora da janela do sync: nem toca no banco. Só a âncora anda para trás,
+      // e usando o chat que já está em memória — é isto que faz o despejo do
+      // pareamento custar uma busca em mapa por mensagem, e não uma consulta.
+      if (limite && quando < limite) {
+        const conhecido = (await this.chatsDoUsuario()).get(jid)
+        if (conhecido) marcarAncora(conhecido.id)
+        continue
+      }
 
       // Metadado da conversa SEMPRE, mesmo de mensagem ignorada: a conversa
       // existe e acabou de subir na lista. O pushName só serve de nome em
@@ -463,6 +505,8 @@ class Sessao {
         },
         true,
       )
+
+      if (cache) marcarAncora(cache.id)
 
       if (!classificada || !cache?.monitorar) continue
 
@@ -495,6 +539,44 @@ class Sessao {
 
       if (classificada.midia) await this.baixarMidia(msg, mensagemId, classificada.midia.tamanho)
     }
+
+    for (const [chatId, a] of ancoras) await registrarAncora(this.userId, chatId, a.chave, a.quando)
+  }
+
+  /**
+   * Pede ao WhatsApp as mensagens anteriores à âncora desta conversa. A
+   * resposta NÃO volta aqui: ela chega como `messaging-history.set` (tipo
+   * ON_DEMAND) e passa pela ingestão normal, que grava só se a conversa estiver
+   * monitorada e move a âncora mais para trás — então pedir de novo caminha.
+   *
+   * Isto ENVIA algo: um pedido de operação para o próprio aparelho do usuário
+   * (o Baileys manda `historySyncOnDemandRequest` para a conta dele). Nada vai
+   * para o contato, e segue valendo que o Lexia nunca manda mensagem nem marca
+   * conversa como lida.
+   */
+  async pedirHistorico(chatId: number): Promise<void> {
+    const sock = this.sock
+    if (!sock) return
+    const chat = await prisma.whatsappChat.findFirst({
+      where: { id: chatId, userId: this.userId },
+      select: { jid: true, ancoraChave: true, ancoraEm: true },
+    })
+    const ancora = lerChaveAncora(chat?.ancoraChave)
+    if (!chat || !ancora || !chat.ancoraEm) {
+      log.warn({ userId: this.userId, chatId }, "histórico pedido sem âncora — nada a fazer")
+      return
+    }
+    await sock.fetchMessageHistory(
+      MENSAGENS_HISTORICO,
+      {
+        remoteJid: chat.jid,
+        id: ancora.id,
+        fromMe: ancora.deMim,
+        ...(ancora.participante ? { participant: ancora.participante } : {}),
+      },
+      chat.ancoraEm.getTime(),
+    )
+    log.info({ userId: this.userId, chatId, ate: chat.ancoraEm.toISOString() }, "histórico pedido ao WhatsApp")
   }
 
   /**
@@ -713,6 +795,9 @@ async function tratarComando(cmd: WhatsappComando): Promise<void> {
       sessoes.get(cmd.userId)?.recarregar()
       return
     }
+    case "historico":
+      await sessoes.get(cmd.userId)?.pedirHistorico(cmd.chatId)
+      return
     case "desconectar": {
       const s = sessoes.get(cmd.userId)
       if (s) {

@@ -1,6 +1,7 @@
 // WhatsApp — schemas Zod das rotas. Deliberadamente mínimos: nenhuma rota do
 // módulo aceita `userId`, então não há o que validar além do número do aparelho.
 import { z } from "zod"
+import { HISTORICO_DIAS_MAX, HISTORICO_DIAS_MIN } from "./tipos"
 
 export const pareamentoSchema = z
   .object({
@@ -29,3 +30,16 @@ export const conversaPatchSchema = z
   })
 
 export type ConversaPatchInput = z.infer<typeof conversaPatchSchema>
+
+/**
+ * Quantos dias de histórico gravar no pareamento. A faixa é a mesma que a
+ * página oferece; `diasDoHistorico` apara de novo na leitura, porque um valor
+ * pode ter entrado no banco por outro caminho.
+ */
+export const historicoDiasSchema = z
+  .object({
+    dias: z.number().int().min(HISTORICO_DIAS_MIN).max(HISTORICO_DIAS_MAX),
+  })
+  .strict()
+
+export type HistoricoDiasInput = z.infer<typeof historicoDiasSchema>

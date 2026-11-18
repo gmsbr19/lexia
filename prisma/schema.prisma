@@ -1537,6 +1537,10 @@ model WhatsappSessao {
   // Código de pareamento (8 caracteres) que o worker acabou de pedir ao
   // WhatsApp, para a página mostrar. Efêmero: expira junto com a tentativa.
   pareamento  String?
+  // Quantos DIAS de histórico gravar quando o aparelho despeja o passado no
+  // pareamento. Escolha do usuário; null = o padrão (HISTORICO_SYNC_DIAS, hoje
+  // 15). Não limita o botão "Anteriores", que é pedido explícito.
+  historicoDias Int?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 }
@@ -1570,9 +1574,19 @@ model WhatsappChat {
   grupo            Boolean            @default(false)
   monitorar        Boolean            @default(false)
   // Quando o monitoramento foi LIGADO. Mensagens anteriores a esta data não
-  // existem no banco (o Baileys não entrega histórico sob demanda) — a página
-  // usa isto para dizer isso ao usuário em vez de parecer que faltou gravar.
+  // foram gravadas — a página usa isto para dizer isso ao usuário em vez de
+  // parecer que faltou gravar. Dá para buscá-las depois: ver `ancoraChave`.
   monitoradoEm     DateTime?
+  // ÂNCORA do histórico: a mensagem mais ANTIGA que o worker já viu passar
+  // nesta conversa — guardada para TODA conversa, inclusive as não monitoradas,
+  // porque é o que o `fetchMessageHistory` do Baileys exige para pedir "as N
+  // anteriores a esta". Sem ela, marcar uma conversa hoje não daria acesso
+  // nenhum ao passado dela. É METADADO: o id opaco da mensagem e quem a enviou,
+  // NUNCA o conteúdo (de uma conversa não monitorada nada é gravado).
+  // JSON {"id","deMim","participante"} — ver montarChaveAncora em
+  // src/lib/whatsapp/mensagens-core.ts.
+  ancoraChave      String?
+  ancoraEm         DateTime?
   clienteId        Int?
   cliente          Cliente?           @relation(fields: [clienteId], references: [id], onDelete: SetNull)
   vinculo          String? // sugerido | confirmado | manual

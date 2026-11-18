@@ -149,6 +149,45 @@ mesma exige sessão e devolve 401.
 A intenção é que a triagem aconteça no claude.ai (fase 4): o Claude baixa, arquiva onde quer
 (OneDrive) e os bytes podem sair do Lexia, ficando o metadado.
 
+### Histórico anterior à marcação
+
+O que chegou **antes** de a conversa ser marcada vem por dois caminhos, e os dois existem
+porque o Baileys 7 tem sincronização de histórico sob demanda — o que uma nota da fase 3
+dizia (erradamente) que não existia.
+
+1. **No pareamento.** `syncFullHistory: true` faz o aparelho empurrar o histórico que ele
+   tiver. Isso exige também `shouldSyncHistoryMessage: () => true`, porque o PADRÃO do
+   Baileys é `syncType !== FULL` — com o sync completo ligado e o padrão no lugar, o
+   aparelho mandaria tudo e a biblioteca descartaria tudo. (O perigoso é o `() => false`,
+   que impede os mapeamentos iniciais de LID.) Só entra no banco o que for de conversa
+   **monitorada**, então marcar as conversas ANTES de parear é o que faz diferença — e,
+   dentro dela, só os **últimos N dias** — padrão **15** (`HISTORICO_SYNC_DIAS`, em
+   `tipos.ts`), e o usuário escolhe o número na página de conexão
+   (`WhatsappSessao.historicoDias`, lido a cada trecho do sync, então mudar não exige
+   reconectar). O despejo inteiro pesaria à toa, e o que fica de fora não se perde, porque a
+   âncora anda para trás do mesmo jeito e o botão abaixo alcança esse passado. Fora da janela
+   o worker nem toca no banco: resolve a conversa pelo cache em memória, então o despejo
+   custa uma busca em mapa por mensagem, não uma consulta.
+2. **Sob demanda, a qualquer momento — sem janela.** O botão **Anteriores** na página publica o comando
+   `historico`; o worker chama `sock.fetchMessageHistory(50, âncora, data)` e a resposta
+   volta como `messaging-history.set` (tipo `ON_DEMAND`), pela ingestão normal. Cada clique
+   caminha mais para trás, porque a âncora anda junto.
+
+A **âncora** (`WhatsappChat.ancoraChave` + `ancoraEm`) é a mensagem mais ANTIGA que o worker
+já viu na conversa. É guardada para TODA conversa, inclusive as não monitoradas, porque sem
+ela marcar uma conversa hoje não daria acesso nenhum ao passado dela — e é **metadado**: o id
+opaco da mensagem, se era sua e, em grupo, quem escreveu. De conversa não monitorada nenhum
+conteúdo é gravado, nem com o sync completo ligado.
+
+O pedido sob demanda **envia** algo: um `historySyncOnDemandRequest` para a sua própria
+conta. Nada vai para o contato, e segue valendo que o Lexia nunca manda mensagem nem marca
+conversa como lida.
+
+O que esperar: quanto o aparelho entrega é decisão dele (conversa muito antiga pode vir
+curta ou vazia), e **mídia antiga em geral não vem** — as chaves de descriptografia e a URL
+do CDN expiram, então conte com texto. Buscar histórico mais velho que a retenção abaixo
+(hoje **1 mês**) é desperdício: a faxina do dia seguinte o apaga.
+
 ### Retenção
 
 O worker faz uma faxina por dia (pendurada no heartbeat):
@@ -156,7 +195,12 @@ O worker faz uma faxina por dia (pendurada no heartbeat):
 | o que | prazo | constante |
 | --- | --- | --- |
 | bytes de mídia não reclamados | 30 dias (o metadado fica) | `MIDIA_RETENCAO_DIAS` |
-| mensagens gravadas | 24 meses (a mídia vai pelo cascade) | `MENSAGEM_RETENCAO_MESES` |
+| mensagens gravadas | **1 mês** (a mídia vai pelo cascade) | `MENSAGEM_RETENCAO_MESES` |
+
+O brief sugeria 24 meses; o escritório escolheu **1 mês**. Isso é também o teto do que o
+botão "Anteriores" consegue MANTER: buscar mensagem mais velha que o prazo funciona, mas a
+faxina do dia seguinte a apaga — se o passado profundo passar a importar, é este número que
+sobe, não o do sync.
 
 Em `src/lib/whatsapp/mensagens-core.ts`. Desmarcar uma conversa não apaga o que já foi
 guardado — a página **oferece** apagar (`DELETE /api/whatsapp/conversas/<id>/mensagens`), e é
@@ -253,7 +297,7 @@ ORDER BY 1;
 
 ## 7. Ferramentas MCP (fase 4)
 
-As 7 ferramentas vivem em [`src/lib/mcp/whatsapp.ts`](../src/lib/mcp/whatsapp.ts) e o núcleo
+As ferramentas vivem em [`src/lib/mcp/whatsapp.ts`](../src/lib/mcp/whatsapp.ts) e o núcleo
 puro delas (filtros, cursor, datas, decisão de anexo) em
 [`src/lib/whatsapp/mcp-core.ts`](../src/lib/whatsapp/mcp-core.ts).
 
@@ -266,6 +310,8 @@ puro delas (filtros, cursor, datas, decisão de anexo) em
 | `whatsapp_anexo` | O arquivo: imagem/PDF até 5 MB como conteúdo, o resto como link assinado |
 | `whatsapp_marcar_tratadas` | Marca `tratadaEm` depois de virar tarefa/prazo/evento/anotação |
 | `whatsapp_vincular_cliente` | Liga (ou desliga) a conversa a um contato do Lexia |
+| `whatsapp_monitorar` | Passa a gravar (ou para) uma conversa — sem isso não há o que ler |
+| `whatsapp_buscar_anteriores` | Pede ao aparelho o que veio antes; assíncrono, leia a conversa de novo depois |
 
 **Só aparecem no caminho OAuth.** O registro depende de um `User.id`, que só o bearer OAuth
 resolve (`expoeWhatsapp` em [`src/lib/mcp/tools.ts`](../src/lib/mcp/tools.ts)). Pelo token

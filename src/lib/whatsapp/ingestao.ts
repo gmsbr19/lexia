@@ -171,6 +171,25 @@ export async function salvarChat(
   return { id: existente.id, monitorar: existente.monitorar }
 }
 
+/**
+ * Guarda a mensagem mais ANTIGA já vista na conversa — a âncora de onde o
+ * histórico sob demanda parte. Só anda PARA TRÁS, e a condição está no WHERE:
+ * nenhuma leitura antes, e dois trechos do sync chegando fora de ordem não se
+ * desfazem. Vale para conversa NÃO monitorada também: é metadado (id opaco e
+ * data), e é o que permite marcar uma conversa hoje e ainda alcançar o passado.
+ */
+export async function registrarAncora(
+  userId: number,
+  chatId: number,
+  chave: string,
+  quando: Date,
+): Promise<void> {
+  await prisma.whatsappChat.updateMany({
+    where: { id: chatId, userId, OR: [{ ancoraEm: null }, { ancoraEm: { gt: quando } }] },
+    data: { ancoraChave: chave, ancoraEm: quando },
+  })
+}
+
 /** Quais conversas deste usuário estão monitoradas (o worker cacheia isto). */
 export async function carregarChats(userId: number): Promise<Map<string, ChatCache>> {
   const rows = await prisma.whatsappChat.findMany({

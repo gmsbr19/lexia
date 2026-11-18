@@ -34,6 +34,14 @@ export type WhatsappComando =
    * de o NOTIFY se perder com o worker fora do ar.
    */
   | { tipo: "recarregar"; userId: number }
+  /**
+   * "Peça ao WhatsApp as mensagens anteriores às que já temos nesta conversa."
+   * O worker chama `fetchMessageHistory` a partir da âncora guardada no chat; a
+   * resposta volta pelo MESMO caminho do histórico do pareamento
+   * (`messaging-history.set`), então é a ingestão normal que a grava — e só se
+   * a conversa estiver monitorada.
+   */
+  | { tipo: "historico"; userId: number; chatId: number }
 
 /** Evento do worker → app web (via `pg_notify`), consumido pelo SSE da página. */
 export type WhatsappEvento =
@@ -54,6 +62,8 @@ export type SessaoView = {
   pareamento: string | null
   /** false quando o worker não dá sinal de vida há mais de WORKER_TTL_MS. */
   workerOnline: boolean
+  /** Dias de histórico a gravar no pareamento (já aparado; nunca null). */
+  historicoDias: number
 }
 
 // Canais do LISTEN/NOTIFY. Nome de canal é identificador do Postgres: minúsculo,
@@ -74,6 +84,16 @@ export const WORKER_TTL_MS = 95_000
 /** Id do `pg_advisory_lock` que garante UMA instância do worker (7331/7332 = grafo de tarefas). */
 export const LOCK_WORKER = 7333
 
+/**
+ * Quanto do passado o sync do PAREAMENTO grava, quando o usuário não escolheu.
+ * Vive aqui (e não em ./core) porque o core importa deste arquivo — o contrário
+ * seria um ciclo. A REGRA (aparar a escolha) é que mora no core.
+ */
+export const HISTORICO_SYNC_DIAS = 15
+/** Faixa oferecida na página e aceita pela rota. */
+export const HISTORICO_DIAS_MIN = 1
+export const HISTORICO_DIAS_MAX = 365
+
 export const SESSAO_VAZIA: SessaoView = {
   status: "desconectado",
   numero: null,
@@ -81,4 +101,5 @@ export const SESSAO_VAZIA: SessaoView = {
   ultimoErro: null,
   pareamento: null,
   workerOnline: false,
+  historicoDias: HISTORICO_SYNC_DIAS,
 }

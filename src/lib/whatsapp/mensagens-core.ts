@@ -20,8 +20,17 @@ export const MIDIA_MAX_BYTES = 10 * 1024 * 1024
 /** Bytes de mídia não reclamados são apagados depois disso (metadado fica). */
 export const MIDIA_RETENCAO_DIAS = 30
 
-/** Retenção das mensagens gravadas (sugestão do brief). */
-export const MENSAGEM_RETENCAO_MESES = 24
+/**
+ * Retenção das mensagens gravadas. O brief sugeria 24 meses; o escritório
+ * escolheu **1 mês** — o uso do módulo é organizar o que está pendente agora, e
+ * guardar conversa de cliente além disso é risco sem contrapartida.
+ *
+ * CONSEQUÊNCIA, para quem for mexer: isto é o teto do que o botão "Anteriores"
+ * consegue manter. Trazer mensagem mais velha que este prazo funciona, mas a
+ * faxina do dia seguinte a apaga — se o passado profundo passar a importar,
+ * este número é que tem de subir.
+ */
+export const MENSAGEM_RETENCAO_MESES = 1
 
 /** Teto de texto na saída das ferramentas MCP e da página. */
 export const TEXTO_MAX = 4_000
@@ -204,6 +213,40 @@ export function autorDaMensagem(key: ChaveWa): string | null {
 /** `true` quando a mensagem é do próprio usuário (saiu do aparelho dele). */
 export function ehMinha(key: ChaveWa): boolean {
   return key?.fromMe === true
+}
+
+// ── Âncora do histórico ──────────────────────────────────────────────────────
+// O `fetchMessageHistory` do Baileys pede "as N mensagens anteriores a ESTA",
+// identificando-a pela chave. Guardamos a chave da mensagem mais ANTIGA já
+// vista em cada conversa para poder puxar o passado depois — METADADO (id
+// opaco, se é minha e, em grupo, quem escreveu), nunca conteúdo.
+
+export type Ancora = { id: string; deMim: boolean; participante: string | null }
+
+/** Serializa a chave para a coluna `WhatsappChat.ancoraChave`. */
+export function montarChaveAncora(key: ChaveWa): string | null {
+  const id = str(key?.id)
+  if (!id) return null
+  const a: Ancora = { id, deMim: ehMinha(key), participante: autorDaMensagem(key) }
+  return JSON.stringify(a)
+}
+
+/** Lê a âncora guardada. Coluna vazia, lixo ou formato antigo devolvem null. */
+export function lerChaveAncora(raw: string | null | undefined): Ancora | null {
+  if (!raw) return null
+  try {
+    const o: unknown = JSON.parse(raw)
+    if (!o || typeof o !== "object" || Array.isArray(o)) return null
+    const id = str((o as Record<string, unknown>).id)
+    if (!id) return null
+    return {
+      id,
+      deMim: (o as Record<string, unknown>).deMim === true,
+      participante: str((o as Record<string, unknown>).participante),
+    }
+  } catch {
+    return null
+  }
 }
 
 // ── Nome de arquivo ──────────────────────────────────────────────────────────

@@ -196,12 +196,17 @@ describe("whatsappTools", () => {
   const tools = whatsappTools(1, audit)
   const nomes = tools.map((t) => t.name)
 
-  it("são as 7 do brief, e nenhuma envia mensagem", () => {
+  it("são as 7 do brief mais as 2 de alcance, e nenhuma envia mensagem", () => {
+    // `whatsapp_monitorar` e `whatsapp_buscar_anteriores` não estavam no brief:
+    // foram pedidas depois, para o Claude conseguir ir buscar o que precisa em
+    // vez de depender de alguém marcar a conversa na página antes.
     expect(nomes.sort()).toEqual([
       "whatsapp_anexo",
+      "whatsapp_buscar_anteriores",
       "whatsapp_conversas",
       "whatsapp_ler_conversa",
       "whatsapp_marcar_tratadas",
+      "whatsapp_monitorar",
       "whatsapp_pendencias",
       "whatsapp_status",
       "whatsapp_vincular_cliente",
@@ -209,7 +214,7 @@ describe("whatsappTools", () => {
     expect(nomes.some((n) => /enviar|responder|mandar/.test(n))).toBe(false)
   })
 
-  it("cinco leituras e duas escritas, todas sem gate de papel (o WhatsApp é de cada um)", () => {
+  it("cinco leituras e quatro escritas, todas sem gate de papel (o WhatsApp é de cada um)", () => {
     expect(tools.filter((t) => t.kind === "readonly").map((t) => t.name).sort()).toEqual([
       "whatsapp_anexo",
       "whatsapp_conversas",
@@ -218,7 +223,9 @@ describe("whatsappTools", () => {
       "whatsapp_status",
     ])
     expect(tools.filter((t) => t.kind === "mutation").map((t) => t.name).sort()).toEqual([
+      "whatsapp_buscar_anteriores",
       "whatsapp_marcar_tratadas",
+      "whatsapp_monitorar",
       "whatsapp_vincular_cliente",
     ])
     for (const t of tools) expect(t.roles).toBeUndefined()
@@ -231,6 +238,11 @@ describe("whatsappTools", () => {
     const vincular = tools.find((t) => t.name === "whatsapp_vincular_cliente")!
     expect(vincular.resumo!({ chatId: 9, clienteId: null })).toContain("Remover")
     expect(vincular.resumo!({ chatId: 9, clienteId: 4 })).toContain("#4")
+    const monitorar = tools.find((t) => t.name === "whatsapp_monitorar")!
+    expect(monitorar.resumo!({ chatId: 2, monitorar: true })).toContain("Passar a gravar")
+    expect(monitorar.resumo!({ chatId: 2, monitorar: false })).toContain("Parar de gravar")
+    const anteriores = tools.find((t) => t.name === "whatsapp_buscar_anteriores")!
+    expect(anteriores.resumo!({ chatId: 2 })).toContain("#2")
   })
 
   it("marcar_tratadas exige mensagemIds OU chatId", () => {
