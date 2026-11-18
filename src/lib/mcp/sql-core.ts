@@ -39,6 +39,11 @@ export class SqlRejectedError extends Error {}
  * fronteira de verdade é o papel `lexia_ro` em `DATABASE_URL_RO` — ver
  * src/lib/mcp/sql.ts e docs/whatsapp-operacao.md. Esta camada barra o caminho
  * direto e deixa a recusa explícita para quem chama.
+ *
+ * Esta lista é a ÚNICA fonte da verdade: ./ro.ts a lê para revogar essas mesmas
+ * tabelas do papel a cada boot, então acrescentar um prefixo aqui já estende a
+ * revogação — sem isso, tabela sensível nova nasceria legível pelo papel (ele
+ * tem `ALTER DEFAULT PRIVILEGES … GRANT SELECT`).
  */
 export const PREFIXOS_BLOQUEADOS = ["whatsapp", "oauth"] as const
 

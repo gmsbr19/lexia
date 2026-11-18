@@ -13,6 +13,10 @@ export async function register() {
       agendarConversaoCasosNoBoot()
       const { agendarUsuarioMcpNoBoot } = await import("./lib/mcp/boot")
       agendarUsuarioMcpNoBoot()
+      // Depois do `prisma migrate deploy` do `npm start`: tabela sensível nova
+      // nasce legível pelo papel somente-leitura (ALTER DEFAULT PRIVILEGES).
+      const { agendarRevogacaoRoNoBoot } = await import("./lib/mcp/ro")
+      agendarRevogacaoRoNoBoot()
     } catch {
       /* nunca bloqueia o boot */
     }

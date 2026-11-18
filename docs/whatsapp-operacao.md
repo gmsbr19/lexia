@@ -162,24 +162,24 @@ Em `src/lib/whatsapp/mensagens-core.ts`. Desmarcar uma conversa não apaga o que
 guardado — a página **oferece** apagar (`DELETE /api/whatsapp/conversas/<id>/mensagens`), e é
 irreversível.
 
-## 6. Isolar as tabelas do `sql_consultar` — AÇÃO PENDENTE
+## 6. Isolar as tabelas do `sql_consultar`
 
 `prepareSql` ([`src/lib/mcp/sql-core.ts`](../src/lib/mcp/sql-core.ts)) recusa qualquer
 consulta que mencione uma tabela `Whatsapp*` ou `OAuth*`, e o `sql_schema` não as lista.
 **Isso não é a fronteira de segurança**: o filtro é por nome, e o app conecta como
 `postgres` (SUPERUSER), que tem outros caminhos (`pg_read_file`, por exemplo). A fronteira é
-um papel sem superusuário:
+um papel sem superusuário.
+
+### Criar o papel — AÇÃO MANUAL, uma vez por ambiente
 
 ```sql
--- rodar como postgres, em CADA ambiente (local e produção)
+-- rodar como postgres, em CADA ambiente, com senhas DIFERENTES
 CREATE ROLE lexia_ro LOGIN PASSWORD '<senha forte>'
   NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION;
 GRANT CONNECT ON DATABASE ncm TO lexia_ro;
 GRANT USAGE ON SCHEMA public TO lexia_ro;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO lexia_ro;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO lexia_ro;
-REVOKE SELECT ON "WhatsappChat", "WhatsappMensagem", "WhatsappMidia", "WhatsappAuth",
-  "WhatsappSessao", "OAuthClient", "OAuthCode", "OAuthToken" FROM lexia_ro;
 ```
 
 Depois, no `.env` (e nas variáveis do serviço no EasyPanel):
@@ -189,13 +189,67 @@ DATABASE_URL_RO=postgresql://lexia_ro:<senha>@<host>:5432/ncm
 ```
 
 O `sql_consultar` já troca de client sozinho quando a variável existe
-([`src/lib/mcp/sql.ts`](../src/lib/mcp/sql.ts) `client()`). Conferir depois:
-`SELECT * FROM "WhatsappMensagem"` tem de ser recusado **pelo banco** (permission denied), e
-não só pelo filtro de nome.
+([`src/lib/mcp/sql.ts`](../src/lib/mcp/sql.ts) `client()`).
 
-> O `ALTER DEFAULT PRIVILEGES` faz tabela NOVA nascer legível pelo papel. Ao criar uma
-> tabela sensível no futuro, `REVOKE` explícito **e** acrescentar o prefixo em
-> `PREFIXOS_BLOQUEADOS` (`sql-core.ts`).
+> Em produção o container do Postgres não se chama `pg-ncm` (esse é o nome local): ache o
+> dele com `docker ps | grep -i postgres`, ou use o console do próprio serviço no EasyPanel.
+> E confirme usuário e banco na `DATABASE_URL` do serviço — no EasyPanel eles costumam não
+> ser `postgres`/`ncm`.
+
+### A revogação é AUTOMÁTICA — não repita à mão
+
+O `ALTER DEFAULT PRIVILEGES` acima faz tabela NOVA nascer legível pelo papel, **inclusive a
+próxima tabela sensível que uma migração criar**. Depender de alguém lembrar de revogar
+depois de cada deploy é como a fronteira se perde — foi o que aconteceu em 17/11/2026, em
+que o `REVOKE` manual (uma instrução só, com oito tabelas) abortou na primeira tabela
+inexistente e **não revogou nada**, nem as `OAuth*`.
+
+Agora o app refaz a revogação **a cada boot**, depois do `prisma migrate deploy` que o
+`npm start` roda: `agendarRevogacaoRoNoBoot` ([`src/lib/mcp/ro.ts`](../src/lib/mcp/ro.ts)),
+chamada em [`src/instrumentation.ts`](../src/instrumentation.ts), varre o `pg_tables` pelos
+MESMOS `PREFIXOS_BLOQUEADOS` do `sql-core.ts` e emite um `REVOKE ALL` por tabela. É
+idempotente, roda em segundo plano, nunca derruba o boot, e não faz nada quando o papel não
+existe (o caso de dev). Não espera pela `DATABASE_URL_RO`: o papel pode existir antes dela,
+que é justamente o estado em que a revogação mais importa.
+
+Ela **se recusa a agir** quando o papel é superusuário ou é o próprio usuário do app —
+apontar a variável para o usuário de escrita por engano desarmaria o acesso do app. Nesse
+caso loga `warn` e o `sql_consultar` segue lendo tudo.
+
+Sobra um único trabalho manual: **tabela sensível com prefixo NOVO**. Acrescente o prefixo
+em `PREFIXOS_BLOQUEADOS` (`sql-core.ts`) e o boot seguinte já a cobre.
+
+### Revogar agora, sem esperar um deploy
+
+O mesmo que o boot faz. Ignora o que ainda não existe, então serve para rodar de novo
+quantas vezes precisar:
+
+```sql
+DO $$
+DECLARE t text;
+BEGIN
+  FOR t IN SELECT tablename FROM pg_tables
+            WHERE schemaname = 'public'
+              AND (tablename ILIKE 'whatsapp%' OR tablename ILIKE 'oauth%')
+  LOOP
+    EXECUTE format('REVOKE ALL ON public.%I FROM lexia_ro', t);
+  END LOOP;
+END $$;
+```
+
+Conferir — tudo tem de vir `f`, e a recusa de `SELECT * FROM "WhatsappMensagem"` tem de vir
+**do banco** (`permission denied`), não só do filtro de nome:
+
+```sql
+SELECT tablename, has_table_privilege('lexia_ro', format('public.%I', tablename), 'SELECT') AS pode_ler
+FROM pg_tables
+WHERE schemaname = 'public' AND (tablename ILIKE 'whatsapp%' OR tablename ILIKE 'oauth%')
+ORDER BY 1;
+```
+
+> Se a consulta acima não devolver NENHUMA linha `Whatsapp*`, as migrações do WhatsApp ainda
+> não foram aplicadas nesse ambiente — confira com
+> `SELECT migration_name, finished_at FROM _prisma_migrations ORDER BY finished_at DESC LIMIT 5`.
 
 ## 7. Ferramentas MCP (fase 4)
 

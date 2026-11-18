@@ -156,6 +156,39 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **`lexia_ro` — a revogação das tabelas sensíveis virou AUTOMÁTICA, no boot (this session, VERIFIED
+  `npx tsc --noEmit` 0 erros, 1152/1152 testes (+12 novos em `tests/mcp-ro.test.ts`), eslint limpo nos
+  arquivos novos/tocados, SEM migração.)** O usuário foi criar o papel `lexia_ro` em produção e o
+  `REVOKE` do doc **falhou**: é UMA instrução com oito tabelas, as `Whatsapp*` ainda não existiam lá (as
+  migrações das fases 2-3 não tinham sido aplicadas em produção) e ela abortou inteira — então o papel
+  nasceu com `GRANT SELECT ON ALL TABLES` e **nada foi revogado, nem as `OAuth*`**. Pior: o
+  `ALTER DEFAULT PRIVILEGES` do mesmo bloco faz **tabela nova nascer legível** pelo papel, então as
+  `Whatsapp*` nasceriam abertas no deploy seguinte. Uma migração não resolve (ela roda UMA vez e não
+  alcança as tabelas que as migrações seguintes criam), então a revogação passou a ser **reaplicada a cada
+  boot**: `agendarRevogacaoRoNoBoot` ([ro.ts](src/lib/mcp/ro.ts)) em
+  [instrumentation.ts](src/instrumentation.ts), logo depois do `prisma migrate deploy` do `npm start` —
+  varre o `pg_tables` pelos MESMOS `PREFIXOS_BLOQUEADOS` do [sql-core.ts](src/lib/mcp/sql-core.ts) (fonte
+  única: acrescentar um prefixo lá já estende a revogação) e emite um `REVOKE ALL` por tabela. Idempotente,
+  em 2º plano, nunca derruba o boot, silencioso quando o papel não existe (dev), e **não espera pela
+  `DATABASE_URL_RO`** — o papel pode existir antes dela, que é exatamente o estado em que a revogação mais
+  importa (o nome sai do usuário da URL quando ela existe, senão é o `lexia_ro` documentado:
+  `papelRo` em [ro-core.ts](src/lib/mcp/ro-core.ts)). **Recusa agir** se o papel for SUPERUSUÁRIO (seria
+  teatro: ele ignora privilégio de tabela) ou for o próprio usuário do app (uma `DATABASE_URL_RO` apontada
+  por engano para o usuário de escrita desarmaria o acesso do app) — loga `warn` e segue. Deps **injetadas**
+  (`RoDb`), como em `exec.ts`, pela mesma razão: importar o Prisma tiraria o módulo do vitest. Nome de
+  tabela e de papel vão por `ident()` (aspas dobradas) e os padrões vão como PARÂMETRO — há teste com
+  `Whatsapp"; DROP TABLE "User` como nome de tabela. Doc §6 reescrita (criar o papel segue manual, uma vez
+  por ambiente; o `REVOKE` manual saiu do caminho feliz e virou um `DO` block idempotente para "revogar
+  agora, sem esperar deploy", mais a conferência por `has_table_privilege` e o aviso de que nenhuma linha
+  `Whatsapp*` significa migração não aplicada). **User action:** (1) rodar o `DO` block da §6 em produção
+  AGORA — enquanto ele não roda, o `lexia_ro` lê o banco inteiro, tokens OAuth inclusive; (2) **não** setar
+  `DATABASE_URL_RO` antes disso (hoje o `sql_consultar` roda como superusuário mas tem o filtro por nome;
+  apontá-lo para um papel que lê tudo seria pior); (3) redeployar o `lexia` (aplica as migrações do WhatsApp
+  e, no boot, revoga sozinho) e conferir no log `"tabelas sensíveis revogadas do papel somente-leitura"`;
+  (4) criar o papel no banco LOCAL com senha DIFERENTE. **Não verificado por mim:** o boot contra o Postgres
+  real (o papel não existe no banco local, e a sessão anterior teve a criação recusada pelo classificador do
+  modo automático) — a lógica está exercitada por teste com banco falso, mas o `REVOKE` de verdade quem vai
+  ver primeiro é o log do próximo deploy.
 - **WhatsApp (Baileys) · FASE 4 — as 7 ferramentas MCP, escopadas ao usuário do token (this session, VERIFIED
   `npx tsc --noEmit` 0 erros, 1140/1140 testes (+34 novos em `tests/whatsapp-mcp.test.ts`, `tests/mcp-exec.test.ts`
   e `tests/mcp-tools.test.ts`), eslint limpo em TODOS os arquivos novos/tocados, **SEM migração** (a fase 3 já
