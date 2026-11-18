@@ -28,6 +28,7 @@ import {
   type NovaTarefa,
 } from "@/lib/tarefas/mutations"
 import { inserirMencoes, parseMencoes, segmentosComentario } from "@/lib/tarefas/comentario-core"
+import { DESCRICAO_DESCRIBE, exigirDescricao, problemaDescricao, recusaDescricao } from "@/lib/tarefas/descricao-core"
 import { criarComentario, listarComentarios } from "@/lib/tarefas/comentarios"
 import { chaveCaso, chaveInterno, lerChave } from "@/lib/tarefas/projetos-quadro"
 import { getTarefasBoard } from "@/lib/tarefas/queries"
@@ -51,7 +52,7 @@ const STATUS = z.enum(["todo", "doing", "wait", "done"])
 
 const tarefaChat = z.object({
   titulo: z.string().min(2).max(300).describe("Título curto, de preferência 'verbo + objeto' (ex.: 'Protocolar contestação')"),
-  descricao: z.string().max(4000).optional().describe("Descrição/contexto (opcional)"),
+  descricao: z.string().max(4000).describe(DESCRICAO_DESCRIBE),
   responsavelId: idOpt.describe("Responsável (id via listar_tarefas → pessoas). Omitido = quem pediu; null = sem responsável"),
   prazo: dataISO.optional().describe("Prazo (YYYY-MM-DD). Omitido = sexta-feira desta semana"),
   prazoFatal: z.boolean().optional().describe("true para prazo legal/processual (contestação, recurso…)"),
@@ -61,6 +62,12 @@ const tarefaChat = z.object({
   clienteId: idOpt.describe("Cliente (id via buscar) — ignorado se o caso já tem cliente"),
   processoId: idOpt.describe("Vincular a um processo (id via buscar) — sem projeto, a tarefa herda o caso do processo"),
   checklist: z.array(z.string().min(1).max(300)).max(30).optional().describe("Itens de checklist (opcional)"),
+}).superRefine((v, ctx) => {
+  // A regra mora no SCHEMA (e não só no run) para a recusa chegar ao modelo
+  // antes de qualquer cartão de confirmação — ele reescreve ou pergunta, e o
+  // usuário nunca vê um cartão de tarefa sem enunciado.
+  const motivo = problemaDescricao(v.titulo, v.descricao)
+  if (motivo) ctx.addIssue({ code: "custom", path: ["descricao"], message: recusaDescricao(motivo, v.titulo) })
 })
 
 /** casoId XOR projetoId → chave do projeto no quadro (null = sem projeto). */
@@ -215,7 +222,11 @@ export const tarefasTools = [
     name: "criar_tarefa",
     kind: "mutation",
     description:
-      "Cria uma tarefa. Só o TÍTULO é obrigatório: sem prazo informado vale a sexta-feira desta semana; sem responsável, fica com quem pediu. " +
+      "Cria uma tarefa. TÍTULO e DESCRIÇÃO são obrigatórios: a descrição é o enunciado, e quem for executar a tarefa (talvez semanas depois, " +
+      "sem ter visto esta conversa) precisa entender o que fazer só lendo ela. Escreva você a descrição a partir do pedido — deduzir o óbvio é " +
+      "esperado, não peça ao usuário para ditar texto. Pergunte apenas quando o pedido não der nem para explicar a tarefa a quem vai executá-la " +
+      "(ex.: 'abre uma tarefa pro Leandro' e nada mais): aí peça o que falta, de uma vez, e crie depois. Nunca invente fato que o usuário não disse. " +
+      "Sem prazo informado vale a sexta-feira desta semana; sem responsável, fica com quem pediu. " +
       "Nunca invente responsável nem prazo — se o usuário citar alguém, resolva o id com listar_tarefas (pessoas). " +
       "Marque prazoFatal para prazos legais/processuais. Vincule o projeto (casoId de um caso do cliente OU projetoId de um projeto interno), grupo e cliente quando indicado.",
     schema: tarefaChat,
@@ -224,20 +235,25 @@ export const tarefasTools = [
       resumo: `Criar tarefa: ${i.titulo}`,
       detalhes: [
         { label: "Tarefa", valor: i.titulo },
+        { label: "O que fazer", valor: i.descricao.length > 400 ? `${i.descricao.slice(0, 400)}…` : i.descricao },
         { label: "Responsável", valor: i.responsavelId === undefined ? "Você" : i.responsavelId ? await nomeUsuario(i.responsavelId) : "Sem responsável" },
         { label: "Prazo", valor: `${i.prazo ? dataBr(i.prazo) : "Sexta desta semana"}${i.prazoFatal ? " · prazo fatal" : ""}` },
         { label: "Projeto", valor: `${await nomeProjeto(i.casoId, i.projetoId)}${i.grupo ? ` · ${i.grupo}` : ""}` },
         ...(i.clienteId ? [{ label: "Cliente", valor: await nomeCliente(i.clienteId) }] : []),
       ],
     }),
-    run: async (ctx, i) => criarTarefa(paraNova(i), await resolverAtor(ctx.user.email)),
+    run: async (ctx, i) => {
+      exigirDescricao(i.titulo, i.descricao)
+      return criarTarefa(paraNova(i), await resolverAtor(ctx.user.email))
+    },
   }),
   defineTool({
     name: "criar_tarefas_lote",
     kind: "mutation",
     description:
-      "Cria VÁRIAS tarefas de UMA vez (prefira isto a repetir criar_tarefa — muito mais rápido e barato). Cada tarefa segue as mesmas regras de criar_tarefa. " +
-      "Não dispara aviso individual por tarefa.",
+      "Cria VÁRIAS tarefas de UMA vez (prefira isto a repetir criar_tarefa — muito mais rápido e barato). Cada tarefa segue as mesmas regras de criar_tarefa, " +
+      "incluindo a DESCRIÇÃO obrigatória de cada uma: uma lista de títulos não é um plano de trabalho. Redija as descrições a partir do que o usuário " +
+      "pediu; pergunte só sobre as etapas que você não conseguiria explicar a quem for executá-las. Não dispara aviso individual por tarefa.",
     schema: z.object({ tarefas: z.array(tarefaChat).min(1).max(60) }),
     resumo: (i) => `Criar ${i.tarefas.length} tarefas`,
     montarConfirmacao: async (_ctx, i) => ({
@@ -247,7 +263,10 @@ export const tarefasTools = [
         { label: "Exemplos", valor: i.tarefas.slice(0, 4).map((t) => t.titulo).join(" · ") + (i.tarefas.length > 4 ? " …" : "") },
       ],
     }),
-    run: async (ctx, i) => criarTarefas(i.tarefas.map(paraNova), await resolverAtor(ctx.user.email)),
+    run: async (ctx, i) => {
+      i.tarefas.forEach((t, n) => exigirDescricao(t.titulo, t.descricao, `Tarefa ${n + 1}`))
+      return criarTarefas(i.tarefas.map(paraNova), await resolverAtor(ctx.user.email))
+    },
   }),
   defineTool({
     name: "editar_tarefa",
@@ -259,7 +278,11 @@ export const tarefasTools = [
     schema: z.object({
       id: idReq.describe("Id da tarefa"),
       titulo: z.string().min(2).max(300).optional(),
-      descricao: z.string().max(4000).optional(),
+      descricao: z
+        .string()
+        .max(4000)
+        .optional()
+        .describe("Nova descrição — só envie se for MELHORAR o enunciado; " + DESCRICAO_DESCRIBE),
       prazo: dataISO.optional(),
       ajustarSeguintes: z.boolean().optional(),
       prazoFatal: z.boolean().optional(),
@@ -288,6 +311,8 @@ export const tarefasTools = [
       return { resumo: `Editar tarefa: ${a?.titulo ?? `#${i.id}`}`, detalhes: det.length ? det : undefined }
     },
     run: async (ctx, i) => {
+      // Reescrever a descrição não pode esvaziar o enunciado da tarefa.
+      if (i.descricao !== undefined) exigirDescricao(i.titulo ?? (await tituloTarefa(i.id)), i.descricao)
       const ator = await resolverAtor(ctx.user.email)
       const patch = {
         titulo: i.titulo,

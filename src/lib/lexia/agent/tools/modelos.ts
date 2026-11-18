@@ -12,6 +12,7 @@ import { chaveCaso, chaveInterno } from "@/lib/tarefas/projetos-quadro"
 import { getModelos } from "@/lib/tarefas/queries"
 import { hojeSP } from "@/lib/tarefas/regras"
 import { resolverAtor } from "@/lib/tarefas/mutations"
+import { DESCRICAO_DESCRIBE, exigirDescricao } from "@/lib/tarefas/descricao-core"
 import { idOpt, idReq } from "@/lib/validation"
 import { dataBr, nomeArea, nomeCliente, nomeUsuario } from "../confirmar"
 import { defineTool } from "../types"
@@ -128,8 +129,11 @@ export const modelosTools = [
     roles: ROLES_PROJETO_ESCRITA,
     description:
       "Cria TODAS as tarefas de um projeto (e as ligações entre elas) numa ÚNICA chamada — use SEMPRE que o pedido for 'crie um caso/projeto com as tarefas …' " +
-      "ou 'monte as tarefas do caso/projeto X'. Cada tarefa: título, grupo (opcional, ex.: 'Protocolo 01'), responsavelId e prazo quando souber (prazo omitido = " +
+      "ou 'monte as tarefas do caso/projeto X'. Cada tarefa: título, DESCRIÇÃO obrigatória (o enunciado — quem for executar precisa entender o que fazer só lendo ela), " +
+      "grupo (opcional, ex.: 'Protocolo 01'), responsavelId e prazo quando souber (prazo omitido = " +
       "sexta desta semana), prazoFatal, e depoisDe = índices (0-based) de tarefas ANTERIORES desta mesma lista que precisam terminar antes. " +
+      "Redija as descrições a partir do que o usuário pediu (e do que o tipo de trabalho já implica); se houver etapa que você não conseguiria explicar a quem vai " +
+      "executá-la, pergunte sobre ELA antes de montar a estrutura, em vez de preencher com palpite. " +
       alvoDescricao,
     schema: z.object({
       casoId: idOpt,
@@ -143,7 +147,7 @@ export const modelosTools = [
             responsavelId: idOpt,
             prazo: dataISO.optional(),
             prazoFatal: z.boolean().optional(),
-            descricao: z.string().max(4000).optional(),
+            descricao: z.string().max(4000).describe(DESCRICAO_DESCRIBE),
             checklist: z.array(z.string().max(300)).max(30).optional(),
             depoisDe: z.array(z.number().int().min(0)).max(20).optional(),
           }),
@@ -162,6 +166,7 @@ export const modelosTools = [
       ],
     }),
     run: async (ctx, i) => {
+      i.tarefas.forEach((t, n) => exigirDescricao(t.titulo, t.descricao, `Tarefa ${n + 1}`))
       const alvo = alvoDe(i)
       if ("erro" in alvo) return alvo
       return montarEstruturaProjeto(alvo, i.tarefas, await resolverAtor(ctx.user.email))

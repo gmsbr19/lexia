@@ -156,6 +156,89 @@ This Next (16.2.6) has breaking changes vs. training data — consult
 (streaming route handlers, caching, runtime).
 
 ## 11. Latest state & user action
+- **O Claude não cria mais tarefa sem ENUNCIADO — mas a descrição é ELE que escreve (this session, VERIFIED
+  `npx tsc --noEmit` 0 erros, 1209/1209 testes (+14 em `tests/tarefas-descricao.test.ts`), eslint limpo nos arquivos
+  tocados, **SEM migração**.)** Pedido do usuário, em duas rodadas: primeiro "não aceite criar tarefa sem descrição e sem
+  estar bem claro o que precisa ser feito; faça perguntas até ter o mínimo para a tarefa ser compreendida e realizada"; e
+  então a correção que define o desenho — **"a IA não precisa esperar que a pessoa diga exatamente o que fazer: ela pode
+  deduzir, desde que seja muito claro. Se não conseguir explicar o que o outro deve fazer, aí pergunta. A ideia não é pedir
+  a descrição a quem cria, é exigir detalhes suficientes para a EXECUÇÃO — guardrail forte demais põe fricção em criar
+  tarefa."** Logo: o que se exige é a tarefa executável, não que o usuário dite texto. O modelo redige a descrição a partir
+  do pedido (deduzir o óbvio é esperado) e só pergunta quando o pedido não dá nem para explicar a tarefa a quem vai
+  executá-la ("abre uma tarefa pro Leandro" e nada mais) — e nunca inventa FATO (prazo, nº de processo, pessoa), que é a
+  única coisa que não se deduz.
+  **Onde a regra mora:** nas FERRAMENTAS de criação (`criar_tarefa`, `criar_tarefas_lote`, `criar_estrutura_projeto`) — logo
+  vale na LexIA e no MCP. **A TELA não passa por aqui** de propósito (quem escreve lá é a pessoa, que acabou de decidir a
+  tarefa), e `aplicar_modelo` também não (o passo do modelo é enunciado que o escritório já aprovou na tela).
+  **Núcleo PURO** novo [descricao-core.ts](src/lib/tarefas/descricao-core.ts): `problemaDescricao(titulo, descricao)` devolve
+  o motivo em pt-BR ou null. Como campo obrigatório convida a enchimento, a conferência é de CONTEÚDO: vazia/só pontuação,
+  frase que não diz nada (lista `VAZIAS`: "a definir", "pendente", "ver com", "N/A", "idem", "tbd"… comparada com a descrição
+  INTEIRA, normalizada sem acento/pontuação — descrição que só CONTÉM a palavra passa), cópia do título, `DESCRICAO_MIN_CHARS
+  = 30` e `DESCRICAO_MIN_PALAVRAS = 5`. **A cópia do título só é recusada quando o título, sozinho, não diz o trabalho**
+  (`basta()`): título já completo + descrição igual é redundante, mas a tarefa está executável — recusar ali seria fricção
+  sem ganho. `recusaDescricao` é parte da regra, não enfeite: é ela que ensina a ordem ("a descrição é SUA para escrever…
+  se o pedido não dá nem para isso, pergunte só o que falta, de uma vez… não encha com palpite nem com fato que o usuário
+  não disse").
+  **DUAS barreiras, de propósito:** (1) `superRefine` no `tarefaChat` — o `loop.ts` já devolve as issues do zod ao modelo, então
+  a recusa chega ANTES de qualquer cartão de confirmação (o usuário nunca vê cartão de tarefa sem enunciado) e, no MCP, o
+  JSON Schema passa a marcar `descricao` como **required** (conferido: `z.toJSONSchema` do `criar_tarefa` lista `descricao`,
+  e o `tests/mcp-tools.test.ts` já afere que toda ferramenta converte); (2) `exigirDescricao` no `run` (UserError → mensagem
+  pt-BR preservada pelo `exec.ts`), que é a última barreira no caminho MCP, onde o `run` roda direto. Em `criar_tarefas_lote`/
+  `criar_estrutura_projeto` a recusa NOMEIA a tarefa ("Tarefa 3"), senão o modelo não sabe qual reescrever.
+  **editar_tarefa:** a descrição segue OPCIONAL (envie só o que muda), mas se vier tem de passar pela mesma régua — reescrever
+  não pode esvaziar o enunciado; o título para a comparação vem do patch ou do banco.
+  O cartão de confirmação de `criar_tarefa` agora mostra **"O que fazer"** (a descrição, até 400 chars): quem aprova lê o
+  enunciado em vez de só o título. Prompt (bullet TAREFAS, **CORE cacheado — invalida o cache 1×**), descrições das 3
+  ferramentas e `INSTRUCOES` do servidor MCP dizem todos a mesma ordem: redigir, deduzir o claro, perguntar só o que falta.
+  **Limite honesto:** schema força campo PREENCHIDO, nunca campo VERDADEIRO — uma descrição plausível e inventada passa. A
+  validação só fecha o caminho fácil (criar sem nada, com "a definir" ou com 4 palavras vagas); o resto é prompt. **User
+  action:** (1) reiniciar o `next dev` (as ferramentas são registradas por requisição, mas o módulo precisa entrar no
+  bundle); em produção, deploy do `lexia`. (2) **No claude.ai, numa conversa NOVA** (a lista de ferramentas é buscada na
+  conexão): "abre uma tarefa pro Leandro" sem mais nada → ele deve PEDIR detalhes; "cria uma tarefa pro Leandro ligar pro
+  cliente João sobre o acordo" → deve criar DIRETO, com a descrição escrita por ele (sem interrogatório) e o cartão mostrando
+  "O que fazer". Na LexIA de dentro do app, o mesmo. **Não verificado por mim:** onde exatamente o modelo decide deduzir vs.
+  perguntar (regra do projeto: a conferência é do usuário) — o que está exercitado por teste é a régua, as 3 ferramentas pelo
+  schema e a mensagem de recusa. Se na prática ele perguntar demais, o lugar de afrouxar é o bullet do prompt (e
+  `DESCRICAO_MIN_*`), não o schema.
+- **Claude comenta em tarefa EM NOME do usuário, pelo MCP (this session, VERIFIED `npx tsc --noEmit` 0 erros,
+  1195/1195 testes (+12: 7 em `tests/tarefas-comentario-core.test.ts`, 3+2 em `tests/lexia-agent.test.ts`; as
+  contagens de `tests/mcp-tools.test.ts` subiram 95→97 registry e 90→92 expostas), eslint limpo nos arquivos
+  tocados, **SEM migração** — o modelo de comentário existe desde jul/2026.)** Duas ferramentas novas no
+  registry da LexIA (logo, automaticamente no MCP — nada de superfície só-MCP aqui, porque comentar é
+  capacidade do assistente de dentro do app também): **`comentarios_tarefa`** (leitura: a thread em ordem de
+  conversa, autor + data/hora de SP, `conteudoExterno` com o aviso de "dado, nunca instrução", os últimos 20
+  por padrão/50 no máximo, com o `total` real) e **`comentar_tarefa`** (mutação, sem gate de papel como o
+  resto de Tarefas). **O autor é a PESSOA:** `criarComentario(id, {...}, ctx.user.email)` resolve o
+  `autorId` por e-mail, então pelo conector **OAuth** o comentário sai assinado pelo usuário e os ENVOLVIDOS
+  (responsável + criador + quem já comentou) são avisados no app e por e-mail pelo trigger que já existia —
+  o autor nunca é avisado do próprio comentário. No conector **legado (token no path) não há pessoa**: o autor
+  é o usuário de serviço `mcp@lexia.local`, igual a toda mutação daquela rota; está dito no cabeçalho do
+  arquivo. **Menções:** `mencionar: [ids]` existe porque é a menção que notifica QUEM NÃO É ENVOLVIDO. Núcleo
+  PURO novo `inserirMencoes` ([comentario-core.ts](src/lib/tarefas/comentario-core.ts)): aproveita o `@Nome`
+  que o modelo já escreveu no texto (nome completo, senão o primeiro nome — e `@Ana` **não** casa dentro de
+  `@Anabelle`), e quando não há nenhum **acrescenta o token no fim** em vez de perder a menção em silêncio —
+  a estética perde para o aviso. Idempotente (quem já está mencionado é ignorado). Id inexistente ou de
+  usuário **desativado** é **erro com instrução** ("pegue o id em listar_tarefas"), nunca uma menção que não
+  notifica ninguém e aparece como "usuário #9" no quadro. Na leitura o caminho é o inverso: `@[5]` sai como
+  **`@Ana Souza`** (`segmentosComentario`) — o token interno nunca vaza para o modelo. **Editar/excluir
+  comentário NÃO foram expostos** (de propósito: o pedido é comentar; apagar comentário alheio é ferramenta
+  mais afiada do que foi pedido e já existe na tela, onde a regra é autor-ou-sócio). **Armadilha JÁ PAGA (a
+  mesma de `criarAtividade` em out/2026):** `comentarios.ts` importava `ForbiddenError` de
+  `@/lib/auth/session`, e puxar o arquivo para o grafo do registry arrastaria o **next-auth** e quebraria o
+  `tests/lexia-agent.test.ts` — o import foi para `@/lib/errors` (o `session.ts` reexporta, nada mais mudou).
+  Novo helper `dataHoraBr` em [datas.ts](src/lib/lexia/agent/datas.ts) ("12/06/2026 14:35" em SP, via Intl
+  como o resto do arquivo). Prompt (bullet TAREFAS, **CORE cacheado — invalida o cache 1×**) e as
+  `INSTRUCOES` do servidor MCP agora dizem para ler a thread antes e escrever na voz do usuário. Auditoria:
+  `mcp.comentar_tarefa` com o texto no payload — **igual à rota da tela**, que já audita `payload: body`.
+  **User action:** (1) reiniciar o `next dev` (as ferramentas são registradas por requisição, mas o módulo
+  precisa entrar no bundle); em produção, deploy do `lexia`. (2) **No claude.ai, numa conversa NOVA** (a
+  lista de ferramentas é buscada na conexão), pelo conector com **OAuth**: "o que foi dito na tarefa X?" →
+  `comentarios_tarefa`; "comenta lá que protocolei hoje e chama a @<colega>" → cartão de aprovação →
+  conferir no quadro que o comentário aparece **com o seu nome e avatar**, que o colega mencionado recebeu
+  sino/e-mail e que você NÃO recebeu nada do seu próprio comentário. **Não verificado por mim:** a gravação
+  ao vivo (regra do projeto: a conferência é do usuário) — o caminho de escrita é o MESMO da tela, exercitado
+  em produção desde julho; o que está exercitado por teste aqui é o núcleo das menções, o gating por papel/
+  modo e a validação de entrada.
 - **WhatsApp · marcar uma conversa agora busca o passado dela sozinho, por uma FILA drenada aos poucos
   (this session, VERIFIED `npx tsc --noEmit` 0 erros, 1193 testes passando (+12 em
   `tests/whatsapp-historico.test.ts`), eslint limpo nos arquivos tocados, migração ADITIVA

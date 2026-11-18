@@ -35,7 +35,10 @@ const INSTRUCOES =
   "Conversa ainda não marcada não tem nada guardado: `whatsapp_monitorar` passa a gravá-la e " +
   "`whatsapp_buscar_anteriores` pede ao aparelho o que veio antes. " +
   "`comentar_tarefa` publica na conversa da tarefa EM NOME desse usuário (assinado por ele, e os envolvidos " +
-  "são avisados): escreva na voz dele e leia a thread com `comentarios_tarefa` antes."
+  "são avisados): escreva na voz dele e leia a thread com `comentarios_tarefa` antes. " +
+  "Criar tarefa exige DESCRIÇÃO: é o enunciado do trabalho, e quem for executar precisa entender o que fazer só lendo ela. " +
+  "Escreva-a você, a partir do que o usuário pediu — deduzir o que está claro é esperado. Pergunte só quando o pedido não der " +
+  "nem para explicar a tarefa a quem vai executá-la; nunca preencha com palpite ou com fato que o usuário não disse."
 
 /** 401 que ensina o cliente a se autenticar (sem o header, ele só desiste). */
 function naoAutorizado(base: string, oauthOn: boolean, erro?: "invalid_token"): Response {
